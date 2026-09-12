@@ -1,0 +1,2 @@
+window.portfolio = {load:key=>localStorage.getItem(key),save:(key,value)=>localStorage.setItem(key,value),download:(name,content,type)=>{const url=URL.createObjectURL(new Blob([content],{type}));const a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)}};
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('service-worker.js',{updateViaCache:'none'}).catch(e=>console.warn('Offline support unavailable',e));
