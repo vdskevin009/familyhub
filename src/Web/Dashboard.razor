@@ -1,0 +1,71 @@
+@inject BrowserStore Store
+<div class="notice"><span class="badge">ON THIS DEVICE</span> Your entries stay in this browser. No account or live sync yet. Share a backup to move a plan between devices.</div>
+@if (!string.IsNullOrEmpty(error)) { <p role="alert" class="error">@error</p> }
+@if (!string.IsNullOrEmpty(message)) { <p role="status" class="success">@message</p> }
+<section class="stats" aria-label="Family overview">
+    <div class="stat"><small>TO DO TODAY</small><strong>@state.Entries.Count(x => !x.Done && x.Due.Date <= DateTime.Today)</strong><small>A little progress goes a long way</small></div>
+    <div class="stat"><small>GROCERY ITEMS</small><strong>@state.Entries.Count(x => !x.Done && x.Kind == EntryKind.Grocery)</strong><small>For your next shop</small></div>
+    <div class="stat"><small>WEEK AHEAD</small><strong>@state.Entries.Count(x => !x.Done && x.Due.Date >= DateTime.Today && x.Due.Date < DateTime.Today.AddDays(7))</strong><small>Plans in the next seven days</small></div>
+</section>
+<div class="tabs" aria-label="Entry filters">
+    @foreach (var tab in tabs) { <button class="@(filter == tab ? "active" : "")" @onclick="() => filter = tab">@tab</button> }
+</div>
+<div class="grid"><section class="card"><div class="card-head"><h2>@filter</h2><span class="badge">@Visible.Count() items</span></div>
+@if (!Visible.Any()) { <p class="empty">A clear page. Add your first plan on the right.</p> }
+@foreach (var entry in Visible)
+{
+    <div class="row" @key="entry.Id">
+        <input type="checkbox" aria-label="@($"Complete {entry.Title}")" checked="@entry.Done" @onchange="() => Complete(entry)" />
+        <div class="grow"><strong class="@(entry.Done ? "done" : "")">@entry.Title</strong><small>@entry.Kind · @entry.Owner · @entry.Due.ToString(entry.Kind == EntryKind.Appointment ? "ddd d MMM, HH:mm" : "ddd d MMM") @(entry.Repeat != Repeat.Never ? $"· {entry.Repeat}" : "")</small>
+        @if (!string.IsNullOrWhiteSpace(entry.Notes)) { <small>@entry.Notes</small> }
+        @if (!entry.Done && entry.Due.Date < DateTime.Today) { <span class="badge warn">Overdue</span> }</div>
+        <button class="secondary" @onclick="() => Edit(entry)">Edit</button><button class="danger" aria-label="@($"Delete {entry.Title}")" @onclick="() => Delete(entry)">×</button>
+    </div>
+}
+<p class="notice">Completing a recurring entry moves its due date to the next future occurrence. Reminders are shown here while the app is open; push notifications are a future feature.</p>
+</section><div><section class="card"><h2>@(editing is null ? "Make a little plan" : "Edit your plan")</h2>
+<form @onsubmit="SaveEntry" @onsubmit:preventDefault><div class="form-grid">
+    <label class="full">What needs doing?<input @bind="title" maxlength="150" required placeholder="e.g. Pick up ingredients for dinner" /></label>
+    <label>Category<select @bind="kind">@foreach (var k in Enum.GetValues<EntryKind>()) { <option value="@k">@k</option> }</select></label>
+    <label>Who's on it?<input @bind="owner" maxlength="60" placeholder="Everyone" /></label>
+    <label>Date<input type="date" @bind="due" min="2000-01-01" max="2100-12-31" required /></label>
+    <label>Time<input type="time" @bind="time" /></label>
+    <label>Repeat<select @bind="repeat">@foreach (var r in Enum.GetValues<Repeat>()) { <option value="@r">@r</option> }</select></label>
+    <label class="full">Notes<input @bind="notes" maxlength="1000" placeholder="A quantity, a place, or a useful detail" /></label>
+    <div class="actions full"><button type="submit">@(editing is null ? "Add to the plan +" : "Save changes")</button>@if (editing is not null) { <button type="button" class="secondary" @onclick="ClearForm">Cancel</button> }</div>
+</div></form></section>
+<section class="card tinted"><h2>Keep everyone in the loop</h2><p class="muted">Download your plan and share it privately. Import merges entries by their ID; a matching imported entry replaces the local version.</p><button class="secondary" @onclick="Export">Download backup</button><label style="margin-top:15px">Import a family backup<InputFile OnChange="Import" accept="application/json,.json" /></label>
+<details><summary>Privacy & installation</summary><p>The app URL and source code are public; entries are never uploaded by this app. Browser storage is not encrypted and is accessible to anyone using this browser profile. Clearing site data deletes entries. Keep backups private.</p><p>On iPhone use Safari → Share → Add to Home Screen. On Android use the browser's Install app or Add to Home screen. Offline support becomes available after the first complete load.</p></details></section></div></div>
+@code {
+    FamilyState state = new();
+    readonly string[] tabs = ["All plans", "Tasks", "Groceries", "Meals", "Appointments", "Reminders"];
+    string filter = "All plans", title = "", owner = "Everyone", notes = "", time = "18:00", error = "", message = "";
+    DateTime due = DateTime.Today;
+    EntryKind kind; Repeat repeat; Guid? editing;
+    IEnumerable<FamilyEntry> Visible => state.Entries.Where(x => filter == "All plans" || x.Kind == (EntryKind)(Array.IndexOf(tabs, filter) - 1)).OrderBy(x => x.Done).ThenBy(x => x.Due);
+    protected override async Task OnInitializedAsync() { try { state = await Store.Load<FamilyState>("familyhub.v1") ?? new(); state.Validate(); } catch { state = new(); error = "Saved data could not be read. Import a valid backup to recover it. Existing storage has not been changed."; } }
+    async Task Persist() { try { state.Validate(); await Store.Save("familyhub.v1", state); error = ""; } catch (Exception ex) { error = $"Could not save. Download a backup before leaving. {ex.Message}"; } }
+    async Task SaveEntry()
+    {
+        if (string.IsNullOrWhiteSpace(title)) return;
+        if (!TimeSpan.TryParse(time, out var clock)) { error = "Choose a valid time."; return; }
+        var e = new FamilyEntry { Id = editing ?? Guid.NewGuid(), Title = title.Trim(), Owner = string.IsNullOrWhiteSpace(owner) ? "Everyone" : owner.Trim(), Notes = notes.Trim(), Due = due.Date.Add(clock), Kind = kind, Repeat = repeat };
+        var existing = state.Entries.FindIndex(x => x.Id == e.Id);
+        if (existing >= 0) { e.Done = state.Entries[existing].Done; state.Entries[existing] = e; } else state.Entries.Add(e);
+        await Persist(); ClearForm();
+    }
+    void ClearForm() { editing = null; title = ""; notes = ""; }
+    void Edit(FamilyEntry e) { editing=e.Id; title=e.Title; owner=e.Owner; notes=e.Notes; due=e.Due.Date; time=e.Due.ToString("HH:mm"); kind=e.Kind; repeat=e.Repeat; }
+    async Task Complete(FamilyEntry e) { try { state.Complete(e, DateTime.Today); await Persist(); } catch (Exception ex) { error=ex.Message; } }
+    async Task Delete(FamilyEntry e) { state.Entries.Remove(e); await Persist(); }
+    Task Export() => Store.Download("familyhub-backup.json", JsonSerializer.Serialize(state, new JsonSerializerOptions { WriteIndented = true }));
+    async Task Import(InputFileChangeEventArgs args)
+    {
+        try {
+            using var reader = new StreamReader(args.File.OpenReadStream(1_000_000));
+            var imported=JsonSerializer.Deserialize<FamilyState>(await reader.ReadToEndAsync()) ?? throw new ArgumentException("Empty backup."); imported.Validate();
+            var merged = new FamilyState { Entries = state.Entries.Where(x => imported.Entries.All(y => y.Id != x.Id)).Concat(imported.Entries).ToList() }; merged.Validate(); state=merged;
+            await Persist(); message=$"Imported {imported.Entries.Count} entries.";
+        } catch { error="Import failed. Use a valid FamilyHub JSON backup smaller than 1 MB."; }
+    }
+}

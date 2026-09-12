@@ -1,0 +1,47 @@
+name: Build, test and deploy
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: pages-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '11.0.100-rc.1.26425.128'
+      - name: Run domain tests
+        run: dotnet run --project tests/Core.Tests -c Release
+      - name: Set Pages base path before publishing
+        run: sed -i 's|<base href="/"|<base href="/familyhub/"|' src/Web/wwwroot/index.html
+      - name: Publish Blazor
+        run: dotnet publish src/Web -c Release -o artifacts/site
+      - name: Prepare static host
+        run: |
+          touch artifacts/site/wwwroot/.nojekyll
+          cp artifacts/site/wwwroot/index.html artifacts/site/wwwroot/404.html
+      - uses: actions/upload-pages-artifact@v3
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        with:
+          path: artifacts/site/wwwroot
+  deploy:
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v4
