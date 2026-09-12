@@ -29,7 +29,7 @@
     <label>Category<select @bind="kind">@foreach (var k in Enum.GetValues<EntryKind>()) { <option value="@k">@k</option> }</select></label>
     <label>Who's on it?<input @bind="owner" maxlength="60" placeholder="Everyone" /></label>
     <label>Date<input type="date" @bind="due" min="2000-01-01" max="2100-12-31" required /></label>
-    <label>Time<input type="time" @bind="time" /></label>
+    <label>Time<input type="time" value="@time" @onchange="e => time = e.Value?.ToString() ?? string.Empty" /></label>
     <label>Repeat<select @bind="repeat">@foreach (var r in Enum.GetValues<Repeat>()) { <option value="@r">@r</option> }</select></label>
     <label class="full">Notes<input @bind="notes" maxlength="1000" placeholder="A quantity, a place, or a useful detail" /></label>
     <div class="actions full"><button type="submit">@(editing is null ? "Add to the plan +" : "Save changes")</button>@if (editing is not null) { <button type="button" class="secondary" @onclick="ClearForm">Cancel</button> }</div>
