@@ -47,3 +47,14 @@ Browser storage is scoped to the origin and profile, not a security boundary bet
 Authenticated family sync; household membership and permissions; push reminders; conflict-safe offline sync; optional meal-planning AI.
 
 See [architecture](docs/ARCHITECTURE.md).
+
+## Savings tools
+
+Use **Savings tools** beside Family plans:
+- **Subscription Hunter**: monthly/annual/weekly costs, next-charge dates, duplicate-name hints, review flags and cancellation tracking. Cancellation is recorded locally; cancel with the provider separately. Savings are annualized run rates, not realized savings.
+- **Grocery Price Optimizer**: manually enter comparable receipt/flyer prices, pack sizes and expiry dates. Compare unit prices and whole-pack totals for the quantity you need. Expired or incompatible units are excluded. No live prices, stock or travel-cost integration.
+- **Mortgage Renewal Optimizer**: compare two manually entered Canadian fixed-rate scenarios using monthly payments and semi-annual compounding. Shows term interest, remaining balance and net interest savings after switching fees. Enter the expected balance at renewal, not today's balance. No live lender rates or applications.
+
+Savings are stored under `familyhub.savings.v1` independently of existing `familyhub.v1` plans. Export and import savings using the separate savings backup controls. Imports validate before a confirmed replacement; failed writes do not replace in-memory saved data. Existing plans and backups remain compatible. Do not put personal data in repository issues or commits.
+
+The install button offers the browser's native prompt when available, with browser-specific instructions otherwise. PNG icons support Android installation and iOS home-screen use. Open online once to cache the full app, then close all tabs and reopen when a new version is deployed. Installing does not create cross-device sync or push reminders.

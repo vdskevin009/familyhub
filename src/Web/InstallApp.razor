@@ -1,0 +1,7 @@
+@inject IJSRuntime JS
+<section class="install-strip" aria-label="App installation"><div><strong>FamilyHub, one tap away</strong><p class="notice">Install on your phone. Plans and savings tools work offline after the first complete load.</p></div><button class="secondary" @onclick="Install">Install app</button></section>
+@if (hint.Length > 0) { <p role="status" class="notice">@hint</p> }
+@code {
+    string hint = "";
+    async Task Install() { try { hint = await JS.InvokeAsync<string>("familyhubInstall.prompt"); } catch { hint = "Open your browser menu and choose Install app or Add to Home screen. On iPhone: Safari → Share → Add to Home Screen."; } }
+}
