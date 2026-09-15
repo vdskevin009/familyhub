@@ -5,7 +5,11 @@ namespace Web;
 
 public sealed class BrowserStore(IJSRuntime js)
 {
-    public ValueTask<string?> LoadRaw(string key) => js.InvokeAsync<string?>("portfolio.load", key);
+    public async Task<string?> LoadRaw(string key)
+    {
+        try { return await js.InvokeAsync<string?>("portfolio.load", key); }
+        catch (JSException) { throw; }
+    }
     public async Task<T?> Load<T>(string key)
     {
         try
