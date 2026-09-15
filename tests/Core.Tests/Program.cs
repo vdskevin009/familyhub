@@ -31,7 +31,7 @@ var offers = new[] {
 };
 var comparison = SavingsMath.Compare(offers, " APPLES ", GroceryUnit.Kg, today).ToList();
 Check(comparison.Count == 2 && comparison[0].Store == "A", "Normalize names; exclude expired and incompatible units");
-Check(comparison.OrderBy(o => Math.Ceiling(1m / o.Size) * o.Price).First().Store == "B", "Whole-pack cost can reverse unit-price ranking");
+Check(comparison.OrderBy(o => o.CostFor(1m)).First().Store == "B", "Whole-pack cost can reverse unit-price ranking");
 try { new SavingsState { Offers = [new() { Product="Rice", Store="A", Size=0 }] }.Validate(); throw new Exception("Accepted zero pack size"); } catch (ArgumentException) { }
 try { new SavingsState { Subscriptions = [monthly,monthly] }.Validate(); throw new Exception("Accepted duplicate subscriptions"); } catch (ArgumentException) { }
 var saved = new SavingsState { Subscriptions=[monthly], Offers=offers.ToList() };

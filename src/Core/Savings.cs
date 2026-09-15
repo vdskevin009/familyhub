@@ -23,6 +23,8 @@ public sealed class GroceryOffer
     public GroceryUnit Unit { get; set; }
     public DateTime ValidUntil { get; set; } = DateTime.Today.AddDays(7);
     public decimal UnitPrice => Price / Size;
+    public decimal PacksFor(decimal quantity) => Math.Ceiling(quantity / Size);
+    public decimal CostFor(decimal quantity) => PacksFor(quantity) * Price;
 }
 public sealed class MortgageScenario
 {
