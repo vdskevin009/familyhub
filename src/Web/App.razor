@@ -3,12 +3,17 @@
 <aside class="sidebar"><div class="brand"><span class="monogram">FH</span>FamilyHub</div><nav aria-label="Portfolio projects"><a class="current" href="https://vdskevin009.github.io/familyhub/">FamilyHub</a><a class="" href="https://vdskevin009.github.io/cloudops-dashboard/">CloudOps</a><a class="" href="https://vdskevin009.github.io/devflow-ai/">DevFlow AI</a><a class="" href="https://vdskevin009.github.io/personal-finance-simulator/">Finance Studio</a></nav><div class="side-note">KEVIN'S PORTFOLIO<br/>Built with .NET 11 & Blazor<br/><a href="https://github.com/vdskevin009/familyhub">Explore the source ↗</a></div></aside>
 <main class="main"><header class="topbar"><span>YOUR EVERYDAY, CONSIDERED</span><span>Personal workspace <span class="avatar">K</span></span></header><section class="hero"><div class="eyebrow">FamilyHub / WORKSPACE</div><h1>A little more together.</h1><p>Organize the everyday, make room for what matters.</p></section><InstallApp/>
 <div class="tabs workspace-tabs" aria-label="Workspace">
-<button class="@(workspace == "plans" ? "active" : "")" @onclick="() => workspace = "plans"">Family plans</button>
-<button class="@(workspace == "savings" ? "active" : "")" @onclick="() => workspace = "savings"">Savings tools</button>
-<button class="@(workspace == "reimbursements" ? "active" : "")" @onclick="() => workspace = "reimbursements"">Benefits & claims</button>
+<button class="@(workspace == "plans" ? "active" : "")" @onclick="ShowPlans">Family plans</button>
+<button class="@(workspace == "savings" ? "active" : "")" @onclick="ShowSavings">Savings tools</button>
+<button class="@(workspace == "reimbursements" ? "active" : "")" @onclick="ShowReimbursements">Benefits & claims</button>
 </div>
 @if (workspace == "savings") { <Savings/> }
 else if (workspace == "reimbursements") { <Reimbursements/> }
 else { <Dashboard/> }
 <footer>FamilyHub · Open-source portfolio by Kevin · <a href="https://github.com/vdskevin009/familyhub/blob/main/docs/PHONE-WORKFLOW.md">Make a change from your phone</a></footer></main></div>
-@code { string workspace = "plans"; }
+@code {
+    string workspace = "plans";
+    void ShowPlans() => workspace = "plans";
+    void ShowSavings() => workspace = "savings";
+    void ShowReimbursements() => workspace = "reimbursements";
+}
