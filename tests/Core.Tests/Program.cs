@@ -39,3 +39,38 @@ var restored = System.Text.Json.JsonSerializer.Deserialize<SavingsState>(System.
 restored.Validate(); Check(restored.Subscriptions[0].AnnualCost == 120 && restored.Offers.Count == 4, "Savings backup roundtrip");
 Check(System.Text.Json.JsonSerializer.Deserialize<FamilyState>("{\"SchemaVersion\":1,\"Entries\":[]}")!.Entries.Count == 0, "Existing family data schema unchanged");
 Console.WriteLine("PASS: savings, offer expiry/units/pack costs, mortgage math and backup compatibility");
+
+var receiptEmail = new EmailCandidate
+{
+    MessageId = "message-1",
+    ThreadId = "thread-1",
+    InternetMessageId = "mail-1",
+    Subject = "Physiotherapy receipt",
+    Sender = "Example Physio",
+    ReceivedAt = new DateTimeOffset(2026, 9, 19, 16, 0, 0, TimeSpan.Zero),
+    BodyText = "Total paid CAD 112.00",
+    Attachments = [new() { Id = "attachment-1", FileName = "receipt.pdf", MimeType = "application/pdf", Size = 12000 }]
+};
+var detectedReceipt = ReimbursementDetector.Analyze(receiptEmail, "Person A", "person-a");
+Check(detectedReceipt is not null, "Physio receipt is detected");
+Check(detectedReceipt!.Category == ReimbursementCategory.HealthBenefit, "Physio receipt category");
+Check(detectedReceipt.DetectedAmount == 112.00m && detectedReceipt.Currency == "CAD", "Receipt amount");
+var appointmentOnly = ReimbursementDetector.Analyze(new EmailCandidate
+{
+    MessageId = "message-2",
+    Subject = "Physio appointment reminder",
+    Sender = "Example Clinic",
+    ReceivedAt = new DateTimeOffset(2026, 9, 20, 16, 0, 0, TimeSpan.Zero),
+    BodyText = "Your appointment is tomorrow."
+}, "Person A", "person-a");
+Check(appointmentOnly is null, "Appointment-only email is ignored");
+var reimbursementState = new ReimbursementState();
+var firstMerge = reimbursementState.MergeScan([detectedReceipt]);
+Check(firstMerge.Added == 1 && reimbursementState.Items.Count == 1, "First scan adds item");
+reimbursementState.Items[0].Status = ReimbursementStatus.Claimed;
+var rescannedReceipt = ReimbursementDetector.Analyze(receiptEmail, "Person A", "person-a")!;
+var secondMerge = reimbursementState.MergeScan([rescannedReceipt]);
+Check(secondMerge.Updated == 1 && reimbursementState.Items.Count == 1, "Repeat scan does not duplicate");
+Check(reimbursementState.Items[0].Status == ReimbursementStatus.Claimed, "Repeat scan preserves status");
+reimbursementState.Validate();
+Console.WriteLine("PASS: reimbursement detection and merge behavior");
