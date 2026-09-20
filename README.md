@@ -58,3 +58,17 @@ Use **Savings tools** beside Family plans:
 Savings are stored under `familyhub.savings.v1` independently of existing `familyhub.v1` plans. Export and import savings using the separate savings backup controls. Imports validate before a confirmed replacement; failed writes do not replace in-memory saved data. Existing plans and backups remain compatible. Do not put personal data in repository issues or commits.
 
 The install button offers the browser's native prompt when available, with browser-specific instructions otherwise. PNG icons support Android installation and iOS home-screen use. Open online once to cache the full app, then close all tabs and reopen when a new version is deployed. Installing does not create cross-device sync or push reminders.
+
+
+## Benefits & claims
+
+Use **Benefits & claims** to build a local reimbursement queue from two Gmail accounts.
+
+- Configure a Google OAuth 2.0 **Web application** client ID in the app. Enable Gmail API, authorize the JavaScript origin `https://vdskevin009.github.io`, and add both household Google accounts as consent-screen test users while the app remains private-use/testing.
+- Connect each account independently. Google shows the account picker and FamilyHub requests `gmail.readonly` plus basic identity scopes.
+- Scan 3–24 months. FamilyHub looks for receipt/invoice and claim language around health benefits (physio, massage, dental, pharmacy, etc.), travel, and other likely reimbursement documents.
+- Review the detected provider, amount and category, then track the item as **To review**, **Ready to claim**, **Claimed**, **Reimbursed** or **Ignored**.
+- Attachment files are fetched from Gmail only when you press their download button. Full email bodies and attachments are not persisted by FamilyHub.
+- The reimbursement index is stored locally under `familyhub.reimbursements.v1`. The OAuth client ID is stored under `familyhub.gmail.config.v1`; it is a public client identifier, not a client secret.
+
+Gmail access tokens live only in JavaScript memory and are lost on reload/expiry, so accounts must be reconnected for later scans or attachment downloads. The app has no server and cannot safely hold a Google client secret or refresh token. Detected amounts are heuristics and must be reviewed before making a claim. Do not use the reimbursement index on a shared browser profile.
