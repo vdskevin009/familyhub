@@ -40,9 +40,16 @@ else
 
     async Task RefreshStatus()
     {
-        var status = await JS.InvokeAsync<PwaStatus>("familyhubInstall.status");
-        installed = status.Installed;
-        installable = status.Installable;
+        try
+        {
+            var status = await JS.InvokeAsync<PwaStatus>("familyhubInstall.status");
+            installed = status.Installed;
+            installable = status.Installable;
+        }
+        catch (JSException)
+        {
+            installable = false;
+        }
     }
 
     async Task Install()
