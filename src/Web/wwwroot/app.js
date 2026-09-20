@@ -70,18 +70,38 @@ window.familyhubGmail = (() => {
     return account;
   }
 
-  async function apiJson(url, token, init = {}) {
+  const gmailReadonlyScope = 'https://www.googleapis.com/auth/gmail.readonly';
+  const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+
+  async function apiJson(url, token, init = {}, attempt = 0) {
     const response = await fetch(url, {
       ...init,
       headers: { ...(init.headers || {}), Authorization: `Bearer ${token}` }
     });
-    if (response.status === 401 || response.status === 403) throw new Error('Google access expired or was denied. Reconnect this Gmail account.');
-    if (!response.ok) {
-      let detail = '';
-      try { detail = (await response.json())?.error?.message || ''; } catch {}
-      throw new Error(detail || `Google API request failed (${response.status}).`);
+
+    if (response.ok) return response.json();
+
+    let payload = null;
+    try { payload = await response.json(); } catch {}
+    const detail = payload?.error?.message || `Google API request failed (${response.status}).`;
+    const reason = payload?.error?.errors?.[0]?.reason || payload?.error?.status || '';
+    const retryable = response.status === 429
+      || (response.status === 403 && ['rateLimitExceeded','userRateLimitExceeded','quotaExceeded','RESOURCE_EXHAUSTED'].includes(reason));
+
+    if (retryable && attempt < 4) {
+      await sleep((2 ** attempt) * 1200);
+      return apiJson(url, token, init, attempt + 1);
     }
-    return response.json();
+
+    if (response.status === 401)
+      throw new Error('Google access expired. Disconnect and reconnect this Gmail account.');
+
+    if (response.status === 403) {
+      const label = reason ? ` [${reason}]` : '';
+      throw new Error(`Gmail API refused the request${label}: ${detail}`);
+    }
+
+    throw new Error(detail);
   }
 
   function decodeBase64Url(data) {
@@ -159,7 +179,12 @@ window.familyhubGmail = (() => {
       client.requestAccessToken({ prompt: 'select_account' });
     });
     const token = tokenResponse.access_token;
+    const grantedScopes = (tokenResponse.scope || '').split(/\s+/).filter(Boolean);
+    if (!grantedScopes.includes(gmailReadonlyScope))
+      throw new Error('Google did not grant Gmail read-only access. Reconnect and approve the Gmail permission.');
+
     const profile = await apiJson('https://www.googleapis.com/oauth2/v3/userinfo', token);
+    await apiJson('https://gmail.googleapis.com/gmail/v1/users/me/profile', token);
     const expiresAt = Date.now() + Math.max(60, Number(tokenResponse.expires_in || 3600)) * 1000;
     const account = { slot, email: profile.email || '', name: profile.name || profile.email || '', token, expiresAt };
     if (!account.email) throw new Error('Google did not return an email address for this account.');
@@ -184,13 +209,14 @@ window.familyhubGmail = (() => {
     }
 
     const messages = [];
-    for (let i = 0; i < ids.length; i += 8) {
-      const batch = ids.slice(i, i + 8);
+    for (let i = 0; i < ids.length; i += 3) {
+      const batch = ids.slice(i, i + 3);
       const fetched = await Promise.all(batch.map(id =>
         apiJson(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${encodeURIComponent(id)}?format=full`, account.token)
           .then(normalizeMessage)
       ));
       messages.push(...fetched);
+      if (i + 3 < ids.length) await sleep(200);
     }
     return { email: account.email, messages };
   }

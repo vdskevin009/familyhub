@@ -216,7 +216,7 @@
             error = "";
             message = $"Connected {slot}: {account.Email}.";
         }
-        catch (Exception ex) { error = ex.Message; message = ""; }
+        catch (Exception ex) { error = FriendlyError(ex); message = ""; }
     }
 
     async Task Disconnect(string slot)
@@ -243,7 +243,7 @@
             await Persist();
             message = $"Scanned {slot}'s Gmail: {merged.Added} new reimbursement item(s), {merged.Updated} refreshed.";
         }
-        catch (Exception ex) { error = ex.Message; }
+        catch (Exception ex) { error = FriendlyError(ex); }
         finally { scanningSlot = ""; }
     }
 
@@ -267,7 +267,7 @@
             await Persist();
             message = $"Inbox scan complete: {added} new reimbursement item(s), {updated} refreshed.";
         }
-        catch (Exception ex) { error = ex.Message; }
+        catch (Exception ex) { error = FriendlyError(ex); }
         finally { scanningSlot = ""; }
     }
 
@@ -286,13 +286,13 @@
     async Task Download(ReimbursementItem item, ReimbursementAttachment attachment)
     {
         try { await Gmail.DownloadAttachment(item.AccountLabel, item.SourceMessageId, attachment); }
-        catch (Exception ex) { error = ex.Message; }
+        catch (Exception ex) { error = FriendlyError(ex); }
     }
 
     async Task OpenEmail(ReimbursementItem item)
     {
         try { await Gmail.OpenMessage(item.AccountEmail, item.InternetMessageId, item.SourceMessageId); }
-        catch (Exception ex) { error = ex.Message; }
+        catch (Exception ex) { error = FriendlyError(ex); }
     }
 
     async Task Persist()
@@ -354,6 +354,21 @@
         ReimbursementStatus.Reimbursed => "Reimbursed",
         _ => "Ignored"
     };
+
+    static string FriendlyError(Exception ex)
+    {
+        var value = ex.Message ?? "Unexpected error.";
+        var firstLine = value.IndexOf('\n');
+        if (firstLine > 0) value = value[..firstLine];
+        var errorPrefix = value.LastIndexOf("Error: ", StringComparison.OrdinalIgnoreCase);
+        if (errorPrefix >= 0) value = value[(errorPrefix + 7)..];
+        foreach (var marker in new[] { " at apiJson", " at async Promise", " at async Object.", " at async " })
+        {
+            var index = value.IndexOf(marker, StringComparison.Ordinal);
+            if (index > 0) { value = value[..index]; break; }
+        }
+        return value.Trim();
+    }
 
     static string Amount(ReimbursementItem item) =>
         item.DetectedAmount is null ? "—" : string.IsNullOrWhiteSpace(item.Currency) ? item.DetectedAmount.Value.ToString("0.00") : $"{item.Currency} {item.DetectedAmount.Value:0.00}";
