@@ -19,24 +19,42 @@ public sealed class GmailScanResponse
 
 public sealed class GmailBridge(IJSRuntime js)
 {
-    public Task<GmailAccount> Connect(string clientId, string slot) =>
-        js.InvokeAsync<GmailAccount>("familyhubGmail.connect", clientId, slot).AsTask();
+    public async Task<GmailAccount> Connect(string clientId, string slot)
+    {
+        try { return await js.InvokeAsync<GmailAccount>("familyhubGmail.connect", clientId, slot); }
+        catch (JSException) { throw; }
+    }
 
-    public Task<GmailScanResponse> Scan(string slot, int months) =>
-        js.InvokeAsync<GmailScanResponse>("familyhubGmail.scan", slot, months).AsTask();
+    public async Task<GmailScanResponse> Scan(string slot, int months)
+    {
+        try { return await js.InvokeAsync<GmailScanResponse>("familyhubGmail.scan", slot, months); }
+        catch (JSException) { throw; }
+    }
 
-    public Task Disconnect(string slot) =>
-        js.InvokeVoidAsync("familyhubGmail.disconnect", slot).AsTask();
+    public async Task Disconnect(string slot)
+    {
+        try { await js.InvokeVoidAsync("familyhubGmail.disconnect", slot); }
+        catch (JSException) { throw; }
+    }
 
-    public Task DownloadAttachment(string slot, string messageId, ReimbursementAttachment attachment) =>
-        js.InvokeVoidAsync(
-            "familyhubGmail.downloadAttachment",
-            slot,
-            messageId,
-            attachment.Id,
-            attachment.FileName,
-            attachment.MimeType).AsTask();
+    public async Task DownloadAttachment(string slot, string messageId, ReimbursementAttachment attachment)
+    {
+        try
+        {
+            await js.InvokeVoidAsync(
+                "familyhubGmail.downloadAttachment",
+                slot,
+                messageId,
+                attachment.Id,
+                attachment.FileName,
+                attachment.MimeType);
+        }
+        catch (JSException) { throw; }
+    }
 
-    public Task OpenMessage(string accountEmail, string internetMessageId, string gmailMessageId) =>
-        js.InvokeVoidAsync("familyhubGmail.openMessage", accountEmail, internetMessageId, gmailMessageId).AsTask();
+    public async Task OpenMessage(string accountEmail, string internetMessageId, string gmailMessageId)
+    {
+        try { await js.InvokeVoidAsync("familyhubGmail.openMessage", accountEmail, internetMessageId, gmailMessageId); }
+        catch (JSException) { throw; }
+    }
 }
