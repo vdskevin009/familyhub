@@ -200,12 +200,21 @@ const healthKeywords = [
   "optomet", "vision", "clinic", "medical", "therapy"
 ];
 const travelKeywords = ["flight", "airline", "air canada", "westjet", "hotel", "airbnb", "booking.com", "expedia", "travel", "train", "rail", "car rental"];
-const docKeywords = ["receipt", "invoice", "facture", "reçu", "recu", "statement", "payment confirmation", "proof of payment", "amount due", "paid"];
-const claimKeywords = ["reimbursement", "remboursement", "claim", "benefit", "benefits", "insurance", "assurance", "eligible expense", "health spending"];
-const adminKeywords = ["renewal", "policy", "notice", "tax", "assessment", "confirmation", "contract", "warranty", "registration", "statement available", "document"];
+const docKeywords = [
+  "receipt", "invoice", "facture", "reçu", "recu", "tax invoice", "statement", "payment confirmation",
+  "proof of payment", "amount due", "balance due", "payment received", "paid"
+];
+const strongClaimKeywords = ["reimbursement", "remboursement", "claim", "eligible expense", "health spending"];
+const coverageKeywords = ["benefit", "benefits", "insurance", "assurance", "coverage"];
+const adminKeywords = [
+  "renewal notice", "policy renewal", "tax assessment", "notice of assessment", "contract",
+  "warranty", "registration renewal", "statement available", "official notice"
+];
 const noiseKeywords = [
-  "unsubscribe", "newsletter", "new arrivals", "shop now", "limited time", "sale ends", "flash sale", "promo code",
-  "exclusive offer", "save up to", "% off", "deal of the day", "recommended for you", "weekly deals", "special offer"
+  "unsubscribe", "newsletter", "new arrivals", "shop now", "buy now", "limited time", "sale ends", "flash sale",
+  "promo code", "exclusive offer", "save up to", "% off", "deal of the day", "recommended for you", "weekly deals",
+  "special offer", "view in browser", "manage preferences", "free shipping", "clearance", "new collection",
+  "last chance", "members only", "reward points", "earn points", "you may also like"
 ];
 
 const labelledMoney = /(?:total(?:\s+paid)?|amount(?:\s+(?:paid|due))?|paid|montant(?:\s+pay[ée])?|total\s+pay[ée])\s*[:\-]?\s*(CAD|C\$|\$|EUR|€)?\s*(\d{1,7}(?:[\.,]\d{2})?)/i;
@@ -243,50 +252,69 @@ function analyze(message: EmailCandidate, accountLabel: string, accountEmail: st
   const health = countHits(text, healthKeywords);
   const travel = countHits(text, travelKeywords);
   const documents = countHits(text, docKeywords);
-  const claims = countHits(text, claimKeywords);
+  const strongClaims = countHits(text, strongClaimKeywords);
+  const coverage = countHits(text, coverageKeywords);
   const admin = countHits(text, adminKeywords);
   const noise = countHits(text, noiseKeywords)
     + (message.listUnsubscribe ? 2 : 0)
     + (message.precedence.toLowerCase() === "bulk" ? 2 : 0)
-    + (message.labelIds.includes("CATEGORY_PROMOTIONS") ? 4 : 0);
+    + (message.labelIds.includes("CATEGORY_PROMOTIONS") ? 5 : 0);
 
   const invoiceAttachment = message.attachments.some(item => /receipt|invoice|facture|recu|reçu|statement|bill/i.test(item.fileName));
+  const administrativeAttachment = message.attachments.some(item =>
+    /claim|benefit|policy|renewal|assessment|tax|contract|warranty|registration/i.test(item.fileName)
+  );
   const pdfAttachment = message.attachments.some(item => /\.pdf$/i.test(item.fileName));
   const { amount, currency } = detectAmount(`${message.subject}\n${message.bodyText}`);
-  const hardDocumentSignal = invoiceAttachment || (documents > 0 && amount !== null) || claims > 0 || (admin > 0 && pdfAttachment);
 
-  if (noise >= 3 && !invoiceAttachment && claims === 0 && !(documents >= 2 && amount !== null)) return { item: null, reason: "noise" };
-  if (!hardDocumentSignal && documents === 0 && admin === 0) return { item: null, reason: "no-signal" };
+  const claimEvidence = strongClaims > 0 && (
+    health > 0 || documents > 0 || amount !== null || invoiceAttachment || administrativeAttachment || pdfAttachment
+  );
+  const documentEvidence =
+    invoiceAttachment ||
+    (documents > 0 && amount !== null) ||
+    (documents >= 2 && noise === 0) ||
+    claimEvidence ||
+    (admin > 0 && (pdfAttachment || administrativeAttachment));
 
-  const score = Math.min(12,
+  const marketingHeavy = noise >= 3 || message.labelIds.includes("CATEGORY_PROMOTIONS");
+  if (marketingHeavy && !invoiceAttachment && !claimEvidence && !(documents >= 2 && amount !== null)) {
+    return { item: null, reason: "noise" };
+  }
+  if (!documentEvidence) return { item: null, reason: noise > 0 ? "noise" : "no-signal" };
+
+  const score = Math.min(14,
     Math.min(2, health) * 2 +
-    Math.min(2, travel) * 2 +
+    Math.min(2, travel) +
     Math.min(3, documents) +
-    Math.min(2, claims) * 2 +
-    Math.min(2, admin) +
-    (invoiceAttachment ? 3 : 0) +
+    Math.min(2, strongClaims) * 3 +
+    Math.min(1, coverage) +
+    Math.min(2, admin) * 2 +
+    (invoiceAttachment ? 4 : 0) +
+    (administrativeAttachment ? 2 : 0) +
     (pdfAttachment ? 1 : 0) +
     (amount !== null ? 2 : 0) -
-    Math.min(4, noise)
+    Math.min(6, noise)
   );
 
-  if (score < 4) return { item: null, reason: noise > 0 ? "noise" : "no-signal" };
+  if (score < 5) return { item: null, reason: noise > 0 ? "noise" : "no-signal" };
 
   const category = health > 0 && health >= travel
     ? ReimbursementCategory.HealthBenefit
     : travel > 0 ? ReimbursementCategory.Travel : ReimbursementCategory.Other;
 
   const documentType: ReimbursementItem["DocumentType"] =
-    claims > 0 ? "claim" :
+    claimEvidence ? "claim" :
     text.includes("invoice") || text.includes("facture") ? "invoice" :
-    text.includes("amount due") || text.includes("statement") ? "bill" :
+    text.includes("amount due") || text.includes("balance due") || text.includes("statement") ? "bill" :
     documents > 0 || invoiceAttachment ? "receipt" :
     admin > 0 ? "administrative" : "other";
 
   const reasons: string[] = [];
   if (invoiceAttachment) reasons.push("receipt/invoice attachment");
+  if (administrativeAttachment) reasons.push("administrative attachment");
   if (amount !== null) reasons.push("amount detected");
-  if (claims > 0) reasons.push("claim/benefit language");
+  if (claimEvidence) reasons.push("claim/reimbursement evidence");
   if (health > 0) reasons.push("health expense signal");
   if (travel > 0) reasons.push("travel expense signal");
   if (admin > 0) reasons.push("administrative document signal");
@@ -308,7 +336,7 @@ function analyze(message: EmailCandidate, accountLabel: string, accountEmail: st
       Status: ReimbursementStatus.ToReview,
       DetectedAmount: amount,
       Currency: currency,
-      Confidence: Math.max(40, Math.min(97, 45 + score * 4)),
+      Confidence: Math.max(45, Math.min(97, 42 + score * 4)),
       Notes: "",
       Attachments: message.attachments.slice(0, 30).map(item => ({
         Id: item.id.slice(0, 500),
@@ -321,7 +349,6 @@ function analyze(message: EmailCandidate, accountLabel: string, accountEmail: st
     }
   };
 }
-
 async function connect(slot: string, clientId = DEFAULT_CLIENT_ID): Promise<{ slot: string; email: string; name: string; canArchive: boolean }> {
   if (!clientId.endsWith(".apps.googleusercontent.com")) throw new Error("FamilyHub's Google OAuth client ID is invalid.");
   await ensureGoogleIdentity();
@@ -360,7 +387,7 @@ async function connect(slot: string, clientId = DEFAULT_CLIENT_ID): Promise<{ sl
 async function scan(slot: string, months: number): Promise<{ email: string; items: ReimbursementItem[]; stats: ScanStats }> {
   const account = requireAccount(slot);
   const lookback = Math.min(24, Math.max(1, Number(months || 12)));
-  const terms = '{receipt invoice facture reçu recu reimbursement remboursement claim benefits physio physiotherapy chiropractor dental pharmacy prescription massage statement "payment confirmation" "amount due" renewal policy notice hotel flight airline airbnb travel}';
+  const terms = '{receipt invoice facture reçu recu reimbursement remboursement claim physio physiotherapy chiropractor dental pharmacy prescription massage statement "payment confirmation" "proof of payment" "amount due" "balance due" "policy renewal" "renewal notice" "tax assessment" warranty "registration renewal" "booking confirmation" "reservation confirmation"}';
   const q = `newer_than:${lookback}m ${terms} -category:promotions -category:social -category:forums`;
   const ids: string[] = [];
   let pageToken = "";
