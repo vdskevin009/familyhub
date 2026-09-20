@@ -196,7 +196,7 @@
         {
             state = await Store.Load<ReimbursementState>("familyhub.reimbursements.v1") ?? new();
             state.Validate();
-            clientId = (await Store.Load<GmailLocalConfig>("familyhub.gmail.config.v1"))?.ClientId;
+            clientId = (await Store.Load<GmailLocalConfig>("familyhub.gmail.config.v1"))?.ClientId ?? "";
             if (string.IsNullOrWhiteSpace(clientId)) clientId = DefaultClientId;
         }
         catch (Exception ex)
