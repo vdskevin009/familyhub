@@ -1,11 +1,17 @@
 {
   "name": "FamilyHub",
   "short_name": "FamilyHub",
+  "id": "./",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
+  "display_override": ["standalone", "minimal-ui"],
+  "orientation": "any",
   "background_color": "#f5f6f2",
   "theme_color": "#286353",
+  "description": "Family plans, savings tools and a local reimbursement inbox for everyday household organization.",
+  "categories": ["productivity", "finance", "lifestyle"],
+  "prefer_related_applications": false,
   "icons": [
     {
       "src": "icon.svg",
@@ -17,15 +23,39 @@
       "src": "icon-192.png",
       "sizes": "192x192",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
+    },
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
     },
     {
       "src": "icon-512.png",
       "sizes": "512x512",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
     }
   ],
-  "id": "./",
-  "description": "Family plans, subscription tracking, grocery price comparisons and mortgage renewal scenarios."
+  "shortcuts": [
+    {
+      "name": "Family plans",
+      "short_name": "Plans",
+      "url": "./?workspace=plans",
+      "icons": [{ "src": "icon-192.png", "sizes": "192x192", "type": "image/png" }]
+    },
+    {
+      "name": "Benefits & claims",
+      "short_name": "Claims",
+      "url": "./?workspace=reimbursements",
+      "icons": [{ "src": "icon-192.png", "sizes": "192x192", "type": "image/png" }]
+    }
+  ]
 }

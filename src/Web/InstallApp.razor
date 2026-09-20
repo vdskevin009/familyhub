@@ -1,7 +1,68 @@
 @inject IJSRuntime JS
-<section class="install-strip" aria-label="App installation"><div><strong>FamilyHub, one tap away</strong><p class="notice">Install on your phone. Plans and savings tools work offline after the first complete load.</p></div><button class="secondary" @onclick="Install">Install app</button></section>
+@if (installed)
+{
+    <section class="install-strip installed" aria-label="App installation">
+        <div><strong>FamilyHub is installed</strong><p class="notice">Launch it from your home screen or app launcher. Core household tools remain available offline after they have loaded once.</p></div>
+        <span class="badge">PWA · INSTALLED</span>
+    </section>
+}
+else
+{
+    <section class="install-strip" aria-label="App installation">
+        <div><strong>Install FamilyHub on this device</strong><p class="notice">Use it like an app from your home screen. The planner, savings workspace and saved reimbursement index work offline after the first complete load; Gmail scanning itself needs an internet connection.</p></div>
+        <button class="secondary" @onclick="Install">@(installable ? "Install FamilyHub" : "Install / Add to Home")</button>
+    </section>
+}
 @if (hint.Length > 0) { <p role="status" class="notice">@hint</p> }
+
 @code {
+    sealed class PwaStatus
+    {
+        public bool Installed { get; set; }
+        public bool Installable { get; set; }
+        public bool ServiceWorkerReady { get; set; }
+    }
+
+    bool installed, installable;
     string hint = "";
-    async Task Install() { try { hint = await JS.InvokeAsync<string>("familyhubInstall.prompt"); } catch { hint = "Open your browser menu and choose Install app or Add to Home screen. On iPhone: Safari → Share → Add to Home Screen."; } }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        try
+        {
+            await Task.Delay(500);
+            await RefreshStatus();
+            StateHasChanged();
+        }
+        catch { }
+    }
+
+    async Task RefreshStatus()
+    {
+        try
+        {
+            var status = await JS.InvokeAsync<PwaStatus>("familyhubInstall.status");
+            installed = status.Installed;
+            installable = status.Installable;
+        }
+        catch (JSException)
+        {
+            installable = false;
+        }
+    }
+
+    async Task Install()
+    {
+        try
+        {
+            hint = await JS.InvokeAsync<string>("familyhubInstall.prompt");
+            await Task.Delay(200);
+            await RefreshStatus();
+        }
+        catch
+        {
+            hint = "Open your browser menu and choose Install app or Add to Home screen. On iPhone/iPad: Safari → Share → Add to Home Screen.";
+        }
+    }
 }

@@ -1,15 +1,38 @@
 window.portfolio = {load:key=>localStorage.getItem(key),save:(key,value)=>localStorage.setItem(key,value),download:(name,content,type)=>{const url=URL.createObjectURL(new Blob([content],{type}));const a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)}};
-if ('serviceWorker' in navigator) navigator.serviceWorker.register('service-worker.js',{updateViaCache:'none'}).catch(e=>console.warn('Offline support unavailable',e));
+
 let installEvent;
-window.addEventListener('beforeinstallprompt', event => { event.preventDefault(); installEvent = event; });
-window.addEventListener('appinstalled', () => { installEvent = null; });
-window.familyhubInstall = { prompt: async () => {
-  if (window.matchMedia('(display-mode: standalone)').matches || navigator.standalone) return 'FamilyHub is already running as an installed app.';
-  if (!installEvent) return 'In Chrome or Edge, open the browser menu → Install app or Add to Home screen. On iPhone: Safari → Share → Add to Home Screen. If installation is unavailable, finish loading online and try again.';
-  const event = installEvent; installEvent = null; await event.prompt();
-  const choice = await event.userChoice;
-  return choice.outcome === 'accepted' ? 'Installation requested. Look for FamilyHub on your home screen.' : 'Installation dismissed. You can install later from your browser menu.';
-} };
+let serviceWorkerReady = false;
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('service-worker.js',{updateViaCache:'none'})
+    .then(() => navigator.serviceWorker.ready)
+    .then(() => { serviceWorkerReady = true; window.dispatchEvent(new Event('familyhub-install-state')); })
+    .catch(e=>console.warn('Offline support unavailable',e));
+}
+window.addEventListener('beforeinstallprompt', event => {
+  event.preventDefault();
+  installEvent = event;
+  window.dispatchEvent(new Event('familyhub-install-state'));
+});
+window.addEventListener('appinstalled', () => {
+  installEvent = null;
+  window.dispatchEvent(new Event('familyhub-install-state'));
+});
+window.familyhubInstall = {
+  status: () => ({
+    installed: !!(window.matchMedia('(display-mode: standalone)').matches || navigator.standalone),
+    installable: !!installEvent,
+    serviceWorkerReady
+  }),
+  prompt: async () => {
+    if (window.matchMedia('(display-mode: standalone)').matches || navigator.standalone) return 'FamilyHub is already installed on this device.';
+    if (!installEvent) return 'If you are using Chrome or Edge on Android, open the browser menu and choose Install app or Add to Home screen. On iPhone/iPad: Safari → Share → Add to Home Screen.';
+    const event = installEvent;
+    installEvent = null;
+    await event.prompt();
+    const choice = await event.userChoice;
+    return choice.outcome === 'accepted' ? 'FamilyHub installation requested. You can now launch it from your home screen.' : 'Installation dismissed. You can install later from your browser menu.';
+  }
+};
 
 window.familyhubGmail = (() => {
   const accounts = new Map();
