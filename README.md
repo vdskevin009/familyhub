@@ -1,74 +1,127 @@
 # FamilyHub
 
-Tasks, groceries, meals, appointments and recurring reminders in a local-first family PWA.
+FamilyHub is a mobile-first PWA that acts as a household assistant: it filters what deserves attention, helps plan meals and groceries, organizes life admin, surfaces money-saving opportunities, and can hand deeper analysis to an optional Codex worker running on your own computer.
 
-[Open the app](https://vdskevin009.github.io/familyhub/) · [CI](https://github.com/vdskevin009/familyhub/actions) · [Phone workflow](docs/PHONE-WORKFLOW.md)
+[Open FamilyHub](https://vdskevin009.github.io/familyhub/) · [CI](https://github.com/vdskevin009/familyhub/actions) · [Architecture](docs/ARCHITECTURE.md)
 
-## MVP features
+## Product principles
 
-Create, edit, complete and delete entries; category filters; due dates, times, owners and notes; daily/weekly/monthly recurrence; JSON backup export and validated merge import.
+Every feature should do at least one of three things:
 
-## Run locally
+1. save time,
+2. prevent something important from being missed,
+3. reduce avoidable spending.
 
-Install the SDK pinned in global.json: .NET 11 RC1 (11.0.100-rc.1.26425.128). This is a prerelease SDK; update the SDK and ASP.NET package versions together after testing.
+The default experience is **Today**, not a collection of dashboards. FamilyHub should proactively surface a small number of useful actions and keep the rest one tap away.
+
+## Current experience
+
+- **Today / Assistant** — prioritized household insights, quick actions, and an optional local AI assistant.
+- **Inbox** — connect two Google accounts, scan for likely bills, receipts, reimbursement items and administrative documents, heavily filter promotions/newsletters, and review before acting.
+- **Google Drive archive** — optionally file a selected Gmail attachment into a sensible FamilyHub administrative folder using the limited `drive.file` scope.
+- **Plan** — dinner planning, recipe library, generated grocery list, and family tasks.
+- **Money** — local CSV transaction import, category summaries, recurring-merchant detection, subscription review, and Canadian mortgage scenario comparison.
+- **Opportunity radar** — saved research watches that the optional local worker can run or re-check while it is online.
+- **Portable local state** — browser-local data plus a combined JSON backup/restore flow.
+
+Nothing in the UI should pretend a purchase, claim, cancellation, message, bank connection, or external action happened when it did not.
+
+## Technology
+
+FamilyHub is one repository and one product:
+
+- `apps/web` — React 19 + TypeScript + Vite PWA deployed to GitHub Pages.
+- `apps/worker` — optional Node/TypeScript local worker using `@openai/codex-sdk`.
+- `src/Core`, `src/Web`, `tests/Core.Tests` — retained .NET/Blazor implementation and regression harness during the migration. They are no longer the GitHub Pages deploy target.
+- `.github/workflows/ci.yml` — typechecks/builds the React PWA + worker, runs retained .NET regression tests, and deploys `apps/web/dist` from `main`.
+
+No paid hosting, hosted database, or paid AI API is required by the current design.
+
+## Run the web app
+
+Prerequisites: Node.js 22+.
 
 ```sh
-dotnet run --project src/Web
-# Meaningful domain tests, using a dependency-free executable harness:
-dotnet run --project tests/Core.Tests -c Release
-dotnet publish src/Web -c Release -o artifacts/site
+npm install
+npm run dev:web
 ```
 
-The harness exits nonzero on a failed assertion. It is deliberately run with **dotnet run**, not dotnet test.
+Production checks:
 
-## Repository layout
+```sh
+npm run typecheck
+npm run build
+dotnet run --project tests/Core.Tests -c Release
+```
 
-- src/Core: domain rules and calculations
-- src/Web: responsive Blazor WebAssembly UI, persistence adapter and PWA assets
-- tests/Core.Tests: executable domain tests
-- docs: architecture, roadmap and phone instructions
-- .github/workflows/ci.yml: PR checks and main-branch deployment
-- scripts/setup.sh: Linux cloud environment setup
+Vite is configured for the GitHub Pages base path `/familyhub/`.
 
-## Hosting and delivery
+## Run the optional local worker
 
-Public GitHub repository + GitHub Pages. No server, database, paid AI API or paid infrastructure. Standard public-repository GitHub-hosted runners are used. Changes on a feature branch go through a PR; merge to main builds, tests and deploys. Manual redeploy: Actions → Build, test and deploy → Run workflow → main.
+The worker is deliberately separate from the static PWA process but lives in the same repository.
 
-Pages source must be **GitHub Actions** in Settings → Pages. The build changes the base href before publishing so offline integrity hashes match the Pages subpath. Rollback by reverting the problematic merge in a new PR; the revert deployment replaces the current build.
+```sh
+npm install
+npm run dev:worker
+```
 
-## Honest limitations
+On first launch it creates a random pairing key and prints:
 
-Entries are private to the current browser profile, not encrypted or protected by application sign-in. No automatic cross-device sharing; use private backup transfer. Reminders are in-app only. The public site and repository contain no personal entries.
+- the local endpoint (default `http://127.0.0.1:4713`),
+- the pairing key,
+- the local path where the key is stored.
 
-Browser storage is scoped to the origin and profile, not a security boundary between apps on the same github.io origin. Do not store sensitive production data. There are no analytics. The Google Identity Services script is loaded only when you choose to connect Gmail for Benefits & claims. Offline assets are cached after a successful first load; close all app tabs and reopen after a new deployment to activate the waiting service worker.
+In FamilyHub open **More → Local AI**, enter the reachable worker endpoint and pairing key, then use **Test connection**.
 
-## Next steps
+The worker defaults to localhost only. Do not bind it directly to a public interface. To use it from a phone, expose it only through a private HTTPS route you control (for example an existing private VPN/remote-network setup) and keep the pairing key enabled. The worker never needs to be reachable by GitHub Pages itself outside the browser session.
 
-Authenticated family sync; household membership and permissions; push reminders; conflict-safe offline sync; optional meal-planning AI.
+Environment overrides:
 
-See [architecture](docs/ARCHITECTURE.md).
+```text
+FAMILYHUB_WORKER_HOST
+FAMILYHUB_WORKER_PORT
+FAMILYHUB_WORKER_DATA
+FAMILYHUB_ALLOWED_ORIGINS
+```
 
-## Savings tools
+Saved research watches are persisted under `~/.familyhub-worker/`. Automatic watch checks only run while the worker process is running.
 
-Use **Savings tools** beside Family plans:
-- **Subscription Hunter**: monthly/annual/weekly costs, next-charge dates, duplicate-name hints, review flags and cancellation tracking. Cancellation is recorded locally; cancel with the provider separately. Savings are annualized run rates, not realized savings.
-- **Grocery Price Optimizer**: manually enter comparable receipt/flyer prices, pack sizes and expiry dates. Compare unit prices and whole-pack totals for the quantity you need. Expired or incompatible units are excluded. No live prices, stock or travel-cost integration.
-- **Mortgage Renewal Optimizer**: compare two manually entered Canadian fixed-rate scenarios using monthly payments and semi-annual compounding. Shows term interest, remaining balance and net interest savings after switching fees. Enter the expected balance at renewal, not today's balance. No live lender rates or applications.
+## Gmail and Google Drive
 
-Savings are stored under `familyhub.savings.v1` independently of existing `familyhub.v1` plans. Export and import savings using the separate savings backup controls. Imports validate before a confirmed replacement; failed writes do not replace in-memory saved data. Existing plans and backups remain compatible. Do not put personal data in repository issues or commits.
+FamilyHub ships with its public Google OAuth web client ID. Keep the Gmail API enabled and the GitHub Pages origin allowed in the Google consent/client configuration.
 
-The install banner detects when FamilyHub is already installed and uses the browser's native PWA prompt when available, with browser-specific Add to Home Screen instructions otherwise. The manifest includes separate maskable Android icons, standalone display metadata and workspace shortcuts. Android Chrome/Edge can install FamilyHub as a PWA; iPhone/iPad use Safari → Share → Add to Home Screen. Open online once to cache the full app, then close all tabs and reopen when a new version is deployed. Installing does not create cross-device sync or push reminders.
+Each household account is connected independently. Tokens are short-lived and remain in JavaScript memory. FamilyHub requests:
 
+- `gmail.readonly` for inbox analysis,
+- `drive.file` so it can create/manage only files and folders it creates through FamilyHub.
 
-## Benefits & claims
+The scan starts with a narrow Gmail query, then applies a second deterministic filter. Marketing headers, Gmail promotion labels, bulk precedence and common newsletter/sales language lower confidence or remove the candidate. A generic mention of “benefits” or “insurance” is not enough on its own to classify an email as a claim.
 
-Use **Benefits & claims** to build a local reimbursement queue from two Gmail accounts.
+Detected amounts and document types are heuristics. Review them before filing a claim or treating them as financial records. Full message bodies and attachment bytes are not persisted by the app.
 
-- FamilyHub ships with its Google OAuth 2.0 **Web application** client ID preconfigured. Keep Gmail API enabled, keep `https://vdskevin009.github.io` as an authorized JavaScript origin, and allow the household Google accounts in the consent configuration while the app remains private-use/testing.
-- Connect each account independently. Google shows the account picker and FamilyHub requests `gmail.readonly` plus basic identity scopes.
-- Scan 3–24 months. FamilyHub looks for receipt/invoice and claim language around health benefits (physio, massage, dental, pharmacy, etc.), travel, and other likely reimbursement documents.
-- Review the detected provider, amount and category, then track the item as **To review**, **Ready to claim**, **Claimed**, **Reimbursed** or **Ignored**.
-- Attachment files are fetched from Gmail only when you press their download button. Full email bodies and attachments are not persisted by FamilyHub.
-- The reimbursement index is stored locally under `familyhub.reimbursements.v1`. The OAuth client ID is public application configuration, not a client secret; older locally saved client-ID overrides remain compatible.
+## Money data
 
-Gmail access tokens live only in JavaScript memory and are lost on reload/expiry, so accounts must be reconnected for later scans or attachment downloads. The app has no server and cannot safely hold a Google client secret or refresh token. Detected amounts are heuristics and must be reviewed before making a claim. Do not use the reimbursement index on a shared browser profile.
+There is no live bank connection. Transaction CSVs are parsed in the browser and stored in local storage. Recurring merchants are candidates, not confirmed subscriptions. Mortgage comparisons use entered values and are estimates, not lender quotes or financial advice.
+
+## Local storage and privacy
+
+Current household state is browser-local and is not encrypted by FamilyHub. Do not use the app for sensitive production data on a shared browser profile. There is no automatic household sync yet.
+
+The combined backup intentionally excludes Gmail access tokens and the local-worker pairing key. The public repository must never contain real family records, account exports, credentials, or financial account identifiers.
+
+## Deployment
+
+Pull requests run typecheck/build/regression checks but do not deploy. A successful merge to `main` builds the React PWA and deploys it to GitHub Pages.
+
+Pages source must be **GitHub Actions** in repository Settings → Pages.
+
+## Near-term roadmap
+
+- improve inbox classification using user corrections without sending full email bodies away,
+- richer proactive Today insights and household routines,
+- grocery price/opportunity inputs and eventually assisted shopping flows with explicit confirmation,
+- better recurring-cost detection and financial anomaly review,
+- private worker connectivity from mobile,
+- authenticated household sync only if it can be added without weakening the local-first/privacy model.
+
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for boundaries and data flows.
