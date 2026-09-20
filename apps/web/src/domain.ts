@@ -89,7 +89,7 @@ function splitCsvLine(line: string): string[] {
 }
 
 function parseAmount(value: string): number | null {
-  const cleaned = value.replace(/[$,s]/g, "").replace(/[()]/g, match => match === "(" ? "-" : "");
+  const cleaned = value.replace(/[$,\s]/g, "").replace(/[()]/g, match => match === "(" ? "-" : "");
   const parsed = Number(cleaned);
   return Number.isFinite(parsed) ? parsed : null;
 }
@@ -148,7 +148,7 @@ export function currentMonthSpend(state: SpendingState): number {
 }
 
 function merchantKey(description: string): string {
-  return description.toLowerCase().replace(/[0-9#*_.-]+/g, " ").replace(/s+/g, " ").trim().split(" ").slice(0, 3).join(" ");
+  return description.toLowerCase().replace(/[0-9#*_.-]+/g, " ").replace(/\s+/g, " ").trim().split(" ").slice(0, 3).join(" ");
 }
 
 export function recurringCandidates(state: SpendingState): Array<{ merchant: string; count: number; average: number }> {
@@ -184,7 +184,7 @@ export function buildGroceryList(planner: PlannerState): GroceryItem[] {
   }
   const mealItems = [...ingredientMap.entries()].map(([name, quantities]) => ({
     Id: crypto.randomUUID(),
-    Name: name.replace(/w/g, char => char.toUpperCase()),
+    Name: name.replace(/\b\w/g, char => char.toUpperCase()),
     Quantity: [...new Set(quantities)].join(" + "),
     Checked: false,
     Source: "meal" as const
