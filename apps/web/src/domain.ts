@@ -95,8 +95,7 @@ function parseAmount(value: string): number | null {
 }
 
 export function parseTransactionsCsv(text: string, sourceFile: string): SpendingTransaction[] {
-  const lines = text.replace(//g, "").split("
-").filter(line => line.trim().length > 0);
+  const lines = text.replace(/\r/g, "").split("\n").filter(line => line.trim().length > 0);
   if (lines.length < 2) throw new Error("The CSV needs a header row and at least one transaction.");
   const headers = splitCsvLine(lines[0]).map(value => value.toLowerCase());
   const find = (...candidates: string[]) => headers.findIndex(header => candidates.some(candidate => header.includes(candidate)));
