@@ -57,7 +57,7 @@ Use **Savings tools** beside Family plans:
 
 Savings are stored under `familyhub.savings.v1` independently of existing `familyhub.v1` plans. Export and import savings using the separate savings backup controls. Imports validate before a confirmed replacement; failed writes do not replace in-memory saved data. Existing plans and backups remain compatible. Do not put personal data in repository issues or commits.
 
-The install button offers the browser's native prompt when available, with browser-specific instructions otherwise. PNG icons support Android installation and iOS home-screen use. Open online once to cache the full app, then close all tabs and reopen when a new version is deployed. Installing does not create cross-device sync or push reminders.
+The install banner detects when FamilyHub is already installed and uses the browser's native PWA prompt when available, with browser-specific Add to Home Screen instructions otherwise. The manifest includes separate maskable Android icons, standalone display metadata and workspace shortcuts. Android Chrome/Edge can install FamilyHub as a PWA; iPhone/iPad use Safari → Share → Add to Home Screen. Open online once to cache the full app, then close all tabs and reopen when a new version is deployed. Installing does not create cross-device sync or push reminders.
 
 
 ## Benefits & claims
