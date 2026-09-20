@@ -14,21 +14,15 @@
 <section class="card reimbursement-setup">
     <div class="card-head">
         <div>
-            <h2>Connect Gmail</h2>
-            <p class="muted">FamilyHub needs a Google OAuth web client ID. It is not a password or secret; it only identifies this browser app to Google.</p>
+            <h2>Gmail connection</h2>
+            <p class="muted">FamilyHub is already configured with its Google OAuth web client. Choose your account below and approve read-only Gmail access when Google asks.</p>
         </div>
-        <span class="badge">ONE-TIME SETUP</span>
+        <span class="badge">READY</span>
     </div>
-    <div class="oauth-row">
-        <label class="grow">Google OAuth client ID
-            <input @bind="clientId" maxlength="300" autocomplete="off" placeholder="123456789-....apps.googleusercontent.com" />
-        </label>
-        <button class="secondary" @onclick="SaveConfig">Save on this device</button>
-    </div>
+    <p class="notice">The Google OAuth client ID is public application configuration, not a password. No client secret is stored in FamilyHub. Gmail access tokens stay in browser memory only and disappear when the page reloads or the token expires.</p>
     <details>
-        <summary>Google Cloud setup instructions</summary>
-        <p>Create an OAuth 2.0 <strong>Web application</strong> client in Google Cloud, add <code>https://vdskevin009.github.io</code> as an authorized JavaScript origin, enable the Gmail API, and keep the consent screen in testing while this is only for your household. Add both Google accounts as test users. FamilyHub requests only identity plus <code>gmail.readonly</code>.</p>
-        <p>No Google client secret belongs in this app or repository. The browser access token is kept only in memory and disappears when the page reloads.</p>
+        <summary>Google setup / troubleshooting</summary>
+        <p>The Gmail API must remain enabled for the FamilyHub Google Cloud project, <code>https://vdskevin009.github.io</code> must remain an authorized JavaScript origin, and accounts must be allowed by the OAuth consent configuration while the app is in testing. FamilyHub requests identity plus <code>gmail.readonly</code>.</p>
     </details>
 </section>
 
@@ -171,6 +165,7 @@
 
 @code {
     sealed class GmailLocalConfig { public string ClientId { get; set; } = ""; }
+    const string DefaultClientId = "260396837927-9109b363fkc34udu7279mllrl0rb553o.apps.googleusercontent.com";
 
     readonly string[] accountSlots = ["Kevin", "Jasmine"];
     readonly string[] filters = ["Needs attention", "All", "Claimed", "Reimbursed", "Ignored"];
@@ -201,22 +196,14 @@
         {
             state = await Store.Load<ReimbursementState>("familyhub.reimbursements.v1") ?? new();
             state.Validate();
-            clientId = (await Store.Load<GmailLocalConfig>("familyhub.gmail.config.v1"))?.ClientId ?? "";
+            clientId = (await Store.Load<GmailLocalConfig>("familyhub.gmail.config.v1"))?.ClientId;
+            if (string.IsNullOrWhiteSpace(clientId)) clientId = DefaultClientId;
         }
         catch (Exception ex)
         {
             state = new();
             error = "Saved reimbursement data could not be read. Existing browser storage has not been overwritten. " + ex.Message;
         }
-    }
-
-    async Task SaveConfig()
-    {
-        clientId = clientId.Trim();
-        if (!ClientIdLooksValid) { error = "Enter a Google OAuth web client ID ending in .apps.googleusercontent.com."; return; }
-        await Store.Save("familyhub.gmail.config.v1", new GmailLocalConfig { ClientId = clientId });
-        error = "";
-        message = "Google OAuth client ID saved on this device.";
     }
 
     async Task Connect(string slot)
