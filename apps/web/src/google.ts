@@ -126,6 +126,12 @@ function decodeText(data?: string): string {
   catch { return ""; }
 }
 
+function blobPart(bytes: Uint8Array): ArrayBuffer {
+  const copy = new Uint8Array(bytes.byteLength);
+  copy.set(bytes);
+  return copy.buffer;
+}
+
 function stripHtml(html: string): string {
   try {
     const doc = new DOMParser().parseFromString(html, "text/html");
@@ -434,7 +440,7 @@ async function attachmentBytes(slot: string, messageId: string, attachmentId: st
 
 async function downloadAttachment(slot: string, messageId: string, attachmentId: string, fileName: string, mimeType: string): Promise<void> {
   const bytes = await attachmentBytes(slot, messageId, attachmentId);
-  const blob = new Blob([bytes], { type: mimeType || "application/octet-stream" });
+  const blob = new Blob([blobPart(bytes)], { type: mimeType || "application/octet-stream" });
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
   anchor.href = url;
@@ -500,7 +506,7 @@ async function uploadFile(account: GoogleAccount, bytes: Uint8Array, fileName: s
   };
   const prefix = `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(metadata)}\r\n--${boundary}\r\nContent-Type: ${mimeType || "application/octet-stream"}\r\n\r\n`;
   const suffix = `\r\n--${boundary}--`;
-  const body = new Blob([prefix, bytes, suffix]);
+  const body = new Blob([prefix, blobPart(bytes), suffix]);
   const response = await fetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id", {
     method: "POST",
     headers: {
