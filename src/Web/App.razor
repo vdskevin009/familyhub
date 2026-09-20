@@ -1,3 +1,4 @@
+@inject NavigationManager Nav
 <PageTitle>FamilyHub · Kevin's portfolio</PageTitle>
 <div class="shell" style="--accent:#286353">
 <aside class="sidebar"><div class="brand"><span class="monogram">FH</span>FamilyHub</div><nav aria-label="Portfolio projects"><a class="current" href="https://vdskevin009.github.io/familyhub/">FamilyHub</a><a class="" href="https://vdskevin009.github.io/cloudops-dashboard/">CloudOps</a><a class="" href="https://vdskevin009.github.io/devflow-ai/">DevFlow AI</a><a class="" href="https://vdskevin009.github.io/personal-finance-simulator/">Finance Studio</a></nav><div class="side-note">KEVIN'S PORTFOLIO<br/>Built with .NET 11 & Blazor<br/><a href="https://github.com/vdskevin009/familyhub">Explore the source ↗</a></div></aside>
@@ -13,6 +14,19 @@ else { <Dashboard/> }
 <footer>FamilyHub · Open-source portfolio by Kevin · <a href="https://github.com/vdskevin009/familyhub/blob/main/docs/PHONE-WORKFLOW.md">Make a change from your phone</a></footer></main></div>
 @code {
     string workspace = "plans";
+
+    protected override void OnInitialized()
+    {
+        var query = new Uri(Nav.Uri).Query.TrimStart('?');
+        foreach (var pair in query.Split('&', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var parts = pair.Split('=', 2);
+            if (parts.Length != 2 || !parts[0].Equals("workspace", StringComparison.OrdinalIgnoreCase)) continue;
+            var requested = Uri.UnescapeDataString(parts[1]);
+            if (requested is "plans" or "savings" or "reimbursements") workspace = requested;
+        }
+    }
+
     void ShowPlans() => workspace = "plans";
     void ShowSavings() => workspace = "savings";
     void ShowReimbursements() => workspace = "reimbursements";
