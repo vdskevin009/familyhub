@@ -3,8 +3,18 @@ window.portfolio = {load:key=>localStorage.getItem(key),save:(key,value)=>localS
 let installEvent;
 let serviceWorkerReady = false;
 if ('serviceWorker' in navigator) {
+  let refreshingForNewVersion = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (refreshingForNewVersion) return;
+    refreshingForNewVersion = true;
+    window.location.reload();
+  });
+
   navigator.serviceWorker.register('service-worker.js',{updateViaCache:'none'})
-    .then(() => navigator.serviceWorker.ready)
+    .then(registration => {
+      registration.update().catch(() => {});
+      return navigator.serviceWorker.ready;
+    })
     .then(() => { serviceWorkerReady = true; window.dispatchEvent(new Event('familyhub-install-state')); })
     .catch(e=>console.warn('Offline support unavailable',e));
 }
