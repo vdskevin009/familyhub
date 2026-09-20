@@ -40,7 +40,7 @@ Pages source must be **GitHub Actions** in Settings → Pages. The build changes
 
 Entries are private to the current browser profile, not encrypted or protected by application sign-in. No automatic cross-device sharing; use private backup transfer. Reminders are in-app only. The public site and repository contain no personal entries.
 
-Browser storage is scoped to the origin and profile, not a security boundary between apps on the same github.io origin. Do not store sensitive production data. There are no analytics or third-party scripts. Offline assets are cached after a successful first load; close all app tabs and reopen after a new deployment to activate the waiting service worker.
+Browser storage is scoped to the origin and profile, not a security boundary between apps on the same github.io origin. Do not store sensitive production data. There are no analytics. The Google Identity Services script is loaded only when you choose to connect Gmail for Benefits & claims. Offline assets are cached after a successful first load; close all app tabs and reopen after a new deployment to activate the waiting service worker.
 
 ## Next steps
 
