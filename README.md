@@ -64,11 +64,11 @@ The install banner detects when FamilyHub is already installed and uses the brow
 
 Use **Benefits & claims** to build a local reimbursement queue from two Gmail accounts.
 
-- Configure a Google OAuth 2.0 **Web application** client ID in the app. Enable Gmail API, authorize the JavaScript origin `https://vdskevin009.github.io`, and add both household Google accounts as consent-screen test users while the app remains private-use/testing.
+- FamilyHub ships with its Google OAuth 2.0 **Web application** client ID preconfigured. Keep Gmail API enabled, keep `https://vdskevin009.github.io` as an authorized JavaScript origin, and allow the household Google accounts in the consent configuration while the app remains private-use/testing.
 - Connect each account independently. Google shows the account picker and FamilyHub requests `gmail.readonly` plus basic identity scopes.
 - Scan 3–24 months. FamilyHub looks for receipt/invoice and claim language around health benefits (physio, massage, dental, pharmacy, etc.), travel, and other likely reimbursement documents.
 - Review the detected provider, amount and category, then track the item as **To review**, **Ready to claim**, **Claimed**, **Reimbursed** or **Ignored**.
 - Attachment files are fetched from Gmail only when you press their download button. Full email bodies and attachments are not persisted by FamilyHub.
-- The reimbursement index is stored locally under `familyhub.reimbursements.v1`. The OAuth client ID is stored under `familyhub.gmail.config.v1`; it is a public client identifier, not a client secret.
+- The reimbursement index is stored locally under `familyhub.reimbursements.v1`. The OAuth client ID is public application configuration, not a client secret; older locally saved client-ID overrides remain compatible.
 
 Gmail access tokens live only in JavaScript memory and are lost on reload/expiry, so accounts must be reconnected for later scans or attachment downloads. The app has no server and cannot safely hold a Google client secret or refresh token. Detected amounts are heuristics and must be reviewed before making a claim. Do not use the reimbursement index on a shared browser profile.
