@@ -1,44 +1,185 @@
-# Architecture
+# FamilyHub architecture
 
-## Decision
+## Product decision
 
-Use standalone Blazor WebAssembly and .NET 11 for C# domain logic with zero-server hosting. This favors low operating cost and an easy portfolio deployment. Server-dependent features are deferred explicitly rather than embedding credentials in the client.
+FamilyHub is a **mobile-first, local-first life assistant** rather than a dashboard. The deployed product is a React/TypeScript/Vite PWA. An optional Node worker can run on a household computer and use the Codex SDK for deeper reasoning/research. Both live in this repository so the product remains coherent and manageable.
+
+The architecture optimizes for:
+
+- no mandatory new paid subscription,
+- static hosting on GitHub Pages,
+- explicit user control over external actions,
+- minimal persistence of sensitive Google data,
+- a private local execution path for AI-assisted work,
+- graceful usefulness when the local worker is offline.
 
 ## Components
 
-FamilyState owns entry validation and recurrence. BrowserStore is the persistence adapter. Add an IFamilyRepository abstraction when introducing an authenticated ASP.NET Core API. Use family-scoped authorization, optimistic concurrency and audit records for real sharing. Add a notification scheduler with explicit timezones and idempotent delivery; store notification subscriptions only server-side.
+### 1. React PWA — `apps/web`
 
-Browser UI → C# domain → browser storage. Downloaded backups and issue links are user-initiated data exits. Domain code has no network dependencies. Optional Gmail reimbursement ingestion is isolated in the Web project: JavaScript obtains short-lived Google OAuth tokens and calls Gmail read-only APIs, then passes normalized message metadata to deterministic Core classification rules.
+The PWA is the user-facing product. It owns navigation, local persistence, deterministic calculations, Google browser integrations, and the HTTP client for the optional local worker.
 
-## Privacy and persistence
+Primary areas:
 
-Entries are private to the current browser profile, not encrypted or protected by application sign-in. No automatic cross-device sharing; use private backup transfer. Reminders are in-app only. The public site and repository contain no personal entries.
+- **Today** — prioritizes a few actions/insights.
+- **Inbox** — Gmail triage and document review.
+- **Plan** — meals, groceries, recipes and household tasks.
+- **Money** — spending imports, subscriptions and mortgage scenarios.
+- **More** — worker pairing, Drive archive settings, research watches and backup/restore.
 
-Local storage is best-effort, subject to quotas and browser deletion. Errors surface in the UI. App-specific storage keys and cache prefixes avoid accidental collisions, but all apps on one github.io origin can access the same origin storage. Sensitive data should normally move to an authenticated backend with server-side authorization. The optional reimbursement feature is an explicit local-only exception: it persists only an index of detected message metadata/statuses, never Gmail access tokens, full message bodies or attachment bytes. Users are warned not to use it on shared browser profiles.
+The app is deployable under `/familyhub/` and must remain installable as a PWA.
 
-## Testing
+### 2. Google browser bridge — `apps/web/src/google.ts`
 
-The executable harness tests domain boundaries and known scenarios. Release publish verifies Razor compilation, trimming and static assets. Browser smoke checks cover the primary workflow. Tests and publish run before the deploy job; pull requests cannot deploy.
+Google Identity Services obtains short-lived browser access tokens. Tokens live only in memory.
 
-## Deployment
+Scopes:
 
-GitHub Actions builds a versioned Pages artifact. A separate job uses pages:write and id-token:write only after build success. Main deploys through the github-pages environment. Pull requests get read-only permissions. Dependency versions are pinned; review updates to .NET RC versions before merging.
+- `gmail.readonly` — read candidate messages.
+- `drive.file` — create/manage only Drive files FamilyHub creates.
 
-## Roadmap
+Inbox processing is two-stage:
 
-1. Authenticated family sync
-2. household membership and permissions
-3. push reminders
-4. conflict-safe offline sync
-5. optional meal-planning AI.
+1. a narrow Gmail query reduces the candidate set;
+2. deterministic local scoring rejects promotion/newsletter/bulk mail and requires stronger evidence for receipts, bills, claims and administrative documents.
 
-No paid hosting or external AI calls without Kevin's approval.
+Only the normalized local index/status is persisted. Full Gmail message bodies and attachment bytes are transient.
 
+Drive filing is user initiated. FamilyHub proposes a deterministic path such as:
 
-## Gmail reimbursement bridge
+```text
+FamilyHub/Administrative/Health/Claims/<year>
+FamilyHub/Administrative/Travel/<year>
+FamilyHub/Administrative/Finance/Bills/<year>
+FamilyHub/Administrative/Purchases/<year>
+```
 
-The static Pages deployment cannot safely store a Google client secret or refresh token. FamilyHub therefore uses Google Identity Services' browser token flow with a public OAuth web client ID. Each household account is connected separately and receives its own short-lived `gmail.readonly` access token in JavaScript memory. Tokens are not serialized to browser storage.
+The source Gmail message remains traceable from the Inbox UI.
 
-The browser queries Gmail for likely reimbursement-related messages, fetches matching message payloads, normalizes text/headers/attachment metadata, and sends those transient candidates to Core. `ReimbursementDetector` deterministically classifies likely health-benefit, travel or other receipt documents and extracts a possible amount. Only the resulting local index is persisted. Re-scans upsert by Gmail account + message ID and preserve the user's claim status.
+### 3. Local Codex worker — `apps/worker`
 
-This design supports the current zero-server constraint but does not provide background scanning, refresh-token persistence, encrypted local storage, cross-device synchronization or unattended automation. Those require an authenticated backend.
+The worker is optional. It runs on the household computer and exposes a small authenticated HTTP API to the PWA:
+
+```text
+GET  /health
+POST /tasks
+GET  /tasks/:id
+POST /watches
+GET  /watches/:id
+POST /watches/:id/run
+```
+
+Default network binding is `127.0.0.1:4713`. A random pairing key is generated locally and required on every API request. CORS is restricted to configured FamilyHub origins.
+
+The worker uses the locally configured Codex SDK environment. Tasks are intentionally narrow:
+
+- general household analysis,
+- meal-plan suggestions,
+- financial review of supplied summaries,
+- document classification assistance,
+- opportunity research.
+
+The worker prompt explicitly forbids pretending that purchases, messages, seller contact, sign-ins or other external actions occurred. Research watches may re-run automatically only while the worker is running.
+
+For phone access, the worker needs a **private HTTPS route** from the phone to the computer. Do not expose the localhost service directly to the public internet. The pairing key is defense in depth, not a complete network perimeter.
+
+### 4. Browser-local state
+
+Existing storage keys remain isolated by feature so earlier data can survive the migration:
+
+```text
+familyhub.v1
+familyhub.savings.v1
+familyhub.reimbursements.v1
+familyhub.planner.v1
+familyhub.spending.v1
+familyhub.research.v1
+familyhub.worker.v1
+familyhub.admin.v1
+```
+
+The v2 combined backup exports the household data stores but deliberately excludes Google tokens and the worker pairing key.
+
+Local storage is convenient, not an encrypted security boundary. Cross-device sync is not implemented.
+
+### 5. Retained .NET code
+
+`src/Core`, `src/Web` and `tests/Core.Tests` remain temporarily while React replaces the original Blazor UI. The .NET executable test harness still runs in CI as a regression safety net for previously implemented domain behavior.
+
+The GitHub Pages artifact is now **only** `apps/web/dist`.
+
+## Data flows
+
+### Gmail triage
+
+```text
+Google OAuth token (memory)
+        ↓
+Gmail candidate query
+        ↓
+transient message normalization
+        ↓
+local deterministic classifier
+        ↓
+browser-local review index
+        ↓
+user review / claim status / optional Drive archive
+```
+
+### Local AI task
+
+```text
+PWA creates minimal summarized context
+        ↓
+private HTTP request + pairing key
+        ↓
+local worker
+        ↓
+Codex SDK task
+        ↓
+result returned to PWA
+```
+
+Full Gmail bodies are not included in the assistant household summary.
+
+### Opportunity watch
+
+```text
+PWA watch definition
+        ↓
+local worker persistence
+        ↓
+manual or due-time Codex research
+        ↓
+dated result returned/persisted
+```
+
+A result is a research lead, not proof of current stock/price until verified.
+
+## Security boundaries
+
+- Never commit secrets, Gmail tokens, pairing keys, personal records, bank exports or real financial account information.
+- Worker defaults to localhost.
+- Worker requests require an unguessable pairing key and allowed Origin.
+- Google tokens are memory-only.
+- Drive uses `drive.file`, not unrestricted Drive access.
+- Financial imports are local CSV files, not live bank credentials.
+- Sensitive or irreversible external actions require explicit confirmation and a dedicated integration; the current worker is analysis/research only.
+- Do not make a deterministic heuristic appear to be an AI decision, and do not make an AI suggestion appear to be a completed external action.
+
+## CI and deployment
+
+Pull requests:
+
+1. install Node workspaces,
+2. typecheck React + worker,
+3. build React + worker,
+4. run retained .NET domain regression harness.
+
+Main performs the same build, prepares `apps/web/dist`, and deploys it through GitHub Pages.
+
+## Evolution
+
+The preferred direction is to add capability behind stable interfaces rather than spin up separate applications. New modules should first ask whether they can fit into Today, Inbox, Plan, Money, More, or the local worker.
+
+Potential future infrastructure (authenticated household sync, push scheduling, server-side integrations) should be introduced only when its benefit justifies the privacy/operations cost and should not make the local-first core dependent on a paid service.

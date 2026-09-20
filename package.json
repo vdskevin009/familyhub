@@ -1,0 +1,15 @@
+{
+  "name": "familyhub",
+  "private": true,
+  "version": "2.0.0",
+  "workspaces": ["apps/web", "apps/worker"],
+  "scripts": {
+    "dev:web": "npm --workspace @familyhub/web run dev",
+    "dev:worker": "npm --workspace @familyhub/worker run dev",
+    "start:worker": "npm --workspace @familyhub/worker run start",
+    "build:web": "npm --workspace @familyhub/web run build",
+    "build:worker": "npm --workspace @familyhub/worker run build",
+    "build": "npm run build:web && npm run build:worker",
+    "typecheck": "npm --workspace @familyhub/web run typecheck && npm --workspace @familyhub/worker run typecheck"
+  }
+}

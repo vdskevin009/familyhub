@@ -4,33 +4,50 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+
 permissions:
   contents: read
+
 concurrency:
   group: pages-${{ github.ref }}
   cancel-in-progress: true
+
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install JavaScript workspaces
+        run: npm install
+
+      - name: Typecheck React app and local worker
+        run: npm run typecheck
+
+      - name: Build React PWA and local worker
+        run: npm run build
+
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '11.0.100-rc.1.26425.128'
-      - name: Run domain tests
+
+      - name: Run retained domain regression tests
         run: dotnet run --project tests/Core.Tests -c Release
-      - name: Set Pages base path before publishing
-        run: sed -i 's|<base href="/"|<base href="/familyhub/"|' src/Web/wwwroot/index.html
-      - name: Publish Blazor
-        run: dotnet publish src/Web -c Release -o artifacts/site
-      - name: Prepare static host
+
+      - name: Prepare GitHub Pages artifact
         run: |
-          touch artifacts/site/wwwroot/.nojekyll
-          cp artifacts/site/wwwroot/index.html artifacts/site/wwwroot/404.html
+          touch apps/web/dist/.nojekyll
+          cp apps/web/dist/index.html apps/web/dist/404.html
+
       - uses: actions/upload-pages-artifact@v3
         if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
         with:
-          path: artifacts/site/wwwroot
+          path: apps/web/dist
+
   deploy:
     if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
     needs: build
