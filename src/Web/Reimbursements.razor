@@ -1,0 +1,373 @@
+@inject BrowserStore Store
+@inject GmailBridge Gmail
+
+<section class="reimbursements-intro">
+    <div class="eyebrow">FAMILYHUB / BENEFITS & CLAIMS</div>
+    <h2>Reimbursements inbox</h2>
+    <p>Bring likely receipts and invoices from both Gmail accounts into one review queue, without copying your whole inbox into FamilyHub.</p>
+    <span class="badge">GMAIL READ-ONLY · TWO ACCOUNTS · LOCAL INDEX</span>
+</section>
+
+@if (!string.IsNullOrWhiteSpace(error)) { <p class="error" role="alert">@error</p> }
+@if (!string.IsNullOrWhiteSpace(message)) { <p class="success" role="status">@message</p> }
+
+<section class="card reimbursement-setup">
+    <div class="card-head">
+        <div>
+            <h2>Connect Gmail</h2>
+            <p class="muted">FamilyHub needs a Google OAuth web client ID. It is not a password or secret; it only identifies this browser app to Google.</p>
+        </div>
+        <span class="badge">ONE-TIME SETUP</span>
+    </div>
+    <div class="oauth-row">
+        <label class="grow">Google OAuth client ID
+            <input @bind="clientId" maxlength="300" autocomplete="off" placeholder="123456789-....apps.googleusercontent.com" />
+        </label>
+        <button class="secondary" @onclick="SaveConfig">Save on this device</button>
+    </div>
+    <details>
+        <summary>Google Cloud setup instructions</summary>
+        <p>Create an OAuth 2.0 <strong>Web application</strong> client in Google Cloud, add <code>https://vdskevin009.github.io</code> as an authorized JavaScript origin, enable the Gmail API, and keep the consent screen in testing while this is only for your household. Add both Google accounts as test users. FamilyHub requests only identity plus <code>gmail.readonly</code>.</p>
+        <p>No Google client secret belongs in this app or repository. The browser access token is kept only in memory and disappears when the page reloads.</p>
+    </details>
+</section>
+
+<div class="account-grid">
+    @foreach (var slot in accountSlots)
+    {
+        <section class="card account-card">
+            <div class="card-head">
+                <div><small class="eyebrow">@slot.ToUpperInvariant()</small><h2>@slot's Gmail</h2></div>
+                @if (connected.TryGetValue(slot, out var account))
+                {
+                    <span class="badge">CONNECTED</span>
+                }
+                else
+                {
+                    <span class="badge warn">NOT CONNECTED</span>
+                }
+            </div>
+            @if (connected.TryGetValue(slot, out account))
+            {
+                <p><strong>@account.Email</strong></p>
+                <p class="muted">Access lasts for this browser session and may expire after about an hour.</p>
+                <div class="actions">
+                    <button disabled="@(scanningSlot.Length > 0)" @onclick="() => Scan(slot)">@(scanningSlot == slot ? "Scanning…" : $"Scan last {months} months")</button>
+                    <button class="secondary" @onclick="() => Disconnect(slot)">Disconnect session</button>
+                </div>
+            }
+            else
+            {
+                <p class="muted">Google will show its account picker. Connect only the account that belongs in this slot.</p>
+                <button disabled="@(!ClientIdLooksValid || scanningSlot.Length > 0)" @onclick="() => Connect(slot)">Connect @slot</button>
+            }
+        </section>
+    }
+</div>
+
+<section class="card scan-options">
+    <div class="card-head"><h2>Scan window</h2><span class="badge">UP TO 250 MATCHING EMAILS / ACCOUNT</span></div>
+    <div class="form-grid compact-form">
+        <label>Look back
+            <select @bind="months">
+                <option value="3">3 months</option>
+                <option value="6">6 months</option>
+                <option value="12">12 months</option>
+                <option value="18">18 months</option>
+                <option value="24">24 months</option>
+            </select>
+        </label>
+        <div class="actions align-end">
+            <button disabled="@(!connected.Any() || scanningSlot.Length > 0)" @onclick="ScanAll">@(scanningSlot == "all" ? "Scanning both…" : "Scan connected accounts")</button>
+        </div>
+    </div>
+    <p class="notice">The scan searches for reimbursement signals such as receipts, invoices, physio, massage, dental, pharmacy, travel and claim language. Detection is intentionally conservative. Review every detected amount before submitting a claim.</p>
+</section>
+
+<section class="stats reimbursement-stats" aria-label="Reimbursement overview">
+    <div class="stat"><small>TO REVIEW</small><strong>@state.Items.Count(x => x.Status == ReimbursementStatus.ToReview)</strong><small>Newly detected items</small></div>
+    <div class="stat"><small>READY TO CLAIM</small><strong>@state.Items.Count(x => x.Status == ReimbursementStatus.ReadyToClaim)</strong><small>Reviewed by you</small></div>
+    <div class="stat"><small>CLAIMED</small><strong>@state.Items.Count(x => x.Status == ReimbursementStatus.Claimed)</strong><small>Waiting for reimbursement</small></div>
+    <div class="stat"><small>DETECTED CAD PENDING</small><strong>@CadPending.ToString("C0", CultureInfo.GetCultureInfo("en-CA"))</strong><small>Detected amounts only</small></div>
+</section>
+
+<div class="tabs" aria-label="Reimbursement filters">
+    @foreach (var f in filters)
+    {
+        <button class="@(filter == f ? "active" : "")" @onclick="() => filter = f">@f <span class="tab-count">@FilterCount(f)</span></button>
+    }
+</div>
+
+<section class="card">
+    <div class="card-head"><h2>@filter</h2><span class="badge">@Visible.Count() ITEMS</span></div>
+    @if (!Visible.Any())
+    {
+        <p class="empty">Nothing here yet. Connect an account and scan your inbox, or change the filter.</p>
+    }
+    @foreach (var item in Visible)
+    {
+        <article class="claim-card" @key="item.Id">
+            <div class="claim-main">
+                <div class="grow">
+                    <div class="claim-badges">
+                        <span class="badge">@CategoryLabel(item.Category)</span>
+                        <span class="badge">@item.AccountLabel · Gmail</span>
+                        <span class="badge">@item.Confidence% match</span>
+                    </div>
+                    <h3>@(string.IsNullOrWhiteSpace(item.Provider) ? "Unknown provider" : item.Provider)</h3>
+                    <p class="claim-subject">@item.Subject</p>
+                    <small>@item.ReceivedAt.ToLocalTime().ToString("d MMM yyyy") · @item.Sender</small>
+                </div>
+                <div class="claim-amount">
+                    @if (item.DetectedAmount is not null)
+                    {
+                        <strong>@Amount(item)</strong><small>detected amount</small>
+                    }
+                    else
+                    {
+                        <strong>—</strong><small>amount not detected</small>
+                    }
+                </div>
+            </div>
+
+            @if (item.Attachments.Any())
+            {
+                <div class="attachment-list">
+                    @foreach (var attachment in item.Attachments)
+                    {
+                        <button class="attachment-chip" disabled="@(!CanDownload(item))" title="@(CanDownload(item) ? "Download from Gmail" : "Reconnect the matching Gmail account to download")" @onclick="() => Download(item, attachment)">📎 @attachment.FileName</button>
+                    }
+                </div>
+            }
+
+            <div class="claim-actions">
+                <button class="secondary" @onclick="() => OpenEmail(item)">Open email ↗</button>
+                <label>Status
+                    <select value="@item.Status" @onchange="e => ChangeStatus(item, e.Value?.ToString())">
+                        @foreach (var status in Enum.GetValues<ReimbursementStatus>())
+                        {
+                            <option value="@status">@StatusLabel(status)</option>
+                        }
+                    </select>
+                </label>
+            </div>
+        </article>
+    }
+</section>
+
+<section class="card tinted">
+    <h2>Privacy & backup</h2>
+    <p class="muted">FamilyHub does not save Gmail access tokens, full message bodies or attachment files. It does save the detected reimbursement index on this browser: account email, sender, subject, detected amount, Gmail message/attachment identifiers and your claim status. Do not use this on a shared browser profile.</p>
+    <div class="actions">
+        <button class="secondary" @onclick="Export">Download reimbursement backup</button>
+        <label>Import reimbursement backup<InputFile OnChange="ReadImport" accept=".json,application/json" /></label>
+    </div>
+    @if (pendingImport is not null)
+    {
+        <p>Replace the reimbursement index on this device with @pendingImport.Items.Count items?</p>
+        <div class="actions"><button @onclick="ConfirmImport">Replace reimbursement data</button><button class="secondary" @onclick="() => pendingImport = null">Cancel</button></div>
+    }
+</section>
+
+@code {
+    sealed class GmailLocalConfig { public string ClientId { get; set; } = ""; }
+
+    readonly string[] accountSlots = ["Kevin", "Jasmine"];
+    readonly string[] filters = ["Needs attention", "All", "Claimed", "Reimbursed", "Ignored"];
+    readonly Dictionary<string, GmailAccount> connected = new(StringComparer.OrdinalIgnoreCase);
+    ReimbursementState state = new();
+    ReimbursementState? pendingImport;
+    string clientId = "", error = "", message = "", filter = "Needs attention", scanningSlot = "";
+    int months = 18;
+
+    bool ClientIdLooksValid => clientId.Trim().EndsWith(".apps.googleusercontent.com", StringComparison.OrdinalIgnoreCase);
+    decimal CadPending => state.Items.Where(x => x.Currency == "CAD" && x.DetectedAmount is not null && x.Status is not ReimbursementStatus.Ignored and not ReimbursementStatus.Reimbursed).Sum(x => x.DetectedAmount ?? 0);
+
+    IEnumerable<ReimbursementItem> Visible => state.Items
+        .Where(x => filter switch
+        {
+            "Needs attention" => x.Status is ReimbursementStatus.ToReview or ReimbursementStatus.ReadyToClaim,
+            "Claimed" => x.Status == ReimbursementStatus.Claimed,
+            "Reimbursed" => x.Status == ReimbursementStatus.Reimbursed,
+            "Ignored" => x.Status == ReimbursementStatus.Ignored,
+            _ => true
+        })
+        .OrderBy(x => x.Status)
+        .ThenByDescending(x => x.ReceivedAt);
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            state = await Store.Load<ReimbursementState>("familyhub.reimbursements.v1") ?? new();
+            state.Validate();
+            clientId = (await Store.Load<GmailLocalConfig>("familyhub.gmail.config.v1"))?.ClientId ?? "";
+        }
+        catch (Exception ex)
+        {
+            state = new();
+            error = "Saved reimbursement data could not be read. Existing browser storage has not been overwritten. " + ex.Message;
+        }
+    }
+
+    async Task SaveConfig()
+    {
+        clientId = clientId.Trim();
+        if (!ClientIdLooksValid) { error = "Enter a Google OAuth web client ID ending in .apps.googleusercontent.com."; return; }
+        await Store.Save("familyhub.gmail.config.v1", new GmailLocalConfig { ClientId = clientId });
+        error = "";
+        message = "Google OAuth client ID saved on this device.";
+    }
+
+    async Task Connect(string slot)
+    {
+        try
+        {
+            if (!ClientIdLooksValid) { error = "Save a valid Google OAuth client ID first."; return; }
+            var account = await Gmail.Connect(clientId.Trim(), slot);
+            connected[slot] = account;
+            error = "";
+            message = $"Connected {slot}: {account.Email}.";
+        }
+        catch (Exception ex) { error = ex.Message; message = ""; }
+    }
+
+    async Task Disconnect(string slot)
+    {
+        await Gmail.Disconnect(slot);
+        connected.Remove(slot);
+        message = $"{slot}'s Gmail token was cleared from this browser session.";
+    }
+
+    async Task Scan(string slot)
+    {
+        if (!connected.ContainsKey(slot)) { error = $"Connect {slot}'s Gmail first."; return; }
+        scanningSlot = slot;
+        error = "";
+        message = "";
+        try
+        {
+            var response = await Gmail.Scan(slot, months);
+            var detected = response.Messages
+                .Select(x => ReimbursementDetector.Analyze(x, slot, response.Email))
+                .OfType<ReimbursementItem>()
+                .ToList();
+            var merged = state.MergeScan(detected);
+            await Persist();
+            message = $"Scanned {slot}'s Gmail: {merged.Added} new reimbursement item(s), {merged.Updated} refreshed.";
+        }
+        catch (Exception ex) { error = ex.Message; }
+        finally { scanningSlot = ""; }
+    }
+
+    async Task ScanAll()
+    {
+        scanningSlot = "all";
+        error = "";
+        message = "";
+        var added = 0;
+        var updated = 0;
+        try
+        {
+            foreach (var slot in accountSlots.Where(connected.ContainsKey))
+            {
+                var response = await Gmail.Scan(slot, months);
+                var detected = response.Messages.Select(x => ReimbursementDetector.Analyze(x, slot, response.Email)).OfType<ReimbursementItem>().ToList();
+                var merged = state.MergeScan(detected);
+                added += merged.Added;
+                updated += merged.Updated;
+            }
+            await Persist();
+            message = $"Inbox scan complete: {added} new reimbursement item(s), {updated} refreshed.";
+        }
+        catch (Exception ex) { error = ex.Message; }
+        finally { scanningSlot = ""; }
+    }
+
+    async Task ChangeStatus(ReimbursementItem item, string? value)
+    {
+        if (!Enum.TryParse<ReimbursementStatus>(value, out var status)) return;
+        item.Status = status;
+        await Persist();
+        message = $"Marked as {StatusLabel(status).ToLowerInvariant()}.";
+    }
+
+    bool CanDownload(ReimbursementItem item) =>
+        connected.TryGetValue(item.AccountLabel, out var account)
+        && account.Email.Equals(item.AccountEmail, StringComparison.OrdinalIgnoreCase);
+
+    async Task Download(ReimbursementItem item, ReimbursementAttachment attachment)
+    {
+        try { await Gmail.DownloadAttachment(item.AccountLabel, item.SourceMessageId, attachment); }
+        catch (Exception ex) { error = ex.Message; }
+    }
+
+    async Task OpenEmail(ReimbursementItem item)
+    {
+        try { await Gmail.OpenMessage(item.AccountEmail, item.InternetMessageId, item.SourceMessageId); }
+        catch (Exception ex) { error = ex.Message; }
+    }
+
+    async Task Persist()
+    {
+        state.Validate();
+        await Store.Save("familyhub.reimbursements.v1", state);
+    }
+
+    async Task Export()
+    {
+        try { await Store.Download("familyhub-reimbursements-backup.json", JsonSerializer.Serialize(state, new JsonSerializerOptions { WriteIndented = true })); }
+        catch { error = "Reimbursement backup download failed. Please try again."; }
+    }
+
+    async Task ReadImport(InputFileChangeEventArgs args)
+    {
+        pendingImport = null;
+        try
+        {
+            using var reader = new StreamReader(args.File.OpenReadStream(3_000_000));
+            var imported = JsonSerializer.Deserialize<ReimbursementState>(await reader.ReadToEndAsync()) ?? throw new ArgumentException("Empty backup.");
+            imported.Validate();
+            pendingImport = imported;
+            error = "";
+        }
+        catch (Exception ex) { error = "Import failed: " + ex.Message; }
+    }
+
+    async Task ConfirmImport()
+    {
+        if (pendingImport is null) return;
+        state = pendingImport;
+        await Persist();
+        pendingImport = null;
+        message = "Reimbursement backup restored on this device.";
+    }
+
+    int FilterCount(string value) => value switch
+    {
+        "Needs attention" => state.Items.Count(x => x.Status is ReimbursementStatus.ToReview or ReimbursementStatus.ReadyToClaim),
+        "Claimed" => state.Items.Count(x => x.Status == ReimbursementStatus.Claimed),
+        "Reimbursed" => state.Items.Count(x => x.Status == ReimbursementStatus.Reimbursed),
+        "Ignored" => state.Items.Count(x => x.Status == ReimbursementStatus.Ignored),
+        _ => state.Items.Count
+    };
+
+    static string CategoryLabel(ReimbursementCategory value) => value switch
+    {
+        ReimbursementCategory.HealthBenefit => "Health benefit",
+        ReimbursementCategory.Travel => "Travel",
+        _ => "Other receipt"
+    };
+
+    static string StatusLabel(ReimbursementStatus value) => value switch
+    {
+        ReimbursementStatus.ToReview => "To review",
+        ReimbursementStatus.ReadyToClaim => "Ready to claim",
+        ReimbursementStatus.Claimed => "Claimed",
+        ReimbursementStatus.Reimbursed => "Reimbursed",
+        _ => "Ignored"
+    };
+
+    static string Amount(ReimbursementItem item) =>
+        item.DetectedAmount is null ? "—" : string.IsNullOrWhiteSpace(item.Currency) ? item.DetectedAmount.Value.ToString("0.00") : $"{item.Currency} {item.DetectedAmount.Value:0.00}";
+}
