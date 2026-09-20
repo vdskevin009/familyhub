@@ -150,6 +150,14 @@ export default function InboxView({ hub }: Props) {
   }
 
   async function archive(item: ReimbursementItem) {
+    if (!hub.admin.ArchiveEnabled) {
+      setError("Drive archiving is disabled in More → Document archive.");
+      return;
+    }
+    if (!connections[item.AccountLabel]?.canArchive) {
+      setError("Reconnect this Google account and approve Drive access before archiving.");
+      return;
+    }
     setBusy(`archive-${item.Id}`);
     setError("");
     try {
@@ -225,7 +233,7 @@ export default function InboxView({ hub }: Props) {
           })}
         </div>
 
-        <p className="privacy-note"><ShieldCheck size={15} /> Gmail is read-only. Tokens stay in memory. Drive uses <code>drive.file</code> so FamilyHub can create and manage only its own archive files/folders.</p>
+        <p className="privacy-note"><ShieldCheck size={15} /> Gmail is read-only. Tokens stay in memory. Drive uses <code>drive.file</code> so FamilyHub can create and manage only its own archive files/folders. Archiving is {hub.admin.ArchiveEnabled ? "enabled" : "disabled"} in More.</p>
         {stats && (
           <div className="scan-report">
             <span><strong>{stats.scanned}</strong> checked</span>
@@ -293,7 +301,12 @@ export default function InboxView({ hub }: Props) {
                       )}>
                         <Download size={15} /> Download
                       </button>
-                      <button className="mini-button primary" disabled={!connections[item.AccountLabel] || Boolean(busy)} onClick={() => archive(item)}>
+                      <button
+                        className="mini-button primary"
+                        disabled={!hub.admin.ArchiveEnabled || !connections[item.AccountLabel]?.canArchive || Boolean(busy)}
+                        title={!hub.admin.ArchiveEnabled ? "Enable Drive archiving in More" : undefined}
+                        onClick={() => archive(item)}
+                      >
                         <Archive size={15} /> {busy === `archive-${item.Id}` ? "Archiving…" : item.ArchivedAt ? "Archive again" : "Archive to Drive"}
                       </button>
                     </>
