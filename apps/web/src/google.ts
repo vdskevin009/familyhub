@@ -283,7 +283,9 @@ function analyze(message: EmailCandidate, accountLabel: string, accountEmail: st
     claimEvidence ||
     (admin > 0 && (pdfAttachment || administrativeAttachment));
 
+  const transactionProof = /(?:invoice|receipt|facture|reçu|order|booking)\s*(?:number|no\.?|#|n[°º])\s*[:#-]?\s*[a-z0-9-]{3,}|payment (?:received|successful)|thank you for your (?:payment|purchase)|amount paid|total paid|montant payé|amount due|balance due/i.test(text);
   const marketingHeavy = noise >= 3 || message.labelIds.includes("CATEGORY_PROMOTIONS");
+  if (marketingHeavy && !invoiceAttachment && !transactionProof) return { item: null, reason: "noise" };
   if (marketingHeavy && !invoiceAttachment && !claimEvidence && !(documents >= 2 && amount !== null)) {
     return { item: null, reason: "noise" };
   }
@@ -351,6 +353,8 @@ function analyze(message: EmailCandidate, accountLabel: string, accountEmail: st
         Size: Math.min(50_000_000, Math.max(0, item.size))
       })),
       DocumentType: documentType,
+      NeedsReview: true,
+      ClassificationSource: "rules",
       Reasons: reasons
     }
   };

@@ -1,4 +1,4 @@
-import { ResearchWatch, WorkerConfig, WorkerTask, WorkerTaskType } from "./types";
+import { ReimbursementItem, ResearchWatch, WorkerConfig, WorkerTask, WorkerTaskType } from "./types";
 
 function endpoint(config: WorkerConfig, path: string): string {
   const base = config.Endpoint.trim().replace(/\/$/, "");
@@ -16,6 +16,7 @@ function headers(config: WorkerConfig): HeadersInit {
 
 async function request<T>(config: WorkerConfig, path: string, init: RequestInit = {}): Promise<T> {
   const response = await fetch(endpoint(config, path), {
+    signal: AbortSignal.timeout(30_000),
     ...init,
     headers: { ...headers(config), ...(init.headers ?? {}) }
   });
@@ -24,6 +25,38 @@ async function request<T>(config: WorkerConfig, path: string, init: RequestInit 
     throw new Error(body.error || `Worker request failed (${response.status}).`);
   }
   return await response.json() as T;
+}
+
+export type InvoiceSnapshot = {
+  items: ReimbursementItem[]; busy: boolean; setupRequired: boolean;
+  accounts: { email: string; label: string }[];
+  progress: Record<string, { error?: string; window?: unknown; lastSuccess?: string }>;
+  lastAttempt?: string; lastSuccess?: string; error?: string;
+};
+export function fetchInvoices(config: WorkerConfig): Promise<InvoiceSnapshot> { return request(config, "/invoices"); }
+export function collectInvoices(config: WorkerConfig): Promise<{ status: string }> {
+  return request(config, "/invoices/collect", { method: "POST" });
+}
+export function correctInvoice(config: WorkerConfig, id: string, kind: string): Promise<ReimbursementItem> {
+  return request(config, `/invoices/${encodeURIComponent(id)}/correction`, { method: "POST", body: JSON.stringify({ kind }) });
+}
+export function saveInvoiceStatus(config: WorkerConfig, id: string, status: number): Promise<ReimbursementItem> {
+  return request(config, `/invoices/${encodeURIComponent(id)}/status`, { method: "POST", body: JSON.stringify({ status }) });
+}
+export async function downloadWorkerAttachment(config: WorkerConfig, item: ReimbursementItem, index: number): Promise<void> {
+  const attachment = item.Attachments[index];
+  if (!attachment) throw new Error("Attachment not found.");
+  const response = await fetch(endpoint(config, `/invoices/${encodeURIComponent(item.Id)}/attachments/${encodeURIComponent(attachment.Id)}`), {
+    headers: headers(config), signal: AbortSignal.timeout(60_000)
+  });
+  if (!response.ok) {
+    const result = await response.json().catch(() => ({})) as { error?: string };
+    throw new Error(result.error || "Attachment download failed.");
+  }
+  const url = URL.createObjectURL(await response.blob());
+  const anchor = document.createElement("a"); anchor.href = url; anchor.download = attachment.FileName;
+  document.body.appendChild(anchor); anchor.click(); anchor.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
 
 export async function testWorker(config: WorkerConfig): Promise<{ status: string; codex: string; version: string }> {
