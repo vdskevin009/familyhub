@@ -86,7 +86,13 @@ export type ReimbursementItem = {
   Confidence: number;
   Notes: string;
   Attachments: ReimbursementAttachment[];
-  DocumentType?: "receipt" | "invoice" | "claim" | "bill" | "administrative" | "other";
+  DocumentType?: "receipt" | "invoice" | "claim" | "bill" | "administrative" | "other" | "marketing" | "ignore";
+  WorkerManaged?: boolean;
+  NeedsReview?: boolean;
+  ReimbursementEligibility?: "possible" | "unknown" | "no";
+  ClassificationSource?: "rules" | "codex" | "manual" | "unavailable";
+  CorrectedAt?: string;
+  UpdatedAt?: string;
   Reasons?: string[];
   DriveFileId?: string;
   DrivePath?: string;

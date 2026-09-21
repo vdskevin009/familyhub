@@ -4,6 +4,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { Codex } from "@openai/codex-sdk";
+import { initializeInvoices, invoiceSnapshot, collectInvoices, correctInvoice, updateInvoiceStatus, invoiceAttachment } from "./invoices.js";
 
 type WorkerTaskType = "general" | "meal-plan" | "research" | "financial-review" | "admin-classify";
 type WorkerTask = {
@@ -29,7 +30,7 @@ type ResearchWatch = {
 };
 type PersistedState = { watches: ResearchWatch[] };
 
-const version = "2.0.0";
+const version = "2.1.0";
 const host = process.env.FAMILYHUB_WORKER_HOST?.trim() || "127.0.0.1";
 const port = Number(process.env.FAMILYHUB_WORKER_PORT || "4713");
 const stateDir = process.env.FAMILYHUB_WORKER_DATA?.trim() || join(homedir(), ".familyhub-worker");
@@ -44,7 +45,7 @@ const allowedOrigins = new Set(
 );
 
 const tasks = new Map<string, WorkerTask>();
-const codex = new Codex();
+const codex = new Codex({ codexPathOverride: process.env.FAMILYHUB_CODEX_PATH || undefined });
 let pairingKey = "";
 let persisted: PersistedState = { watches: [] };
 let schedulerBusy = false;
@@ -103,7 +104,7 @@ async function readJson<T>(request: IncomingMessage, maxBytes = 100_000): Promis
 }
 
 async function runCodex(prompt: string): Promise<string> {
-  const thread = codex.startThread();
+  const thread = codex.startThread({ sandboxMode: "read-only", approvalPolicy: "never", skipGitRepoCheck: true });
   const result = await thread.run(prompt);
   return result.finalResponse?.trim() || "Codex completed the task without a text response.";
 }
@@ -208,6 +209,35 @@ const server = createServer(async (request, response) => {
 
   const parts = pathParts(request.url);
   try {
+    if (parts[0] === "invoices") {
+      if (request.method === "GET" && parts.length === 1) {
+        json(response, 200, await invoiceSnapshot(), origin); return;
+      }
+      if (request.method === "POST" && parts.length === 2 && parts[1] === "collect") {
+        const snapshot = await invoiceSnapshot();
+        if (snapshot.setupRequired) { json(response, 409, { error: "Connect Gmail on the PC before collecting." }, origin); return; }
+        if (snapshot.busy) { json(response, 409, { error: "Collection already running." }, origin); return; }
+        void collectInvoices().catch(() => { /* Error is available through the authenticated status endpoint. */ });
+        json(response, 202, { status: "running" }, origin); return;
+      }
+      if (request.method === "POST" && parts.length === 3 && parts[2] === "correction") {
+        const body = await readJson<{ kind?: unknown }>(request);
+        json(response, 200, await correctInvoice(parts[1], body.kind), origin); return;
+      }
+      if (request.method === "POST" && parts.length === 3 && parts[2] === "status") {
+        const body = await readJson<{ status?: unknown }>(request);
+        json(response, 200, await updateInvoiceStatus(parts[1], body.status), origin); return;
+      }
+      if (request.method === "GET" && parts.length === 4 && parts[2] === "attachments") {
+        const file = await invoiceAttachment(parts[1], decodeURIComponent(parts[3]));
+        if (origin) response.setHeader("Access-Control-Allow-Origin", origin);
+        response.setHeader("Vary", "Origin"); response.setHeader("Cache-Control", "no-store");
+        response.setHeader("Content-Type", "application/octet-stream");
+        response.setHeader("X-Content-Type-Options", "nosniff");
+        response.setHeader("Content-Disposition", "attachment; filename*=UTF-8''" + encodeURIComponent(file.name));
+        response.end(file.bytes); return;
+      }
+    }
     if (request.method === "GET" && parts.length === 1 && parts[0] === "health") {
       json(response, 200, { status: "ok", codex: "sdk-ready", version }, origin);
       return;
@@ -281,12 +311,13 @@ const server = createServer(async (request, response) => {
 });
 
 await ensureState();
+await initializeInvoices();
 server.listen(port, host, () => {
   console.log("");
   console.log("FamilyHub local worker");
   console.log("----------------------");
   console.log("Listening: http://" + host + ":" + port);
-  console.log("Pairing key: " + pairingKey);
+  console.log("Pairing key stored locally at " + keyPath);
   console.log("Allowed origins: " + [...allowedOrigins].join(", "));
   console.log("");
   console.log("Keep this terminal private. The key is stored at " + keyPath);

@@ -1,16 +1,17 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Archive, Check, ChevronDown, Download, ExternalLink, FileText, Inbox, Mail, RefreshCw, ShieldCheck, Trash2
 } from "lucide-react";
 import { currency, dateLabel } from "../domain";
 import { googleBridge } from "../google";
 import type { HubState } from "../state";
+import { fetchInvoices, collectInvoices, correctInvoice, saveInvoiceStatus, downloadWorkerAttachment, type InvoiceSnapshot } from "../worker";
 import { ReimbursementCategory, ReimbursementItem, ReimbursementStatus, ScanStats } from "../types";
 
 type Props = { hub: HubState };
 type Connection = { email: string; canArchive: boolean };
 type Connections = Record<string, Connection | undefined>;
-type Filter = "attention" | "all" | "claimed" | "archived" | "ignored";
+type Filter = "attention" | "review" | "all" | "claimed" | "archived" | "ignored";
 
 const slots = ["Kevin", "Jasmine"];
 
@@ -19,10 +20,11 @@ function mergeItems(existing: ReimbursementItem[], incoming: ReimbursementItem[]
   for (const next of incoming) {
     const key = `${next.AccountEmail.toLowerCase()}:${next.SourceMessageId}`;
     const current = map.get(key);
+    if (current?.WorkerManaged && !next.WorkerManaged) continue;
     map.set(key, current ? {
       ...next,
-      Id: current.Id,
-      Status: current.Status,
+      Id: next.WorkerManaged ? next.Id : current.Id,
+      Status: next.WorkerManaged && (current.WorkerManaged || next.Status === ReimbursementStatus.Ignored) ? next.Status : current.Status,
       Notes: current.Notes,
       DriveFileId: current.DriveFileId,
       DrivePath: current.DrivePath,
@@ -43,6 +45,8 @@ function statusLabel(status: ReimbursementStatus): string {
 }
 
 function categoryLabel(item: ReimbursementItem): string {
+  if (item.DocumentType === "marketing") return "Pub";
+  if (item.DocumentType === "ignore") return "Ignored";
   if (item.DocumentType === "bill") return "Bill";
   if (item.DocumentType === "invoice") return "Invoice";
   if (item.DocumentType === "administrative") return "Administrative";
@@ -63,10 +67,75 @@ export default function InboxView({ hub }: Props) {
   const [error, setError] = useState("");
   const [stats, setStats] = useState<ScanStats | null>(null);
   const [filter, setFilter] = useState<Filter>("attention");
+  const [collection, setCollection] = useState<InvoiceSnapshot | null>(null);
+  const [workerError, setWorkerError] = useState("");
+  const paired = !!hub.worker.Endpoint && !!hub.worker.ApiKey;
+
+  useEffect(() => {
+    if (!paired) return;
+    let cancelled = false;
+    let fetching = false;
+    const sync = async () => {
+      if (fetching) return;
+      fetching = true;
+      try {
+        const snapshot = await fetchInvoices(hub.worker);
+        if (cancelled) return;
+        setCollection(snapshot); setWorkerError("");
+        hub.setReimbursements(previous => ({ ...previous, Items: mergeItems(previous.Items, snapshot.items) }));
+      } catch (err) { if (!cancelled) setWorkerError(err instanceof Error ? err.message : "PC unavailable."); }
+      finally { fetching = false; }
+    };
+    void sync();
+    const timer = window.setInterval(() => void sync(), 30_000);
+    return () => { cancelled = true; window.clearInterval(timer); };
+  }, [hub.worker.Endpoint, hub.worker.ApiKey, paired, hub.setReimbursements]);
+
+  async function refreshCollection(run = false) {
+    setBusy("worker"); setWorkerError("");
+    try {
+      if (run) await collectInvoices(hub.worker);
+      const snapshot = await fetchInvoices(hub.worker);
+      setCollection(snapshot);
+      hub.setReimbursements(previous => ({ ...previous, Items: mergeItems(previous.Items, snapshot.items) }));
+    } catch (err) { setWorkerError(err instanceof Error ? err.message : "PC collection failed."); }
+    finally { setBusy(""); }
+  }
+
+  async function correct(item: ReimbursementItem, kind: string) {
+    setBusy(item.Id); setError("");
+    try {
+      const result = await correctInvoice(hub.worker, item.Id, kind);
+      updateItem(item.Id, result);
+      setMessage("Correction saved on the PC for future messages from this sender and subject template.");
+    } catch (err) { setError(err instanceof Error ? err.message : "Correction could not be saved."); }
+    finally { setBusy(""); }
+  }
+
+  async function changeStatus(item: ReimbursementItem, status: ReimbursementStatus) {
+    if (!item.WorkerManaged) { updateItem(item.Id, { Status: status, NeedsReview: status === ReimbursementStatus.ToReview }); return; }
+    setBusy(item.Id); setError("");
+    try { updateItem(item.Id, await saveInvoiceStatus(hub.worker, item.Id, status)); }
+    catch (err) { setError(err instanceof Error ? err.message : "Status could not be saved on the PC."); }
+    finally { setBusy(""); }
+  }
+
+  async function download(item: ReimbursementItem, index: number) {
+    setBusy(item.Id); setError("");
+    try {
+      if (item.WorkerManaged) await downloadWorkerAttachment(hub.worker, item, index);
+      else {
+        const file = item.Attachments[index];
+        await googleBridge.downloadAttachment(item.AccountLabel, item.SourceMessageId, file.Id, file.FileName, file.MimeType);
+      }
+    } catch (err) { setError(err instanceof Error ? err.message : "Download failed."); }
+    finally { setBusy(""); }
+  }
 
   const visible = useMemo(() => hub.reimbursements.Items
     .filter(item => {
-      if (filter === "attention") return item.Status === ReimbursementStatus.ToReview || item.Status === ReimbursementStatus.ReadyToClaim;
+      if (filter === "attention") return !item.NeedsReview && (item.Status === ReimbursementStatus.ToReview || item.Status === ReimbursementStatus.ReadyToClaim);
+      if (filter === "review") return !!item.NeedsReview && item.Status !== ReimbursementStatus.Ignored;
       if (filter === "claimed") return item.Status === ReimbursementStatus.Claimed || item.Status === ReimbursementStatus.Reimbursed;
       if (filter === "archived") return Boolean(item.ArchivedAt);
       if (filter === "ignored") return item.Status === ReimbursementStatus.Ignored;
@@ -74,7 +143,7 @@ export default function InboxView({ hub }: Props) {
     })
     .sort((a, b) => +new Date(b.ReceivedAt) - +new Date(a.ReceivedAt)), [hub.reimbursements.Items, filter]);
 
-  const attention = hub.reimbursements.Items.filter(item => item.Status === ReimbursementStatus.ToReview || item.Status === ReimbursementStatus.ReadyToClaim);
+  const attention = hub.reimbursements.Items.filter(item => !item.NeedsReview && (item.Status === ReimbursementStatus.ToReview || item.Status === ReimbursementStatus.ReadyToClaim));
   const pendingCad = attention.filter(item => item.Currency === "CAD").reduce((sum, item) => sum + (item.DetectedAmount ?? 0), 0);
 
   async function connect(slot: string) {
@@ -185,6 +254,21 @@ export default function InboxView({ hub }: Props) {
       {error && <div className="banner error">{error}</div>}
       {message && <div className="banner success"><Check size={17} />{message}</div>}
 
+      <section className="surface" aria-label="Daily PC collection">
+        <div className="section-heading inline"><div><span className="eyebrow">From your PC</span><h2>Daily documents</h2></div></div>
+        {!paired ? <p>Pair your PC in More → Local AI to retrieve its daily collection here.</p> : <>
+          <p>{collection?.busy ? "Collection in progress…" : collection?.lastSuccess ? `Last complete scan: ${new Date(collection.lastSuccess).toLocaleString()}` : "No completed daily scan yet."}</p>
+          {collection?.setupRequired && <p>One-time setup required: connect Gmail on the PC using Connect-Gmail.ps1, then install the daily task. Browser Google connections below do not enable background collection.</p>}
+          {collection?.accounts.map(account => <p key={account.email}>{account.label}: {account.email} · {collection.progress[account.email]?.error || (collection.progress[account.email]?.window ? "Backlog: will resume next run" : "Connected on PC")}</p>)}
+          {(workerError || collection?.error) && <p role="status" className="banner error">{workerError || collection?.error} Previously synced documents remain available below.</p>}
+          <div className="inbox-actions">
+            <button className="mini-button" disabled={!!busy} onClick={() => refreshCollection()}>Refresh from PC</button>
+            <button className="mini-button primary" disabled={!!busy || collection?.busy || !collection || collection.setupRequired} onClick={() => refreshCollection(true)}>Collect now</button>
+          </div>
+        </>}
+        <p className="privacy-note">The PC must be on and reachable. Email text is classified through your Codex session; Gmail is read-only. Reimbursement eligibility is a suggestion. Claims are never submitted automatically.</p>
+      </section>
+
       <section className="metric-row">
         <article><small>Needs attention</small><strong>{attention.length}</strong><span>documents</span></article>
         <article><small>Detected pending</small><strong>{currency.format(pendingCad)}</strong><span>CAD · review amounts</span></article>
@@ -248,6 +332,7 @@ export default function InboxView({ hub }: Props) {
         <div className="filter-tabs">
           {([
             ["attention", "Attention"],
+            ["review", `À vérifier (${hub.reimbursements.Items.filter(x => x.NeedsReview && x.Status !== ReimbursementStatus.Ignored).length})`],
             ["all", "All"],
             ["archived", "Archived"],
             ["claimed", "Claimed"],
@@ -266,7 +351,8 @@ export default function InboxView({ hub }: Props) {
                 <div className="inbox-meta">
                   <span className="chip">{categoryLabel(item)}</span>
                   <span className="chip muted-chip">{item.AccountLabel}</span>
-                  <span>{item.Confidence}% match</span>
+                  {item.ClassificationSource !== "manual" && <span>{item.Confidence}% match</span>}
+                  {item.ClassificationSource && <span>{item.ClassificationSource === "codex" ? "AI suggestion" : item.ClassificationSource === "manual" ? "Your correction" : item.ClassificationSource === "unavailable" ? "AI unavailable" : "Rules"}</span>}
                   <span>·</span>
                   <span>{dateLabel(item.ReceivedAt)}</span>
                 </div>
@@ -281,10 +367,15 @@ export default function InboxView({ hub }: Props) {
                   </div>
                 </div>
                 {!!item.Reasons?.length && <div className="reason-row">{item.Reasons.slice(0, 3).map(reason => <span key={reason}>{reason}</span>)}</div>}
+                {item.ReimbursementEligibility && <p>Reimbursement: {item.ReimbursementEligibility === "possible" ? "possibly eligible — verify your coverage" : item.ReimbursementEligibility === "no" ? "no eligibility identified" : "eligibility unknown"}</p>}
+                {item.WorkerManaged && <div className="inbox-actions" aria-label="Correct document classification">
+                  {[["marketing", "Pub"], ["receipt", "Reçu"], ["invoice", "Facture"], ["ignore", "Ignorer"]].map(([kind, label]) =>
+                    <button key={kind} className="mini-button" disabled={!!busy || !paired} onClick={() => correct(item, kind)}>{label}</button>)}
+                </div>}
                 {item.ArchivedAt && <div className="archive-path"><Archive size={14} />{item.DrivePath}</div>}
                 <div className="inbox-actions">
                   <label className="select-wrap">Status
-                    <select value={item.Status} onChange={event => updateItem(item.Id, { Status: Number(event.target.value) as ReimbursementStatus })}>
+                    <select value={item.Status} disabled={!!busy} onChange={event => changeStatus(item, Number(event.target.value) as ReimbursementStatus)}>
                       {Object.values(ReimbursementStatus).filter(value => typeof value === "number").map(value => (
                         <option key={value} value={value}>{statusLabel(value as ReimbursementStatus)}</option>
                       ))}
@@ -296,11 +387,9 @@ export default function InboxView({ hub }: Props) {
                   </button>
                   {item.Attachments[0] && (
                     <>
-                      <button className="mini-button" disabled={!connections[item.AccountLabel]} onClick={() => googleBridge.downloadAttachment(
-                        item.AccountLabel, item.SourceMessageId, item.Attachments[0].Id, item.Attachments[0].FileName, item.Attachments[0].MimeType
-                      )}>
-                        <Download size={15} /> Download
-                      </button>
+                      {item.Attachments.map((file, index) => <button key={file.Id} className="mini-button" disabled={!!busy || (item.WorkerManaged ? !paired : !connections[item.AccountLabel])} onClick={() => download(item, index)}>
+                        <Download size={15} /> {file.FileName || `Document ${index + 1}`}
+                      </button>)}
                       <button
                         className="mini-button primary"
                         disabled={!hub.admin.ArchiveEnabled || !connections[item.AccountLabel]?.canArchive || Boolean(busy)}

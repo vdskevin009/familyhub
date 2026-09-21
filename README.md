@@ -18,6 +18,7 @@ The default experience is **Today**, not a collection of dashboards. FamilyHub s
 
 - **Today / Assistant** — prioritized household insights, quick actions, and an optional local AI assistant.
 - **Inbox** — connect two Google accounts, scan for likely bills, receipts, reimbursement items and administrative documents, heavily filter promotions/newsletters, and review before acting.
+- **Daily PC collection** — optional offline Gmail authorization, a Windows daily task, Codex classification, phone retrieval, attachment downloads and remembered corrections. Low-confidence items go to **À vérifier**. See [setup and limitations](docs/DAILY-INVOICES.md).
 - **Google Drive archive** — optionally file a selected Gmail attachment into a sensible FamilyHub administrative folder using the limited `drive.file` scope.
 - **Plan** — dinner planning, recipe library, generated grocery list, and family tasks.
 - **Money** — local CSV transaction import, category summaries, recurring-merchant detection, subscription review, and Canadian mortgage scenario comparison.
@@ -105,7 +106,7 @@ There is no live bank connection. Transaction CSVs are parsed in the browser and
 
 ## Local storage and privacy
 
-Current household state is browser-local and is not encrypted by FamilyHub. Do not use the app for sensitive production data on a shared browser profile. There is no automatic household sync yet.
+Current household state is browser-local and is not encrypted by FamilyHub. Do not use the app for sensitive production data on a shared browser profile. The optional daily invoice index, corrections and statuses sync through the paired PC while Inbox is open; there is no general household sync.
 
 The combined backup intentionally excludes Gmail access tokens and the local-worker pairing key. The public repository must never contain real family records, account exports, credentials, or financial account identifiers.
 

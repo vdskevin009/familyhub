@@ -67,6 +67,11 @@ GET  /tasks/:id
 POST /watches
 GET  /watches/:id
 POST /watches/:id/run
+GET  /invoices
+POST /invoices/collect
+POST /invoices/:id/correction
+POST /invoices/:id/status
+GET  /invoices/:id/attachments/:attachmentId
 ```
 
 Default network binding is `127.0.0.1:4713`. A random pairing key is generated locally and required on every API request. CORS is restricted to configured FamilyHub origins.
@@ -100,7 +105,7 @@ familyhub.admin.v1
 
 The v2 combined backup exports the household data stores but deliberately excludes Google tokens and the worker pairing key.
 
-Local storage is convenient, not an encrypted security boundary. Cross-device sync is not implemented.
+Local storage is convenient, not an encrypted security boundary. General household sync is not implemented. The optional daily invoice index and its corrections/statuses sync through the paired worker; see [Daily invoices](DAILY-INVOICES.md).
 
 ### 5. Retained .NET code
 
@@ -161,7 +166,7 @@ A result is a research lead, not proof of current stock/price until verified.
 - Never commit secrets, Gmail tokens, pairing keys, personal records, bank exports or real financial account information.
 - Worker defaults to localhost.
 - Worker requests require an unguessable pairing key and allowed Origin.
-- Google tokens are memory-only.
+- Browser Google tokens are memory-only. Opt-in Windows daily collection separately uses DPAPI-protected offline Gmail credentials. Its index is protected by a private folder ACL. Bounded email text is sent to Codex for classification and may remain in Codex session history.
 - Drive uses `drive.file`, not unrestricted Drive access.
 - Financial imports are local CSV files, not live bank credentials.
 - Sensitive or irreversible external actions require explicit confirmation and a dedicated integration; the current worker is analysis/research only.

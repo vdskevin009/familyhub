@@ -31,6 +31,9 @@ jobs:
       - name: Build React PWA and local worker
         run: npm run build
 
+      - name: Verify invoice collection and worker authorization
+        run: npm run test:invoices
+
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '11.0.100-rc.1.26425.128'

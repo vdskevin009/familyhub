@@ -6,3 +6,14 @@ artifacts/
 .env
 .env.*
 !*.example
+node_modules/
+**/dist/
+.private/
+*.dpapi
+client_secret*.json
+*-credentials.json
+**/private-data/
+**/pairing-key.txt
+**/invoices.json
+**/classification-work/
+**/worker*.log
