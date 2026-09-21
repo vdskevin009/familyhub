@@ -13,13 +13,55 @@ const empty = (): State => ({ items: [], corrections: [], accounts: {} });
 let state = empty();
 let busy = false;
 let mutation = Promise.resolve();
+
+type MetadataRule = { kind: "ignore" | "administrative"; category: "travel" | "other"; reason: string };
+function metadataClassification(senderValue: string, subjectValue: string, textValue = ""): MetadataRule | null {
+  const sender = senderValue.toLowerCase();
+  const subject = subjectValue.trim();
+  const text = textValue.toLowerCase();
+  if (sender.includes("notifications@github.com")) return { kind: "ignore", category: "other", reason: "GitHub workflow notification, not a household document." };
+  if (sender.includes("janeapp.com") && /^(?:appointment reminder|thanks for booking)$/i.test(subject)) return { kind: "ignore", category: "other", reason: "Appointment notification, not a receipt or claim document." };
+  if (/booking confirmation/i.test(subject) && (sender.includes("teeon.com") || /(?:golf course|tee time)/i.test(text))) return { kind: "ignore", category: "other", reason: "Activity booking confirmation, not a receipt or reimbursement document." };
+  if (sender.includes("communication.microsoft.com") && /terms of use/i.test(subject)) return { kind: "ignore", category: "other", reason: "General service-terms notice; no household document action is required." };
+  if (sender.includes("revolut.com") && /(?:trading t&cs|terms and conditions|t&cs)/i.test(subject)) return { kind: "administrative", category: "other", reason: "Financial-account terms notice." };
+  if (sender.includes("td.com") && /statement.*available/i.test(subject)) return { kind: "administrative", category: "other", reason: "Financial statement availability notice." };
+  if (sender.includes("crelan.be")) return { kind: "administrative", category: "other", reason: "Bank compliance/administrative correspondence." };
+  if (sender.includes("notifications.westjet.com") && /travel with ease/i.test(subject)) return { kind: "administrative", category: "travel", reason: "Travel booking confirmation." };
+  return null;
+}
+
+function normalizeStoredMetadata(): boolean {
+  let changed = false;
+  for (const item of state.items) {
+    if (item.CorrectedAt) continue;
+    const rule = metadataClassification(item.Sender, item.Subject);
+    if (!rule) continue;
+    const nextStatus = rule.kind === "ignore" ? 4 : 0;
+    const nextCategory = rule.category === "travel" ? 1 : 2;
+    if (item.DocumentType === rule.kind && item.Status === nextStatus && !item.NeedsReview && item.ReimbursementEligibility === "no") continue;
+    item.DocumentType = rule.kind;
+    item.Status = nextStatus;
+    item.Category = nextCategory;
+    item.NeedsReview = false;
+    item.ReimbursementEligibility = "no";
+    item.ClassificationSource = "rules";
+    item.Reasons = [rule.reason];
+    item.UpdatedAt = new Date().toISOString();
+    changed = true;
+  }
+  return changed;
+}
+
 function edit(action: () => void): Promise<void> {
   const next = mutation.then(async () => { action(); await atomicJson(statePath, state); });
   mutation = next.catch(() => {});
   return next;
 }
 export async function initializeInvoices(): Promise<void> {
-  try { state = JSON.parse(await readFile(statePath, "utf8")) as State; }
+  try {
+    state = JSON.parse(await readFile(statePath, "utf8")) as State;
+    if (normalizeStoredMetadata()) await atomicJson(statePath, state);
+  }
   catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw new Error("Invoice index is unreadable. Restore the index before collecting; it was not overwritten."); }
 }
 export async function invoiceSnapshot() {
@@ -34,6 +76,9 @@ export async function classify(mail: Mail, email: string, diagnostic = false): P
   const proof = evidence(mail);
   if (rule) return { source: "rules", result: { kind: rule.kind, confidence: .9, transaction: proof.transaction,
     reimbursement: "unknown", amount: null, currency: "", category: "other", reason: "Your correction for this sender and subject template." } };
+  const metadataRule = metadataClassification(mail.sender, mail.subject, mail.text);
+  if (metadataRule) return { source: "rules", result: { kind: metadataRule.kind, confidence: .99, transaction: false,
+    reimbursement: "no", amount: null, currency: "", category: metadataRule.category, reason: metadataRule.reason } };
   if (proof.marketing) return { source: "rules", result: { kind: "marketing", confidence: .98, transaction: false,
     reimbursement: "no", amount: null, currency: "", category: "other", reason: "Promotional signals without evidence of a completed transaction." } };
   try {
@@ -50,6 +95,7 @@ export async function classify(mail: Mail, email: string, diagnostic = false): P
       "Then assess reimbursement only as possible/unknown/no. Never claim insurance eligibility is verified. Coverage details are unavailable.",
       "Use only explicit evidence. Do not invent a currency (a dollar sign alone is ambiguous), amount, purchase, or attachment contents.",
       "Claim means an actual claim status/EOB document, not an advertisement about benefits. Ambiguity must lower confidence below 0.9.",
+      "Routine appointment reminders, clinic booking notices, tee-time/activity bookings and generic service notices are not document-inbox items unless they contain actual payment/receipt evidence. Travel itineraries and flight booking documents may be administrative/travel.",
       "Return only the required JSON schema. Explain the reason briefly in French.",
       JSON.stringify({ subject: mail.subject, sender: mail.sender, text: mail.text, attachmentNames: mail.attachments.map(x => x.FileName) })
     ].join("\n");
@@ -109,7 +155,7 @@ export async function collectInvoices(overrides: Partial<CollectionDependencies>
           if (item.AccountEmail === key && item.ClassificationSource === "unavailable" && !item.CorrectedAt && retryBudget-- > 0) await processMessage(item.SourceMessageId, true);
         }
         for (let pages = 0; pages < 2; pages++) {
-          const q = `after:${window.after} before:${window.before} {receipt invoice facture reçu recu reimbursement remboursement claim statement "payment confirmation" "amount due" "booking confirmation" "reservation confirmation" "explanation of benefits" "renewal notice"} -in:spam -in:trash`;
+          const q = `after:${window.after} before:${window.before} {receipt invoice facture reçu recu reimbursement remboursement claim statement "payment confirmation" "amount due" "booking confirmation" "reservation confirmation" "explanation of benefits" "renewal notice"} -in:spam -in:trash -in:sent -in:drafts -from:notifications@github.com`;
           const params = new URLSearchParams({ q, maxResults: "50", ...(window.page ? { pageToken: window.page } : {}) });
           const list = await callGmail<{ messages?: { id: string }[]; nextPageToken?: string }>(token, `messages?${params}`);
           for (const { id } of list.messages || []) await processMessage(id);
