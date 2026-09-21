@@ -255,6 +255,10 @@ function provider(sender: string): string {
 function analyze(message: EmailCandidate, accountLabel: string, accountEmail: string): { item: ReimbursementItem | null; reason: "noise" | "no-signal" | "kept" } {
   const attachmentText = message.attachments.map(item => item.fileName).join(" ");
   const text = ` ${message.subject} ${message.sender} ${message.bodyText} ${attachmentText} `.toLowerCase();
+  const sender = message.sender.toLowerCase();
+  if (sender.includes("notifications@github.com")) return { item: null, reason: "noise" };
+  if (sender.includes("janeapp.com") && /^(?:appointment reminder|thanks for booking)$/i.test(message.subject.trim())) return { item: null, reason: "no-signal" };
+  if (sender.includes("teeon.com") && /booking confirmation/i.test(message.subject)) return { item: null, reason: "no-signal" };
   const health = countHits(text, healthKeywords);
   const travel = countHits(text, travelKeywords);
   const documents = countHits(text, docKeywords);
@@ -398,7 +402,7 @@ async function scan(slot: string, months: number): Promise<{ email: string; item
   const account = requireAccount(slot);
   const lookback = Math.min(24, Math.max(1, Number(months || 12)));
   const terms = '{receipt invoice facture reçu recu reimbursement remboursement claim physio physiotherapy chiropractor dental pharmacy prescription massage statement "payment confirmation" "proof of payment" "amount due" "balance due" "policy renewal" "renewal notice" "tax assessment" warranty "registration renewal" "booking confirmation" "reservation confirmation"}';
-  const q = `newer_than:${lookback}m ${terms} -category:promotions -category:social -category:forums`;
+  const q = `newer_than:${lookback}m ${terms} -category:promotions -category:social -category:forums -in:sent -in:drafts -from:notifications@github.com`;
   const ids: string[] = [];
   let pageToken = "";
 
