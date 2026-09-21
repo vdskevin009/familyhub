@@ -33,6 +33,7 @@ test('high-confidence administrative notices do not require manual review', () =
   const administrative = { ...classification, kind: 'administrative', confidence: .95, transaction: false, reimbursement: 'no', amount: null, currency: '', category: 'other' };
   const item = toInvoice({ ...mail, subject: 'Your statement is available', text: 'A new account statement is available.' }, 'a@example.test', 'Test', administrative, 'codex');
   assert.equal(item.NeedsReview, false); assert.equal(item.Status, 0); assert.equal(item.DocumentType, 'administrative');
+  assert.equal(toInvoice({ ...mail, subject: 'Your statement is available', text: 'A new account statement is available.' }, 'a@example.test', 'Test', administrative, 'unavailable').NeedsReview, true);
 });
 test('manual correction is reversible and does not mark a claim submitted', () => {
   const item = toInvoice(mail, 'a@example.test', 'Test', classification, 'codex');
