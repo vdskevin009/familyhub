@@ -66,8 +66,10 @@ export function validateClassification(input: unknown): Classification {
 
 export function toInvoice(mail: Mail, email: string, label: string, result: Classification, source: Invoice["ClassificationSource"]): Invoice {
   const excluded = (result.kind === "marketing" || result.kind === "ignore") && result.confidence >= .9;
+  const acceptedAdministrative = result.kind === "administrative" && result.confidence >= .9 && source !== "unavailable";
   // A score is not coverage verification. Nothing is marked ready to claim by the classifier.
-  const needsReview = !excluded && (result.confidence < .9 || source === "unavailable" || !result.transaction || !evidence(mail).transaction);
+  // High-confidence administrative notices are useful documents even when they are not transactions.
+  const needsReview = !excluded && !acceptedAdministrative && (result.confidence < .9 || source === "unavailable" || !result.transaction || !evidence(mail).transaction);
   return {
     Id: recordId(email, mail.id), AccountLabel: label, AccountEmail: email,
     SourceMessageId: mail.id, ThreadId: mail.threadId, InternetMessageId: mail.internetMessageId,

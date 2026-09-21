@@ -15,9 +15,35 @@ type Filter = "attention" | "review" | "all" | "claimed" | "archived" | "ignored
 
 const slots = ["Kevin", "Jasmine"];
 
+function autoTriageKnownItem(item: ReimbursementItem): ReimbursementItem {
+  if (item.ClassificationSource === "manual") return item;
+  const sender = item.Sender.toLowerCase();
+  const subject = item.Subject.trim();
+  const ignored = sender.includes("notifications@github.com")
+    || (sender.includes("janeapp.com") && /^(?:appointment reminder|thanks for booking)$/i.test(subject))
+    || (sender.includes("teeon.com") && /booking confirmation/i.test(subject))
+    || (sender.includes("communication.microsoft.com") && /terms of use/i.test(subject));
+  const administrative = (sender.includes("revolut.com") && /(?:trading t&cs|terms and conditions|t&cs)/i.test(subject))
+    || (sender.includes("td.com") && /statement.*available/i.test(subject))
+    || sender.includes("crelan.be")
+    || (sender.includes("notifications.westjet.com") && /travel with ease/i.test(subject));
+  if (!ignored && !administrative) return item;
+  const reason = ignored ? "Routine notification filtered from the document queue." : "Administrative notice recognized from sender and subject.";
+  return {
+    ...item,
+    DocumentType: ignored ? "ignore" : "administrative",
+    Status: ignored ? ReimbursementStatus.Ignored : ReimbursementStatus.ToReview,
+    NeedsReview: false,
+    ReimbursementEligibility: "no",
+    ClassificationSource: "rules",
+    Reasons: [reason, ...(item.Reasons ?? [])].slice(0, 3)
+  };
+}
+
 function mergeItems(existing: ReimbursementItem[], incoming: ReimbursementItem[]): ReimbursementItem[] {
   const map = new Map(existing.map(item => [`${item.AccountEmail.toLowerCase()}:${item.SourceMessageId}`, item]));
-  for (const next of incoming) {
+  for (const incomingItem of incoming) {
+    const next = autoTriageKnownItem(incomingItem);
     const key = `${next.AccountEmail.toLowerCase()}:${next.SourceMessageId}`;
     const current = map.get(key);
     if (current?.WorkerManaged && !next.WorkerManaged) continue;
@@ -369,7 +395,7 @@ export default function InboxView({ hub }: Props) {
                 {!!item.Reasons?.length && <div className="reason-row">{item.Reasons.slice(0, 3).map(reason => <span key={reason}>{reason}</span>)}</div>}
                 {item.ReimbursementEligibility && <p>Reimbursement: {item.ReimbursementEligibility === "possible" ? "possibly eligible — verify your coverage" : item.ReimbursementEligibility === "no" ? "no eligibility identified" : "eligibility unknown"}</p>}
                 {item.WorkerManaged && <div className="inbox-actions" aria-label="Correct document classification">
-                  {[["marketing", "Pub"], ["receipt", "Reçu"], ["invoice", "Facture"], ["ignore", "Ignorer"]].map(([kind, label]) =>
+                  {[["marketing", "Pub"], ["receipt", "Reçu"], ["invoice", "Facture"], ["bill", "Facture à payer"], ["claim", "Demande"], ["administrative", "Admin"], ["ignore", "Ignorer"]].map(([kind, label]) =>
                     <button key={kind} className="mini-button" disabled={!!busy || !paired} onClick={() => correct(item, kind)}>{label}</button>)}
                 </div>}
                 {item.ArchivedAt && <div className="archive-path"><Archive size={14} />{item.DrivePath}</div>}

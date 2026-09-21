@@ -1,6 +1,6 @@
 import {
   AppView, AssistantInsight, BillingCycle, EntryKind, FamilyState, GroceryItem, MealAssignment,
-  MortgageScenario, PlannerState, ReimbursementState, ReimbursementStatus, Repeat, SavingsState,
+  MortgageScenario, PlannerState, ReimbursementCategory, ReimbursementState, ReimbursementStatus, Repeat, SavingsState,
   SpendingState, SpendingTransaction
 } from "./types";
 
@@ -220,7 +220,9 @@ export function assistantInsights(
     detail: "Clear the oldest items first so they stop getting lost in the week.", action: "plan"
   });
 
-  const claims = reimbursements.Items.filter(item => !item.NeedsReview && (item.Status === ReimbursementStatus.ToReview || item.Status === ReimbursementStatus.ReadyToClaim));
+  const claims = reimbursements.Items.filter(item => !item.NeedsReview
+    && (item.Status === ReimbursementStatus.ToReview || item.Status === ReimbursementStatus.ReadyToClaim)
+    && (item.ReimbursementEligibility === "possible" || item.DocumentType === "claim" || item.Category === ReimbursementCategory.HealthBenefit));
   const claimAmount = claims.filter(item => item.Currency === "CAD").reduce((sum, item) => sum + (item.DetectedAmount ?? 0), 0);
   if (claims.length) insights.push({
     id: "claims", tone: "money", eyebrow: "Money to recover", title: `${claims.length} reimbursement item${claims.length > 1 ? "s" : ""} waiting`,
@@ -280,7 +282,9 @@ export function buildAssistantContext(
   }, {})).sort((a, b) => b[1] - a[1]).slice(0, 8);
   return JSON.stringify({
     upcomingPlans: upcoming.map(entry => ({ title: entry.Title, due: entry.Due, kind: EntryKind[entry.Kind], owner: entry.Owner })),
-    reimbursementQueue: reimbursements.Items.filter(item => !item.NeedsReview && item.Status <= ReimbursementStatus.ReadyToClaim).map(item => ({
+    reimbursementQueue: reimbursements.Items.filter(item => !item.NeedsReview
+      && item.Status <= ReimbursementStatus.ReadyToClaim
+      && (item.ReimbursementEligibility === "possible" || item.DocumentType === "claim" || item.Category === ReimbursementCategory.HealthBenefit)).map(item => ({
       provider: item.Provider, amount: item.DetectedAmount, currency: item.Currency, type: item.DocumentType
     })).slice(0, 12),
     subscriptions: activeSubs.map(item => ({ name: item.Name, annualized: annualSubscriptionCost(item.Price, item.Cycle), review: item.Review })),
