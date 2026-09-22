@@ -35,7 +35,29 @@ export type InvoiceSnapshot = {
   progress: Record<string, { error?: string; window?: unknown; lastSuccess?: string }>;
   lastAttempt?: string; lastSuccess?: string; error?: string;
 };
-export function fetchInvoices(config: WorkerConfig): Promise<InvoiceSnapshot> { return request(config, "/invoices"); }
+export async function fetchInvoices(config: WorkerConfig): Promise<InvoiceSnapshot> {
+  const raw = await request<Partial<InvoiceSnapshot>>(config, "/invoices");
+  const learning = raw.learning && typeof raw.learning === "object"
+    ? {
+        decisions: Number(raw.learning.decisions || 0),
+        undoable: Array.isArray(raw.learning.undoable) ? raw.learning.undoable : []
+      }
+    : { decisions: 0, undoable: [] };
+
+  return {
+    items: Array.isArray(raw.items) ? raw.items : [],
+    busy: Boolean(raw.busy),
+    setupRequired: Boolean(raw.setupRequired),
+    reconciliations: Array.isArray(raw.reconciliations) ? raw.reconciliations : [],
+    cleanupSuggestions: Array.isArray(raw.cleanupSuggestions) ? raw.cleanupSuggestions : [],
+    learning,
+    accounts: Array.isArray(raw.accounts) ? raw.accounts : [],
+    progress: raw.progress && typeof raw.progress === "object" ? raw.progress : {},
+    lastAttempt: raw.lastAttempt,
+    lastSuccess: raw.lastSuccess,
+    error: raw.error
+  };
+}
 export function collectInvoices(config: WorkerConfig): Promise<{ status: string }> {
   return request(config, "/invoices/collect", { method: "POST" });
 }
