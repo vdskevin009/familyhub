@@ -4,10 +4,11 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { evidence, fingerprint, recordId, toInvoice, applyCorrection, validateClassification } from '../apps/worker/dist/invoice-model.js';
+import { buildReconciliations } from '../apps/worker/dist/reconciliation.js';
 import { normalizeMail } from '../apps/worker/dist/gmail-client.js';
 
 const mail = { id: 'receipt-1', threadId: 'thread', internetMessageId: '<test@example.test>', subject: 'Your receipt', sender: 'Airline <billing@example.test>', receivedAt: '2026-09-20T12:00:00Z', text: 'Receipt #ABC123. Total paid CAD 150.00', labels: [], unsubscribe: false, bulk: false, attachments: [] };
-const classification = { kind: 'receipt', confidence: .96, transaction: true, reimbursement: 'unknown', reason: 'Payment confirmed', amount: 150, currency: 'CAD', category: 'travel' };
+const classification = { kind: 'receipt', confidence: .96, transaction: true, reimbursement: 'unknown', reason: 'Payment confirmed', amount: 150, currency: 'CAD', category: 'travel', member: 'Kevin', documentRole: 'expense', insurer: null, serviceDate: '2026-09-19', billedAmount: 150, reimbursedAmount: null };
 
 test('WestJet-style sales language with a price and insurance words is marketing', () => {
   assert.equal(evidence({ ...mail, subject: 'WestJet offers', text: 'Save up to 40% off. Book now! $150 insurance benefits. Invoice help.', labels: ['CATEGORY_PROMOTIONS'], unsubscribe: true }).marketing, true);
@@ -52,6 +53,13 @@ test('reject malformed AI amounts, currency and confidence', () => {
     assert.throws(() => validateClassification({ ...classification, ...patch }));
   }
   assert.equal(validateClassification(classification).amount, 150);
+});
+test('reconciliation follows the two-insurer order and never presents a remaining balance as guaranteed', () => {
+  const expense = toInvoice(mail, 'kevin@example.test', 'Kevin', { ...classification, category: 'health', amount: 242, billedAmount: 242 }, 'codex');
+  const statement = toInvoice({ ...mail, id: 'eob-1', subject: 'Desjardins statement', sender: 'Desjardins', receivedAt: '2026-09-22T12:00:00Z' }, 'kevin@example.test', 'Kevin', { ...classification, kind: 'claim', category: 'health', documentRole: 'insurer-statement', insurer: 'desjardins', amount: 100, billedAmount: null, reimbursedAmount: 100 }, 'codex');
+  const result = buildReconciliations([expense, statement]);
+  assert.equal(result[0].PotentialRemaining, 142); assert.equal(result[0].NextInsurer, 'Blue Cross');
+  assert.match(result[0].Summary, /pas garanti/);
 });
 test('MIME normalization keeps source attachment identity, reads plain text, and does not treat attachment bytes as text', () => {
   const normalized = normalizeMail({ id: 'x', threadId: 't', internalDate: '1790000000000', payload: { headers: [{ name: 'Subject', value: 'Receipt' }], parts: [

@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import {
-  Archive, Check, ChevronDown, Download, ExternalLink, FileText, Inbox, Mail, RefreshCw, ShieldCheck, Trash2
+  Archive, Check, ChevronDown, Download, ExternalLink, FileText, Inbox, Mail, RefreshCw, RotateCcw, ShieldCheck, Trash2
 } from "lucide-react";
 import { currency, dateLabel } from "../domain";
 import { googleBridge } from "../google";
 import type { HubState } from "../state";
-import { fetchInvoices, collectInvoices, correctInvoice, saveInvoiceStatus, downloadWorkerAttachment, type InvoiceSnapshot } from "../worker";
+import { fetchInvoices, collectInvoices, correctInvoice, saveInvoiceStatus, undoInvoiceDecision, downloadWorkerAttachment, type InvoiceSnapshot } from "../worker";
 import { ReimbursementCategory, ReimbursementItem, ReimbursementStatus, ScanStats } from "../types";
 
 type Props = { hub: HubState };
@@ -95,6 +95,7 @@ export default function InboxView({ hub }: Props) {
   const [filter, setFilter] = useState<Filter>("attention");
   const [collection, setCollection] = useState<InvoiceSnapshot | null>(null);
   const [workerError, setWorkerError] = useState("");
+  const [lastDecision, setLastDecision] = useState("");
   const paired = !!hub.worker.Endpoint && !!hub.worker.ApiKey;
 
   useEffect(() => {
@@ -108,7 +109,7 @@ export default function InboxView({ hub }: Props) {
         const snapshot = await fetchInvoices(hub.worker);
         if (cancelled) return;
         setCollection(snapshot); setWorkerError("");
-        hub.setReimbursements(previous => ({ ...previous, Items: mergeItems(previous.Items, snapshot.items) }));
+        hub.setReimbursements(previous => ({ ...previous, SchemaVersion: 2, Items: mergeItems(previous.Items, snapshot.items), Reconciliations: snapshot.reconciliations, CleanupSuggestions: snapshot.cleanupSuggestions, LearningDecisions: snapshot.learning.decisions }));
       } catch (err) { if (!cancelled) setWorkerError(err instanceof Error ? err.message : "PC unavailable."); }
       finally { fetching = false; }
     };
@@ -123,7 +124,7 @@ export default function InboxView({ hub }: Props) {
       if (run) await collectInvoices(hub.worker);
       const snapshot = await fetchInvoices(hub.worker);
       setCollection(snapshot);
-      hub.setReimbursements(previous => ({ ...previous, Items: mergeItems(previous.Items, snapshot.items) }));
+      hub.setReimbursements(previous => ({ ...previous, SchemaVersion: 2, Items: mergeItems(previous.Items, snapshot.items), Reconciliations: snapshot.reconciliations, CleanupSuggestions: snapshot.cleanupSuggestions, LearningDecisions: snapshot.learning.decisions }));
     } catch (err) { setWorkerError(err instanceof Error ? err.message : "PC collection failed."); }
     finally { setBusy(""); }
   }
@@ -133,7 +134,8 @@ export default function InboxView({ hub }: Props) {
     try {
       const result = await correctInvoice(hub.worker, item.Id, kind);
       updateItem(item.Id, result);
-      setMessage("Correction saved on the PC for future messages from this sender and subject template.");
+      setLastDecision(result.LastDecisionId || "");
+      setMessage("Correction enregistrée. FamilyHub attend trois décisions cohérentes avant de filtrer automatiquement.");
     } catch (err) { setError(err instanceof Error ? err.message : "Correction could not be saved."); }
     finally { setBusy(""); }
   }
@@ -141,8 +143,16 @@ export default function InboxView({ hub }: Props) {
   async function changeStatus(item: ReimbursementItem, status: ReimbursementStatus) {
     if (!item.WorkerManaged) { updateItem(item.Id, { Status: status, NeedsReview: status === ReimbursementStatus.ToReview }); return; }
     setBusy(item.Id); setError("");
-    try { updateItem(item.Id, await saveInvoiceStatus(hub.worker, item.Id, status)); }
+    try { const result = await saveInvoiceStatus(hub.worker, item.Id, status); updateItem(item.Id, result); setLastDecision(result.LastDecisionId || ""); setMessage("Statut enregistré dans l'historique."); }
     catch (err) { setError(err instanceof Error ? err.message : "Status could not be saved on the PC."); }
+    finally { setBusy(""); }
+  }
+
+  async function undoLastDecision() {
+    if (!lastDecision) return;
+    setBusy("undo"); setError("");
+    try { const item = await undoInvoiceDecision(hub.worker, lastDecision); updateItem(item.Id, item); setLastDecision(""); setMessage("Dernière décision annulée."); }
+    catch (err) { setError(err instanceof Error ? err.message : "La décision n'a pas pu être annulée."); }
     finally { setBusy(""); }
   }
 
@@ -278,7 +288,7 @@ export default function InboxView({ hub }: Props) {
       </section>
 
       {error && <div className="banner error">{error}</div>}
-      {message && <div className="banner success"><Check size={17} />{message}</div>}
+      {message && <div className="banner success"><Check size={17} />{message}{lastDecision && <button className="banner-action" disabled={!!busy} onClick={undoLastDecision}><RotateCcw size={14} /> Annuler</button>}</div>}
 
       <section className="surface" aria-label="Daily PC collection">
         <div className="section-heading inline"><div><span className="eyebrow">From your PC</span><h2>Daily documents</h2></div></div>
@@ -300,6 +310,28 @@ export default function InboxView({ hub }: Props) {
         <article><small>Detected pending</small><strong>{currency.format(pendingCad)}</strong><span>CAD · review amounts</span></article>
         <article><small>Archived</small><strong>{hub.reimbursements.Items.filter(item => item.ArchivedAt).length}</strong><span>to Drive</span></article>
       </section>
+
+      {!!hub.reimbursements.Reconciliations?.length && <section className="attention-ledger" aria-labelledby="attention-title">
+        <div className="section-heading inline">
+          <div><span className="eyebrow">À votre attention</span><h2 id="attention-title">Remboursements à terminer</h2></div>
+          <span className="learning-count">{hub.reimbursements.LearningDecisions || 0} décisions apprises</span>
+        </div>
+        <div className="reconciliation-list">
+          {hub.reimbursements.Reconciliations.filter(item => item.Action !== "complete").slice(0, 6).map(item => <article className="reconciliation-row" key={item.Id}>
+            <div><strong>{item.Provider || "Fournisseur à confirmer"}</strong><small>{item.Member === "unknown" ? "Personne à confirmer" : item.Member}{item.NextInsurer ? ` · prochaine étape: ${item.NextInsurer}` : ""}</small></div>
+            <p>{item.Summary}</p>
+            <div className="reconciliation-money"><strong>{item.PotentialRemaining == null ? "—" : currency.format(item.PotentialRemaining)}</strong><small>{item.PotentialRemaining == null ? "montant manquant" : "potentiel, non garanti"}</small></div>
+          </article>)}
+        </div>
+      </section>}
+
+      {!!hub.reimbursements.CleanupSuggestions?.length && <section className="surface">
+        <div className="section-heading inline"><div><span className="eyebrow">Boîte propre</span><h2>Suggestions apprises</h2></div></div>
+        {hub.reimbursements.CleanupSuggestions.slice(0, 4).map(item => <div className="cleanup-row" key={item.Fingerprint}>
+          <div><strong>{item.Sender}</strong><small>{item.Seen} décisions similaires · confiance {item.Confidence}%</small></div>
+          <p>{item.Action === "unsubscribe-with-confirmation" ? "Désabonnement suggéré — confirmation requise; aucun courriel n'a été modifié." : item.Reason}</p>
+        </div>)}
+      </section>}
 
       <section className="surface">
         <div className="section-heading inline">

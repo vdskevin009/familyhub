@@ -6,6 +6,12 @@ export type Classification = {
   kind: Kind; confidence: number; transaction: boolean;
   reimbursement: "possible" | "unknown" | "no"; reason: string;
   amount: number | null; currency: string; category: "health" | "travel" | "other";
+  member: "Kevin" | "Jasmine" | "unknown";
+  documentRole: "expense" | "insurer-statement" | "other";
+  insurer: "desjardins" | "blue-cross" | null;
+  serviceDate: string | null;
+  billedAmount: number | null;
+  reimbursedAmount: number | null;
 };
 export type Attachment = { Id: string; FileName: string; MimeType: string; Size: number };
 export type Mail = {
@@ -20,9 +26,12 @@ export type Invoice = {
   Currency: string; Confidence: number; Notes: string; Attachments: Attachment[];
   DocumentType: Kind; Reasons: string[]; WorkerManaged: true; NeedsReview: boolean;
   ReimbursementEligibility: Classification["reimbursement"]; ClassificationSource: "rules" | "codex" | "manual" | "unavailable";
-  CorrectedAt?: string; UpdatedAt: string; Fingerprint: string;
+  Member: Classification["member"]; DocumentRole: Classification["documentRole"]; Insurer: Classification["insurer"];
+  ServiceDate: string | null; BilledAmount: number | null; ReimbursedAmount: number | null;
+  AmountSource: "ai" | "email-text" | "missing"; HasUnsubscribe: boolean;
+  CorrectedAt?: string; UpdatedAt: string; Fingerprint: string; LastDecisionId?: string;
 };
-export type Correction = { account: string; fingerprint: string; kind: Kind; at: string };
+export type Correction = { account: string; fingerprint: string; kind: Kind; at: string; confirmations?: number };
 
 export function recordId(email: string, messageId: string): string {
   return createHash("sha256").update(`${email.toLowerCase()}:${messageId}`).digest("hex");
@@ -45,12 +54,18 @@ export function evidence(mail: Mail): { marketing: boolean; transaction: boolean
 
 export const classificationSchema = {
   type: "object", additionalProperties: false,
-  required: ["kind", "confidence", "transaction", "reimbursement", "reason", "amount", "currency", "category"],
+  required: ["kind", "confidence", "transaction", "reimbursement", "reason", "amount", "currency", "category", "member", "documentRole", "insurer", "serviceDate", "billedAmount", "reimbursedAmount"],
   properties: {
     kind: { type: "string", enum: kinds }, confidence: { type: "number", minimum: 0, maximum: 1 },
     transaction: { type: "boolean" }, reimbursement: { type: "string", enum: ["possible", "unknown", "no"] },
     reason: { type: "string" }, amount: { type: ["number", "null"] }, currency: { type: "string" },
-    category: { type: "string", enum: ["health", "travel", "other"] }
+    category: { type: "string", enum: ["health", "travel", "other"] },
+    member: { type: "string", enum: ["Kevin", "Jasmine", "unknown"] },
+    documentRole: { type: "string", enum: ["expense", "insurer-statement", "other"] },
+    insurer: { type: ["string", "null"], enum: ["desjardins", "blue-cross", null] },
+    serviceDate: { type: ["string", "null"] },
+    billedAmount: { type: ["number", "null"] },
+    reimbursedAmount: { type: ["number", "null"] }
   }
 };
 
@@ -59,9 +74,23 @@ export function validateClassification(input: unknown): Classification {
   if (!x || !kinds.includes(x.kind) || !Number.isFinite(x.confidence) || x.confidence < 0 || x.confidence > 1
     || typeof x.transaction !== "boolean" || !["possible", "unknown", "no"].includes(x.reimbursement)
     || typeof x.reason !== "string" || !["health", "travel", "other"].includes(x.category)
+    || !["Kevin", "Jasmine", "unknown"].includes(x.member)
+    || !["expense", "insurer-statement", "other"].includes(x.documentRole)
+    || !(x.insurer === null || x.insurer === "desjardins" || x.insurer === "blue-cross")
+    || !(x.serviceDate === null || /^\d{4}-\d{2}-\d{2}$/.test(x.serviceDate))
     || !(x.amount === null || (Number.isFinite(x.amount) && x.amount > 0 && x.amount < 1e9))
+    || !(x.billedAmount === null || (Number.isFinite(x.billedAmount) && x.billedAmount > 0 && x.billedAmount < 1e9))
+    || !(x.reimbursedAmount === null || (Number.isFinite(x.reimbursedAmount) && x.reimbursedAmount >= 0 && x.reimbursedAmount < 1e9))
     || typeof x.currency !== "string" || !/^(?:[A-Z]{3})?$/.test(x.currency)) throw new Error("Invalid classification output.");
   return { ...x, reason: x.reason.slice(0, 600) };
+}
+
+function textAmount(mail: Mail): { amount: number; currency: string } | null {
+  const value = `${mail.subject}\n${mail.text}`;
+  const match = value.match(/(?:total(?: paid)?|amount paid|montant(?: pay[eé])?|balance due|amount due)\s*[:\-]?\s*(?:(CAD|USD)\s*)?\$?\s*([0-9]{1,7}(?:[ ,.][0-9]{3})*(?:[.,][0-9]{2}))/i);
+  if (!match) return null;
+  const amount = Number(match[2].replace(/\s/g, "").replace(/,(?=\d{2}$)/, ".").replace(/,/g, ""));
+  return Number.isFinite(amount) && amount > 0 ? { amount, currency: (match[1] || "CAD").toUpperCase() } : null;
 }
 
 export function toInvoice(mail: Mail, email: string, label: string, result: Classification, source: Invoice["ClassificationSource"]): Invoice {
@@ -70,15 +99,23 @@ export function toInvoice(mail: Mail, email: string, label: string, result: Clas
   // A score is not coverage verification. Nothing is marked ready to claim by the classifier.
   // High-confidence administrative notices are useful documents even when they are not transactions.
   const needsReview = !excluded && !acceptedAdministrative && (result.confidence < .9 || source === "unavailable" || !result.transaction || !evidence(mail).transaction);
+  const fallback = result.amount == null ? textAmount(mail) : null;
+  const amount = result.amount ?? fallback?.amount ?? null;
+  const member = result.member === "unknown" && /jasmine/i.test(label) ? "Jasmine" : result.member === "unknown" && /kevin/i.test(label) ? "Kevin" : result.member;
   return {
     Id: recordId(email, mail.id), AccountLabel: label, AccountEmail: email,
     SourceMessageId: mail.id, ThreadId: mail.threadId, InternetMessageId: mail.internetMessageId,
     Subject: mail.subject, Sender: mail.sender, Provider: mail.sender.split("<")[0].replace(/"/g, "").trim(),
     ReceivedAt: mail.receivedAt, Category: result.category === "health" ? 0 : result.category === "travel" ? 1 : 2,
-    Status: excluded ? 4 : 0, DetectedAmount: result.amount, Currency: result.currency,
+    Status: excluded ? 4 : 0, DetectedAmount: amount, Currency: result.currency || fallback?.currency || "",
     Confidence: Math.round(result.confidence * 100), Notes: "", Attachments: mail.attachments,
     DocumentType: result.kind, Reasons: [result.reason], WorkerManaged: true, NeedsReview: needsReview,
     ReimbursementEligibility: result.transaction ? result.reimbursement : "unknown", ClassificationSource: source,
+    Member: member, DocumentRole: result.documentRole, Insurer: result.insurer, ServiceDate: result.serviceDate,
+    BilledAmount: result.billedAmount ?? (result.documentRole === "expense" ? amount : null),
+    ReimbursedAmount: result.reimbursedAmount ?? (result.documentRole === "insurer-statement" ? amount : null),
+    AmountSource: result.amount != null || result.billedAmount != null || result.reimbursedAmount != null ? "ai" : fallback ? "email-text" : "missing",
+    HasUnsubscribe: mail.unsubscribe,
     UpdatedAt: new Date().toISOString(), Fingerprint: fingerprint(mail)
   };
 }

@@ -1,11 +1,11 @@
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import {
   ArrowRight, CalendarCheck, CircleDollarSign, Inbox, ListChecks, MessageCircle, RefreshCw, ShoppingBasket, Sparkles
 } from "lucide-react";
-import { assistantInsights, buildAssistantContext } from "../domain";
+import { assistantInsights, buildAssistantContext, currency } from "../domain";
 import type { HubState } from "../state";
 import type { AppView } from "../types";
-import { runWorkerTask } from "../worker";
+import { fetchInvoices, runWorkerTask } from "../worker";
 
 type Props = {
   hub: HubState;
@@ -23,6 +23,24 @@ export default function TodayView({ hub, onNavigate, commandOpen, onCommandOpenC
   const [answer, setAnswer] = useState("");
   const [asking, setAsking] = useState(false);
   const workerReady = Boolean(hub.worker.Endpoint.trim() && hub.worker.ApiKey.trim());
+  const reimbursementAttention = (hub.reimbursements.Reconciliations || []).filter(item => item.Action !== "complete");
+  const potentialRecovery = reimbursementAttention.reduce((sum, item) => sum + (item.PotentialRemaining ?? 0), 0);
+
+  useEffect(() => {
+    if (!workerReady) return;
+    let cancelled = false;
+    void fetchInvoices(hub.worker).then(snapshot => {
+      if (cancelled) return;
+      hub.setReimbursements(previous => {
+        const workerKeys = new Set(snapshot.items.map(item => `${item.AccountEmail.toLowerCase()}:${item.SourceMessageId}`));
+        const browserOnly = previous.Items.filter(item => !item.WorkerManaged && !workerKeys.has(`${item.AccountEmail.toLowerCase()}:${item.SourceMessageId}`));
+        const previousById = new Map(previous.Items.map(item => [item.Id, item]));
+        const workerItems = snapshot.items.map(item => ({ ...item, DriveFileId: previousById.get(item.Id)?.DriveFileId, DrivePath: previousById.get(item.Id)?.DrivePath, ArchivedAt: previousById.get(item.Id)?.ArchivedAt }));
+        return { ...previous, SchemaVersion: 2, Items: [...browserOnly, ...workerItems], Reconciliations: snapshot.reconciliations, CleanupSuggestions: snapshot.cleanupSuggestions, LearningDecisions: snapshot.learning.decisions };
+      });
+    }).catch(() => { /* Today remains useful with the last local snapshot while the PC is offline. */ });
+    return () => { cancelled = true; };
+  }, [hub.worker.Endpoint, hub.worker.ApiKey, workerReady, hub.setReimbursements]);
 
   async function ask(event: FormEvent) {
     event.preventDefault();
@@ -59,6 +77,20 @@ export default function TodayView({ hub, onNavigate, commandOpen, onCommandOpenC
         </div>
         <div className="hero-orb"><Sparkles size={30} /></div>
       </section>
+
+      {reimbursementAttention.length > 0 && <section className="today-attention" aria-labelledby="today-attention-title">
+        <div className="attention-total">
+          <span>Remboursements à vérifier</span>
+          <strong>{currency.format(potentialRecovery)}</strong>
+          <small>Potentiel seulement — pas un montant dû ou garanti</small>
+        </div>
+        <div className="attention-next">
+          <h2 id="today-attention-title">La prochaine action utile</h2>
+          <strong>{reimbursementAttention[0].Provider || "Document à compléter"}</strong>
+          <p>{reimbursementAttention[0].Summary}</p>
+          <button className="text-action" onClick={() => onNavigate("inbox")}>Voir les preuves <ArrowRight size={16} /></button>
+        </div>
+      </section>}
 
       <section className="insight-grid" aria-label="Priority insights">
         {insights.map((insight, index) => (

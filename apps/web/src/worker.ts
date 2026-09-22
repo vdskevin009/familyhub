@@ -1,4 +1,4 @@
-import { ReimbursementItem, ResearchWatch, WorkerConfig, WorkerTask, WorkerTaskType } from "./types";
+import { CleanupSuggestion, ReconciliationCase, ReimbursementItem, ResearchWatch, WorkerConfig, WorkerTask, WorkerTaskType } from "./types";
 
 function endpoint(config: WorkerConfig, path: string): string {
   const base = config.Endpoint.trim().replace(/\/$/, "");
@@ -29,6 +29,8 @@ async function request<T>(config: WorkerConfig, path: string, init: RequestInit 
 
 export type InvoiceSnapshot = {
   items: ReimbursementItem[]; busy: boolean; setupRequired: boolean;
+  reconciliations: ReconciliationCase[]; cleanupSuggestions: CleanupSuggestion[];
+  learning: { decisions: number; undoable: Array<{ id: string; itemId: string; type: string; at: string }> };
   accounts: { email: string; label: string }[];
   progress: Record<string, { error?: string; window?: unknown; lastSuccess?: string }>;
   lastAttempt?: string; lastSuccess?: string; error?: string;
@@ -42,6 +44,9 @@ export function correctInvoice(config: WorkerConfig, id: string, kind: string): 
 }
 export function saveInvoiceStatus(config: WorkerConfig, id: string, status: number): Promise<ReimbursementItem> {
   return request(config, `/invoices/${encodeURIComponent(id)}/status`, { method: "POST", body: JSON.stringify({ status }) });
+}
+export function undoInvoiceDecision(config: WorkerConfig, decisionId: string): Promise<ReimbursementItem> {
+  return request(config, "/invoices/decisions/undo", { method: "POST", body: JSON.stringify({ decisionId }) });
 }
 export async function downloadWorkerAttachment(config: WorkerConfig, item: ReimbursementItem, index: number): Promise<void> {
   const attachment = item.Attachments[index];

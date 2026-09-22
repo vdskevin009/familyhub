@@ -19,13 +19,14 @@ The default experience is **Today**, not a collection of dashboards. FamilyHub s
 - **Today / Assistant** — prioritized household insights, quick actions, and an optional local AI assistant.
 - **Inbox** — connect two Google accounts, scan for likely bills, receipts, reimbursement items and administrative documents, heavily filter promotions/newsletters, and review before acting.
 - **Daily PC collection** — optional offline Gmail authorization, a Windows daily task, Codex classification, phone retrieval, attachment downloads and remembered corrections. Low-confidence items go to **À vérifier**. See [setup and limitations](docs/DAILY-INVOICES.md).
+- **Reimbursement attention loop** — reconciles health invoices with Desjardins and Blue Cross statements, follows the configured Kevin/Jasmine insurer order, shows the next useful action in Today, learns repeated corrections gradually, and keeps an undoable decision history.
 - **Google Drive archive** — optionally file a selected Gmail attachment into a sensible FamilyHub administrative folder using the limited `drive.file` scope.
 - **Plan** — dinner planning, recipe library, generated grocery list, and family tasks.
 - **Money** — local CSV transaction import, category summaries, recurring-merchant detection, subscription review, and Canadian mortgage scenario comparison.
 - **Opportunity radar** — saved research watches that the optional local worker can run or re-check while it is online.
 - **Portable local state** — browser-local data plus a combined JSON backup/restore flow.
 
-Nothing in the UI should pretend a purchase, claim, cancellation, message, bank connection, or external action happened when it did not.
+Nothing in the UI should pretend a purchase, claim, cancellation, unsubscribe, message, bank connection, or external action happened when it did not.
 
 ## Technology
 

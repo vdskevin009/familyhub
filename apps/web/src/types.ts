@@ -91,6 +91,15 @@ export type ReimbursementItem = {
   NeedsReview?: boolean;
   ReimbursementEligibility?: "possible" | "unknown" | "no";
   ClassificationSource?: "rules" | "codex" | "manual" | "unavailable";
+  Member?: "Kevin" | "Jasmine" | "unknown";
+  DocumentRole?: "expense" | "insurer-statement" | "other";
+  Insurer?: "desjardins" | "blue-cross" | null;
+  ServiceDate?: string | null;
+  BilledAmount?: number | null;
+  ReimbursedAmount?: number | null;
+  AmountSource?: "ai" | "email-text" | "missing";
+  HasUnsubscribe?: boolean;
+  LastDecisionId?: string;
   CorrectedAt?: string;
   UpdatedAt?: string;
   Reasons?: string[];
@@ -102,6 +111,22 @@ export type ReimbursementItem = {
 export type ReimbursementState = {
   SchemaVersion: number;
   Items: ReimbursementItem[];
+  Reconciliations?: ReconciliationCase[];
+  CleanupSuggestions?: CleanupSuggestion[];
+  LearningDecisions?: number;
+};
+
+export type ReconciliationCase = {
+  Id: string; Member: "Kevin" | "Jasmine" | "unknown"; Provider: string; ServiceDate: string | null;
+  OriginalAmount: number | null; ReimbursedAmount: number; PotentialRemaining: number | null; Currency: string;
+  NextInsurer: "Desjardins" | "Blue Cross" | null;
+  Action: "review-amount" | "submit-primary" | "submit-secondary" | "verify-balance" | "complete";
+  Summary: string; Confidence: number; DocumentIds: string[];
+};
+
+export type CleanupSuggestion = {
+  Fingerprint: string; Sender: string; Subject: string; Seen: number; Confidence: number;
+  Action: "review" | "ignore-in-familyhub" | "unsubscribe-with-confirmation"; Reason: string;
 };
 
 export type ScanStats = {

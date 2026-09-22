@@ -1,12 +1,12 @@
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { initializeInvoices, collectInvoices, correctInvoice, updateInvoiceStatus, invoiceAttachment } from '../../apps/worker/dist/invoices.js';
+import { initializeInvoices, collectInvoices, correctInvoice, updateInvoiceStatus, undoInvoiceDecision, invoiceAttachment } from '../../apps/worker/dist/invoices.js';
 import { recordId } from '../../apps/worker/dist/invoice-model.js';
 const path = join(process.env.FAMILYHUB_WORKER_DATA, 'invoices.json');
 const read = async () => JSON.parse(await readFile(path, 'utf8'));
 let fail = true; let calls = [];
-const classification = { kind: 'receipt', confidence: .97, transaction: true, reimbursement: 'unknown', reason: 'Test', amount: 40, currency: 'CAD', category: 'health' };
+const classification = { kind: 'receipt', confidence: .97, transaction: true, reimbursement: 'unknown', reason: 'Test', amount: 40, currency: 'CAD', category: 'health', member: 'Kevin', documentRole: 'expense', insurer: null, serviceDate: '2026-09-20', billedAmount: 40, reimbursedAmount: null };
 const deps = {
   credentials: async () => ({ accounts: [{ email: 'test@example.test', label: 'Test', refreshToken: 'synthetic', clientId: 'synthetic', clientSecret: 'synthetic' }] }),
   accessToken: async () => 'synthetic',
@@ -23,11 +23,16 @@ await collectInvoices(deps);
 let saved = await read();
 assert.equal(saved.items.length, 1); assert.ok(saved.accounts['test@example.test'].window); assert.equal(saved.accounts['test@example.test'].through, undefined);
 assert.match(saved.accounts['test@example.test'].error, /Synthetic/);
+delete saved.items[0].DocumentRole; delete saved.items[0].Member; delete saved.items[0].BilledAmount;
+await writeFile(path, JSON.stringify(saved)); await initializeInvoices();
+const corrected = await correctInvoice(recordId('test@example.test', 'one'), 'marketing');
+await undoInvoiceDecision(corrected.LastDecisionId);
+assert.equal((await read()).items[0].Status, 0);
 await correctInvoice(recordId('test@example.test', 'one'), 'marketing');
 fail = false; calls = [];
 await collectInvoices(deps);
-assert.equal(calls.filter(x => x.includes('/one?')).length, 0);
-saved = await read(); assert.equal(saved.items.length, 2); assert.equal(saved.items[0].Status, 4); assert.ok(saved.lastSuccess);
+assert.equal(calls.filter(x => x.includes('/one?')).length, 1); // One bounded refetch upgrades the legacy record.
+saved = await read(); assert.equal(saved.items.length, 2); assert.equal(saved.items[0].Status, 4); assert.equal(saved.items[0].DocumentRole, 'expense'); assert.ok(saved.lastSuccess);
 await updateInvoiceStatus(recordId('test@example.test', 'two'), 2);
 await collectInvoices(deps);
 saved = await read(); assert.equal(saved.items[1].Status, 2);
