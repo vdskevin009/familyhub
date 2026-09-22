@@ -220,13 +220,16 @@ export function assistantInsights(
     detail: "Clear the oldest items first so they stop getting lost in the week.", action: "plan"
   });
 
+  const reconciled = (reimbursements.Reconciliations || []).filter(item => item.Action !== "complete");
   const claims = reimbursements.Items.filter(item => !item.NeedsReview
     && (item.Status === ReimbursementStatus.ToReview || item.Status === ReimbursementStatus.ReadyToClaim)
     && (item.ReimbursementEligibility === "possible" || item.DocumentType === "claim" || item.Category === ReimbursementCategory.HealthBenefit));
-  const claimAmount = claims.filter(item => item.Currency === "CAD").reduce((sum, item) => sum + (item.DetectedAmount ?? 0), 0);
-  if (claims.length) insights.push({
-    id: "claims", tone: "money", eyebrow: "Money to recover", title: `${claims.length} reimbursement item${claims.length > 1 ? "s" : ""} waiting`,
-    detail: claimAmount > 0 ? `About ${currency.format(claimAmount)} is detected in the queue. Review before claiming.` : "Review the detected receipts and mark the useful ones ready to claim.",
+  const claimAmount = reconciled.length
+    ? reconciled.filter(item => item.Currency === "CAD").reduce((sum, item) => sum + (item.PotentialRemaining ?? 0), 0)
+    : claims.filter(item => item.Currency === "CAD").reduce((sum, item) => sum + (item.DetectedAmount ?? 0), 0);
+  if (claims.length || reconciled.length) insights.push({
+    id: "claims", tone: "money", eyebrow: "Remboursements", title: `${reconciled.length || claims.length} dossier${(reconciled.length || claims.length) > 1 ? "s" : ""} à terminer`,
+    detail: claimAmount > 0 ? `${currency.format(claimAmount)} reste potentiellement à vérifier auprès des assureurs; ce n'est pas un montant garanti.` : "Vérifiez les montants et les preuves avant toute demande.",
     action: "inbox"
   });
 
@@ -285,8 +288,10 @@ export function buildAssistantContext(
     reimbursementQueue: reimbursements.Items.filter(item => !item.NeedsReview
       && item.Status <= ReimbursementStatus.ReadyToClaim
       && (item.ReimbursementEligibility === "possible" || item.DocumentType === "claim" || item.Category === ReimbursementCategory.HealthBenefit)).map(item => ({
-      provider: item.Provider, amount: item.DetectedAmount, currency: item.Currency, type: item.DocumentType
+      provider: item.Provider, member: item.Member, amount: item.DetectedAmount, billed: item.BilledAmount, reimbursed: item.ReimbursedAmount,
+      insurer: item.Insurer, currency: item.Currency, type: item.DocumentType
     })).slice(0, 12),
+    reimbursementAttention: (reimbursements.Reconciliations || []).slice(0, 8),
     subscriptions: activeSubs.map(item => ({ name: item.Name, annualized: annualSubscriptionCost(item.Price, item.Cycle), review: item.Review })),
     mortgage: savings.Mortgage,
     mealPlan: planner.Meals,
