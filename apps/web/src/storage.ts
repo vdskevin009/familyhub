@@ -6,7 +6,8 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function mergeWithFallback<T>(fallback: T, stored: unknown): T {
   if (Array.isArray(fallback)) {
-    return (Array.isArray(stored) ? stored : fallback) as T;
+    if (!Array.isArray(stored)) return fallback as T;
+    return stored.filter(item => item !== null && item !== undefined) as T;
   }
 
   if (isRecord(fallback)) {
