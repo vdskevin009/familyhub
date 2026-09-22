@@ -96,7 +96,7 @@ export default function InboxView({ hub }: Props) {
   const [collection, setCollection] = useState<InvoiceSnapshot | null>(null);
   const [workerError, setWorkerError] = useState("");
   const [lastDecision, setLastDecision] = useState("");
-  const paired = !!hub.worker.Endpoint && !!hub.worker.ApiKey;
+  const paired = Boolean(String(hub.worker.Endpoint || "").trim() && String(hub.worker.ApiKey || "").trim());
 
   useEffect(() => {
     if (!paired) return;
@@ -109,7 +109,7 @@ export default function InboxView({ hub }: Props) {
         const snapshot = await fetchInvoices(hub.worker);
         if (cancelled) return;
         setCollection(snapshot); setWorkerError("");
-        hub.setReimbursements(previous => ({ ...previous, SchemaVersion: 2, Items: mergeItems(previous.Items, snapshot.items), Reconciliations: snapshot.reconciliations, CleanupSuggestions: snapshot.cleanupSuggestions, LearningDecisions: snapshot.learning.decisions }));
+        hub.setReimbursements(previous => ({ ...previous, SchemaVersion: 2, Items: mergeItems(previous.Items, snapshot.items), Reconciliations: snapshot.reconciliations, CleanupSuggestions: snapshot.cleanupSuggestions, LearningDecisions: Number(snapshot.learning?.decisions || 0) }));
       } catch (err) { if (!cancelled) setWorkerError(err instanceof Error ? err.message : "PC unavailable."); }
       finally { fetching = false; }
     };
@@ -124,7 +124,7 @@ export default function InboxView({ hub }: Props) {
       if (run) await collectInvoices(hub.worker);
       const snapshot = await fetchInvoices(hub.worker);
       setCollection(snapshot);
-      hub.setReimbursements(previous => ({ ...previous, SchemaVersion: 2, Items: mergeItems(previous.Items, snapshot.items), Reconciliations: snapshot.reconciliations, CleanupSuggestions: snapshot.cleanupSuggestions, LearningDecisions: snapshot.learning.decisions }));
+      hub.setReimbursements(previous => ({ ...previous, SchemaVersion: 2, Items: mergeItems(previous.Items, snapshot.items), Reconciliations: snapshot.reconciliations, CleanupSuggestions: snapshot.cleanupSuggestions, LearningDecisions: Number(snapshot.learning?.decisions || 0) }));
     } catch (err) { setWorkerError(err instanceof Error ? err.message : "PC collection failed."); }
     finally { setBusy(""); }
   }
