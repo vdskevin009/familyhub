@@ -38,6 +38,9 @@ class StartupBoundary extends React.Component<React.PropsWithChildren, StartupBo
       <main style={{ maxWidth: 640, margin: "48px auto", padding: 24, fontFamily: "system-ui, sans-serif" }}>
         <h1>FamilyHub could not start</h1>
         <p>Your saved FamilyHub data has not been erased. The app hit a startup error instead of showing the normal interface.</p>
+        <p style={{ padding: 12, border: "1px solid #c8cec9", borderRadius: 8, background: "#fff", overflowWrap: "anywhere" }}>
+          <strong>Error:</strong> {this.state.error.message || "Unknown startup error"}
+        </p>
         <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
           <button onClick={() => location.reload()}>Reload</button>
           <button onClick={this.clearAppCacheAndReload}>Clear app cache and reload</button>
