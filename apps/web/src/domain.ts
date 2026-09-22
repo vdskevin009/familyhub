@@ -6,6 +6,12 @@ import {
 
 export const currency = new Intl.NumberFormat("en-CA", { style: "currency", currency: "CAD" });
 
+function objectArray<T extends object>(value: T[] | undefined | null): T[] {
+  return Array.isArray(value)
+    ? value.filter((item): item is T => item !== null && typeof item === "object")
+    : [];
+}
+
 export function annualSubscriptionCost(price: number, cycle: BillingCycle): number {
   return price * (cycle === BillingCycle.Annual ? 1 : cycle === BillingCycle.Weekly ? 52 : 12);
 }
@@ -138,12 +144,12 @@ export function parseTransactionsCsv(text: string, sourceFile: string): Spending
 
 export function currentMonthSpend(state: SpendingState): number {
   const now = new Date();
-  return state.Transactions
+  return objectArray(state.Transactions)
     .filter(tx => {
       const date = new Date(tx.Date);
       return date.getFullYear() === now.getFullYear() && date.getMonth() === now.getMonth();
     })
-    .reduce((sum, tx) => sum + tx.Amount, 0);
+    .reduce((sum, tx) => sum + (Number.isFinite(Number(tx.Amount)) ? Number(tx.Amount) : 0), 0);
 }
 
 function merchantKey(description: string): string {
@@ -152,7 +158,7 @@ function merchantKey(description: string): string {
 
 export function recurringCandidates(state: SpendingState): Array<{ merchant: string; count: number; average: number }> {
   const map = new Map<string, number[]>();
-  for (const tx of state.Transactions) {
+  for (const tx of objectArray(state.Transactions)) {
     const key = merchantKey(tx.Description);
     if (!key) continue;
     const values = map.get(key) ?? [];
@@ -214,14 +220,19 @@ export function assistantInsights(
 ): AssistantInsight[] {
   const insights: AssistantInsight[] = [];
   const today = startOfDay(new Date());
-  const overdue = family.Entries.filter(entry => !entry.Done && startOfDay(new Date(entry.Due)) < today);
+  const familyEntries = objectArray(family.Entries);
+  const reimbursementItems = objectArray(reimbursements.Items);
+  const reconciliations = objectArray(reimbursements.Reconciliations);
+  const subscriptions = objectArray(savings.Subscriptions);
+  const meals = objectArray(planner.Meals);
+  const overdue = familyEntries.filter(entry => !entry.Done && startOfDay(new Date(entry.Due)) < today);
   if (overdue.length) insights.push({
     id: "overdue", tone: "urgent", eyebrow: "Needs attention", title: `${overdue.length} overdue plan${overdue.length > 1 ? "s" : ""}`,
     detail: "Clear the oldest items first so they stop getting lost in the week.", action: "plan"
   });
 
-  const reconciled = (reimbursements.Reconciliations || []).filter(item => item.Action !== "complete");
-  const claims = reimbursements.Items.filter(item => !item.NeedsReview
+  const reconciled = reconciliations.filter(item => item.Action !== "complete");
+  const claims = reimbursementItems.filter(item => !item.NeedsReview
     && (item.Status === ReimbursementStatus.ToReview || item.Status === ReimbursementStatus.ReadyToClaim)
     && (item.ReimbursementEligibility === "possible" || item.DocumentType === "claim" || item.Category === ReimbursementCategory.HealthBenefit));
   const claimAmount = reconciled.length
@@ -233,7 +244,7 @@ export function assistantInsights(
     action: "inbox"
   });
 
-  const activeSubs = savings.Subscriptions.filter(item => !item.Cancelled);
+  const activeSubs = subscriptions.filter(item => !item.Cancelled);
   const flagged = activeSubs.filter(item => item.Review);
   if (flagged.length) {
     const annual = flagged.reduce((sum, item) => sum + annualSubscriptionCost(item.Price, item.Cycle), 0);
@@ -252,7 +263,7 @@ export function assistantInsights(
     });
   }
 
-  if (planner.Meals.length === 0) insights.push({
+  if (meals.length === 0) insights.push({
     id: "meals", tone: "plan", eyebrow: "Make the week easier", title: "No meal plan yet",
     detail: "Build the week from your recipe list, then turn it into one grocery list.", action: "plan"
   });
@@ -277,21 +288,24 @@ export function buildAssistantContext(
   planner: PlannerState,
   spending: SpendingState
 ): string {
-  const upcoming = family.Entries.filter(entry => !entry.Done).sort((a, b) => +new Date(a.Due) - +new Date(b.Due)).slice(0, 8);
-  const activeSubs = savings.Subscriptions.filter(item => !item.Cancelled);
-  const categoryTotals = Object.entries(spending.Transactions.reduce<Record<string, number>>((acc, tx) => {
+  const upcoming = objectArray(family.Entries).filter(entry => !entry.Done).sort((a, b) => +new Date(a.Due) - +new Date(b.Due)).slice(0, 8);
+  const activeSubs = objectArray(savings.Subscriptions).filter(item => !item.Cancelled);
+  const reimbursementItems = objectArray(reimbursements.Items);
+  const reconciliations = objectArray(reimbursements.Reconciliations);
+  const spendingTransactions = objectArray(spending.Transactions);
+  const categoryTotals = Object.entries(spendingTransactions.reduce<Record<string, number>>((acc, tx) => {
     acc[tx.Category] = (acc[tx.Category] ?? 0) + tx.Amount;
     return acc;
   }, {})).sort((a, b) => b[1] - a[1]).slice(0, 8);
   return JSON.stringify({
     upcomingPlans: upcoming.map(entry => ({ title: entry.Title, due: entry.Due, kind: EntryKind[entry.Kind], owner: entry.Owner })),
-    reimbursementQueue: reimbursements.Items.filter(item => !item.NeedsReview
+    reimbursementQueue: reimbursementItems.filter(item => !item.NeedsReview
       && item.Status <= ReimbursementStatus.ReadyToClaim
       && (item.ReimbursementEligibility === "possible" || item.DocumentType === "claim" || item.Category === ReimbursementCategory.HealthBenefit)).map(item => ({
       provider: item.Provider, member: item.Member, amount: item.DetectedAmount, billed: item.BilledAmount, reimbursed: item.ReimbursedAmount,
       insurer: item.Insurer, currency: item.Currency, type: item.DocumentType
     })).slice(0, 12),
-    reimbursementAttention: (reimbursements.Reconciliations || []).slice(0, 8),
+    reimbursementAttention: reconciliations.slice(0, 8),
     subscriptions: activeSubs.map(item => ({ name: item.Name, annualized: annualSubscriptionCost(item.Price, item.Cycle), review: item.Review })),
     mortgage: savings.Mortgage,
     mealPlan: planner.Meals,

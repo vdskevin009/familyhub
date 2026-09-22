@@ -22,9 +22,13 @@ export default function TodayView({ hub, onNavigate, commandOpen, onCommandOpenC
   const [question, setQuestion] = useState("");
   const [answer, setAnswer] = useState("");
   const [asking, setAsking] = useState(false);
-  const workerReady = Boolean(hub.worker.Endpoint.trim() && hub.worker.ApiKey.trim());
-  const reimbursementAttention = (hub.reimbursements.Reconciliations || []).filter(item => item.Action !== "complete");
-  const potentialRecovery = reimbursementAttention.reduce((sum, item) => sum + (item.PotentialRemaining ?? 0), 0);
+  const workerReady = Boolean(String(hub.worker.Endpoint || "").trim() && String(hub.worker.ApiKey || "").trim());
+  const reimbursementAttention = (Array.isArray(hub.reimbursements.Reconciliations) ? hub.reimbursements.Reconciliations : [])
+    .filter(item => item && typeof item === "object" && item.Action !== "complete");
+  const potentialRecovery = reimbursementAttention.reduce((sum, item) => {
+    const value = Number(item.PotentialRemaining ?? 0);
+    return sum + (Number.isFinite(value) ? value : 0);
+  }, 0);
 
   useEffect(() => {
     if (!workerReady) return;
@@ -32,11 +36,29 @@ export default function TodayView({ hub, onNavigate, commandOpen, onCommandOpenC
     void fetchInvoices(hub.worker).then(snapshot => {
       if (cancelled) return;
       hub.setReimbursements(previous => {
-        const workerKeys = new Set(snapshot.items.map(item => `${item.AccountEmail.toLowerCase()}:${item.SourceMessageId}`));
-        const browserOnly = previous.Items.filter(item => !item.WorkerManaged && !workerKeys.has(`${item.AccountEmail.toLowerCase()}:${item.SourceMessageId}`));
-        const previousById = new Map(previous.Items.map(item => [item.Id, item]));
-        const workerItems = snapshot.items.map(item => ({ ...item, DriveFileId: previousById.get(item.Id)?.DriveFileId, DrivePath: previousById.get(item.Id)?.DrivePath, ArchivedAt: previousById.get(item.Id)?.ArchivedAt }));
-        return { ...previous, SchemaVersion: 2, Items: [...browserOnly, ...workerItems], Reconciliations: snapshot.reconciliations, CleanupSuggestions: snapshot.cleanupSuggestions, LearningDecisions: snapshot.learning.decisions };
+        const incomingItems = Array.isArray(snapshot.items) ? snapshot.items.filter(item => item && typeof item === "object") : [];
+        const previousItems = Array.isArray(previous.Items) ? previous.Items.filter(item => item && typeof item === "object") : [];
+        const itemKey = (item: { AccountEmail?: unknown; SourceMessageId?: unknown; Id?: unknown }) =>
+          `${String(item.AccountEmail || "").toLowerCase()}:${String(item.SourceMessageId || item.Id || "")}`;
+        const workerKeys = new Set(incomingItems.map(itemKey));
+        const browserOnly = previousItems.filter(item => !item.WorkerManaged && !workerKeys.has(itemKey(item)));
+        const previousById = new Map(previousItems.map(item => [String(item.Id || ""), item]));
+        const workerItems = incomingItems.map(item => ({
+          ...item,
+          AccountEmail: String(item.AccountEmail || ""),
+          SourceMessageId: String(item.SourceMessageId || item.Id || ""),
+          DriveFileId: previousById.get(String(item.Id || ""))?.DriveFileId,
+          DrivePath: previousById.get(String(item.Id || ""))?.DrivePath,
+          ArchivedAt: previousById.get(String(item.Id || ""))?.ArchivedAt
+        }));
+        return {
+          ...previous,
+          SchemaVersion: 2,
+          Items: [...browserOnly, ...workerItems],
+          Reconciliations: Array.isArray(snapshot.reconciliations) ? snapshot.reconciliations.filter(item => item && typeof item === "object") : [],
+          CleanupSuggestions: Array.isArray(snapshot.cleanupSuggestions) ? snapshot.cleanupSuggestions.filter(item => item && typeof item === "object") : [],
+          LearningDecisions: Number(snapshot.learning?.decisions || 0)
+        };
       });
     }).catch(() => { /* Today remains useful with the last local snapshot while the PC is offline. */ });
     return () => { cancelled = true; };
@@ -86,8 +108,8 @@ export default function TodayView({ hub, onNavigate, commandOpen, onCommandOpenC
         </div>
         <div className="attention-next">
           <h2 id="today-attention-title">La prochaine action utile</h2>
-          <strong>{reimbursementAttention[0].Provider || "Document à compléter"}</strong>
-          <p>{reimbursementAttention[0].Summary}</p>
+          <strong>{String(reimbursementAttention[0].Provider || "Document à compléter")}</strong>
+          <p>{String(reimbursementAttention[0].Summary || "Vérifiez les détails de ce remboursement.")}</p>
           <button className="text-action" onClick={() => onNavigate("inbox")}>Voir les preuves <ArrowRight size={16} /></button>
         </div>
       </section>}
@@ -141,15 +163,15 @@ export default function TodayView({ hub, onNavigate, commandOpen, onCommandOpenC
       <section className="pulse-card">
         <div className="pulse-item">
           <span><CalendarCheck size={18} /></span>
-          <div><strong>{hub.family.Entries.filter(item => !item.Done).length}</strong><small>open plans</small></div>
+          <div><strong>{(Array.isArray(hub.family.Entries) ? hub.family.Entries : []).filter(item => item && !item.Done).length}</strong><small>open plans</small></div>
         </div>
         <div className="pulse-item">
           <span><ListChecks size={18} /></span>
-          <div><strong>{hub.reimbursements.Items.filter(item => item.Status < 2).length}</strong><small>inbox items to review</small></div>
+          <div><strong>{(Array.isArray(hub.reimbursements.Items) ? hub.reimbursements.Items : []).filter(item => item && item.Status < 2).length}</strong><small>inbox items to review</small></div>
         </div>
         <div className="pulse-item">
           <span><ShoppingBasket size={18} /></span>
-          <div><strong>{hub.planner.GroceryItems.filter(item => !item.Checked).length}</strong><small>grocery items</small></div>
+          <div><strong>{(Array.isArray(hub.planner.GroceryItems) ? hub.planner.GroceryItems : []).filter(item => item && !item.Checked).length}</strong><small>grocery items</small></div>
         </div>
       </section>
 
