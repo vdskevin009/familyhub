@@ -5,7 +5,7 @@ import { Codex } from "@openai/codex-sdk";
 import { atomicJson, dataDirectory } from "./private-store.js";
 import { credentials, accessToken, gmail, normalizeMail, withAttachmentText, type RawMail } from "./gmail-client.js";
 import { applyCorrection, classificationSchema, evidence, fingerprint, recordId, toInvoice, validateClassification, type Classification, type Correction, type Invoice, type Mail } from "./invoice-model.js";
-import { buildCleanupSuggestions, buildReconciliations } from "./reconciliation.js";
+import { buildCleanupSuggestions, buildReconciliationSnapshot } from "./reconciliation.js";
 
 type Window = { after: number; before: number; page?: string };
 type AccountProgress = { through?: number; window?: Window; error?: string; lastSuccess?: string };
@@ -82,7 +82,9 @@ export async function initializeInvoices(): Promise<void> {
 export async function invoiceSnapshot() {
   let accounts: { email: string; label: string }[] = [];
   try { accounts = (await credentials()).accounts.map(({ email, label }) => ({ email, label })); } catch { /* Visible setup-required status. */ }
-  return { items: state.items, reconciliations: buildReconciliations(state.items), cleanupSuggestions: buildCleanupSuggestions(state.items, state.corrections),
+  const reconciliation = buildReconciliationSnapshot(state.items);
+  return { items: state.items, reconciliations: reconciliation.cases, unmatchedReimbursements: reconciliation.unmatched,
+    cleanupSuggestions: buildCleanupSuggestions(state.items, state.corrections),
     importantMail: state.items.filter(item => item.AttentionLevel && item.AttentionLevel !== "none" && item.Status !== 4)
       .sort((a, b) => attentionRank[b.AttentionLevel] - attentionRank[a.AttentionLevel] || Date.parse(b.ReceivedAt) - Date.parse(a.ReceivedAt)),
     learning: { decisions: state.decisions.filter(item => !item.undoneAt).length, undoable: state.decisions.filter(item => !item.undoneAt).slice(-10).reverse() },

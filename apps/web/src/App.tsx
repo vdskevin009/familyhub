@@ -1,19 +1,21 @@
 import { useMemo, useState } from "react";
 import {
-  CalendarDays, CircleDollarSign, Home, Inbox, MoreHorizontal, Search, Sparkles
+  CalendarDays, CircleDollarSign, HeartHandshake, Home, Mail, MoreHorizontal, Search, Sparkles
 } from "lucide-react";
 import { viewFromQuery } from "./domain";
 import { useFamilyHubState } from "./state";
 import type { AppView } from "./types";
 import TodayView from "./views/TodayView";
 import InboxView from "./views/InboxView";
+import ReimbursementsView from "./views/ReimbursementsView";
 import PlanView from "./views/PlanView";
 import MoneyView from "./views/MoneyView";
 import MoreView from "./views/MoreView";
 
-const nav: Array<{ id: AppView; label: string; icon: typeof Home }> = [
+const nav: Array<{ id: AppView; label: string; mobileLabel?: string; icon: typeof Home }> = [
   { id: "today", label: "Today", icon: Home },
-  { id: "inbox", label: "Inbox", icon: Inbox },
+  { id: "inbox", label: "Important mail", mobileLabel: "Mail", icon: Mail },
+  { id: "reimbursements", label: "Reimbursements", mobileLabel: "Claims", icon: HeartHandshake },
   { id: "plan", label: "Plan", icon: CalendarDays },
   { id: "money", label: "Money", icon: CircleDollarSign },
   { id: "more", label: "More", icon: MoreHorizontal }
@@ -71,6 +73,7 @@ export default function App() {
         <main className="app-main">
           {view === "today" && <TodayView hub={state} onNavigate={navigate} commandOpen={commandOpen} onCommandOpenChange={setCommandOpen} />}
           {view === "inbox" && <InboxView hub={state} />}
+          {view === "reimbursements" && <ReimbursementsView hub={state} />}
           {view === "plan" && <PlanView hub={state} />}
           {view === "money" && <MoneyView hub={state} />}
           {view === "more" && <MoreView hub={state} />}
@@ -83,7 +86,7 @@ export default function App() {
           return (
             <button key={item.id} className={view === item.id ? "active" : ""} onClick={() => navigate(item.id)}>
               <Icon size={21} strokeWidth={2} />
-              <span>{item.label}</span>
+              <span>{item.mobileLabel || item.label}</span>
             </button>
           );
         })}

@@ -4,7 +4,7 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { evidence, fingerprint, recordId, toInvoice, applyCorrection, validateClassification } from '../apps/worker/dist/invoice-model.js';
-import { buildReconciliations } from '../apps/worker/dist/reconciliation.js';
+import { buildReconciliationSnapshot, buildReconciliations } from '../apps/worker/dist/reconciliation.js';
 import { normalizeMail, withAttachmentText } from '../apps/worker/dist/gmail-client.js';
 
 const mail = { id: 'receipt-1', threadId: 'thread', internetMessageId: '<test@example.test>', subject: 'Your receipt', sender: 'Airline <billing@example.test>', receivedAt: '2026-09-20T12:00:00Z', text: 'Receipt #ABC123. Total paid CAD 150.00', labels: [], unsubscribe: false, bulk: false, attachments: [] };
@@ -59,7 +59,28 @@ test('reconciliation follows the two-insurer order and never presents a remainin
   const statement = toInvoice({ ...mail, id: 'eob-1', subject: 'Desjardins statement', sender: 'Desjardins', receivedAt: '2026-09-22T12:00:00Z' }, 'kevin@example.test', 'Kevin', { ...classification, kind: 'claim', category: 'health', documentRole: 'insurer-statement', insurer: 'desjardins', amount: 100, billedAmount: null, reimbursedAmount: 100 }, 'codex');
   const result = buildReconciliations([expense, statement]);
   assert.equal(result[0].PotentialRemaining, 142); assert.equal(result[0].NextInsurer, 'Blue Cross');
+  assert.equal(result[0].PrimaryReimbursedAmount, 100); assert.equal(result[0].SecondaryReimbursedAmount, 0);
+  assert.equal(result[0].Status, 'waiting-secondary');
   assert.match(result[0].Summary, /pas garanti/);
+});
+test('reconciliation leaves an ambiguous insurer statement unmatched instead of guessing', () => {
+  const first = toInvoice({ ...mail, id: 'expense-a', subject: 'Clinic receipt A' }, 'kevin@example.test', 'Kevin', { ...classification, category: 'health', amount: 200, billedAmount: 200 }, 'codex');
+  const second = toInvoice({ ...mail, id: 'expense-b', subject: 'Clinic receipt B' }, 'kevin@example.test', 'Kevin', { ...classification, category: 'health', amount: 180, billedAmount: 180 }, 'codex');
+  const statement = toInvoice({ ...mail, id: 'ambiguous-eob', subject: 'Desjardins statement', sender: 'Desjardins' }, 'kevin@example.test', 'Kevin', { ...classification, kind: 'claim', category: 'health', documentRole: 'insurer-statement', insurer: 'desjardins', amount: 80, billedAmount: null, reimbursedAmount: 80 }, 'codex');
+  const result = buildReconciliationSnapshot([first, second, statement]);
+  assert.equal(result.cases[0].ReimbursedAmount, 0);
+  assert.equal(result.cases[1].ReimbursedAmount, 0);
+  assert.deepEqual(result.unmatched, [{ DocumentId: statement.Id, Reason: 'ambiguous-match' }]);
+});
+test('fully reimbursed expenses expose primary and secondary totals separately', () => {
+  const expense = toInvoice({ ...mail, id: 'expense-full' }, 'kevin@example.test', 'Kevin', { ...classification, category: 'health', amount: 200, billedAmount: 200 }, 'codex');
+  const primary = toInvoice({ ...mail, id: 'primary-eob', subject: 'Desjardins statement' }, 'kevin@example.test', 'Kevin', { ...classification, kind: 'claim', category: 'health', documentRole: 'insurer-statement', insurer: 'desjardins', amount: 120, billedAmount: null, reimbursedAmount: 120 }, 'codex');
+  const secondary = toInvoice({ ...mail, id: 'secondary-eob', subject: 'Blue Cross statement' }, 'kevin@example.test', 'Kevin', { ...classification, kind: 'claim', category: 'health', documentRole: 'insurer-statement', insurer: 'blue-cross', amount: 80, billedAmount: null, reimbursedAmount: 80 }, 'codex');
+  const result = buildReconciliations([expense, primary, secondary])[0];
+  assert.equal(result.PrimaryReimbursedAmount, 120);
+  assert.equal(result.SecondaryReimbursedAmount, 80);
+  assert.equal(result.PotentialRemaining, 0);
+  assert.equal(result.Status, 'fully-reimbursed');
 });
 test('MIME normalization keeps source attachment identity, reads plain text, and does not treat attachment bytes as text', () => {
   const normalized = normalizeMail({ id: 'x', threadId: 't', internalDate: '1790000000000', payload: { headers: [{ name: 'Subject', value: 'Receipt' }], parts: [

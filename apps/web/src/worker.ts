@@ -1,4 +1,4 @@
-import { CleanupSuggestion, ReconciliationCase, ReimbursementItem, ResearchWatch, WorkerConfig, WorkerTask, WorkerTaskType } from "./types";
+import { CleanupSuggestion, ReconciliationCase, ReimbursementItem, ResearchWatch, UnmatchedReimbursement, WorkerConfig, WorkerTask, WorkerTaskType } from "./types";
 
 function endpoint(config: WorkerConfig, path: string): string {
   const base = config.Endpoint.trim().replace(/\/$/, "");
@@ -31,6 +31,7 @@ export type InvoiceSnapshot = {
   items: ReimbursementItem[]; busy: boolean; setupRequired: boolean;
   reconciliations: ReconciliationCase[]; cleanupSuggestions: CleanupSuggestion[];
   importantMail: ReimbursementItem[];
+  unmatchedReimbursements: UnmatchedReimbursement[];
   learning: { decisions: number; undoable: Array<{ id: string; itemId: string; type: string; at: string }> };
   accounts: { email: string; label: string }[];
   progress: Record<string, { error?: string; window?: unknown; lastSuccess?: string }>;
@@ -52,6 +53,7 @@ export async function fetchInvoices(config: WorkerConfig): Promise<InvoiceSnapsh
     reconciliations: Array.isArray(raw.reconciliations) ? raw.reconciliations : [],
     cleanupSuggestions: Array.isArray(raw.cleanupSuggestions) ? raw.cleanupSuggestions : [],
     importantMail: Array.isArray(raw.importantMail) ? raw.importantMail : [],
+    unmatchedReimbursements: Array.isArray(raw.unmatchedReimbursements) ? raw.unmatchedReimbursements : [],
     learning,
     accounts: Array.isArray(raw.accounts) ? raw.accounts : [],
     progress: raw.progress && typeof raw.progress === "object" ? raw.progress : {},
