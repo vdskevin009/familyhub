@@ -29,6 +29,6 @@ if (-not $health) {
   }
 }
 if (-not $health) { throw 'The worker could not start. Check worker-error.log; another process may already use this port.' }
-if ([version]$health.version -lt [version]'2.1.0') { throw 'An older FamilyHub worker is using this port. Restart it with the updated worker before collecting.' }
+if ([version]$health.version -lt [version]'2.3.0') { throw 'An older FamilyHub worker is using this port. Restart it with the updated worker before collecting.' }
 & $NodePath $collector
 if ($LASTEXITCODE -ne 0) { throw 'Daily collection failed. Check the account status in FamilyHub Inbox.' }

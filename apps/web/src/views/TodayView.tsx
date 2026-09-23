@@ -29,6 +29,8 @@ export default function TodayView({ hub, onNavigate, commandOpen, onCommandOpenC
     const value = Number(item.PotentialRemaining ?? 0);
     return sum + (Number.isFinite(value) ? value : 0);
   }, 0);
+  const importantMail = (Array.isArray(hub.reimbursements.ImportantMail) ? hub.reimbursements.ImportantMail : [])
+    .filter(item => item && item.AttentionLevel && item.AttentionLevel !== "none");
 
   useEffect(() => {
     if (!workerReady) return;
@@ -57,6 +59,7 @@ export default function TodayView({ hub, onNavigate, commandOpen, onCommandOpenC
           Items: [...browserOnly, ...workerItems],
           Reconciliations: Array.isArray(snapshot.reconciliations) ? snapshot.reconciliations.filter(item => item && typeof item === "object") : [],
           CleanupSuggestions: Array.isArray(snapshot.cleanupSuggestions) ? snapshot.cleanupSuggestions.filter(item => item && typeof item === "object") : [],
+          ImportantMail: Array.isArray(snapshot.importantMail) ? snapshot.importantMail.filter(item => item && typeof item === "object") : [],
           LearningDecisions: Number(snapshot.learning?.decisions || 0)
         };
       });
@@ -100,6 +103,12 @@ export default function TodayView({ hub, onNavigate, commandOpen, onCommandOpenC
         <div className="hero-orb"><Sparkles size={30} /></div>
       </section>
 
+      {importantMail.length > 0 && <section className="today-attention mail-attention" aria-labelledby="today-mail-title">
+        <div className="attention-total"><span>Important messages</span><strong>{importantMail.length}</strong><small>identified by the PC agent</small></div>
+        <div className="attention-next"><h2 id="today-mail-title">Needs your attention</h2><strong>{importantMail[0].Subject || importantMail[0].Provider}</strong>
+          <p>{importantMail[0].AttentionReason || importantMail[0].Reasons?.[0]}</p><button className="text-action" onClick={() => onNavigate("inbox")}>Review messages <ArrowRight size={16} /></button></div>
+      </section>}
+
       {reimbursementAttention.length > 0 && <section className="today-attention" aria-labelledby="today-attention-title">
         <div className="attention-total">
           <span>Remboursements à vérifier</span>
@@ -139,8 +148,8 @@ export default function TodayView({ hub, onNavigate, commandOpen, onCommandOpenC
         <div className="quick-grid">
           <button className="quick-card" onClick={() => onNavigate("inbox")}>
             <span className="quick-icon"><Inbox size={20} /></span>
-            <strong>Scan inbox</strong>
-            <small>Filter real documents from noise</small>
+            <strong>Review PC results</strong>
+            <small>Important mail and reimbursements</small>
           </button>
           <button className="quick-card" onClick={() => onNavigate("plan")}>
             <span className="quick-icon"><ShoppingBasket size={20} /></span>

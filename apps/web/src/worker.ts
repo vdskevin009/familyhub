@@ -30,6 +30,7 @@ async function request<T>(config: WorkerConfig, path: string, init: RequestInit 
 export type InvoiceSnapshot = {
   items: ReimbursementItem[]; busy: boolean; setupRequired: boolean;
   reconciliations: ReconciliationCase[]; cleanupSuggestions: CleanupSuggestion[];
+  importantMail: ReimbursementItem[];
   learning: { decisions: number; undoable: Array<{ id: string; itemId: string; type: string; at: string }> };
   accounts: { email: string; label: string }[];
   progress: Record<string, { error?: string; window?: unknown; lastSuccess?: string }>;
@@ -50,6 +51,7 @@ export async function fetchInvoices(config: WorkerConfig): Promise<InvoiceSnapsh
     setupRequired: Boolean(raw.setupRequired),
     reconciliations: Array.isArray(raw.reconciliations) ? raw.reconciliations : [],
     cleanupSuggestions: Array.isArray(raw.cleanupSuggestions) ? raw.cleanupSuggestions : [],
+    importantMail: Array.isArray(raw.importantMail) ? raw.importantMail : [],
     learning,
     accounts: Array.isArray(raw.accounts) ? raw.accounts : [],
     progress: raw.progress && typeof raw.progress === "object" ? raw.progress : {},

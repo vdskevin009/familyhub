@@ -66,9 +66,12 @@ export type ReimbursementAttachment = {
   FileName: string;
   MimeType: string;
   Size: number;
+  AnalysisStatus?: "text-extracted" | "unsupported" | "too-large" | "failed";
+  ExtractedCharacters?: number;
 };
 
 export type ReimbursementItem = {
+  AnalysisVersion?: number;
   Id: string;
   AccountLabel: string;
   AccountEmail: string;
@@ -99,6 +102,8 @@ export type ReimbursementItem = {
   ReimbursedAmount?: number | null;
   AmountSource?: "ai" | "email-text" | "missing";
   HasUnsubscribe?: boolean;
+  AttentionLevel?: "critical" | "action" | "important" | "none";
+  AttentionReason?: string;
   LastDecisionId?: string;
   CorrectedAt?: string;
   UpdatedAt?: string;
@@ -113,6 +118,7 @@ export type ReimbursementState = {
   Items: ReimbursementItem[];
   Reconciliations?: ReconciliationCase[];
   CleanupSuggestions?: CleanupSuggestion[];
+  ImportantMail?: ReimbursementItem[];
   LearningDecisions?: number;
 };
 

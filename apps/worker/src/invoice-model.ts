@@ -12,14 +12,21 @@ export type Classification = {
   serviceDate: string | null;
   billedAmount: number | null;
   reimbursedAmount: number | null;
+  attention?: "critical" | "action" | "important" | "none";
+  attentionReason?: string;
 };
-export type Attachment = { Id: string; FileName: string; MimeType: string; Size: number };
+export type Attachment = {
+  Id: string; FileName: string; MimeType: string; Size: number;
+  AnalysisStatus?: "text-extracted" | "unsupported" | "too-large" | "failed";
+  ExtractedCharacters?: number;
+};
 export type Mail = {
   id: string; threadId: string; internetMessageId: string; subject: string; sender: string;
   receivedAt: string; text: string; labels: string[]; unsubscribe: boolean; bulk: boolean;
-  attachments: Attachment[];
+  attachments: Attachment[]; attachmentText?: string;
 };
 export type Invoice = {
+  AnalysisVersion: number;
   Id: string; AccountLabel: string; AccountEmail: string; SourceMessageId: string;
   ThreadId: string; InternetMessageId: string; Subject: string; Sender: string; Provider: string;
   ReceivedAt: string; Category: number; Status: number; DetectedAmount: number | null;
@@ -29,9 +36,10 @@ export type Invoice = {
   Member: Classification["member"]; DocumentRole: Classification["documentRole"]; Insurer: Classification["insurer"];
   ServiceDate: string | null; BilledAmount: number | null; ReimbursedAmount: number | null;
   AmountSource: "ai" | "email-text" | "missing"; HasUnsubscribe: boolean;
+  AttentionLevel: "critical" | "action" | "important" | "none"; AttentionReason: string;
   CorrectedAt?: string; UpdatedAt: string; Fingerprint: string; LastDecisionId?: string;
 };
-export type Correction = { account: string; fingerprint: string; kind: Kind; at: string; confirmations?: number };
+export type Correction = { account: string; fingerprint: string; kind: Kind; at: string; confirmations?: number; sender?: string; subject?: string };
 
 export function recordId(email: string, messageId: string): string {
   return createHash("sha256").update(`${email.toLowerCase()}:${messageId}`).digest("hex");
@@ -54,7 +62,7 @@ export function evidence(mail: Mail): { marketing: boolean; transaction: boolean
 
 export const classificationSchema = {
   type: "object", additionalProperties: false,
-  required: ["kind", "confidence", "transaction", "reimbursement", "reason", "amount", "currency", "category", "member", "documentRole", "insurer", "serviceDate", "billedAmount", "reimbursedAmount"],
+  required: ["kind", "confidence", "transaction", "reimbursement", "reason", "amount", "currency", "category", "member", "documentRole", "insurer", "serviceDate", "billedAmount", "reimbursedAmount", "attention", "attentionReason"],
   properties: {
     kind: { type: "string", enum: kinds }, confidence: { type: "number", minimum: 0, maximum: 1 },
     transaction: { type: "boolean" }, reimbursement: { type: "string", enum: ["possible", "unknown", "no"] },
@@ -65,7 +73,9 @@ export const classificationSchema = {
     insurer: { type: ["string", "null"], enum: ["desjardins", "blue-cross", null] },
     serviceDate: { type: ["string", "null"] },
     billedAmount: { type: ["number", "null"] },
-    reimbursedAmount: { type: ["number", "null"] }
+    reimbursedAmount: { type: ["number", "null"] },
+    attention: { type: "string", enum: ["critical", "action", "important", "none"] },
+    attentionReason: { type: "string" }
   }
 };
 
@@ -81,12 +91,14 @@ export function validateClassification(input: unknown): Classification {
     || !(x.amount === null || (Number.isFinite(x.amount) && x.amount > 0 && x.amount < 1e9))
     || !(x.billedAmount === null || (Number.isFinite(x.billedAmount) && x.billedAmount > 0 && x.billedAmount < 1e9))
     || !(x.reimbursedAmount === null || (Number.isFinite(x.reimbursedAmount) && x.reimbursedAmount >= 0 && x.reimbursedAmount < 1e9))
+    || !["critical", "action", "important", "none"].includes(x.attention || "none")
+    || typeof (x.attentionReason ?? "") !== "string"
     || typeof x.currency !== "string" || !/^(?:[A-Z]{3})?$/.test(x.currency)) throw new Error("Invalid classification output.");
-  return { ...x, reason: x.reason.slice(0, 600) };
+  return { ...x, attention: x.attention || "none", attentionReason: (x.attentionReason || "").slice(0, 600), reason: x.reason.slice(0, 600) };
 }
 
 function textAmount(mail: Mail): { amount: number; currency: string } | null {
-  const value = `${mail.subject}\n${mail.text}`;
+  const value = `${mail.subject}\n${mail.text}\n${mail.attachmentText || ""}`;
   const match = value.match(/(?:total(?: paid)?|amount paid|montant(?: pay[eé])?|balance due|amount due)\s*[:\-]?\s*(?:(CAD|USD)\s*)?\$?\s*([0-9]{1,7}(?:[ ,.][0-9]{3})*(?:[.,][0-9]{2}))/i);
   if (!match) return null;
   const amount = Number(match[2].replace(/\s/g, "").replace(/,(?=\d{2}$)/, ".").replace(/,/g, ""));
@@ -103,6 +115,7 @@ export function toInvoice(mail: Mail, email: string, label: string, result: Clas
   const amount = result.amount ?? fallback?.amount ?? null;
   const member = result.member === "unknown" && /jasmine/i.test(label) ? "Jasmine" : result.member === "unknown" && /kevin/i.test(label) ? "Kevin" : result.member;
   return {
+    AnalysisVersion: 3,
     Id: recordId(email, mail.id), AccountLabel: label, AccountEmail: email,
     SourceMessageId: mail.id, ThreadId: mail.threadId, InternetMessageId: mail.internetMessageId,
     Subject: mail.subject, Sender: mail.sender, Provider: mail.sender.split("<")[0].replace(/"/g, "").trim(),
@@ -116,6 +129,7 @@ export function toInvoice(mail: Mail, email: string, label: string, result: Clas
     ReimbursedAmount: result.reimbursedAmount ?? (result.documentRole === "insurer-statement" ? amount : null),
     AmountSource: result.amount != null || result.billedAmount != null || result.reimbursedAmount != null ? "ai" : fallback ? "email-text" : "missing",
     HasUnsubscribe: mail.unsubscribe,
+    AttentionLevel: result.attention || "none", AttentionReason: result.attentionReason || "",
     UpdatedAt: new Date().toISOString(), Fingerprint: fingerprint(mail)
   };
 }

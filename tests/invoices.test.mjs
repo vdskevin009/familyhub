@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { evidence, fingerprint, recordId, toInvoice, applyCorrection, validateClassification } from '../apps/worker/dist/invoice-model.js';
 import { buildReconciliations } from '../apps/worker/dist/reconciliation.js';
-import { normalizeMail } from '../apps/worker/dist/gmail-client.js';
+import { normalizeMail, withAttachmentText } from '../apps/worker/dist/gmail-client.js';
 
 const mail = { id: 'receipt-1', threadId: 'thread', internetMessageId: '<test@example.test>', subject: 'Your receipt', sender: 'Airline <billing@example.test>', receivedAt: '2026-09-20T12:00:00Z', text: 'Receipt #ABC123. Total paid CAD 150.00', labels: [], unsubscribe: false, bulk: false, attachments: [] };
 const classification = { kind: 'receipt', confidence: .96, transaction: true, reimbursement: 'unknown', reason: 'Payment confirmed', amount: 150, currency: 'CAD', category: 'travel', member: 'Kevin', documentRole: 'expense', insurer: null, serviceDate: '2026-09-19', billedAmount: 150, reimbursedAmount: null };
@@ -67,6 +67,29 @@ test('MIME normalization keeps source attachment identity, reads plain text, and
     { mimeType: 'application/pdf', filename: 'receipt.pdf', body: { attachmentId: 'att-1', size: 100 } }
   ] } });
   assert.equal(normalized.text, 'Paid CAD 15'); assert.equal(normalized.attachments[0].Id, 'att-1');
+});
+
+test('the PC collector reads supported text attachment content transiently and records extraction metadata', async () => {
+  const normalized = normalizeMail({ id: 'text-attachment', threadId: 't', payload: { headers: [{ name: 'Subject', value: 'Statement' }], parts: [
+    { mimeType: 'text/csv', filename: 'statement.csv', body: { attachmentId: 'att-text', size: 42 } }
+  ] } });
+  const enriched = await withAttachmentText(normalized, 'synthetic', async (_token, path) => {
+    assert.equal(path, 'messages/text-attachment/attachments/att-text');
+    return { data: Buffer.from('provider,total\nClinic,142.00').toString('base64url') };
+  });
+  assert.match(enriched.attachmentText, /Clinic,142\.00/);
+  assert.equal(enriched.attachments[0].AnalysisStatus, 'text-extracted');
+  assert.ok(enriched.attachments[0].ExtractedCharacters > 0);
+});
+
+test('mail attention remains separate from reimbursement eligibility', () => {
+  const item = toInvoice(mail, 'a@example.test', 'Test', {
+    ...classification, kind: 'administrative', transaction: false, reimbursement: 'no', amount: null,
+    attention: 'critical', attentionReason: 'Confirm this security activity.'
+  }, 'codex');
+  assert.equal(item.AttentionLevel, 'critical');
+  assert.equal(item.ReimbursementEligibility, 'unknown');
+  assert.match(item.AttentionReason, /security/);
 });
 
 test('collection resumes an interrupted page, deduplicates, preserves manual corrections, and reports per-account failures', async () => {

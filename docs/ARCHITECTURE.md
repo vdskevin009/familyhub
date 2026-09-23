@@ -38,10 +38,12 @@ Scopes:
 - `gmail.readonly` — read candidate messages.
 - `drive.file` — create/manage only Drive files FamilyHub creates.
 
-Inbox processing is two-stage:
+When a PC worker is paired, the scheduled worker index is the authoritative Inbox source. The browser bridge's scan is retained only as an unpaired compatibility fallback. Worker processing is two-stage:
 
-1. a narrow Gmail query reduces the candidate set;
-2. deterministic local scoring rejects promotion/newsletter/bulk mail and requires stronger evidence for receipts, bills, claims and administrative documents.
+1. a bounded Gmail query reduces the candidate set while including explicit security/action signals;
+2. deterministic local scoring and Codex classification reject promotion/newsletter/bulk mail, separate important mail from reimbursements, and require stronger evidence for receipts, bills, claims and administrative documents.
+
+Supported PDF and text attachment contents are fetched and read transiently on the PC before classification. The index stores extraction status and character counts, not extracted body text. Images and scanned/image-only PDFs are not OCRed.
 
 Only the normalized local index/status is persisted. Full Gmail message bodies and attachment bytes are transient.
 
