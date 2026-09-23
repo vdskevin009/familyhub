@@ -1,4 +1,5 @@
 import { join } from "node:path";
+import { PDFParse } from "pdf-parse";
 import { loadPrivate, dataDirectory } from "./private-store.js";
 import type { Attachment, Mail } from "./invoice-model.js";
 
@@ -53,5 +54,47 @@ export function normalizeMail(raw: RawMail): Mail {
   return { id: raw.id, threadId: raw.threadId, internetMessageId: header("message-id"), subject: header("subject").slice(0, 500), sender: header("from").slice(0, 500),
     receivedAt: Number.isFinite(stamp) ? new Date(stamp).toISOString() : new Date().toISOString(),
     text: (plain.join("\n") || html.join("\n") || raw.snippet || "").slice(0, 12_000),
-    labels: raw.labelIds || [], unsubscribe: !!header("list-unsubscribe"), bulk: /bulk|list/i.test(header("precedence")), attachments: attachments.slice(0, 30) };
+    labels: raw.labelIds || [], unsubscribe: !!header("list-unsubscribe"), bulk: /bulk|list/i.test(header("precedence")), attachments: attachments.slice(0, 30), attachmentText: "" };
+}
+
+type GmailCall = <T>(token: string, path: string) => Promise<T>;
+const maxAttachmentBytes = 10_000_000;
+const maxAttachmentText = 12_000;
+
+function readableAttachment(attachment: Attachment): "pdf" | "text" | null {
+  const mime = attachment.MimeType.toLowerCase();
+  if (mime === "application/pdf" || /\.pdf$/i.test(attachment.FileName)) return "pdf";
+  if (mime.startsWith("text/") || /\.(?:txt|csv|json|xml|html?)$/i.test(attachment.FileName)) return "text";
+  return null;
+}
+
+/**
+ * Reads supported attachment contents transiently for classification. Only extraction metadata is persisted;
+ * the returned text is bounded and is never written to invoices.json.
+ */
+export async function withAttachmentText(mail: Mail, token: string, call: GmailCall = gmail): Promise<Mail> {
+  const chunks: string[] = [];
+  const attachments = await Promise.all(mail.attachments.map(async attachment => {
+    const format = readableAttachment(attachment);
+    if (!format) return { ...attachment, AnalysisStatus: "unsupported" as const };
+    if (attachment.Size > maxAttachmentBytes) return { ...attachment, AnalysisStatus: "too-large" as const };
+    try {
+      const data = await call<{ data?: string }>(token, `messages/${encodeURIComponent(mail.id)}/attachments/${encodeURIComponent(attachment.Id)}`);
+      if (!data.data) throw new Error("Attachment had no bytes.");
+      const bytes = Buffer.from(data.data, "base64url");
+      if (bytes.length > maxAttachmentBytes) return { ...attachment, AnalysisStatus: "too-large" as const };
+      let raw: string;
+      if (format === "pdf") {
+        const parser = new PDFParse({ data: new Uint8Array(bytes) });
+        try { raw = (await parser.getText()).text || ""; }
+        finally { await parser.destroy(); }
+      } else raw = bytes.toString("utf8");
+      const text = raw.replace(/\0/g, " ").replace(/\s+/g, " ").trim();
+      if (text) chunks.push(`${attachment.FileName}: ${text}`);
+      return { ...attachment, AnalysisStatus: "text-extracted" as const, ExtractedCharacters: text.length };
+    } catch {
+      return { ...attachment, AnalysisStatus: "failed" as const };
+    }
+  }));
+  return { ...mail, attachments, attachmentText: chunks.join("\n").slice(0, maxAttachmentText) };
 }

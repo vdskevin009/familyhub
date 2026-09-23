@@ -5,7 +5,7 @@ import {
 import { currency, dateLabel } from "../domain";
 import { googleBridge } from "../google";
 import type { HubState } from "../state";
-import { fetchInvoices, collectInvoices, correctInvoice, saveInvoiceStatus, undoInvoiceDecision, downloadWorkerAttachment, type InvoiceSnapshot } from "../worker";
+import { fetchInvoices, correctInvoice, saveInvoiceStatus, undoInvoiceDecision, downloadWorkerAttachment, type InvoiceSnapshot } from "../worker";
 import { ReimbursementCategory, ReimbursementItem, ReimbursementStatus, ScanStats } from "../types";
 
 type Props = { hub: HubState };
@@ -109,7 +109,7 @@ export default function InboxView({ hub }: Props) {
         const snapshot = await fetchInvoices(hub.worker);
         if (cancelled) return;
         setCollection(snapshot); setWorkerError("");
-        hub.setReimbursements(previous => ({ ...previous, SchemaVersion: 2, Items: mergeItems(previous.Items, snapshot.items), Reconciliations: snapshot.reconciliations, CleanupSuggestions: snapshot.cleanupSuggestions, LearningDecisions: Number(snapshot.learning?.decisions || 0) }));
+        hub.setReimbursements(previous => ({ ...previous, SchemaVersion: 2, Items: mergeItems(previous.Items, snapshot.items), Reconciliations: snapshot.reconciliations, CleanupSuggestions: snapshot.cleanupSuggestions, ImportantMail: snapshot.importantMail, LearningDecisions: Number(snapshot.learning?.decisions || 0) }));
       } catch (err) { if (!cancelled) setWorkerError(err instanceof Error ? err.message : "PC unavailable."); }
       finally { fetching = false; }
     };
@@ -118,13 +118,12 @@ export default function InboxView({ hub }: Props) {
     return () => { cancelled = true; window.clearInterval(timer); };
   }, [hub.worker.Endpoint, hub.worker.ApiKey, paired, hub.setReimbursements]);
 
-  async function refreshCollection(run = false) {
+  async function refreshCollection() {
     setBusy("worker"); setWorkerError("");
     try {
-      if (run) await collectInvoices(hub.worker);
       const snapshot = await fetchInvoices(hub.worker);
       setCollection(snapshot);
-      hub.setReimbursements(previous => ({ ...previous, SchemaVersion: 2, Items: mergeItems(previous.Items, snapshot.items), Reconciliations: snapshot.reconciliations, CleanupSuggestions: snapshot.cleanupSuggestions, LearningDecisions: Number(snapshot.learning?.decisions || 0) }));
+      hub.setReimbursements(previous => ({ ...previous, SchemaVersion: 2, Items: mergeItems(previous.Items, snapshot.items), Reconciliations: snapshot.reconciliations, CleanupSuggestions: snapshot.cleanupSuggestions, ImportantMail: snapshot.importantMail, LearningDecisions: Number(snapshot.learning?.decisions || 0) }));
     } catch (err) { setWorkerError(err instanceof Error ? err.message : "PC collection failed."); }
     finally { setBusy(""); }
   }
@@ -179,7 +178,8 @@ export default function InboxView({ hub }: Props) {
     })
     .sort((a, b) => +new Date(b.ReceivedAt) - +new Date(a.ReceivedAt)), [hub.reimbursements.Items, filter]);
 
-  const attention = hub.reimbursements.Items.filter(item => !item.NeedsReview && (item.Status === ReimbursementStatus.ToReview || item.Status === ReimbursementStatus.ReadyToClaim));
+  const attention = hub.reimbursements.Items.filter(item => item.AttentionLevel !== "critical" && item.AttentionLevel !== "action" && item.AttentionLevel !== "important"
+    && !item.NeedsReview && (item.Status === ReimbursementStatus.ToReview || item.Status === ReimbursementStatus.ReadyToClaim));
   const pendingCad = attention.filter(item => item.Currency === "CAD").reduce((sum, item) => sum + (item.DetectedAmount ?? 0), 0);
 
   async function connect(slot: string) {
@@ -281,8 +281,8 @@ export default function InboxView({ hub }: Props) {
       <section className="view-hero compact">
         <div>
           <span className="eyebrow">Life admin</span>
-          <h1>Inbox that filters itself.</h1>
-          <p>Scan only likely bills, receipts, claims and administrative documents. Promotions and bulk mail are scored down before they reach your queue.</p>
+          <h1>Your PC has already filtered it.</h1>
+          <p>Review the useful results prepared by the daily PC agent: important mail in one place, reimbursements in another, and noise kept out of the way.</p>
         </div>
         <span className="hero-icon"><Inbox size={26} /></span>
       </section>
@@ -291,19 +291,25 @@ export default function InboxView({ hub }: Props) {
       {message && <div className="banner success"><Check size={17} />{message}{lastDecision && <button className="banner-action" disabled={!!busy} onClick={undoLastDecision}><RotateCcw size={14} /> Annuler</button>}</div>}
 
       <section className="surface" aria-label="Daily PC collection">
-        <div className="section-heading inline"><div><span className="eyebrow">From your PC</span><h2>Daily documents</h2></div></div>
+        <div className="section-heading inline"><div><span className="eyebrow">PC agent</span><h2>Daily mailbox analysis</h2></div></div>
         {!paired ? <p>Pair your PC in More → Local AI to retrieve its daily collection here.</p> : <>
           <p>{collection?.busy ? "Collection in progress…" : collection?.lastSuccess ? `Last complete scan: ${new Date(collection.lastSuccess).toLocaleString()}` : "No completed daily scan yet."}</p>
           {collection?.setupRequired && <p>One-time setup required: connect Gmail on the PC using Connect-Gmail.ps1, then install the daily task. Browser Google connections below do not enable background collection.</p>}
           {collection?.accounts.map(account => <p key={account.email}>{account.label}: {account.email} · {collection.progress[account.email]?.error || (collection.progress[account.email]?.window ? "Backlog: will resume next run" : "Connected on PC")}</p>)}
           {(workerError || collection?.error) && <p role="status" className="banner error">{workerError || collection?.error} Previously synced documents remain available below.</p>}
-          <div className="inbox-actions">
-            <button className="mini-button" disabled={!!busy} onClick={() => refreshCollection()}>Refresh from PC</button>
-            <button className="mini-button primary" disabled={!!busy || collection?.busy || !collection || collection.setupRequired} onClick={() => refreshCollection(true)}>Collect now</button>
-          </div>
+          <div className="inbox-actions"><button className="mini-button primary" disabled={!!busy} onClick={() => refreshCollection()}>Refresh results</button></div>
         </>}
         <p className="privacy-note">The PC must be on and reachable. Email text is classified through your Codex session; Gmail is read-only. Reimbursement eligibility is a suggestion. Claims are never submitted automatically.</p>
       </section>
+
+      {!!hub.reimbursements.ImportantMail?.length && <section className="surface important-mail" aria-labelledby="important-mail-title">
+        <div className="section-heading inline"><div><span className="eyebrow">Mailbox</span><h2 id="important-mail-title">Important messages</h2></div><span className="learning-count">separate from reimbursements</span></div>
+        {hub.reimbursements.ImportantMail.slice(0, 6).map(item => <article className="important-mail-row" key={item.Id}>
+          <span className={`attention-badge ${item.AttentionLevel}`}>{item.AttentionLevel === "critical" ? "Urgent" : item.AttentionLevel === "action" ? "Action" : "Important"}</span>
+          <div><strong>{item.Subject || item.Provider}</strong><small>{item.Sender} · {dateLabel(item.ReceivedAt)}</small><p>{item.AttentionReason || item.Reasons?.[0]}</p></div>
+          <button className="mini-button" onClick={() => googleBridge.openMessage(item.AccountEmail, item.InternetMessageId, item.SourceMessageId)}><ExternalLink size={15} /> Email</button>
+        </article>)}
+      </section>}
 
       <section className="metric-row">
         <article><small>Needs attention</small><strong>{attention.length}</strong><span>documents</span></article>
@@ -333,7 +339,7 @@ export default function InboxView({ hub }: Props) {
         </div>)}
       </section>}
 
-      <section className="surface">
+      {!paired && <section className="surface">
         <div className="section-heading inline">
           <div><span className="eyebrow">Connections</span><h2>Google accounts</h2></div>
           <div className="scan-window">
@@ -384,7 +390,17 @@ export default function InboxView({ hub }: Props) {
             <span><strong>{stats.noDocumentSignal}</strong> weak signals skipped</span>
           </div>
         )}
-      </section>
+      </section>}
+
+      {paired && hub.admin.ArchiveEnabled && <section className="surface">
+        <div className="section-heading inline"><div><span className="eyebrow">Optional</span><h2>Google Drive archive access</h2></div></div>
+        <p>PC collection is authoritative. Connect a browser account here only when you want to archive a selected attachment to Drive.</p>
+        <div className="account-row">{slots.map(slot => <article className="account-pill" key={slot}>
+          <span className="account-avatar">{slot[0]}</span><div className="grow"><strong>{slot}</strong><small>{connections[slot]?.email || "Not connected for Drive"}</small></div>
+          {connections[slot] ? <button className="icon-button subtle" aria-label={`Disconnect ${slot}`} onClick={() => disconnect(slot)}><Trash2 size={16} /></button>
+            : <button className="mini-button" disabled={Boolean(busy)} onClick={() => connect(slot)}>Connect</button>}
+        </article>)}</div>
+      </section>}
 
       <section className="section-block">
         <div className="filter-tabs">
@@ -401,7 +417,7 @@ export default function InboxView({ hub }: Props) {
         </div>
 
         <div className="inbox-list">
-          {!visible.length && <div className="empty-state"><Mail size={30} /><strong>Nothing here</strong><span>Connect an account and scan, or choose another filter.</span></div>}
+          {!visible.length && <div className="empty-state"><Mail size={30} /><strong>Nothing here</strong><span>The PC agent has no matching results yet, or choose another filter.</span></div>}
           {visible.map(item => (
             <article className="inbox-card" key={item.Id}>
               <div className="inbox-leading"><FileText size={19} /></div>
@@ -425,6 +441,9 @@ export default function InboxView({ hub }: Props) {
                   </div>
                 </div>
                 {!!item.Reasons?.length && <div className="reason-row">{item.Reasons.slice(0, 3).map(reason => <span key={reason}>{reason}</span>)}</div>}
+                {!!item.Attachments?.length && <p className="attachment-analysis">{item.Attachments.filter(file => file.AnalysisStatus === "text-extracted").length
+                  ? `${item.Attachments.filter(file => file.AnalysisStatus === "text-extracted").length} attachment(s) read by the PC agent`
+                  : "Attachment content unavailable; review may still be required"}</p>}
                 {item.ReimbursementEligibility && <p>Reimbursement: {item.ReimbursementEligibility === "possible" ? "possibly eligible — verify your coverage" : item.ReimbursementEligibility === "no" ? "no eligibility identified" : "eligibility unknown"}</p>}
                 {item.WorkerManaged && <div className="inbox-actions" aria-label="Correct document classification">
                   {[["marketing", "Pub"], ["receipt", "Reçu"], ["invoice", "Facture"], ["bill", "Facture à payer"], ["claim", "Demande"], ["administrative", "Admin"], ["ignore", "Ignorer"]].map(([kind, label]) =>

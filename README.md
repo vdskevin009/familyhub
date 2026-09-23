@@ -17,8 +17,8 @@ The default experience is **Today**, not a collection of dashboards. FamilyHub s
 ## Current experience
 
 - **Today / Assistant** — prioritized household insights, quick actions, and an optional local AI assistant.
-- **Inbox** — connect two Google accounts, scan for likely bills, receipts, reimbursement items and administrative documents, heavily filter promotions/newsletters, and review before acting.
-- **Daily PC collection** — optional offline Gmail authorization, a Windows daily task, Codex classification, phone retrieval, attachment downloads and remembered corrections. Low-confidence items go to **À vérifier**. See [setup and limitations](docs/DAILY-INVOICES.md).
+- **Inbox** — review results prepared by the paired PC agent: important mail is kept separate from reimbursement work, promotions/newsletters are filtered, and uncertain items remain reviewable.
+- **Daily PC collection** — optional offline Gmail authorization, a Windows daily task, Codex classification, bounded PDF/text attachment reading, phone retrieval, attachment downloads and remembered corrections. Low-confidence items go to **À vérifier**. See [setup and limitations](docs/DAILY-INVOICES.md).
 - **Reimbursement attention loop** — reconciles health invoices with Desjardins and Blue Cross statements, follows the configured Kevin/Jasmine insurer order, shows the next useful action in Today, learns repeated corrections gradually, and keeps an undoable decision history.
 - **Google Drive archive** — optionally file a selected Gmail attachment into a sensible FamilyHub administrative folder using the limited `drive.file` scope.
 - **Plan** — dinner planning, recipe library, generated grocery list, and family tasks.
@@ -97,7 +97,7 @@ Each household account is connected independently. Tokens are short-lived and re
 - `gmail.readonly` for inbox analysis,
 - `drive.file` so it can create/manage only files and folders it creates through FamilyHub.
 
-The scan starts with a narrow Gmail query, then applies a second deterministic filter. Marketing headers, Gmail promotion labels, bulk precedence and common newsletter/sales language lower confidence or remove the candidate. A generic mention of “benefits” or “insurance” is not enough on its own to classify an email as a claim.
+The scheduled PC scan is the authoritative mailbox-analysis path when a worker is paired. It starts with a bounded Gmail query, then applies a second deterministic filter. Marketing headers, Gmail promotion labels, bulk precedence and common newsletter/sales language lower confidence or remove the candidate. A generic mention of “benefits” or “insurance” is not enough on its own to classify an email as a claim. Browser scanning remains only as an unpaired fallback for older setups.
 
 Detected amounts and document types are heuristics. Review them before filing a claim or treating them as financial records. Full message bodies and attachment bytes are not persisted by the app.
 
