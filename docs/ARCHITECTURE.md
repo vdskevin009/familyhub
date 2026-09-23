@@ -22,7 +22,8 @@ The PWA is the user-facing product. It owns navigation, local persistence, deter
 Primary areas:
 
 - **Today** — prioritizes a few actions/insights.
-- **Inbox** — Gmail triage and document review.
+- **Important Mail** — Gmail triage and document review, kept separate from reimbursement tracking.
+- **Reimbursements** — healthcare expense-to-insurer reconciliation and unmatched review.
 - **Plan** — meals, groceries, recipes and household tasks.
 - **Money** — spending imports, subscriptions and mortgage scenarios.
 - **More** — worker pairing, Drive archive settings, research watches and backup/restore.
@@ -75,6 +76,8 @@ POST /invoices/:id/correction
 POST /invoices/:id/status
 GET  /invoices/:id/attachments/:attachmentId
 ```
+
+The invoice snapshot includes reconciliation cases and unmatched insurer records. Automatic matches require strong, unambiguous member/date/provider evidence; otherwise the reimbursement remains unmatched for review.
 
 Default network binding is `127.0.0.1:4713`. A random pairing key is generated locally and required on every API request. CORS is restricted to configured FamilyHub origins.
 

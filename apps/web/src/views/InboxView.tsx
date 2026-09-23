@@ -2,8 +2,9 @@ import { useEffect, useMemo, useState } from "react";
 import {
   Archive, Check, ChevronDown, Download, ExternalLink, FileText, Inbox, Mail, RefreshCw, RotateCcw, ShieldCheck, Trash2
 } from "lucide-react";
-import { currency, dateLabel } from "../domain";
+import { dateLabel } from "../domain";
 import { googleBridge } from "../google";
+import { mergeInvoiceItems } from "../invoice-state";
 import type { HubState } from "../state";
 import { fetchInvoices, correctInvoice, saveInvoiceStatus, undoInvoiceDecision, downloadWorkerAttachment, type InvoiceSnapshot } from "../worker";
 import { ReimbursementCategory, ReimbursementItem, ReimbursementStatus, ScanStats } from "../types";
@@ -11,54 +12,9 @@ import { ReimbursementCategory, ReimbursementItem, ReimbursementStatus, ScanStat
 type Props = { hub: HubState };
 type Connection = { email: string; canArchive: boolean };
 type Connections = Record<string, Connection | undefined>;
-type Filter = "attention" | "review" | "all" | "claimed" | "archived" | "ignored";
+type Filter = "important" | "review" | "all" | "archived" | "ignored";
 
 const slots = ["Kevin", "Jasmine"];
-
-function autoTriageKnownItem(item: ReimbursementItem): ReimbursementItem {
-  if (item.ClassificationSource === "manual") return item;
-  const sender = item.Sender.toLowerCase();
-  const subject = item.Subject.trim();
-  const ignored = sender.includes("notifications@github.com")
-    || (sender.includes("janeapp.com") && /^(?:appointment reminder|thanks for booking)$/i.test(subject))
-    || (sender.includes("teeon.com") && /booking confirmation/i.test(subject))
-    || (sender.includes("communication.microsoft.com") && /terms of use/i.test(subject));
-  const administrative = (sender.includes("revolut.com") && /(?:trading t&cs|terms and conditions|t&cs)/i.test(subject))
-    || (sender.includes("td.com") && /statement.*available/i.test(subject))
-    || sender.includes("crelan.be")
-    || (sender.includes("notifications.westjet.com") && /travel with ease/i.test(subject));
-  if (!ignored && !administrative) return item;
-  const reason = ignored ? "Routine notification filtered from the document queue." : "Administrative notice recognized from sender and subject.";
-  return {
-    ...item,
-    DocumentType: ignored ? "ignore" : "administrative",
-    Status: ignored ? ReimbursementStatus.Ignored : ReimbursementStatus.ToReview,
-    NeedsReview: false,
-    ReimbursementEligibility: "no",
-    ClassificationSource: "rules",
-    Reasons: [reason, ...(item.Reasons ?? [])].slice(0, 3)
-  };
-}
-
-function mergeItems(existing: ReimbursementItem[], incoming: ReimbursementItem[]): ReimbursementItem[] {
-  const map = new Map(existing.map(item => [`${item.AccountEmail.toLowerCase()}:${item.SourceMessageId}`, item]));
-  for (const incomingItem of incoming) {
-    const next = autoTriageKnownItem(incomingItem);
-    const key = `${next.AccountEmail.toLowerCase()}:${next.SourceMessageId}`;
-    const current = map.get(key);
-    if (current?.WorkerManaged && !next.WorkerManaged) continue;
-    map.set(key, current ? {
-      ...next,
-      Id: next.WorkerManaged ? next.Id : current.Id,
-      Status: next.WorkerManaged && (current.WorkerManaged || next.Status === ReimbursementStatus.Ignored) ? next.Status : current.Status,
-      Notes: current.Notes,
-      DriveFileId: current.DriveFileId,
-      DrivePath: current.DrivePath,
-      ArchivedAt: current.ArchivedAt
-    } : next);
-  }
-  return [...map.values()];
-}
 
 function statusLabel(status: ReimbursementStatus): string {
   switch (status) {
@@ -92,7 +48,7 @@ export default function InboxView({ hub }: Props) {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [stats, setStats] = useState<ScanStats | null>(null);
-  const [filter, setFilter] = useState<Filter>("attention");
+  const [filter, setFilter] = useState<Filter>("important");
   const [collection, setCollection] = useState<InvoiceSnapshot | null>(null);
   const [workerError, setWorkerError] = useState("");
   const [lastDecision, setLastDecision] = useState("");
@@ -109,7 +65,7 @@ export default function InboxView({ hub }: Props) {
         const snapshot = await fetchInvoices(hub.worker);
         if (cancelled) return;
         setCollection(snapshot); setWorkerError("");
-        hub.setReimbursements(previous => ({ ...previous, SchemaVersion: 2, Items: mergeItems(previous.Items, snapshot.items), Reconciliations: snapshot.reconciliations, CleanupSuggestions: snapshot.cleanupSuggestions, ImportantMail: snapshot.importantMail, LearningDecisions: Number(snapshot.learning?.decisions || 0) }));
+        hub.setReimbursements(previous => ({ ...previous, SchemaVersion: 2, Items: mergeInvoiceItems(previous.Items, snapshot.items), Reconciliations: snapshot.reconciliations, CleanupSuggestions: snapshot.cleanupSuggestions, ImportantMail: snapshot.importantMail, LearningDecisions: Number(snapshot.learning?.decisions || 0), UnmatchedReimbursements: snapshot.unmatchedReimbursements }));
       } catch (err) { if (!cancelled) setWorkerError(err instanceof Error ? err.message : "PC unavailable."); }
       finally { fetching = false; }
     };
@@ -123,7 +79,7 @@ export default function InboxView({ hub }: Props) {
     try {
       const snapshot = await fetchInvoices(hub.worker);
       setCollection(snapshot);
-      hub.setReimbursements(previous => ({ ...previous, SchemaVersion: 2, Items: mergeItems(previous.Items, snapshot.items), Reconciliations: snapshot.reconciliations, CleanupSuggestions: snapshot.cleanupSuggestions, ImportantMail: snapshot.importantMail, LearningDecisions: Number(snapshot.learning?.decisions || 0) }));
+      hub.setReimbursements(previous => ({ ...previous, SchemaVersion: 2, Items: mergeInvoiceItems(previous.Items, snapshot.items), Reconciliations: snapshot.reconciliations, CleanupSuggestions: snapshot.cleanupSuggestions, ImportantMail: snapshot.importantMail, LearningDecisions: Number(snapshot.learning?.decisions || 0), UnmatchedReimbursements: snapshot.unmatchedReimbursements }));
     } catch (err) { setWorkerError(err instanceof Error ? err.message : "PC collection failed."); }
     finally { setBusy(""); }
   }
@@ -169,18 +125,13 @@ export default function InboxView({ hub }: Props) {
 
   const visible = useMemo(() => hub.reimbursements.Items
     .filter(item => {
-      if (filter === "attention") return !item.NeedsReview && (item.Status === ReimbursementStatus.ToReview || item.Status === ReimbursementStatus.ReadyToClaim);
+      if (filter === "important") return item.AttentionLevel === "critical" || item.AttentionLevel === "action" || item.AttentionLevel === "important";
       if (filter === "review") return !!item.NeedsReview && item.Status !== ReimbursementStatus.Ignored;
-      if (filter === "claimed") return item.Status === ReimbursementStatus.Claimed || item.Status === ReimbursementStatus.Reimbursed;
       if (filter === "archived") return Boolean(item.ArchivedAt);
       if (filter === "ignored") return item.Status === ReimbursementStatus.Ignored;
       return true;
     })
     .sort((a, b) => +new Date(b.ReceivedAt) - +new Date(a.ReceivedAt)), [hub.reimbursements.Items, filter]);
-
-  const attention = hub.reimbursements.Items.filter(item => item.AttentionLevel !== "critical" && item.AttentionLevel !== "action" && item.AttentionLevel !== "important"
-    && !item.NeedsReview && (item.Status === ReimbursementStatus.ToReview || item.Status === ReimbursementStatus.ReadyToClaim));
-  const pendingCad = attention.filter(item => item.Currency === "CAD").reduce((sum, item) => sum + (item.DetectedAmount ?? 0), 0);
 
   async function connect(slot: string) {
     setBusy(`connect-${slot}`);
@@ -211,7 +162,7 @@ export default function InboxView({ hub }: Props) {
       const result = await googleBridge.scan(slot, months);
       hub.setReimbursements(previous => ({
         ...previous,
-        Items: mergeItems(previous.Items, result.items)
+        Items: mergeInvoiceItems(previous.Items, result.items)
       }));
       setStats(result.stats);
       setMessage(`Scanned ${result.stats.scanned} candidate emails from ${slot}; kept ${result.stats.kept} and filtered ${result.stats.filteredNoise} likely promotions/newsletters.`);
@@ -232,7 +183,7 @@ export default function InboxView({ hub }: Props) {
     try {
       for (const slot of connectedSlots) {
         const result = await googleBridge.scan(slot, months);
-        hub.setReimbursements(previous => ({ ...previous, Items: mergeItems(previous.Items, result.items) }));
+        hub.setReimbursements(previous => ({ ...previous, Items: mergeInvoiceItems(previous.Items, result.items) }));
         aggregate.scanned += result.stats.scanned;
         aggregate.kept += result.stats.kept;
         aggregate.filteredNoise += result.stats.filteredNoise;
@@ -281,8 +232,8 @@ export default function InboxView({ hub }: Props) {
       <section className="view-hero compact">
         <div>
           <span className="eyebrow">Life admin</span>
-          <h1>Your PC has already filtered it.</h1>
-          <p>Review the useful results prepared by the daily PC agent: important mail in one place, reimbursements in another, and noise kept out of the way.</p>
+          <h1>Important mail, without the noise.</h1>
+          <p>Review time-sensitive and administrative messages prepared by the daily PC agent. Reimbursement tracking now has its own main screen.</p>
         </div>
         <span className="hero-icon"><Inbox size={26} /></span>
       </section>
@@ -302,34 +253,15 @@ export default function InboxView({ hub }: Props) {
         <p className="privacy-note">The PC must be on and reachable. Email text is classified through your Codex session; Gmail is read-only. Reimbursement eligibility is a suggestion. Claims are never submitted automatically.</p>
       </section>
 
-      {!!hub.reimbursements.ImportantMail?.length && <section className="surface important-mail" aria-labelledby="important-mail-title">
+      <section className="surface important-mail" aria-labelledby="important-mail-title">
         <div className="section-heading inline"><div><span className="eyebrow">Mailbox</span><h2 id="important-mail-title">Important messages</h2></div><span className="learning-count">separate from reimbursements</span></div>
-        {hub.reimbursements.ImportantMail.slice(0, 6).map(item => <article className="important-mail-row" key={item.Id}>
+        {!hub.reimbursements.ImportantMail?.length && <div className="empty-state"><Mail size={30} /><strong>No important mail waiting</strong><span>The PC agent will place time-sensitive messages here.</span></div>}
+        {(hub.reimbursements.ImportantMail ?? []).slice(0, 6).map(item => <article className="important-mail-row" key={item.Id}>
           <span className={`attention-badge ${item.AttentionLevel}`}>{item.AttentionLevel === "critical" ? "Urgent" : item.AttentionLevel === "action" ? "Action" : "Important"}</span>
           <div><strong>{item.Subject || item.Provider}</strong><small>{item.Sender} · {dateLabel(item.ReceivedAt)}</small><p>{item.AttentionReason || item.Reasons?.[0]}</p></div>
           <button className="mini-button" onClick={() => googleBridge.openMessage(item.AccountEmail, item.InternetMessageId, item.SourceMessageId)}><ExternalLink size={15} /> Email</button>
         </article>)}
-      </section>}
-
-      <section className="metric-row">
-        <article><small>Needs attention</small><strong>{attention.length}</strong><span>documents</span></article>
-        <article><small>Detected pending</small><strong>{currency.format(pendingCad)}</strong><span>CAD · review amounts</span></article>
-        <article><small>Archived</small><strong>{hub.reimbursements.Items.filter(item => item.ArchivedAt).length}</strong><span>to Drive</span></article>
       </section>
-
-      {!!hub.reimbursements.Reconciliations?.length && <section className="attention-ledger" aria-labelledby="attention-title">
-        <div className="section-heading inline">
-          <div><span className="eyebrow">À votre attention</span><h2 id="attention-title">Remboursements à terminer</h2></div>
-          <span className="learning-count">{hub.reimbursements.LearningDecisions || 0} décisions apprises</span>
-        </div>
-        <div className="reconciliation-list">
-          {hub.reimbursements.Reconciliations.filter(item => item.Action !== "complete").slice(0, 6).map(item => <article className="reconciliation-row" key={item.Id}>
-            <div><strong>{item.Provider || "Fournisseur à confirmer"}</strong><small>{item.Member === "unknown" ? "Personne à confirmer" : item.Member}{item.NextInsurer ? ` · prochaine étape: ${item.NextInsurer}` : ""}</small></div>
-            <p>{item.Summary}</p>
-            <div className="reconciliation-money"><strong>{item.PotentialRemaining == null ? "—" : currency.format(item.PotentialRemaining)}</strong><small>{item.PotentialRemaining == null ? "montant manquant" : "potentiel, non garanti"}</small></div>
-          </article>)}
-        </div>
-      </section>}
 
       {!!hub.reimbursements.CleanupSuggestions?.length && <section className="surface">
         <div className="section-heading inline"><div><span className="eyebrow">Boîte propre</span><h2>Suggestions apprises</h2></div></div>
@@ -405,11 +337,10 @@ export default function InboxView({ hub }: Props) {
       <section className="section-block">
         <div className="filter-tabs">
           {([
-            ["attention", "Attention"],
+            ["important", `Important (${hub.reimbursements.ImportantMail?.length || 0})`],
             ["review", `À vérifier (${hub.reimbursements.Items.filter(x => x.NeedsReview && x.Status !== ReimbursementStatus.Ignored).length})`],
             ["all", "All"],
             ["archived", "Archived"],
-            ["claimed", "Claimed"],
             ["ignored", "Ignored"]
           ] as Array<[Filter, string]>).map(([id, label]) => (
             <button key={id} className={filter === id ? "active" : ""} onClick={() => setFilter(id)}>{label}</button>

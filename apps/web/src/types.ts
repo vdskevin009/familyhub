@@ -1,4 +1,4 @@
-export type AppView = "today" | "inbox" | "plan" | "money" | "more";
+export type AppView = "today" | "inbox" | "reimbursements" | "plan" | "money" | "more";
 
 export enum EntryKind { Task = 0, Grocery = 1, Meal = 2, Appointment = 3, Reminder = 4 }
 export enum Repeat { Never = 0, Daily = 1, Weekly = 2, Monthly = 3 }
@@ -120,14 +120,23 @@ export type ReimbursementState = {
   CleanupSuggestions?: CleanupSuggestion[];
   ImportantMail?: ReimbursementItem[];
   LearningDecisions?: number;
+  UnmatchedReimbursements?: UnmatchedReimbursement[];
 };
 
 export type ReconciliationCase = {
   Id: string; Member: "Kevin" | "Jasmine" | "unknown"; Provider: string; ServiceDate: string | null;
   OriginalAmount: number | null; ReimbursedAmount: number; PotentialRemaining: number | null; Currency: string;
+  PrimaryInsurer?: "Desjardins" | "Blue Cross" | null; PrimaryReimbursedAmount?: number;
+  SecondaryInsurer?: "Desjardins" | "Blue Cross" | null; SecondaryReimbursedAmount?: number;
   NextInsurer: "Desjardins" | "Blue Cross" | null;
   Action: "review-amount" | "submit-primary" | "submit-secondary" | "verify-balance" | "complete";
+  Status?: "fully-reimbursed" | "waiting-primary" | "waiting-secondary" | "needs-attention";
   Summary: string; Confidence: number; DocumentIds: string[];
+};
+
+export type UnmatchedReimbursement = {
+  DocumentId: string;
+  Reason: "ambiguous-match" | "missing-insurer" | "needs-review" | "no-expense-match";
 };
 
 export type CleanupSuggestion = {

@@ -241,7 +241,7 @@ export function assistantInsights(
   if (claims.length || reconciled.length) insights.push({
     id: "claims", tone: "money", eyebrow: "Remboursements", title: `${reconciled.length || claims.length} dossier${(reconciled.length || claims.length) > 1 ? "s" : ""} à terminer`,
     detail: claimAmount > 0 ? `${currency.format(claimAmount)} reste potentiellement à vérifier auprès des assureurs; ce n'est pas un montant garanti.` : "Vérifiez les montants et les preuves avant toute demande.",
-    action: "inbox"
+    action: "reimbursements"
   });
 
   const activeSubs = subscriptions.filter(item => !item.Cancelled);
@@ -315,7 +315,7 @@ export function buildAssistantContext(
 
 export const viewFromQuery = (): AppView => {
   const value = new URLSearchParams(location.search).get("view");
-  return value === "inbox" || value === "plan" || value === "money" || value === "more" ? value : "today";
+  return value === "inbox" || value === "reimbursements" || value === "plan" || value === "money" || value === "more" ? value : "today";
 };
 
 export const emptyMortgage = (): MortgageScenario => ({

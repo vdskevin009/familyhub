@@ -17,9 +17,10 @@ The default experience is **Today**, not a collection of dashboards. FamilyHub s
 ## Current experience
 
 - **Today / Assistant** — prioritized household insights, quick actions, and an optional local AI assistant.
-- **Inbox** — review results prepared by the paired PC agent: important mail is kept separate from reimbursement work, promotions/newsletters are filtered, and uncertain items remain reviewable.
+- **Important Mail** — review time-sensitive and administrative results prepared by the paired PC agent; promotions/newsletters are filtered and uncertain classifications remain reviewable.
+- **Reimbursements** — a separate healthcare reconciliation screen with paid, primary-insurer, secondary-insurer and outstanding totals; one status per expense; and a visible unmatched queue when the evidence is not strong enough to link a reimbursement.
 - **Daily PC collection** — optional offline Gmail authorization, a Windows daily task, Codex classification, bounded PDF/text attachment reading, phone retrieval, attachment downloads and remembered corrections. Low-confidence items go to **À vérifier**. See [setup and limitations](docs/DAILY-INVOICES.md).
-- **Reimbursement attention loop** — reconciles health invoices with Desjardins and Blue Cross statements, follows the configured Kevin/Jasmine insurer order, shows the next useful action in Today, learns repeated corrections gradually, and keeps an undoable decision history.
+- **Reimbursement attention loop** — conservatively reconciles health invoices with Desjardins and Blue Cross statements, follows the configured Kevin/Jasmine insurer order, refuses ambiguous automatic matches, shows the next useful action in Today, learns repeated corrections gradually, and keeps an undoable decision history.
 - **Google Drive archive** — optionally file a selected Gmail attachment into a sensible FamilyHub administrative folder using the limited `drive.file` scope.
 - **Plan** — dinner planning, recipe library, generated grocery list, and family tasks.
 - **Money** — local CSV transaction import, category summaries, recurring-merchant detection, subscription review, and Canadian mortgage scenario comparison.

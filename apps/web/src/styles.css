@@ -188,6 +188,50 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 .metric-row small, .metric-row strong, .metric-row span { display: block; }
 .metric-row strong { font-size: clamp(1.35rem, 3vw, 2rem); letter-spacing: -.04em; margin: 7px 0 3px; }
 .metric-row span { color: var(--muted); font-size: .76rem; }
+.reimbursement-hero { background: linear-gradient(135deg, #173f35 0%, #245448 58%, #496f58 100%); }
+.reimbursement-summary {
+  display: grid; grid-template-columns: 1.25fr repeat(4,1fr); gap: 1px; overflow: hidden;
+  border: 1px solid #d4ddd6; border-radius: 26px; background: #d4ddd6; box-shadow: var(--shadow);
+}
+.reimbursement-summary article { min-width: 0; padding: 20px; background: rgba(255,255,255,.9); }
+.reimbursement-summary .summary-primary { background: var(--green); color: white; }
+.reimbursement-summary .summary-primary small, .reimbursement-summary .summary-primary span { color: #bdd2c8; }
+.reimbursement-summary .summary-attention { background: #fff4dc; }
+.reimbursement-summary small, .reimbursement-summary strong, .reimbursement-summary span { display: block; }
+.reimbursement-summary small { min-height: 2.4em; color: var(--muted); font-size: .76rem; font-weight: 750; line-height: 1.2; }
+.reimbursement-summary strong { margin: 8px 0 3px; font-size: clamp(1.2rem,2.4vw,1.85rem); letter-spacing: -.045em; }
+.reimbursement-summary span { color: var(--muted); font-size: .72rem; }
+.reimbursement-source { display: flex; align-items: center; gap: 18px; }
+.reimbursement-source > div { flex: 1; min-width: 0; }
+.reimbursement-source h2, .reimbursement-source p { margin-bottom: 0; }
+.reimbursement-source > small { max-width: 26ch; }
+.expense-list { display: grid; gap: 12px; margin-top: 18px; }
+.expense-card { border: 1px solid var(--line); border-radius: 20px; overflow: hidden; background: #fbfcfa; }
+.expense-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; padding: 16px 18px 13px; }
+.expense-heading strong, .expense-heading small { display: block; }
+.expense-heading small { margin-top: 4px; }
+.expense-amounts { display: grid; grid-template-columns: repeat(4,1fr); border-block: 1px solid var(--line); background: white; }
+.expense-amounts > div { min-width: 0; padding: 13px 18px; border-left: 1px solid var(--line); }
+.expense-amounts > div:first-child { border-left: 0; }
+.expense-amounts small, .expense-amounts strong { display: block; }
+.expense-amounts small { overflow: hidden; color: var(--muted); font-size: .7rem; text-overflow: ellipsis; white-space: nowrap; }
+.expense-amounts strong { margin-top: 4px; font-size: 1.05rem; }
+.expense-amounts .remaining { background: #f1f5ed; }
+.expense-note { display: flex; justify-content: space-between; gap: 18px; padding: 12px 18px; color: var(--muted); font-size: .8rem; line-height: 1.4; }
+.expense-note small { flex: 0 0 auto; }
+.reimbursement-status { display: inline-flex; align-items: center; gap: 5px; width: fit-content; border-radius: 999px; padding: 5px 9px; background: #e8ede9; color: #53675f; font-size: .7rem; font-weight: 800; white-space: nowrap; }
+.reimbursement-status.fully-reimbursed { background: #dfeee6; color: #2d7155; }
+.reimbursement-status.waiting-primary, .reimbursement-status.waiting-secondary { background: #e8ecf7; color: #465b86; }
+.reimbursement-status.needs-attention, .reimbursement-status.unmatched { background: #fff0cd; color: #805b0b; }
+.unmatched-panel.has-items { border-color: #e5d1a5; background: #fffdf7; }
+.unmatched-count { min-width: 38px; height: 38px; padding: 0 10px; border-radius: 14px; display: grid; place-items: center; background: #fff0cd; color: #805b0b; font-weight: 850; }
+.unmatched-row { display: grid; grid-template-columns: auto minmax(0,1fr) auto auto; gap: 14px; align-items: start; padding: 16px 0; border-top: 1px solid var(--line); }
+.unmatched-row:first-of-type { margin-top: 12px; }
+.unmatched-row strong, .unmatched-row small { display: block; }
+.unmatched-row small { margin-top: 3px; }
+.unmatched-row p { margin: 6px 0 0; font-size: .82rem; }
+.unmatched-amount { text-align: right; white-space: nowrap; }
+.all-matched { display: flex; align-items: center; gap: 7px; margin: 14px 0 0; color: #397159; }
 .attention-ledger { padding: 24px; border-radius: 26px; background: #e7efe1; border: 1px solid #cfddc8; }
 .learning-count { color: #4f6f60; font-size: .76rem; font-weight: 750; }
 .reconciliation-list { display: grid; gap: 1px; margin-top: 16px; overflow: hidden; border-radius: 18px; background: #ced9cb; border: 1px solid #ced9cb; }
@@ -390,7 +434,7 @@ label small { font-weight: 500; }
   .app-kicker { display: none; }
   .app-main { padding: 16px 14px calc(96px + env(safe-area-inset-bottom)); }
   .bottom-nav {
-    position: fixed; display: grid; grid-template-columns: repeat(5,1fr); inset: auto 10px max(8px, env(safe-area-inset-bottom)) 10px;
+    position: fixed; display: grid; grid-template-columns: repeat(6,1fr); inset: auto 10px max(8px, env(safe-area-inset-bottom)) 10px;
     min-height: 66px; background: rgba(247,249,247,.94); border: 1px solid rgba(207,218,211,.95); border-radius: 22px;
     box-shadow: 0 16px 40px rgba(29,55,46,.16); backdrop-filter: blur(20px); z-index: 60; padding: 5px;
   }
@@ -411,6 +455,14 @@ label small { font-weight: 500; }
   .reconciliation-row { grid-template-columns: 1fr; gap: 8px; }
   .reconciliation-money { text-align: left; }
   .metric-row { grid-template-columns: 1fr; }
+  .reimbursement-summary { grid-template-columns: repeat(2,1fr); }
+  .reimbursement-summary .summary-primary { grid-column: span 2; }
+  .reimbursement-source { align-items: stretch; flex-direction: column; }
+  .expense-amounts { grid-template-columns: 1fr 1fr; }
+  .expense-amounts > div:nth-child(3) { border-left: 0; border-top: 1px solid var(--line); }
+  .expense-amounts > div:nth-child(4) { border-top: 1px solid var(--line); }
+  .unmatched-row { grid-template-columns: 1fr auto; }
+  .unmatched-row > div:not(.unmatched-amount) { grid-column: 1 / -1; }
   .two-column, .research-layout { grid-template-columns: 1fr; }
   .account-row { grid-template-columns: 1fr; }
   .inbox-title-row { flex-direction: column; }
@@ -432,6 +484,9 @@ label small { font-weight: 500; }
   .inbox-card { grid-template-columns: 1fr; }
   .cleanup-row { grid-template-columns: 1fr; gap: 7px; }
   .important-mail-row { grid-template-columns: 1fr; gap: 8px; }
+  .expense-heading, .expense-note { align-items: flex-start; flex-direction: column; }
+  .unmatched-row { grid-template-columns: 1fr; }
+  .unmatched-amount { text-align: left; }
   .inbox-leading { display: none; }
   .form-grid { grid-template-columns: 1fr; }
   .span-two { grid-column: auto; }

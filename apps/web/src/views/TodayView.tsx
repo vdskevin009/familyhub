@@ -60,6 +60,7 @@ export default function TodayView({ hub, onNavigate, commandOpen, onCommandOpenC
           Reconciliations: Array.isArray(snapshot.reconciliations) ? snapshot.reconciliations.filter(item => item && typeof item === "object") : [],
           CleanupSuggestions: Array.isArray(snapshot.cleanupSuggestions) ? snapshot.cleanupSuggestions.filter(item => item && typeof item === "object") : [],
           ImportantMail: Array.isArray(snapshot.importantMail) ? snapshot.importantMail.filter(item => item && typeof item === "object") : [],
+          UnmatchedReimbursements: Array.isArray(snapshot.unmatchedReimbursements) ? snapshot.unmatchedReimbursements.filter(item => item && typeof item === "object") : [],
           LearningDecisions: Number(snapshot.learning?.decisions || 0)
         };
       });
@@ -119,7 +120,7 @@ export default function TodayView({ hub, onNavigate, commandOpen, onCommandOpenC
           <h2 id="today-attention-title">La prochaine action utile</h2>
           <strong>{String(reimbursementAttention[0].Provider || "Document à compléter")}</strong>
           <p>{String(reimbursementAttention[0].Summary || "Vérifiez les détails de ce remboursement.")}</p>
-          <button className="text-action" onClick={() => onNavigate("inbox")}>Voir les preuves <ArrowRight size={16} /></button>
+          <button className="text-action" onClick={() => onNavigate("reimbursements")}>Ouvrir les remboursements <ArrowRight size={16} /></button>
         </div>
       </section>}
 
@@ -148,8 +149,13 @@ export default function TodayView({ hub, onNavigate, commandOpen, onCommandOpenC
         <div className="quick-grid">
           <button className="quick-card" onClick={() => onNavigate("inbox")}>
             <span className="quick-icon"><Inbox size={20} /></span>
-            <strong>Review PC results</strong>
-            <small>Important mail and reimbursements</small>
+            <strong>Review important mail</strong>
+            <small>Time-sensitive messages</small>
+          </button>
+          <button className="quick-card" onClick={() => onNavigate("reimbursements")}>
+            <span className="quick-icon"><CircleDollarSign size={20} /></span>
+            <strong>Reconcile benefits</strong>
+            <small>Expenses and insurer payments</small>
           </button>
           <button className="quick-card" onClick={() => onNavigate("plan")}>
             <span className="quick-icon"><ShoppingBasket size={20} /></span>
