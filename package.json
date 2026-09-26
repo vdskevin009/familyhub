@@ -4,7 +4,7 @@
   "version": "2.0.0",
   "workspaces": ["apps/web", "apps/worker"],
   "scripts": {
-    "test:invoices": "npm run build:worker && node --test tests/invoices.test.mjs tests/worker-invoices.test.mjs tests/private-store.test.mjs",
+    "test:invoices": "npm run build:worker && node --test tests/invoices.test.mjs tests/worker-invoices.test.mjs tests/private-store.test.mjs tests/bluecross.test.mjs",
     "dev:web": "npm --workspace @familyhub/web run dev",
     "dev:worker": "npm --workspace @familyhub/worker run dev",
     "start:worker": "npm --workspace @familyhub/worker run start",

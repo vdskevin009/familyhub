@@ -5,7 +5,8 @@ import { Codex } from "@openai/codex-sdk";
 import { atomicJson, dataDirectory } from "./private-store.js";
 import { credentials, accessToken, gmail, normalizeMail, withAttachmentText, type RawMail } from "./gmail-client.js";
 import { applyCorrection, classificationSchema, evidence, fingerprint, recordId, toInvoice, validateClassification, type Classification, type Correction, type Invoice, type Mail } from "./invoice-model.js";
-import { buildCleanupSuggestions, buildReconciliationSnapshot } from "./reconciliation.js";
+import { buildCleanupSuggestions, buildReconciliationSnapshot, recoverMissingDesjardinsExpenses } from "./reconciliation.js";
+import { blueCrossInvoices } from "./bluecross.js";
 
 type Window = { after: number; before: number; page?: string };
 type AccountProgress = { through?: number; window?: Window; error?: string; lastSuccess?: string };
@@ -66,8 +67,12 @@ function normalizeStoredMetadata(): boolean {
   return changed;
 }
 
-function edit(action: () => void): Promise<void> {
-  const next = mutation.then(async () => { action(); await atomicJson(statePath, state); });
+function edit(action: () => void | Promise<void>): Promise<void> {
+  const next = mutation.then(async () => {
+    const before = structuredClone(state);
+    try { await action(); await atomicJson(statePath, state); }
+    catch (error) { state = before; throw error; }
+  });
   mutation = next.catch(() => {});
   return next;
 }
@@ -93,6 +98,58 @@ export async function invoiceSnapshot() {
 }
 
 const attentionRank: Record<Invoice["AttentionLevel"], number> = { critical: 3, action: 2, important: 1, none: 0 };
+
+function mergeBlueCross(items: Invoice[]): number {
+  let added = 0;
+  for (const item of [...items, ...recoverMissingDesjardinsExpenses(state.items, items)]) {
+    const index = state.items.findIndex(current => current.Id === item.Id);
+    if (index < 0) { state.items.push(item); added++; }
+    else if (!state.items[index].CorrectedAt) {
+      const current = state.items[index];
+      // Keep the first source link and all review/status choices when another copied page repeats a row.
+      state.items[index] = { ...item, AccountEmail: current.AccountEmail, SourceMessageId: current.SourceMessageId,
+        InternetMessageId: current.InternetMessageId, ThreadId: current.ThreadId, Status: current.Status,
+        Notes: current.Notes, LastDecisionId: current.LastDecisionId };
+    }
+  }
+  return added;
+}
+
+/** Authenticated, explicit re-import for long copied portal emails missed by an earlier collector. */
+export async function importBlueCrossMessages(email: unknown, messageIds: unknown, apply: unknown = false,
+  overrides: Partial<Pick<CollectionDependencies, "credentials" | "accessToken" | "gmail">> = {}) {
+  if (typeof email !== "string" || !Array.isArray(messageIds) || messageIds.length < 1 || messageIds.length > 10
+    || messageIds.some(id => typeof id !== "string" || !/^[a-f0-9]{8,40}$/i.test(id)) || typeof apply !== "boolean") throw new Error("Provide a connected account, 1–10 Gmail message IDs, and a boolean apply flag.");
+  if (busy) throw new Error("Invoice collection is already running.");
+  busy = true;
+  try {
+    const dependencies = { credentials, accessToken, gmail, ...overrides };
+    const account = (await dependencies.credentials()).accounts.find(account => account.email.toLowerCase() === email.toLowerCase());
+    if (!account) throw new Error("This Gmail account is not connected on the PC.");
+    const token = await dependencies.accessToken(account);
+    const imported: Invoice[] = [];
+    const reports = [];
+    for (const id of [...new Set(messageIds as string[])]) {
+      const mail = normalizeMail(await dependencies.gmail<RawMail>(token, `messages/${encodeURIComponent(id)}?format=full`));
+      if (!mail.blueCrossExport) throw new Error("Message does not contain a supported Blue Cross claims table. Nothing was imported.");
+      imported.push(...blueCrossInvoices(mail, account.email.toLowerCase(), account.label));
+      reports.push({ messageId: id, rows: mail.blueCrossExport.rows.length, pagePaid: mail.blueCrossExport.pagePaid,
+        totalPaid: mail.blueCrossExport.totalPaid, warning: mail.blueCrossExport.warning });
+    }
+    const unique = [...new Map(imported.map(item => [item.Id, item])).values()];
+    const rows = unique.filter(item => item.StructuredSource === "blue-cross-portal");
+    const recovered = recoverMissingDesjardinsExpenses(state.items, unique);
+    const added = [...unique, ...recovered].filter(item => !state.items.some(current => current.Id === item.Id)).length;
+    let backup: string | undefined;
+    if (apply) await edit(async () => {
+      backup = `invoices.pre-bluecross-${Date.now()}-${randomUUID()}.json`;
+      await atomicJson(join(dataDirectory, backup), state);
+      mergeBlueCross(unique);
+    });
+    return { applied: apply, reports, uniqueRows: rows.length, repeatedRows: imported.filter(item => item.StructuredSource).length - rows.length,
+      paid: Math.round(rows.reduce((sum, item) => sum + (item.ReimbursedAmount || 0), 0) * 100) / 100, newItems: added, recoveredExpenses: recovered.length, backup };
+  } finally { busy = false; }
+}
 
 export async function classify(mail: Mail, email: string, label = email, diagnostic = false): Promise<{ result: Classification; source: Invoice["ClassificationSource"] }> {
   const rule = [...state.corrections].reverse().find(x => x.account === email && x.fingerprint === fingerprint(mail));
@@ -185,6 +242,10 @@ export async function collectInvoices(overrides: Partial<CollectionDependencies>
           const needsUpgrade = existing && (existing.AnalysisVersion !== 3 || !existing.DocumentRole || !existing.Member || !("BilledAmount" in existing));
           if (existing && !needsUpgrade && (!retry || existing.ClassificationSource !== "unavailable")) return;
           const normalized = normalizeMail(await callGmail<RawMail>(token, `messages/${encodeURIComponent(id)}?format=full`));
+          if (normalized.blueCrossExport) {
+            await edit(() => { mergeBlueCross(blueCrossInvoices(normalized, key, account.label)); });
+            return;
+          }
           const mail = await withAttachmentText(normalized, token, callGmail);
           const { result, source } = await dependencies.classify(mail, key, account.label);
           const item = toInvoice(mail, key, account.label, result, source);
