@@ -42,7 +42,7 @@ export function isoDay(value: Date): string {
 
 export function dateLabel(value: string): string {
   const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric", year: "numeric" });
 }
 
 export function mortgage(balance: number, annualRate: number, years: number, months: number) {
