@@ -80,6 +80,15 @@ Rules:
 | FH-TECH-002 | Main-branch delivery must typecheck/build the React PWA and worker and run retained .NET regression checks before deployment. | Verified | CI workflow currently documents this contract. |
 | FH-TECH-003 | Current design should not require paid hosting, a hosted database or a paid AI API. | Accepted | Core architecture decision. |
 
+## Durable classification and health-ledger rules
+
+| ID | Requirement | Status | Implementation notes |
+|---|---|---|---|
+| FH-MAIL-005 | Routine GitHub/CI notifications, appointments, Cedar Hill booking messages, ordinary receipts and similar administrative mail must not be promoted to claims or “money to recover” unless the evidence actually supports that classification. | Accepted | Preserve conservative classification; corrections may refine future runs. |
+| FH-MAIL-006 | Scheduled mailbox collection should ignore Sent/Drafts and other non-inbox noise by default unless a future requirement explicitly adds them. | Implemented | Current collector direction. |
+| FH-REIMB-009 | The healthcare ledger must ingest the available family medical invoices and insurer statements, preserve original billed/reimbursed evidence, and provide refresh/import paths for missed records. | Implemented | PC collection plus targeted import/reconciliation paths exist. |
+| FH-REIMB-010 | Missing dates, amounts, providers or insurer roles must remain unknown rather than be invented. “Needs attention” should be reduced through stronger reconciliation/deduplication, not by guessing. | Accepted | Current quality goal; keep ambiguous evidence reviewable. |
+
 ## Open questions / Needs confirmation
 
 - None recorded at baseline. Add unresolved requirements here instead of guessing.
