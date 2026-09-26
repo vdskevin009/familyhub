@@ -6,7 +6,7 @@ export type Classification = {
   kind: Kind; confidence: number; transaction: boolean;
   reimbursement: "possible" | "unknown" | "no"; reason: string;
   amount: number | null; currency: string; category: "health" | "travel" | "other";
-  member: "Kevin" | "Jasmine" | "unknown";
+  member: "Kevin" | "Jasmine" | "Nathan" | "unknown";
   documentRole: "expense" | "insurer-statement" | "other";
   insurer: "desjardins" | "blue-cross" | null;
   serviceDate: string | null;
@@ -24,6 +24,7 @@ export type Mail = {
   id: string; threadId: string; internetMessageId: string; subject: string; sender: string;
   receivedAt: string; text: string; labels: string[]; unsubscribe: boolean; bulk: boolean;
   attachments: Attachment[]; attachmentText?: string;
+  blueCrossExport?: import("./bluecross.js").BlueCrossExport;
 };
 export type Invoice = {
   AnalysisVersion: number;
@@ -38,6 +39,7 @@ export type Invoice = {
   AmountSource: "ai" | "email-text" | "missing"; HasUnsubscribe: boolean;
   AttentionLevel: "critical" | "action" | "important" | "none"; AttentionReason: string;
   CorrectedAt?: string; UpdatedAt: string; Fingerprint: string; LastDecisionId?: string;
+  ImportWarning?: string; ClaimedService?: string; StatementDate?: string; StructuredSource?: "blue-cross-portal";
 };
 export type Correction = { account: string; fingerprint: string; kind: Kind; at: string; confirmations?: number; sender?: string; subject?: string };
 
@@ -68,7 +70,7 @@ export const classificationSchema = {
     transaction: { type: "boolean" }, reimbursement: { type: "string", enum: ["possible", "unknown", "no"] },
     reason: { type: "string" }, amount: { type: ["number", "null"] }, currency: { type: "string" },
     category: { type: "string", enum: ["health", "travel", "other"] },
-    member: { type: "string", enum: ["Kevin", "Jasmine", "unknown"] },
+    member: { type: "string", enum: ["Kevin", "Jasmine", "Nathan", "unknown"] },
     documentRole: { type: "string", enum: ["expense", "insurer-statement", "other"] },
     insurer: { type: ["string", "null"], enum: ["desjardins", "blue-cross", null] },
     serviceDate: { type: ["string", "null"] },
@@ -84,7 +86,7 @@ export function validateClassification(input: unknown): Classification {
   if (!x || !kinds.includes(x.kind) || !Number.isFinite(x.confidence) || x.confidence < 0 || x.confidence > 1
     || typeof x.transaction !== "boolean" || !["possible", "unknown", "no"].includes(x.reimbursement)
     || typeof x.reason !== "string" || !["health", "travel", "other"].includes(x.category)
-    || !["Kevin", "Jasmine", "unknown"].includes(x.member)
+    || !["Kevin", "Jasmine", "Nathan", "unknown"].includes(x.member)
     || !["expense", "insurer-statement", "other"].includes(x.documentRole)
     || !(x.insurer === null || x.insurer === "desjardins" || x.insurer === "blue-cross")
     || !(x.serviceDate === null || /^\d{4}-\d{2}-\d{2}$/.test(x.serviceDate))

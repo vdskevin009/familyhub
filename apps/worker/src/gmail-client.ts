@@ -2,6 +2,7 @@ import { join } from "node:path";
 import { PDFParse } from "pdf-parse";
 import { loadPrivate, dataDirectory } from "./private-store.js";
 import type { Attachment, Mail } from "./invoice-model.js";
+import { parseBlueCrossExport } from "./bluecross.js";
 
 export type GmailAccount = { email: string; label: string; clientId: string; clientSecret: string; refreshToken: string };
 export type GmailCredentials = { accounts: GmailAccount[] };
@@ -39,13 +40,16 @@ export type RawMail = { id: string; threadId: string; internalDate?: string; lab
 export function normalizeMail(raw: RawMail): Mail {
   const header = (name: string) => raw.payload?.headers?.find(h => h.name.toLowerCase() === name.toLowerCase())?.value || "";
   const attachments: Attachment[] = [];
-  const plain: string[] = []; const html: string[] = [];
+  const plain: string[] = []; const html: string[] = []; const rawHtml: string[] = [];
   const walk = (part: Part) => {
     if (part.filename && part.body?.attachmentId) attachments.push({ Id: part.body.attachmentId, FileName: part.filename.slice(0, 255), MimeType: part.mimeType || "application/octet-stream", Size: part.body.size || 0 });
     if (!part.filename && part.body?.data) {
       const decoded = Buffer.from(part.body.data, "base64url").toString("utf8");
       if (part.mimeType === "text/plain") plain.push(decoded);
-      else if (part.mimeType === "text/html") html.push(decoded.replace(/<script[\s\S]*?<\/script>|<style[\s\S]*?<\/style>/gi, " ").replace(/<[^>]+>/g, " ").replace(/&nbsp;|&amp;|&#\d+;/g, " "));
+      else if (part.mimeType === "text/html") {
+        rawHtml.push(decoded);
+        html.push(decoded.replace(/<script[\s\S]*?<\/script>|<style[\s\S]*?<\/style>/gi, " ").replace(/<[^>]+>/g, " ").replace(/&nbsp;|&amp;|&#\d+;/g, " "));
+      }
     }
     for (const child of part.parts || []) walk(child);
   };
@@ -54,7 +58,9 @@ export function normalizeMail(raw: RawMail): Mail {
   return { id: raw.id, threadId: raw.threadId, internetMessageId: header("message-id"), subject: header("subject").slice(0, 500), sender: header("from").slice(0, 500),
     receivedAt: Number.isFinite(stamp) ? new Date(stamp).toISOString() : new Date().toISOString(),
     text: (plain.join("\n") || html.join("\n") || raw.snippet || "").slice(0, 12_000),
-    labels: raw.labelIds || [], unsubscribe: !!header("list-unsubscribe"), bulk: /bulk|list/i.test(header("precedence")), attachments: attachments.slice(0, 30), attachmentText: "" };
+    labels: raw.labelIds || [], unsubscribe: !!header("list-unsubscribe"), bulk: /bulk|list/i.test(header("precedence")), attachments: attachments.slice(0, 30), attachmentText: "",
+    blueCrossExport: /blue\s*cross|croix\s*bleue/i.test(header("subject"))
+      ? parseBlueCrossExport(plain.join("\n")) || parseBlueCrossExport(rawHtml.join("\n")) : undefined };
 }
 
 type GmailCall = <T>(token: string, path: string) => Promise<T>;
