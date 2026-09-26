@@ -12,6 +12,18 @@ For every user-requested product change:
 - record unresolved ambiguity under **Open questions / Needs confirmation** instead of inventing behavior;
 - after merge/verification, update the requirement code reference so the document stays aligned with the repository.
 
+## Automatic GitHub work tracking
+
+Apply the cross-project workflow defined by `vdskevin009/ai-control-plane` automatically. Kevin does not need to explicitly ask for tracking.
+
+For every software request:
+- search for an existing matching open Issue; update/use it if present, otherwise create a new Issue in this repository before or during implementation;
+- use the Issue as the operational work item and keep its status truthful (`Backlog → Ready → In Progress → Testing → Verified → Done`, or the closest available equivalent);
+- update `REQUIREMENTS.md` only when the request creates or changes durable product, business, architecture, safety, or long-lived behavioral truth;
+- reference the Issue from implementation PRs/commits and reference affected requirement IDs when applicable;
+- do not treat merge as verification; run applicable checks and keep partial, blocked, unsafe, or unverified work open with an explicit explanation;
+- never leave an accepted software request only in chat.
+
 Read README.md and docs/ARCHITECTURE.md before changing the product.
 
 The deployed UI is React + TypeScript + Vite in `apps/web`. The optional local Codex worker is in `apps/worker`. The older .NET/Blazor projects under `src` are retained during migration and their executable regression tests still run in CI.
