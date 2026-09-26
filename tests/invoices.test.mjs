@@ -56,7 +56,7 @@ test('reject malformed AI amounts, currency and confidence', () => {
 });
 test('reconciliation follows the two-insurer order and never presents a remaining balance as guaranteed', () => {
   const expense = toInvoice(mail, 'kevin@example.test', 'Kevin', { ...classification, category: 'health', amount: 242, billedAmount: 242 }, 'codex');
-  const statement = toInvoice({ ...mail, id: 'eob-1', subject: 'Desjardins statement', sender: 'Desjardins', receivedAt: '2026-09-22T12:00:00Z' }, 'kevin@example.test', 'Kevin', { ...classification, kind: 'claim', category: 'health', documentRole: 'insurer-statement', insurer: 'desjardins', amount: 100, billedAmount: null, reimbursedAmount: 100 }, 'codex');
+  const statement = toInvoice({ ...mail, id: 'eob-1', subject: 'Desjardins statement: Airline', sender: 'Desjardins', receivedAt: '2026-09-22T12:00:00Z' }, 'kevin@example.test', 'Kevin', { ...classification, kind: 'claim', category: 'health', documentRole: 'insurer-statement', insurer: 'desjardins', amount: 100, billedAmount: null, reimbursedAmount: 100 }, 'codex');
   const result = buildReconciliations([expense, statement]);
   assert.equal(result[0].PotentialRemaining, 142); assert.equal(result[0].NextInsurer, 'Blue Cross');
   assert.equal(result[0].PrimaryReimbursedAmount, 100); assert.equal(result[0].SecondaryReimbursedAmount, 0);
@@ -66,7 +66,7 @@ test('reconciliation follows the two-insurer order and never presents a remainin
 test('reconciliation leaves an ambiguous insurer statement unmatched instead of guessing', () => {
   const first = toInvoice({ ...mail, id: 'expense-a', subject: 'Clinic receipt A' }, 'kevin@example.test', 'Kevin', { ...classification, category: 'health', amount: 200, billedAmount: 200 }, 'codex');
   const second = toInvoice({ ...mail, id: 'expense-b', subject: 'Clinic receipt B' }, 'kevin@example.test', 'Kevin', { ...classification, category: 'health', amount: 180, billedAmount: 180 }, 'codex');
-  const statement = toInvoice({ ...mail, id: 'ambiguous-eob', subject: 'Desjardins statement', sender: 'Desjardins' }, 'kevin@example.test', 'Kevin', { ...classification, kind: 'claim', category: 'health', documentRole: 'insurer-statement', insurer: 'desjardins', amount: 80, billedAmount: null, reimbursedAmount: 80 }, 'codex');
+  const statement = toInvoice({ ...mail, id: 'ambiguous-eob', subject: 'Desjardins statement: Airline', sender: 'Desjardins' }, 'kevin@example.test', 'Kevin', { ...classification, kind: 'claim', category: 'health', documentRole: 'insurer-statement', insurer: 'desjardins', amount: 80, billedAmount: null, reimbursedAmount: 80 }, 'codex');
   const result = buildReconciliationSnapshot([first, second, statement]);
   assert.equal(result.cases[0].ReimbursedAmount, 0);
   assert.equal(result.cases[1].ReimbursedAmount, 0);

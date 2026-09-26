@@ -4,7 +4,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { Codex } from "@openai/codex-sdk";
-import { initializeInvoices, invoiceSnapshot, collectInvoices, correctInvoice, updateInvoiceStatus, undoInvoiceDecision, invoiceAttachment } from "./invoices.js";
+import { initializeInvoices, invoiceSnapshot, collectInvoices, correctInvoice, updateInvoiceStatus, undoInvoiceDecision, invoiceAttachment, importBlueCrossMessages } from "./invoices.js";
 
 type WorkerTaskType = "general" | "meal-plan" | "research" | "financial-review" | "admin-classify";
 type WorkerTask = {
@@ -30,7 +30,7 @@ type ResearchWatch = {
 };
 type PersistedState = { watches: ResearchWatch[] };
 
-const version = "2.3.0";
+const version = "2.4.0";
 const host = process.env.FAMILYHUB_WORKER_HOST?.trim() || "127.0.0.1";
 const port = Number(process.env.FAMILYHUB_WORKER_PORT || "4713");
 const stateDir = process.env.FAMILYHUB_WORKER_DATA?.trim() || join(homedir(), ".familyhub-worker");
@@ -210,6 +210,10 @@ const server = createServer(async (request, response) => {
   const parts = pathParts(request.url);
   try {
     if (parts[0] === "invoices") {
+      if (request.method === "POST" && parts.length === 2 && parts[1] === "import-bluecross") {
+        const body = await readJson<{ email?: unknown; messageIds?: unknown; apply?: unknown }>(request);
+        json(response, 200, await importBlueCrossMessages(body.email, body.messageIds, body.apply ?? false), origin); return;
+      }
       if (request.method === "GET" && parts.length === 1) {
         json(response, 200, await invoiceSnapshot(), origin); return;
       }

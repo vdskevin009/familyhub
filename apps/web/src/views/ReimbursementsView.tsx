@@ -84,7 +84,9 @@ export default function ReimbursementsView({ hub }: Props) {
     const secondary = cad.reduce((sum, item) => sum + (item.SecondaryReimbursedAmount ?? 0), 0);
     const outstanding = cad.reduce((sum, item) => sum + (item.PotentialRemaining ?? 0), 0);
     const attention = cases.filter(item => caseStatus(item) !== "fully-reimbursed").length + unmatched.length;
-    return { cases, unmatched, totalPaid, primary, secondary, outstanding, attention };
+    const warnings = [...new Set(hub.reimbursements.Items.filter(item => item.Status !== 4).map(item => item.ImportWarning).filter(Boolean))];
+    const unallocated = cad.reduce((sum, item) => sum + (item.UnallocatedReimbursedAmount ?? 0), 0);
+    return { cases, unmatched, totalPaid, primary, secondary, outstanding, attention, warnings, unallocated };
   }, [hub.reimbursements.Items, hub.reimbursements.Reconciliations, hub.reimbursements.UnmatchedReimbursements]);
 
   return <div className="view-stack">
@@ -98,6 +100,7 @@ export default function ReimbursementsView({ hub }: Props) {
     </section>
 
     {error && <div className="banner error" role="status"><AlertTriangle size={17} />{error} — Previously synced results remain below.</div>}
+    {model.warnings.map(warning => <div className="banner" role="status" key={warning}><AlertTriangle size={17} />{warning}</div>)}
 
     <section className="reimbursement-summary" aria-label="Reimbursement summary">
       <article className="summary-primary"><small>Total paid</small><strong>{money(model.totalPaid)}</strong><span>healthcare expenses</span></article>
@@ -106,6 +109,8 @@ export default function ReimbursementsView({ hub }: Props) {
       <article><small>Still to recover</small><strong>{money(model.outstanding)}</strong><span>outstanding · verify</span></article>
       <article className={model.attention ? "summary-attention" : ""}><small>Needs attention</small><strong>{model.attention}</strong><span>items</span></article>
     </section>
+
+    {model.unallocated > 0 && <p className="privacy-note">{money(model.unallocated)} in matched payments has no confirmed primary/secondary order and is excluded from those two totals. See the flagged expense rows.</p>}
 
     <section className="surface reimbursement-source">
       <div>
@@ -139,6 +144,7 @@ export default function ReimbursementsView({ hub }: Props) {
               <div><small>{item.SecondaryInsurer || "Secondary"}</small><strong>{money(item.SecondaryReimbursedAmount ?? 0, item.Currency)}</strong></div>
               <div className="remaining"><small>Remaining</small><strong>{money(item.PotentialRemaining, item.Currency)}</strong></div>
             </div>
+            {!!item.UnallocatedReimbursedAmount && <p className="privacy-note">Known payments: {money(item.UnallocatedReimbursedAmount, item.Currency)} · insurer order to confirm</p>}
             <div className="expense-note"><span>{item.Summary}</span><small>Match confidence {Math.round(item.Confidence)}%</small></div>
           </article>;
         })}
@@ -150,7 +156,7 @@ export default function ReimbursementsView({ hub }: Props) {
       {!model.unmatched.length && <p className="all-matched"><CheckCircle2 size={17} /> No unmatched reimbursement records.</p>}
       {model.unmatched.map(({ result, item }) => <article className="unmatched-row" key={result.DocumentId}>
         <span className="reimbursement-status unmatched">Unmatched</span>
-        <div><strong>{item.Provider || item.Subject || "Insurer record"}</strong><small>{item.Insurer === "blue-cross" ? "Blue Cross" : item.Insurer === "desjardins" ? "Desjardins" : "Insurer unknown"} · {dateLabel(item.ReceivedAt)}</small><p>{unmatchedReason(result)}</p></div>
+        <div><strong>{item.Provider || item.Subject || "Insurer record"}</strong><small>{item.Member && item.Member !== "unknown" ? `${item.Member} · ` : ""}{item.Insurer === "blue-cross" ? "Blue Cross" : item.Insurer === "desjardins" ? "Desjardins" : "Insurer unknown"} · {dateLabel(item.ServiceDate || item.ReceivedAt)}{item.StatementDate ? ` · Statement ${dateLabel(item.StatementDate)}` : ""}</small><p>{item.NeedsReview && item.Reasons?.length ? item.Reasons[0] : unmatchedReason(result)}</p></div>
         <div className="unmatched-amount"><strong>{money(reimbursementAmount(item), item.Currency)}</strong><small>reimbursement</small></div>
         <button className="mini-button" onClick={() => googleBridge.openMessage(item.AccountEmail, item.InternetMessageId, item.SourceMessageId)}><ExternalLink size={14} /> Email</button>
       </article>)}

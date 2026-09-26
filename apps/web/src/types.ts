@@ -94,7 +94,9 @@ export type ReimbursementItem = {
   NeedsReview?: boolean;
   ReimbursementEligibility?: "possible" | "unknown" | "no";
   ClassificationSource?: "rules" | "codex" | "manual" | "unavailable";
-  Member?: "Kevin" | "Jasmine" | "unknown";
+  Member?: "Kevin" | "Jasmine" | "Nathan" | "unknown";
+  ImportWarning?: string;
+  StatementDate?: string;
   DocumentRole?: "expense" | "insurer-statement" | "other";
   Insurer?: "desjardins" | "blue-cross" | null;
   ServiceDate?: string | null;
@@ -124,7 +126,8 @@ export type ReimbursementState = {
 };
 
 export type ReconciliationCase = {
-  Id: string; Member: "Kevin" | "Jasmine" | "unknown"; Provider: string; ServiceDate: string | null;
+  Id: string; Member: "Kevin" | "Jasmine" | "Nathan" | "unknown"; Provider: string; ServiceDate: string | null;
+  UnallocatedReimbursedAmount?: number;
   OriginalAmount: number | null; ReimbursedAmount: number; PotentialRemaining: number | null; Currency: string;
   PrimaryInsurer?: "Desjardins" | "Blue Cross" | null; PrimaryReimbursedAmount?: number;
   SecondaryInsurer?: "Desjardins" | "Blue Cross" | null; SecondaryReimbursedAmount?: number;
