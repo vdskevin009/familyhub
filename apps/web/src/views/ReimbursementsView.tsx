@@ -169,7 +169,7 @@ export default function ReimbursementsView({ hub }: Props) {
           <strong>History</strong>
           <span>Newest first</span>
         </div>
-        {filters.size > 0 && <button type="button" className="filter-clear" onClick={() => setFilters(new Set())}>Clear filters</button>}
+        {filters.size > 0 && <button type="button" className="filter-clear" onClick={() => setFilters(new Set<HistoryFilter>())}>Clear filters</button>}
       </div>
       <div className="reimbursement-filter-chips">
         <button type="button" className={`filter-chip ${filters.has("fully-reimbursed") ? "active" : ""}`} aria-pressed={filters.has("fully-reimbursed")} onClick={() => toggleFilter("fully-reimbursed")}>
