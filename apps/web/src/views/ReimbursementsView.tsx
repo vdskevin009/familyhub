@@ -42,6 +42,12 @@ function reimbursementAmount(item: ReimbursementItem): number | null {
   return item.ReimbursedAmount ?? item.DetectedAmount ?? null;
 }
 
+function dateValue(value: string | null | undefined): number {
+  if (!value) return Number.NEGATIVE_INFINITY;
+  const time = new Date(value).getTime();
+  return Number.isNaN(time) ? Number.NEGATIVE_INFINITY : time;
+}
+
 export default function ReimbursementsView({ hub }: Props) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -73,11 +79,14 @@ export default function ReimbursementsView({ hub }: Props) {
   useEffect(() => { if (paired) void refresh(); }, [paired, hub.worker.Endpoint, hub.worker.ApiKey]);
 
   const model = useMemo(() => {
-    const cases = [...(hub.reimbursements.Reconciliations ?? [])];
+    const cases = [...(hub.reimbursements.Reconciliations ?? [])]
+      .sort((a, b) => dateValue(b.ServiceDate) - dateValue(a.ServiceDate));
     const byId = new Map(hub.reimbursements.Items.map(item => [item.Id, item]));
     const unmatched = (hub.reimbursements.UnmatchedReimbursements ?? [])
       .map(result => ({ result, item: byId.get(result.DocumentId) }))
-      .filter((entry): entry is { result: UnmatchedReimbursement; item: ReimbursementItem } => Boolean(entry.item));
+      .filter((entry): entry is { result: UnmatchedReimbursement; item: ReimbursementItem } => Boolean(entry.item))
+      .sort((a, b) => dateValue(b.item.ServiceDate || b.item.StatementDate || b.item.ReceivedAt)
+        - dateValue(a.item.ServiceDate || a.item.StatementDate || a.item.ReceivedAt));
     const cad = cases.filter(item => (item.Currency || "CAD") === "CAD");
     const totalPaid = cad.reduce((sum, item) => sum + (item.OriginalAmount ?? 0), 0);
     const primary = cad.reduce((sum, item) => sum + (item.PrimaryReimbursedAmount ?? (item.Action === "submit-secondary" ? item.ReimbursedAmount : 0)), 0);
