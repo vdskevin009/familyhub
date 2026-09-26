@@ -62,6 +62,8 @@ Rules:
 | FH-WORKER-001 | A local Node/TypeScript worker may perform deeper analysis and scheduled collection without requiring a paid hosted AI API. | Implemented | `apps/worker`. |
 | FH-WORKER-002 | The worker must be paired securely and must not be exposed directly to the public internet. | Verified | Localhost default + pairing key; private HTTPS route required for phone access. |
 | FH-WORKER-003 | Automatic watches/scans only run while the worker is running; the UI must not imply otherwise. | Verified | Current documented limitation. |
+| FH-WORKER-004 | FamilyHub should support a local Windows agent runner that orchestrates specialized AI agents using real Codex/OpenAI model reasoning through the existing ChatGPT/Codex entitlement where technically supported, without requiring a separately billed hosted AI API for the initial implementation. | Accepted | Tracked by GitHub Issue #23. The PC is the runtime; OpenAI provides the model reasoning. |
+| FH-WORKER-005 | Scheduled reimbursement automation must separate deterministic collection/parsing/exact matching from AI reasoning and orchestrate the specialized flow **Invoice Collector → Reimbursement Reconciler → Needs Attention Reviewer**. | Accepted | Tracked by GitHub Issue #23. Use AI where document understanding, fuzzy matching or ambiguity requires reasoning. |
 
 ## Planning, money and archive
 
@@ -88,6 +90,7 @@ Rules:
 | FH-MAIL-006 | Scheduled mailbox collection should ignore Sent/Drafts and other non-inbox noise by default unless a future requirement explicitly adds them. | Implemented | Current collector direction. |
 | FH-REIMB-009 | The healthcare ledger must ingest the available family medical invoices and insurer statements, preserve original billed/reimbursed evidence, and provide refresh/import paths for missed records. | Implemented | PC collection plus targeted import/reconciliation paths exist. |
 | FH-REIMB-010 | Missing dates, amounts, providers or insurer roles must remain unknown rather than be invented. “Needs attention” should be reduced through stronger reconciliation/deduplication, not by guessing. | Accepted | Current quality goal; keep ambiguous evidence reviewable. |
+| FH-REIMB-011 | Low-confidence reconciliation candidates must receive a second AI review before being surfaced as Needs Attention; reconciliation output should preserve supporting evidence/confidence, and only genuinely unresolved or ambiguous cases should remain for Kevin to review. | Accepted | Tracked by GitHub Issue #23; builds on FH-REIMB-003, FH-REIMB-008 and FH-REIMB-010. |
 
 ## Open questions / Needs confirmation
 
@@ -99,6 +102,7 @@ Rules:
 |---|---|---|
 | 2026-09-26 | Establish `REQUIREMENTS.md` as the canonical requirement source for FamilyHub. | Accepted |
 | 2026-09-26 | Baseline current requirements against commit `d85650e104075b08f58516ee147b7cb896f26687`. | Accepted |
+| 2026-09-26 | Adopt a local AI-agent runner as the initial automation direction for reimbursement collection/reconciliation, using deterministic code plus specialized Codex/OpenAI reasoning agents before introducing a separately billed hosted Agents API. | Accepted |
 
 ## Maintenance checklist
 
