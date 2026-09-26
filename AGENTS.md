@@ -1,5 +1,17 @@
 # FamilyHub
 
+## Requirements source of truth
+
+Read `REQUIREMENTS.md` before planning or changing the product. Treat it as the canonical source for product intent and requirement status.
+
+For every user-requested product change:
+- identify the affected requirement IDs, or add a new stable ID before/with implementation;
+- do not mark a request implemented merely because it was discussed;
+- update the requirement status and implementation notes together with the code change;
+- if a newer explicit decision conflicts with an older requirement, keep the old item and mark it `Superseded`;
+- record unresolved ambiguity under **Open questions / Needs confirmation** instead of inventing behavior;
+- after merge/verification, update the requirement code reference so the document stays aligned with the repository.
+
 Read README.md and docs/ARCHITECTURE.md before changing the product.
 
 The deployed UI is React + TypeScript + Vite in `apps/web`. The optional local Codex worker is in `apps/worker`. The older .NET/Blazor projects under `src` are retained during migration and their executable regression tests still run in CI.
