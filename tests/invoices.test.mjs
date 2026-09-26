@@ -82,6 +82,19 @@ test('fully reimbursed expenses expose primary and secondary totals separately',
   assert.equal(result.PotentialRemaining, 0);
   assert.equal(result.Status, 'fully-reimbursed');
 });
+
+test('QubeCore direct-insurance receipt becomes one canonical residual case', () => {
+  const receipt = toInvoice({ ...mail, id: 'qubecore-receipt', subject: 'Your Receipt - QubeCore Sports & Rehab', sender: 'QubeCore Sports & Rehab', text: 'Invoice #136916-P01. Service date: 2026-08-20. Amount not covered: $38.00. DESJARDINS INSURANCE (TELUS eClaims). Visa Kevin Vanderstraeten payment of $38.00', attachmentText: 'Amount not covered: $38.00\nDESJARDINS INSURANCE (TELUS eClaims)\nInvoice #136916-P01' }, 'kevin@example.test', 'Kevin', { ...classification, category: 'health', member: 'Kevin', documentRole: 'expense', amount: 38, billedAmount: 38, serviceDate: '2026-08-20', reason: 'receipt' }, 'codex');
+  const desjardins = { ...receipt, Id: 'desjardins-qubecore', AccountLabel: 'Local Desjardins import', Provider: 'Desjardins · Massage Therapy', Subject: 'Desjardins claim · Massage Therapy', DocumentType: 'claim', DocumentRole: 'insurer-statement', Insurer: 'desjardins', BilledAmount: 150, ReimbursedAmount: 112, DetectedAmount: 112, Healthcare: { ServiceDate: '2026-08-20', OriginalBilledAmount: 150, SubmittedAmount: 150, InsurerPayments: { desjardins: 112 }, FieldSources: { OriginalBilledAmount: 'structured', SubmittedAmount: 'structured' }, FieldStates: { OriginalBilledAmount: 'confirmed' } }, Notes: 'Submitted 150.00; paid 112.00;' };
+  const result = buildReconciliationSnapshot([receipt, desjardins]);
+  assert.equal(result.cases.length, 1);
+  assert.equal(result.cases[0].Provider, 'QubeCore Sports & Rehab');
+  assert.equal(result.cases[0].OriginalAmount, 150);
+  assert.equal(result.cases[0].PrimaryReimbursedAmount, 112);
+  assert.equal(result.cases[0].PotentialRemaining, 38);
+  assert.equal(result.cases[0].Status, 'waiting-secondary');
+  assert.equal(result.cases[0].Evidence.PatientBalance.value, 38);
+});
 test('MIME normalization keeps source attachment identity, reads plain text, and does not treat attachment bytes as text', () => {
   const normalized = normalizeMail({ id: 'x', threadId: 't', internalDate: '1790000000000', payload: { headers: [{ name: 'Subject', value: 'Receipt' }], parts: [
     { mimeType: 'text/plain', body: { data: Buffer.from('Paid CAD 15').toString('base64url') } },

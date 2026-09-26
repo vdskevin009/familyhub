@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import type { Correction, Invoice } from "./invoice-model.js";
+import { healthcareEvidence, type EvidenceState } from "./healthcare-evidence.js";
 
 export type ReconciliationCase = {
   Id: string;
@@ -16,11 +17,16 @@ export type ReconciliationCase = {
   Currency: string;
   NextInsurer: "Desjardins" | "Blue Cross" | null;
   Action: "review-amount" | "submit-primary" | "submit-secondary" | "verify-balance" | "complete";
-  Status: "fully-reimbursed" | "waiting-primary" | "waiting-secondary" | "needs-attention";
+  Status: "fully-reimbursed" | "waiting-primary" | "waiting-secondary" | "patient-balance" | "needs-attention";
   Summary: string;
   Confidence: number;
   DocumentIds: string[];
   UnallocatedReimbursedAmount?: number;
+  Evidence?: Record<string, { value: unknown; source: string; confidence: EvidenceState | "not-found" }>;
+  Explanation?: string;
+  ExtractionConfidence?: number;
+  MatchConfidence?: number;
+  ReconciliationConfidence?: number;
 };
 
 export type UnmatchedReimbursement = {
@@ -31,7 +37,29 @@ export type UnmatchedReimbursement = {
 export type ReconciliationSnapshot = {
   cases: ReconciliationCase[];
   unmatched: UnmatchedReimbursement[];
+  diagnostics?: ReconciliationDiagnostics;
 };
+export type ReconciliationDiagnostics = {
+  totalExpenses: number; fullyReimbursed: number; waitingPrimary: number; waitingSecondary: number; patientBalance: number; needsAttention: number;
+  unmatchedInsurerRecords: number; duplicateCandidates: number; missingServiceDates: number; unknownMembers: number; patientAsProvider: number;
+  amountsReconstructed: number; insurerPaymentsOverBilled: number; contradictoryEvidence: number; averageMatchConfidence: number;
+};
+
+export function buildReconciliationDiagnostics(cases: ReconciliationCase[], unmatched: UnmatchedReimbursement[], items: Invoice[] = []): ReconciliationDiagnostics {
+  const health = items.filter(item => item.Category === 0 && item.Status !== 4);
+  const reconstructed = cases.filter(item => Object.values(item.Evidence || {}).some(value => value.confidence === "reconstructed")).length;
+  return {
+    totalExpenses: cases.length, fullyReimbursed: cases.filter(x => x.Status === "fully-reimbursed").length,
+    waitingPrimary: cases.filter(x => x.Status === "waiting-primary").length, waitingSecondary: cases.filter(x => x.Status === "waiting-secondary").length,
+    patientBalance: cases.filter(x => x.Status === "patient-balance").length, needsAttention: cases.filter(x => x.Status === "needs-attention").length,
+    unmatchedInsurerRecords: unmatched.length, duplicateCandidates: Math.max(0, health.length - cases.length),
+    missingServiceDates: cases.filter(x => !x.ServiceDate).length, unknownMembers: cases.filter(x => x.Member === "unknown").length,
+    patientAsProvider: cases.filter(x => isPatientName(x.Provider)).length, amountsReconstructed: reconstructed,
+    insurerPaymentsOverBilled: cases.filter(x => x.OriginalAmount != null && x.ReimbursedAmount > x.OriginalAmount + .005).length,
+    contradictoryEvidence: cases.filter(x => Object.values(x.Evidence || {}).some(value => value.confidence === "unknown") && x.Status === "needs-attention").length,
+    averageMatchConfidence: cases.length ? Math.round(cases.reduce((sum, x) => sum + (x.MatchConfidence || 0), 0) / cases.length) : 0
+  };
+}
 
 export type CleanupSuggestion = {
   Fingerprint: string;
@@ -65,7 +93,46 @@ export function serviceKey(value: string): string | null {
 const service = (item: Invoice) => serviceKey(item.ClaimedService || item.Provider);
 const submitted = (item: Invoice): number | null => item.AccountLabel === "Local Desjardins import"
   ? Number(item.Notes.match(/Submitted (\d+\.\d{2})/)?.[1] ?? Number.NaN) : null;
-const sameMoney = (left: number | null, right: number | null) => left != null && right != null && Math.abs(left - right) < .005;
+const sameMoney = (left: number | null | undefined, right: number | null | undefined) => left != null && right != null && Math.abs(left - right) < .005;
+const dateDistance = (left: string | null | undefined, right: string | null | undefined): number => {
+  if (!left || !right) return Number.POSITIVE_INFINITY;
+  const parse = (v: string) => Date.UTC(Number(v.slice(0, 4)), Number(v.slice(5, 7)) - 1, Number(v.slice(8, 10)));
+  return Math.abs(parse(left.slice(0, 10)) - parse(right.slice(0, 10))) / 86_400_000;
+};
+const isPatientName = (value: string) => /^(?:kevin|jasmine|nathan)(?:\s|$)/i.test(value.trim());
+
+/** Collapse receipt/statement copies into one expense before matching insurer rows. */
+function canonicalExpenses(expenses: Invoice[]): Invoice[] {
+  const result: Invoice[] = [];
+  for (const item of expenses) {
+    const h = healthcareEvidence(item);
+    const provider = h.Provider || item.Provider;
+    const key = `${item.Member}|${h.ServiceDate || item.ServiceDate || "unknown"}|${service(item) || serviceKey(h.ServiceType || "") || "unknown"}`;
+    const existing = result.find(candidate => {
+      const c = healthcareEvidence(candidate);
+      const ckey = `${candidate.Member}|${c.ServiceDate || candidate.ServiceDate || "unknown"}|${service(candidate) || serviceKey(c.ServiceType || "") || "unknown"}`;
+      const providerMatch = providerKey(candidate.Provider) === providerKey(provider) && providerKey(provider).length > 2;
+      const patientProviderPair = (isPatientName(candidate.Provider) && !isPatientName(provider)) || (isPatientName(provider) && !isPatientName(candidate.Provider));
+      const sameInvoice = Boolean(h.InvoiceNumber && c.InvoiceNumber && h.InvoiceNumber.toLowerCase() === c.InvoiceNumber.toLowerCase());
+      const residualLink = sameMoney(candidate.BilledAmount, h.AmountNotCovered) || sameMoney(item.BilledAmount, c.OriginalBilledAmount);
+      return (key === ckey && (patientProviderPair || sameInvoice || residualLink)) || (candidate.Member === item.Member && dateDistance(candidate.ServiceDate, item.ServiceDate) === 0 &&
+        patientProviderPair && (sameMoney(candidate.BilledAmount, h.AmountNotCovered) || sameMoney(item.BilledAmount, c.OriginalBilledAmount)));
+    });
+    if (!existing) { result.push({ ...item, Provider: isPatientName(provider) && h.Provider ? h.Provider : provider, Healthcare: h }); continue; }
+    const eh = healthcareEvidence(existing);
+    const original = eh.OriginalBilledAmount ?? h.OriginalBilledAmount ??
+      (existing.BilledAmount != null && existing.BilledAmount > (h.AmountNotCovered ?? 0) ? existing.BilledAmount : item.BilledAmount);
+    const residual = eh.PatientBalance ?? eh.AmountNotCovered ?? h.PatientBalance ?? h.AmountNotCovered ??
+      (item.BilledAmount != null && original != null && item.BilledAmount < original ? item.BilledAmount : null);
+    existing.Provider = isPatientName(existing.Provider) && !isPatientName(provider) ? provider : existing.Provider;
+    existing.BilledAmount = original;
+    existing.DetectedAmount = original ?? existing.DetectedAmount;
+    existing.Healthcare = { ...eh, ...h, Provider: existing.Provider, OriginalBilledAmount: original, PatientBalance: residual,
+      AmountNotCovered: residual, ProcessedInsurers: [...new Set([...(eh.ProcessedInsurers || []), ...(h.ProcessedInsurers || [])])] };
+    existing.Notes = `${existing.Notes} Canonical case merged from related document ${item.Id}.`;
+  }
+  return result;
+}
 
 /** Recover omitted report-derived expenses only when explicit service/amount evidence distinguishes them. */
 export function recoverMissingDesjardinsExpenses(items: Invoice[], imported: Invoice[]): Invoice[] {
@@ -95,12 +162,15 @@ function matchScore(expense: Invoice, statement: Invoice): number {
   const paid = statement.ReimbursedAmount ?? statement.DetectedAmount;
   if (expense.Currency && statement.Currency && expense.Currency !== statement.Currency) return -1;
   const expenseService = service(expense); const statementService = service(statement);
-  if (expenseService && statementService && expenseService !== statementService) return -1;
-  if (statement.StructuredSource) {
+  const structuredClaim = Boolean(statement.StructuredSource || statement.AccountLabel === "Local Desjardins import" && statement.BilledAmount != null);
+  const residualEvidence = healthcareEvidence(expense).PatientBalance ?? healthcareEvidence(expense).AmountNotCovered;
+  if (expenseService && statementService && expenseService !== statementService &&
+    !(structuredClaim && statement.BilledAmount != null && paid != null && sameMoney(residualEvidence, statement.BilledAmount - paid))) return -1;
+  if (structuredClaim) {
     if (expense.Member === "unknown" || expense.Member !== statement.Member || expense.ServiceDate !== statement.ServiceDate
-      || !expenseService || expenseService !== statementService || Math.min(expense.Confidence, statement.Confidence) < 90) return -1;
-    const coordinated = expense.AccountLabel === "Local Desjardins import"
-      && statement.BilledAmount != null && paid != null && sameMoney(amount, statement.BilledAmount - paid);
+      || Math.min(expense.Confidence, statement.Confidence) < 90) return -1;
+    const coordinated = statement.BilledAmount != null && paid != null &&
+      (sameMoney(amount, statement.BilledAmount - paid) || sameMoney(residualEvidence, statement.BilledAmount - paid));
     return sameMoney(amount, statement.BilledAmount) || coordinated ? 20 : -1;
   }
   const claimed = submitted(statement);
@@ -133,8 +203,9 @@ function matchScore(expense: Invoice, statement: Invoice): number {
 
 export function buildReconciliationSnapshot(items: Invoice[]): ReconciliationSnapshot {
   const health = items.filter(item => item.Category === 0 && item.Status !== 4);
-  const expenses = health.filter(item => item.DocumentRole === "expense"
+  const rawExpenses = health.filter(item => item.DocumentRole === "expense"
     || ((!item.DocumentRole || item.DocumentRole === "other") && ["receipt", "invoice", "bill"].includes(item.DocumentType)));
+  const expenses = canonicalExpenses(rawExpenses);
   const statements = health.filter(item => item.DocumentRole === "insurer-statement" || item.DocumentType === "claim");
   const assignments = new Map<string, Invoice[]>();
   const unmatched: UnmatchedReimbursement[] = [];
@@ -152,9 +223,10 @@ export function buildReconciliationSnapshot(items: Invoice[]): ReconciliationSna
 
   const cases = expenses.map(expense => {
     const matched = assignments.get(expense.Id) ?? [];
-    let original = expense.BilledAmount ?? expense.DetectedAmount;
-    const coordinated = matched.filter(item => item.StructuredSource && item.BilledAmount != null
-      && expense.AccountLabel === "Local Desjardins import"
+    const evidence = healthcareEvidence(expense);
+    let original = evidence.OriginalBilledAmount ?? expense.BilledAmount ?? expense.DetectedAmount;
+    const residual = evidence.PatientBalance ?? evidence.AmountNotCovered ?? null;
+    const coordinated = matched.filter(item => (item.StructuredSource || item.AccountLabel === "Local Desjardins import") && item.BilledAmount != null
       && sameMoney(original, item.BilledAmount - (item.ReimbursedAmount ?? 0)));
     if (coordinated.length === 1) original = coordinated[0].BilledAmount;
     const member = expense.Member || "unknown";
@@ -164,26 +236,33 @@ export function buildReconciliationSnapshot(items: Invoice[]): ReconciliationSna
     const reimbursed = Math.round(matched.reduce((sum, item) => sum + (item.ReimbursedAmount ?? item.DetectedAmount ?? 0), 0) * 100) / 100;
     const remaining = original == null ? null : Math.max(0, Math.round((original - reimbursed) * 100) / 100);
     const seen = new Set(matched.map(item => item.Insurer).filter(Boolean));
+    for (const insurer of evidence.ProcessedInsurers || []) seen.add(insurer);
     let action: ReconciliationCase["Action"] = "complete";
     let status: ReconciliationCase["Status"] = "fully-reimbursed";
     let next: ReconciliationCase["NextInsurer"] = null;
     let summary = "Documents rapprochés; aucun solde potentiel détecté.";
     const pending = unmatched.some(result => {
       const statement = statements.find(item => item.Id === result.DocumentId)!;
-      return statement.Member === member && statement.ServiceDate === expense.ServiceDate
+      return statement && statement.Member === member && dateDistance(statement.ServiceDate, expense.ServiceDate) <= 3
         && (!service(statement) || !service(expense) || service(statement) === service(expense));
     });
-    if (expense.NeedsReview || !order.length || original == null || pending || original != null && reimbursed > original + .005) {
+    const explicitPrimaryProcessed = evidence.ProcessedInsurers?.includes(order[0]);
+    if (expense.NeedsReview || !order.length || pending || original != null && reimbursed > original + .005) {
       action = "review-amount"; status = "needs-attention";
-      summary = original == null ? "Montant de la facture à confirmer avant le rapprochement."
-        : !order.length ? `Ordre des assureurs à confirmer. Paiements trouvés : Desjardins ${matched.filter(item => item.Insurer === "desjardins").reduce((sum, item) => sum + (item.ReimbursedAmount ?? 0), 0).toFixed(2)} $; Blue Cross ${matched.filter(item => item.Insurer === "blue-cross").reduce((sum, item) => sum + (item.ReimbursedAmount ?? 0), 0).toFixed(2)} $.`
-        : reimbursed > original + .005 ? "Les paiements dépassent le montant de la dépense; vérifiez les doublons ou ajustements."
+      summary = !order.length ? `Ordre des assureurs à confirmer. Paiements trouvés : Desjardins ${matched.filter(item => item.Insurer === "desjardins").reduce((sum, item) => sum + (item.ReimbursedAmount ?? 0), 0).toFixed(2)} $; Blue Cross ${matched.filter(item => item.Insurer === "blue-cross").reduce((sum, item) => sum + (item.ReimbursedAmount ?? 0), 0).toFixed(2)} $.`
+        : original != null && reimbursed > original + .005 ? "Les paiements dépassent le montant de la dépense; vérifiez les doublons ou ajustements."
         : pending ? "Un relevé associé reste non rapproché; vérifiez les doublons, ajustements ou la facture."
         : "Vérifiez la personne ou la classification avant le rapprochement.";
     }
-    else if (!seen.has(order[0])) { action = "submit-primary"; status = "waiting-primary"; next = insurerName(order[0]); summary = `En attente d'un relevé de ${next}.`; }
+    else if (!seen.has(order[0]) && !explicitPrimaryProcessed) { action = "submit-primary"; status = "waiting-primary"; next = insurerName(order[0]); summary = `En attente d'un relevé de ${next}.`; }
     else if (remaining! > 0 && !seen.has(order[1])) { action = "submit-secondary"; status = "waiting-secondary"; next = insurerName(order[1]); summary = `${remaining!.toFixed(2)} $ reste à vérifier auprès de ${next}; ce montant n'est pas garanti.`; }
-    else if (remaining! > 0) { action = "verify-balance"; status = "needs-attention"; summary = `${remaining!.toFixed(2)} $ reste à charge potentiel après les relevés trouvés.`; }
+    else if (remaining! > 0) { action = "verify-balance"; status = "patient-balance" as ReconciliationCase["Status"]; summary = `${remaining!.toFixed(2)} $ reste à charge après les relevés trouvés.`; }
+    const evidenceMap: ReconciliationCase["Evidence"] = {
+      OriginalAmount: { value: original, source: evidence.FieldSources?.OriginalBilledAmount || "unknown", confidence: evidence.FieldStates?.OriginalBilledAmount || "unknown" },
+      PatientBalance: { value: residual, source: evidence.FieldSources?.PatientBalance || evidence.FieldSources?.AmountNotCovered || "unknown", confidence: evidence.FieldStates?.PatientBalance || evidence.FieldStates?.AmountNotCovered || "unknown" },
+      PrimaryPaid: { value: primaryAmount || null, source: matched.find(item => item.Insurer === order[0])?.Id || (explicitPrimaryProcessed ? "receipt-insurer-processing" : "not found"), confidence: matched.length ? "confirmed" : explicitPrimaryProcessed ? "inferred" : "not-found" },
+      SecondaryPaid: { value: secondaryAmount || null, source: matched.find(item => item.Insurer === order[1])?.Id || "no matching Blue Cross record", confidence: secondaryAmount ? "confirmed" : "not-found" }
+    };
     return {
       Id: createHash("sha256").update(expense.Id + matched.map(item => item.Id).sort().join(":" )).digest("hex").slice(0, 24),
       Member: member, Provider: expense.Provider, ServiceDate: expense.ServiceDate,
@@ -195,12 +274,16 @@ export function buildReconciliationSnapshot(items: Invoice[]): ReconciliationSna
       Currency: expense.Currency || "CAD", NextInsurer: next, Action: action, Summary: summary,
       Status: status,
       Confidence: matched.length ? Math.min(expense.Confidence, ...matched.map(item => item.Confidence)) : expense.Confidence,
-      DocumentIds: [expense.Id, ...matched.map(item => item.Id)]
+      DocumentIds: [expense.Id, ...matched.map(item => item.Id)], Evidence: evidenceMap,
+      Explanation: `Case ${expense.Id} uses ${[expense.Id, ...matched.map(item => item.Id)].length} linked evidence records. ${summary}`,
+      ExtractionConfidence: expense.Confidence, MatchConfidence: matched.length ? Math.min(...matched.map(item => item.Confidence)) : 0,
+      ReconciliationConfidence: matched.length ? Math.min(expense.Confidence, ...matched.map(item => item.Confidence)) : expense.Confidence
     };
   });
+  const diagnostics = buildReconciliationDiagnostics(cases, unmatched, items);
   return {
     cases: cases.sort((a, b) => Number(a.Action === "complete") - Number(b.Action === "complete") || (b.PotentialRemaining ?? 0) - (a.PotentialRemaining ?? 0)),
-    unmatched
+    unmatched, diagnostics
   };
 }
 

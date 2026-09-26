@@ -32,6 +32,7 @@ export type InvoiceSnapshot = {
   reconciliations: ReconciliationCase[]; cleanupSuggestions: CleanupSuggestion[];
   importantMail: ReimbursementItem[];
   unmatchedReimbursements: UnmatchedReimbursement[];
+  diagnostics?: { totalExpenses: number; fullyReimbursed: number; waitingPrimary: number; waitingSecondary: number; patientBalance: number; needsAttention: number; unmatchedInsurerRecords: number; duplicateCandidates: number; missingServiceDates: number; unknownMembers: number; patientAsProvider: number; amountsReconstructed: number; insurerPaymentsOverBilled: number; contradictoryEvidence: number; averageMatchConfidence: number };
   learning: { decisions: number; undoable: Array<{ id: string; itemId: string; type: string; at: string }> };
   accounts: { email: string; label: string }[];
   progress: Record<string, { error?: string; window?: unknown; lastSuccess?: string }>;
@@ -54,6 +55,7 @@ export async function fetchInvoices(config: WorkerConfig): Promise<InvoiceSnapsh
     cleanupSuggestions: Array.isArray(raw.cleanupSuggestions) ? raw.cleanupSuggestions : [],
     importantMail: Array.isArray(raw.importantMail) ? raw.importantMail : [],
     unmatchedReimbursements: Array.isArray(raw.unmatchedReimbursements) ? raw.unmatchedReimbursements : [],
+    diagnostics: raw.diagnostics,
     learning,
     accounts: Array.isArray(raw.accounts) ? raw.accounts : [],
     progress: raw.progress && typeof raw.progress === "object" ? raw.progress : {},

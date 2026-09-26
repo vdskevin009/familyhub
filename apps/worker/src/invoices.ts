@@ -9,6 +9,11 @@ import { buildCleanupSuggestions, buildReconciliationSnapshot, recoverMissingDes
 import { blueCrossInvoices } from "./bluecross.js";
 
 type Window = { after: number; before: number; page?: string };
+/** A learned category is a preference, never a replacement for freshly extracted facts. */
+export function applyLearnedClassification(extracted: Classification, rule?: Correction): Classification {
+  if (!rule || extracted.transaction && ["ignore", "marketing"].includes(rule.kind)) return extracted;
+  return { ...extracted, kind: rule.kind, reason: `${extracted.reason} Prior category correction applied.` };
+}
 type AccountProgress = { through?: number; window?: Window; error?: string; lastSuccess?: string };
 type Decision = { id: string; itemId: string; type: "classification" | "status"; before: Partial<Invoice>; after: Partial<Invoice>; at: string; undoneAt?: string; correctionBefore?: Correction };
 type State = { items: Invoice[]; corrections: Correction[]; decisions: Decision[]; accounts: Record<string, AccountProgress>; lastAttempt?: string; lastSuccess?: string; error?: string };
@@ -88,7 +93,7 @@ export async function invoiceSnapshot() {
   let accounts: { email: string; label: string }[] = [];
   try { accounts = (await credentials()).accounts.map(({ email, label }) => ({ email, label })); } catch { /* Visible setup-required status. */ }
   const reconciliation = buildReconciliationSnapshot(state.items);
-  return { items: state.items, reconciliations: reconciliation.cases, unmatchedReimbursements: reconciliation.unmatched,
+  return { items: state.items, reconciliations: reconciliation.cases, unmatchedReimbursements: reconciliation.unmatched, diagnostics: reconciliation.diagnostics,
     cleanupSuggestions: buildCleanupSuggestions(state.items, state.corrections),
     importantMail: state.items.filter(item => item.AttentionLevel && item.AttentionLevel !== "none" && item.Status !== 4)
       .sort((a, b) => attentionRank[b.AttentionLevel] - attentionRank[a.AttentionLevel] || Date.parse(b.ReceivedAt) - Date.parse(a.ReceivedAt)),
@@ -154,7 +159,7 @@ export async function importBlueCrossMessages(email: unknown, messageIds: unknow
 export async function classify(mail: Mail, email: string, label = email, diagnostic = false): Promise<{ result: Classification; source: Invoice["ClassificationSource"] }> {
   const rule = [...state.corrections].reverse().find(x => x.account === email && x.fingerprint === fingerprint(mail));
   const proof = evidence(mail);
-  if (rule) {
+  if (rule && (rule.kind === "ignore" || rule.kind === "marketing") && !proof.transaction) {
     const confidence = (rule.confirmations ?? 1) >= 3 ? .98 : .8;
     return { source: "rules", result: { kind: rule.kind, confidence, transaction: proof.transaction,
       reimbursement: "unknown", amount: null, currency: "", category: "other", member: "unknown", documentRole: "other", insurer: null,
@@ -187,6 +192,8 @@ export async function classify(mail: Mail, email: string, label = email, diagnos
       "Routine appointment reminders, clinic booking notices, tee-time/activity bookings and generic service notices are not document-inbox items unless they contain actual payment/receipt evidence. Travel itineraries and flight booking documents may be administrative/travel.",
       "For health documents, identify Kevin or Jasmine only when explicit or strongly supported by the account label. Identify Desjardins and Blue Cross/Croix Bleue statements.",
       "Separate the provider billed amount from the insurer reimbursed amount. Use YYYY-MM-DD for an explicit service date. Use null rather than guessing.",
+      "Extract healthcare fields separately: original billed total, patient paid, patient balance, amount not covered, submitted and eligible amounts, provider, practitioner, service, invoice/claim IDs, and service/statement/payment dates. Never use the patient or Visa cardholder as the provider.",
+      "Amount not covered / patient portion is a residual AFTER insurance, never the original billed total. A named insurer next to that residual indicates processing, not a known payment amount. TELUS eClaims alone does not name an insurer. Record ProcessedInsurers and only explicit InsurerPayments; absent amounts stay null, not zero. A payment receipt total is not necessarily the original bill.",
       "Separately decide whether the message is critical security activity, requires an action, is important FYI, or needs no attention. Marketing and routine receipts normally need no mail attention.",
       "Use prior user corrections as preferences, not facts about the new message. Never let them override explicit transaction or security evidence.",
       "Return only the required JSON schema. Explain the reason briefly in French.",
@@ -201,7 +208,8 @@ export async function classify(mail: Mail, email: string, label = email, diagnos
       })
     ].join("\n");
     const turn = await thread.run(prompt, { outputSchema: classificationSchema, signal: AbortSignal.timeout(90_000) });
-    return { source: "codex", result: validateClassification(JSON.parse(turn.finalResponse)) };
+    const extracted = validateClassification(JSON.parse(turn.finalResponse));
+    return { source: "codex", result: applyLearnedClassification(extracted, rule) };
   } catch (error) {
     if (diagnostic) throw error;
     return { source: "unavailable", result: { kind: "other", confidence: 0, transaction: false, reimbursement: "unknown",
@@ -239,7 +247,7 @@ export async function collectInvoices(overrides: Partial<CollectionDependencies>
         let retryBudget = 10;
         const processMessage = async (id: string, retry = false) => {
           const existing = state.items.find(x => x.Id === recordId(key, id));
-          const needsUpgrade = existing && (existing.AnalysisVersion !== 3 || !existing.DocumentRole || !existing.Member || !("BilledAmount" in existing));
+          const needsUpgrade = existing && (existing.AnalysisVersion !== 4 || !existing.DocumentRole || !existing.Member || !("BilledAmount" in existing));
           if (existing && !needsUpgrade && (!retry || existing.ClassificationSource !== "unavailable")) return;
           const normalized = normalizeMail(await callGmail<RawMail>(token, `messages/${encodeURIComponent(id)}?format=full`));
           if (normalized.blueCrossExport) {
@@ -262,7 +270,7 @@ export async function collectInvoices(overrides: Partial<CollectionDependencies>
         };
         let upgradeBudget = 25;
         for (const item of [...state.items]) {
-          if (item.AccountEmail === key && (item.AnalysisVersion !== 3 || !item.DocumentRole || !item.Member || !("BilledAmount" in item)) && upgradeBudget-- > 0) await processMessage(item.SourceMessageId, true);
+          if (item.AccountEmail === key && item.SourceMessageId && !item.StructuredSource && (item.AnalysisVersion !== 4 || !item.DocumentRole || !item.Member || !("BilledAmount" in item)) && upgradeBudget-- > 0) await processMessage(item.SourceMessageId, true);
         }
         for (const item of [...state.items]) {
           if (item.AccountEmail === key && item.ClassificationSource === "unavailable" && !item.CorrectedAt && retryBudget-- > 0) await processMessage(item.SourceMessageId, true);

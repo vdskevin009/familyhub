@@ -14,6 +14,7 @@ const statusCopy: Record<CaseStatus, string> = {
   "fully-reimbursed": "Fully reimbursed",
   "waiting-primary": "Waiting for primary",
   "waiting-secondary": "Waiting for secondary",
+  "patient-balance": "Patient balance",
   "needs-attention": "Needs attention"
 };
 
@@ -46,6 +47,7 @@ export default function ReimbursementsView({ hub }: Props) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [lastSuccess, setLastSuccess] = useState("");
+  const [diagnostics, setDiagnostics] = useState<Awaited<ReturnType<typeof fetchInvoices>>["diagnostics"]>();
   const paired = Boolean(hub.worker.Endpoint.trim() && hub.worker.ApiKey.trim());
 
   async function refresh() {
@@ -53,6 +55,7 @@ export default function ReimbursementsView({ hub }: Props) {
     setBusy(true); setError("");
     try {
       const snapshot = await fetchInvoices(hub.worker);
+      setDiagnostics(snapshot.diagnostics);
       hub.setReimbursements(previous => ({
         ...previous,
         SchemaVersion: 2,
@@ -101,6 +104,8 @@ export default function ReimbursementsView({ hub }: Props) {
 
     {error && <div className="banner error" role="status"><AlertTriangle size={17} />{error} — Previously synced results remain below.</div>}
     {model.warnings.map(warning => <div className="banner" role="status" key={warning}><AlertTriangle size={17} />{warning}</div>)}
+
+    {diagnostics && <p className="privacy-note">Reconciliation quality: {diagnostics.totalExpenses} cases · {diagnostics.fullyReimbursed} fully reimbursed · {diagnostics.waitingPrimary} waiting primary · {diagnostics.waitingSecondary} waiting secondary · {diagnostics.patientBalance} patient balances · {diagnostics.needsAttention} require attention · {diagnostics.unmatchedInsurerRecords} unmatched insurer records.</p>}
 
     <section className="reimbursement-summary" aria-label="Reimbursement summary">
       <article className="summary-primary"><small>Total paid</small><strong>{money(model.totalPaid)}</strong><span>healthcare expenses</span></article>

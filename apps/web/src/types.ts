@@ -133,7 +133,7 @@ export type ReconciliationCase = {
   SecondaryInsurer?: "Desjardins" | "Blue Cross" | null; SecondaryReimbursedAmount?: number;
   NextInsurer: "Desjardins" | "Blue Cross" | null;
   Action: "review-amount" | "submit-primary" | "submit-secondary" | "verify-balance" | "complete";
-  Status?: "fully-reimbursed" | "waiting-primary" | "waiting-secondary" | "needs-attention";
+  Status?: "fully-reimbursed" | "waiting-primary" | "waiting-secondary" | "patient-balance" | "needs-attention";
   Summary: string; Confidence: number; DocumentIds: string[];
 };
 

@@ -1,8 +1,10 @@
 import { createHash } from "node:crypto";
+import { extractHealthcareEvidence, healthcareSchema, validateHealthcare, type HealthcareEvidence } from "./healthcare-evidence.js";
 
 export const kinds = ["receipt", "invoice", "claim", "bill", "administrative", "marketing", "ignore", "other"] as const;
 export type Kind = typeof kinds[number];
 export type Classification = {
+  healthcare?: HealthcareEvidence;
   kind: Kind; confidence: number; transaction: boolean;
   reimbursement: "possible" | "unknown" | "no"; reason: string;
   amount: number | null; currency: string; category: "health" | "travel" | "other";
@@ -27,6 +29,7 @@ export type Mail = {
   blueCrossExport?: import("./bluecross.js").BlueCrossExport;
 };
 export type Invoice = {
+  Healthcare?: HealthcareEvidence;
   AnalysisVersion: number;
   Id: string; AccountLabel: string; AccountEmail: string; SourceMessageId: string;
   ThreadId: string; InternetMessageId: string; Subject: string; Sender: string; Provider: string;
@@ -64,8 +67,9 @@ export function evidence(mail: Mail): { marketing: boolean; transaction: boolean
 
 export const classificationSchema = {
   type: "object", additionalProperties: false,
-  required: ["kind", "confidence", "transaction", "reimbursement", "reason", "amount", "currency", "category", "member", "documentRole", "insurer", "serviceDate", "billedAmount", "reimbursedAmount", "attention", "attentionReason"],
+  required: ["kind", "confidence", "transaction", "reimbursement", "reason", "amount", "currency", "category", "member", "documentRole", "insurer", "serviceDate", "billedAmount", "reimbursedAmount", "attention", "attentionReason", "healthcare"],
   properties: {
+    healthcare: healthcareSchema,
     kind: { type: "string", enum: kinds }, confidence: { type: "number", minimum: 0, maximum: 1 },
     transaction: { type: "boolean" }, reimbursement: { type: "string", enum: ["possible", "unknown", "no"] },
     reason: { type: "string" }, amount: { type: ["number", "null"] }, currency: { type: "string" },
@@ -83,6 +87,7 @@ export const classificationSchema = {
 
 export function validateClassification(input: unknown): Classification {
   const x = input as Classification;
+  if (x?.healthcare) validateHealthcare(x.healthcare);
   if (!x || !kinds.includes(x.kind) || !Number.isFinite(x.confidence) || x.confidence < 0 || x.confidence > 1
     || typeof x.transaction !== "boolean" || !["possible", "unknown", "no"].includes(x.reimbursement)
     || typeof x.reason !== "string" || !["health", "travel", "other"].includes(x.category)
@@ -108,6 +113,7 @@ function textAmount(mail: Mail): { amount: number; currency: string } | null {
 }
 
 export function toInvoice(mail: Mail, email: string, label: string, result: Classification, source: Invoice["ClassificationSource"]): Invoice {
+  const healthcare = extractHealthcareEvidence(mail, result);
   const excluded = (result.kind === "marketing" || result.kind === "ignore") && result.confidence >= .9;
   const acceptedAdministrative = result.kind === "administrative" && result.confidence >= .9 && source !== "unavailable";
   // A score is not coverage verification. Nothing is marked ready to claim by the classifier.
@@ -117,17 +123,18 @@ export function toInvoice(mail: Mail, email: string, label: string, result: Clas
   const amount = result.amount ?? fallback?.amount ?? null;
   const member = result.member === "unknown" && /jasmine/i.test(label) ? "Jasmine" : result.member === "unknown" && /kevin/i.test(label) ? "Kevin" : result.member;
   return {
-    AnalysisVersion: 3,
+    AnalysisVersion: 4,
+    Healthcare: healthcare,
     Id: recordId(email, mail.id), AccountLabel: label, AccountEmail: email,
     SourceMessageId: mail.id, ThreadId: mail.threadId, InternetMessageId: mail.internetMessageId,
-    Subject: mail.subject, Sender: mail.sender, Provider: mail.sender.split("<")[0].replace(/"/g, "").trim(),
+    Subject: mail.subject, Sender: mail.sender, Provider: healthcare.Provider || mail.sender.split("<")[0].replace(/"/g, "").trim(),
     ReceivedAt: mail.receivedAt, Category: result.category === "health" ? 0 : result.category === "travel" ? 1 : 2,
     Status: excluded ? 4 : 0, DetectedAmount: amount, Currency: result.currency || fallback?.currency || "",
     Confidence: Math.round(result.confidence * 100), Notes: "", Attachments: mail.attachments,
     DocumentType: result.kind, Reasons: [result.reason], WorkerManaged: true, NeedsReview: needsReview,
     ReimbursementEligibility: result.transaction ? result.reimbursement : "unknown", ClassificationSource: source,
     Member: member, DocumentRole: result.documentRole, Insurer: result.insurer, ServiceDate: result.serviceDate,
-    BilledAmount: result.billedAmount ?? (result.documentRole === "expense" ? amount : null),
+    BilledAmount: healthcare.OriginalBilledAmount ?? (healthcare.AmountNotCovered != null ? null : result.billedAmount ?? (result.documentRole === "expense" ? amount : null)),
     ReimbursedAmount: result.reimbursedAmount ?? (result.documentRole === "insurer-statement" ? amount : null),
     AmountSource: result.amount != null || result.billedAmount != null || result.reimbursedAmount != null ? "ai" : fallback ? "email-text" : "missing",
     HasUnsubscribe: mail.unsubscribe,
