@@ -1,6 +1,13 @@
 # FamilyHub
 
-Read README.md and docs/ARCHITECTURE.md before changing the product.
+Read `REQUIREMENTS.md` first. It is the canonical product-requirements source. Then read `README.md` and `docs/ARCHITECTURE.md` before changing the product.
+
+For every accepted product change:
+- reconcile the request with the current code before implementation;
+- add or update the affected requirement in `REQUIREMENTS.md`;
+- keep status truthful (`Implemented`, `Planned`, `Needs verification`, or `Superseded`);
+- after implementation, update the requirement and validation notes in the same PR;
+- never use chat history as the only durable record of product behavior.
 
 The deployed UI is React + TypeScript + Vite in `apps/web`. The optional local Codex worker is in `apps/worker`. The older .NET/Blazor projects under `src` are retained during migration and their executable regression tests still run in CI.
 
