@@ -497,3 +497,89 @@ label small { font-weight: 500; }
   .ask-form { grid-template-columns: 1fr; }
   .ask-form button { min-height: 42px; }
 }
+
+
+/* Reimbursements: utility-first app screen */
+.reimbursement-app-view { gap: 16px; }
+.reimbursement-toolbar {
+  display: flex; align-items: center; justify-content: space-between; gap: 18px;
+  padding: 4px 2px 0;
+}
+.reimbursement-toolbar h1 {
+  margin: 0; font-size: clamp(1.8rem, 3vw, 2.55rem); line-height: 1; letter-spacing: -.045em;
+}
+.reimbursement-toolbar p { margin: 7px 0 0; font-size: .78rem; }
+.reimbursement-toolbar .eyebrow { margin-bottom: 7px; }
+.reimbursement-filter-bar {
+  position: sticky; top: 94px; z-index: 24;
+  display: grid; gap: 11px; padding: 13px 14px;
+  border: 1px solid rgba(207,218,211,.98); border-radius: 18px;
+  background: rgba(247,249,247,.94); box-shadow: 0 12px 30px rgba(29,55,46,.08);
+  backdrop-filter: blur(18px);
+}
+.reimbursement-filter-heading {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+}
+.reimbursement-filter-heading > div { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.reimbursement-filter-heading strong { font-size: .9rem; }
+.reimbursement-filter-heading span { color: var(--muted); font-size: .72rem; }
+.reimbursement-filter-chips { display: flex; gap: 7px; overflow-x: auto; scrollbar-width: none; padding-bottom: 1px; }
+.reimbursement-filter-chips::-webkit-scrollbar { display: none; }
+.filter-chip {
+  flex: 0 0 auto; min-height: 36px; padding: 0 10px; border-radius: 12px;
+  border: 1px solid #d7dfda; background: rgba(255,255,255,.86); color: #52675e;
+  display: inline-flex; align-items: center; gap: 7px; cursor: pointer; font-size: .76rem; font-weight: 780;
+}
+.filter-chip > span {
+  min-width: 22px; height: 22px; padding: 0 6px; border-radius: 999px; display: grid; place-items: center;
+  background: #eef2ef; color: #6d7f77; font-size: .68rem;
+}
+.filter-chip.active {
+  border-color: var(--green); background: var(--green); color: white;
+  box-shadow: 0 6px 18px rgba(23,63,53,.14);
+}
+.filter-chip.active > span { background: rgba(255,255,255,.16); color: white; }
+.filter-clear {
+  border: 0; background: transparent; color: var(--green); padding: 4px 2px; cursor: pointer;
+  font-size: .74rem; font-weight: 800; white-space: nowrap;
+}
+.reimbursement-history { display: grid; gap: 10px; }
+.reimbursement-history-heading {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 4px 2px 0;
+}
+.reimbursement-history-heading h2 { margin: 0; }
+.reimbursement-history-heading > span {
+  border-radius: 999px; padding: 5px 9px; background: #e6ece8; color: #586e64; font-size: .72rem; font-weight: 800;
+}
+.reimbursement-history .expense-list { margin-top: 0; }
+.reimbursement-history .expense-card {
+  border-radius: 18px; background: rgba(255,255,255,.93); box-shadow: 0 8px 24px rgba(35,58,50,.045);
+}
+.reimbursement-history .expense-card:first-child { border-color: #bdcec4; }
+.reimbursement-empty {
+  min-height: 150px; border: 1px dashed #ccd7d0; border-radius: 18px; background: rgba(255,255,255,.62);
+}
+.expense-warning { padding: 0 18px; margin: 10px 0 0; }
+.reimbursement-status.patient-balance { background: #f5e9dd; color: #80563b; }
+
+@media (max-width: 820px) {
+  .reimbursement-app-view { gap: 13px; }
+  .reimbursement-toolbar { align-items: flex-end; padding: 2px 2px 0; }
+  .reimbursement-toolbar h1 { font-size: 1.9rem; }
+  .reimbursement-toolbar p { max-width: 34ch; }
+  .reimbursement-filter-bar { top: 70px; margin-inline: -2px; border-radius: 16px; }
+  .reimbursement-summary { border-radius: 20px; }
+  .reimbursement-summary article { padding: 15px 13px; }
+}
+
+@media (max-width: 520px) {
+  .reimbursement-toolbar { align-items: center; }
+  .reimbursement-toolbar .eyebrow { display: none; }
+  .reimbursement-toolbar p { margin-top: 5px; font-size: .7rem; }
+  .reimbursement-toolbar .button { min-height: 38px; padding-inline: 12px; }
+  .reimbursement-filter-bar { padding: 11px 10px; }
+  .reimbursement-filter-heading > div { gap: 6px; }
+  .filter-chip { min-height: 34px; padding-inline: 9px; }
+  .reimbursement-history-heading { padding-inline: 1px; }
+  .reimbursement-history .expense-card { border-radius: 16px; }
+}
