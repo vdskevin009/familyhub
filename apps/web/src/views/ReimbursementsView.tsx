@@ -9,6 +9,7 @@ import { fetchInvoices } from "../worker";
 
 type Props = { hub: HubState };
 type CaseStatus = NonNullable<ReconciliationCase["Status"]>;
+type HistoryFilter = "fully-reimbursed" | "not-fully-reimbursed" | "primary" | "secondary";
 
 const statusCopy: Record<CaseStatus, string> = {
   "fully-reimbursed": "Fully reimbursed",
@@ -32,6 +33,20 @@ function money(value: number | null | undefined, code = "CAD"): string {
   catch { return `${value.toFixed(2)} ${code || "CAD"}`; }
 }
 
+function dateValue(value: string | null | undefined): number {
+  if (!value) return Number.NEGATIVE_INFINITY;
+  const time = new Date(value).getTime();
+  return Number.isNaN(time) ? Number.NEGATIVE_INFINITY : time;
+}
+
+function primaryAmount(item: ReconciliationCase): number {
+  return item.PrimaryReimbursedAmount ?? (item.Action === "submit-secondary" ? item.ReimbursedAmount : 0);
+}
+
+function secondaryAmount(item: ReconciliationCase): number {
+  return item.SecondaryReimbursedAmount ?? 0;
+}
+
 function unmatchedReason(item: UnmatchedReimbursement): string {
   if (item.Reason === "ambiguous-match") return "More than one expense could match this reimbursement. FamilyHub left it unmatched.";
   if (item.Reason === "missing-insurer") return "The insurer could not be identified confidently.";
@@ -47,7 +62,7 @@ export default function ReimbursementsView({ hub }: Props) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [lastSuccess, setLastSuccess] = useState("");
-  const [diagnostics, setDiagnostics] = useState<Awaited<ReturnType<typeof fetchInvoices>>["diagnostics"]>();
+  const [filters, setFilters] = useState<Set<HistoryFilter>>(() => new Set());
   const paired = Boolean(hub.worker.Endpoint.trim() && hub.worker.ApiKey.trim());
 
   async function refresh() {
@@ -55,7 +70,6 @@ export default function ReimbursementsView({ hub }: Props) {
     setBusy(true); setError("");
     try {
       const snapshot = await fetchInvoices(hub.worker);
-      setDiagnostics(snapshot.diagnostics);
       hub.setReimbursements(previous => ({
         ...previous,
         SchemaVersion: 2,
@@ -76,36 +90,70 @@ export default function ReimbursementsView({ hub }: Props) {
   useEffect(() => { if (paired) void refresh(); }, [paired, hub.worker.Endpoint, hub.worker.ApiKey]);
 
   const model = useMemo(() => {
-    const cases = [...(hub.reimbursements.Reconciliations ?? [])];
+    const cases = [...(hub.reimbursements.Reconciliations ?? [])]
+      .sort((a, b) => dateValue(b.ServiceDate) - dateValue(a.ServiceDate));
     const byId = new Map(hub.reimbursements.Items.map(item => [item.Id, item]));
     const unmatched = (hub.reimbursements.UnmatchedReimbursements ?? [])
       .map(result => ({ result, item: byId.get(result.DocumentId) }))
-      .filter((entry): entry is { result: UnmatchedReimbursement; item: ReimbursementItem } => Boolean(entry.item));
+      .filter((entry): entry is { result: UnmatchedReimbursement; item: ReimbursementItem } => Boolean(entry.item))
+      .sort((a, b) => dateValue(b.item.ServiceDate || b.item.StatementDate || b.item.ReceivedAt)
+        - dateValue(a.item.ServiceDate || a.item.StatementDate || a.item.ReceivedAt));
     const cad = cases.filter(item => (item.Currency || "CAD") === "CAD");
     const totalPaid = cad.reduce((sum, item) => sum + (item.OriginalAmount ?? 0), 0);
-    const primary = cad.reduce((sum, item) => sum + (item.PrimaryReimbursedAmount ?? (item.Action === "submit-secondary" ? item.ReimbursedAmount : 0)), 0);
-    const secondary = cad.reduce((sum, item) => sum + (item.SecondaryReimbursedAmount ?? 0), 0);
+    const primary = cad.reduce((sum, item) => sum + primaryAmount(item), 0);
+    const secondary = cad.reduce((sum, item) => sum + secondaryAmount(item), 0);
     const outstanding = cad.reduce((sum, item) => sum + (item.PotentialRemaining ?? 0), 0);
     const attention = cases.filter(item => caseStatus(item) !== "fully-reimbursed").length + unmatched.length;
     const warnings = [...new Set(hub.reimbursements.Items.filter(item => item.Status !== 4).map(item => item.ImportWarning).filter(Boolean))];
-    const unallocated = cad.reduce((sum, item) => sum + (item.UnallocatedReimbursedAmount ?? 0), 0);
-    return { cases, unmatched, totalPaid, primary, secondary, outstanding, attention, warnings, unallocated };
+    return { cases, unmatched, totalPaid, primary, secondary, outstanding, attention, warnings };
   }, [hub.reimbursements.Items, hub.reimbursements.Reconciliations, hub.reimbursements.UnmatchedReimbursements]);
 
-  return <div className="view-stack">
-    <section className="view-hero compact reimbursement-hero">
+  const filterCounts = useMemo(() => ({
+    fully: model.cases.filter(item => caseStatus(item) === "fully-reimbursed").length,
+    outstanding: model.cases.filter(item => caseStatus(item) !== "fully-reimbursed").length,
+    primary: model.cases.filter(item => primaryAmount(item) > 0).length,
+    secondary: model.cases.filter(item => secondaryAmount(item) > 0).length
+  }), [model.cases]);
+
+  const filteredCases = useMemo(() => {
+    const hasStatusFilter = filters.has("fully-reimbursed") || filters.has("not-fully-reimbursed");
+    const hasSourceFilter = filters.has("primary") || filters.has("secondary");
+
+    return model.cases.filter(item => {
+      const status = caseStatus(item);
+      const statusMatches = !hasStatusFilter
+        || (filters.has("fully-reimbursed") && status === "fully-reimbursed")
+        || (filters.has("not-fully-reimbursed") && status !== "fully-reimbursed");
+      const sourceMatches = !hasSourceFilter
+        || (filters.has("primary") && primaryAmount(item) > 0)
+        || (filters.has("secondary") && secondaryAmount(item) > 0);
+      return statusMatches && sourceMatches;
+    });
+  }, [filters, model.cases]);
+
+  function toggleFilter(filter: HistoryFilter) {
+    setFilters(previous => {
+      const next = new Set(previous);
+      if (next.has(filter)) next.delete(filter);
+      else next.add(filter);
+      return next;
+    });
+  }
+
+  return <div className="view-stack reimbursement-app-view">
+    <section className="reimbursement-toolbar">
       <div>
-        <span className="eyebrow">Insurance reconciliation</span>
-        <h1>Recover what is still owed.</h1>
-        <p>Healthcare expenses are matched only when the imported reimbursement evidence is strong enough. Uncertain matches stay visible for review.</p>
+        <span className="eyebrow">Benefits</span>
+        <h1>Reimbursements</h1>
+        <p>{lastSuccess ? `Updated ${new Date(lastSuccess).toLocaleString()}` : "Saved results are available even when the PC is offline."}</p>
       </div>
-      <span className="hero-icon"><CircleDollarSign size={27} /></span>
+      <button className="button secondary compact-button" disabled={!paired || busy} onClick={() => void refresh()}>
+        <RefreshCw size={16} className={busy ? "spin" : ""} />{busy ? "Refreshing…" : "Refresh"}
+      </button>
     </section>
 
     {error && <div className="banner error" role="status"><AlertTriangle size={17} />{error} — Previously synced results remain below.</div>}
     {model.warnings.map(warning => <div className="banner" role="status" key={warning}><AlertTriangle size={17} />{warning}</div>)}
-
-    {diagnostics && <p className="privacy-note">Reconciliation quality: {diagnostics.totalExpenses} cases · {diagnostics.fullyReimbursed} fully reimbursed · {diagnostics.waitingPrimary} waiting primary · {diagnostics.waitingSecondary} waiting secondary · {diagnostics.patientBalance} patient balances · {diagnostics.needsAttention} require attention · {diagnostics.unmatchedInsurerRecords} unmatched insurer records.</p>}
 
     <section className="reimbursement-summary" aria-label="Reimbursement summary">
       <article className="summary-primary"><small>Total paid</small><strong>{money(model.totalPaid)}</strong><span>healthcare expenses</span></article>
@@ -115,28 +163,41 @@ export default function ReimbursementsView({ hub }: Props) {
       <article className={model.attention ? "summary-attention" : ""}><small>Needs attention</small><strong>{model.attention}</strong><span>items</span></article>
     </section>
 
-    {model.unallocated > 0 && <p className="privacy-note">{money(model.unallocated)} in matched payments has no confirmed primary/secondary order and is excluded from those two totals. See the flagged expense rows.</p>}
-
-    <section className="surface reimbursement-source">
-      <div>
-        <span className="eyebrow">PC agent source</span>
-        <h2>Latest imported results</h2>
-        <p>{lastSuccess ? `Last complete scan: ${new Date(lastSuccess).toLocaleString()}` : "Saved results remain available when the PC is offline."}</p>
+    <section className="reimbursement-filter-bar" aria-label="Filter reimbursement history">
+      <div className="reimbursement-filter-heading">
+        <div>
+          <strong>History</strong>
+          <span>Newest first</span>
+        </div>
+        {filters.size > 0 && <button type="button" className="filter-clear" onClick={() => setFilters(new Set())}>Clear filters</button>}
       </div>
-      <button className="button secondary" disabled={!paired || busy} onClick={() => void refresh()}>
-        <RefreshCw size={16} className={busy ? "spin" : ""} />{busy ? "Refreshing…" : "Refresh from PC"}
-      </button>
-      {!paired && <small>Pair the PC in More → Local AI to refresh imported reimbursements.</small>}
+      <div className="reimbursement-filter-chips">
+        <button type="button" className={`filter-chip ${filters.has("fully-reimbursed") ? "active" : ""}`} aria-pressed={filters.has("fully-reimbursed")} onClick={() => toggleFilter("fully-reimbursed")}>
+          Fully reimbursed <span>{filterCounts.fully}</span>
+        </button>
+        <button type="button" className={`filter-chip ${filters.has("not-fully-reimbursed") ? "active" : ""}`} aria-pressed={filters.has("not-fully-reimbursed")} onClick={() => toggleFilter("not-fully-reimbursed")}>
+          Not fully reimbursed <span>{filterCounts.outstanding}</span>
+        </button>
+        <button type="button" className={`filter-chip ${filters.has("primary") ? "active" : ""}`} aria-pressed={filters.has("primary")} onClick={() => toggleFilter("primary")}>
+          Primary <span>{filterCounts.primary}</span>
+        </button>
+        <button type="button" className={`filter-chip ${filters.has("secondary") ? "active" : ""}`} aria-pressed={filters.has("secondary")} onClick={() => toggleFilter("secondary")}>
+          Secondary <span>{filterCounts.secondary}</span>
+        </button>
+      </div>
     </section>
 
-    <section className="surface reimbursement-ledger" aria-labelledby="reimbursement-ledger-title">
-      <div className="section-heading">
-        <div><span className="eyebrow">Expense by expense</span><h2 id="reimbursement-ledger-title">Reconciliation</h2><p>Amounts are imported evidence, not confirmation that a claim was submitted.</p></div>
-        <span className="learning-count">{model.cases.length} healthcare expense{model.cases.length === 1 ? "" : "s"}</span>
+    <section className="reimbursement-history" aria-labelledby="reimbursement-history-title">
+      <div className="reimbursement-history-heading">
+        <h2 id="reimbursement-history-title">All invoices</h2>
+        <span>{filteredCases.length}{filteredCases.length !== model.cases.length ? ` of ${model.cases.length}` : ""}</span>
       </div>
-      {!model.cases.length && <div className="empty-state"><CircleDollarSign size={30} /><strong>No healthcare expenses yet</strong><span>Run the PC collection after importing invoices and insurer statements.</span></div>}
+
+      {!model.cases.length && <div className="empty-state reimbursement-empty"><CircleDollarSign size={30} /><strong>No healthcare expenses yet</strong><span>Run the PC collection after importing invoices and insurer statements.</span></div>}
+      {!!model.cases.length && !filteredCases.length && <div className="empty-state reimbursement-empty"><strong>No invoices match these filters</strong><span>Clear one or more filters to restore the full history.</span></div>}
+
       <div className="expense-list">
-        {model.cases.map(item => {
+        {filteredCases.map(item => {
           const status = caseStatus(item);
           return <article className="expense-card" key={item.Id}>
             <div className="expense-heading">
@@ -145,26 +206,25 @@ export default function ReimbursementsView({ hub }: Props) {
             </div>
             <div className="expense-amounts">
               <div><small>Expense</small><strong>{money(item.OriginalAmount, item.Currency)}</strong></div>
-              <div><small>{item.PrimaryInsurer || "Primary"}</small><strong>{money(item.PrimaryReimbursedAmount ?? (item.Action === "submit-secondary" ? item.ReimbursedAmount : 0), item.Currency)}</strong></div>
-              <div><small>{item.SecondaryInsurer || "Secondary"}</small><strong>{money(item.SecondaryReimbursedAmount ?? 0, item.Currency)}</strong></div>
+              <div><small>{item.PrimaryInsurer || "Primary"}</small><strong>{money(primaryAmount(item), item.Currency)}</strong></div>
+              <div><small>{item.SecondaryInsurer || "Secondary"}</small><strong>{money(secondaryAmount(item), item.Currency)}</strong></div>
               <div className="remaining"><small>Remaining</small><strong>{money(item.PotentialRemaining, item.Currency)}</strong></div>
             </div>
-            {!!item.UnallocatedReimbursedAmount && <p className="privacy-note">Known payments: {money(item.UnallocatedReimbursedAmount, item.Currency)} · insurer order to confirm</p>}
+            {!!item.UnallocatedReimbursedAmount && <p className="privacy-note expense-warning">Known payments: {money(item.UnallocatedReimbursedAmount, item.Currency)} · insurer order to confirm</p>}
             <div className="expense-note"><span>{item.Summary}</span><small>Match confidence {Math.round(item.Confidence)}%</small></div>
           </article>;
         })}
       </div>
     </section>
 
-    <section className={`surface unmatched-panel ${model.unmatched.length ? "has-items" : ""}`} aria-labelledby="unmatched-title">
-      <div className="section-heading inline"><div><span className="eyebrow">No guessing</span><h2 id="unmatched-title">Unmatched reimbursements</h2><p>These insurer records were not attached to an expense automatically.</p></div><span className="unmatched-count">{model.unmatched.length}</span></div>
-      {!model.unmatched.length && <p className="all-matched"><CheckCircle2 size={17} /> No unmatched reimbursement records.</p>}
+    {model.unmatched.length > 0 && <section className="surface unmatched-panel has-items" aria-labelledby="unmatched-title">
+      <div className="section-heading inline"><div><span className="eyebrow">Needs review</span><h2 id="unmatched-title">Unmatched reimbursements</h2></div><span className="unmatched-count">{model.unmatched.length}</span></div>
       {model.unmatched.map(({ result, item }) => <article className="unmatched-row" key={result.DocumentId}>
         <span className="reimbursement-status unmatched">Unmatched</span>
         <div><strong>{item.Provider || item.Subject || "Insurer record"}</strong><small>{item.Member && item.Member !== "unknown" ? `${item.Member} · ` : ""}{item.Insurer === "blue-cross" ? "Blue Cross" : item.Insurer === "desjardins" ? "Desjardins" : "Insurer unknown"} · {dateLabel(item.ServiceDate || item.ReceivedAt)}{item.StatementDate ? ` · Statement ${dateLabel(item.StatementDate)}` : ""}</small><p>{item.NeedsReview && item.Reasons?.length ? item.Reasons[0] : unmatchedReason(result)}</p></div>
         <div className="unmatched-amount"><strong>{money(reimbursementAmount(item), item.Currency)}</strong><small>reimbursement</small></div>
         <button className="mini-button" onClick={() => googleBridge.openMessage(item.AccountEmail, item.InternetMessageId, item.SourceMessageId)}><ExternalLink size={14} /> Email</button>
       </article>)}
-    </section>
+    </section>}
   </div>;
 }
