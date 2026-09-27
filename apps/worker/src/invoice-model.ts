@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { extractHealthcareEvidence, healthcareSchema, validateHealthcare, type HealthcareEvidence } from "./healthcare-evidence.js";
+import { calendarDate, extractHealthcareEvidence, healthcareSchema, memberName, receiptProvider, validateHealthcare, type HealthcareEvidence } from "./healthcare-evidence.js";
 
 export const kinds = ["receipt", "invoice", "claim", "bill", "administrative", "marketing", "ignore", "other"] as const;
 export type Kind = typeof kinds[number];
@@ -96,7 +96,7 @@ export function validateClassification(input: unknown): Classification {
     || !["Kevin", "Jasmine", "Nathan", "unknown"].includes(x.member)
     || !["expense", "insurer-statement", "other"].includes(x.documentRole)
     || !(x.insurer === null || x.insurer === "desjardins" || x.insurer === "blue-cross")
-    || !(x.serviceDate === null || /^\d{4}-\d{2}-\d{2}$/.test(x.serviceDate))
+    || !(x.serviceDate === null || calendarDate(x.serviceDate))
     || !(x.amount === null || (Number.isFinite(x.amount) && x.amount > 0 && x.amount < 1e9))
     || !(x.billedAmount === null || (Number.isFinite(x.billedAmount) && x.billedAmount > 0 && x.billedAmount < 1e9))
     || !(x.reimbursedAmount === null || (Number.isFinite(x.reimbursedAmount) && x.reimbursedAmount >= 0 && x.reimbursedAmount < 1e9))
@@ -129,18 +129,21 @@ export function toInvoice(mail: Mail, email: string, label: string, result: Clas
     ? healthcare.OriginalBilledAmount ?? (residualOnlyHealthcareExpense ? null : amount)
     : amount;
   const member = result.member === "unknown" && /jasmine/i.test(label) ? "Jasmine" : result.member === "unknown" && /kevin/i.test(label) ? "Kevin" : result.member;
+  const senderName = mail.sender.split("<")[0].replace(/"/g, "").trim();
+  const provider = healthcare.Provider || (result.category !== "health" || memberName(senderName) === "unknown" && !/^(?:fw|fwd):/i.test(mail.subject) ? senderName : "");
   return {
     AnalysisVersion: 4,
     Healthcare: healthcare,
     Id: recordId(email, mail.id), AccountLabel: label, AccountEmail: email,
     SourceMessageId: mail.id, ThreadId: mail.threadId, InternetMessageId: mail.internetMessageId,
-    Subject: mail.subject, Sender: mail.sender, Provider: healthcare.Provider || mail.sender.split("<")[0].replace(/"/g, "").trim(),
+    Subject: mail.subject, Sender: mail.sender, Provider: provider,
     ReceivedAt: mail.receivedAt, Category: result.category === "health" ? 0 : result.category === "travel" ? 1 : 2,
     Status: excluded ? 4 : 0, DetectedAmount: detectedAmount, Currency: result.currency || fallback?.currency || "",
     Confidence: Math.round(result.confidence * 100), Notes: "", Attachments: mail.attachments,
     DocumentType: result.kind, Reasons: [result.reason], WorkerManaged: true, NeedsReview: needsReview,
     ReimbursementEligibility: result.transaction ? result.reimbursement : "unknown", ClassificationSource: source,
-    Member: member, DocumentRole: result.documentRole, Insurer: result.insurer, ServiceDate: result.serviceDate,
+    Member: member, DocumentRole: result.documentRole, Insurer: result.insurer, ServiceDate: healthcare.ServiceDate || result.serviceDate,
+    ClaimedService: healthcare.ServiceType || undefined,
     BilledAmount: healthcare.OriginalBilledAmount ?? (healthcare.AmountNotCovered != null ? null : result.billedAmount ?? (result.documentRole === "expense" ? amount : null)),
     ReimbursedAmount: result.reimbursedAmount ?? (result.documentRole === "insurer-statement" ? amount : null),
     AmountSource: result.amount != null || result.billedAmount != null || result.reimbursedAmount != null ? "ai" : fallback ? "email-text" : "missing",
@@ -154,7 +157,7 @@ export function toInvoice(mail: Mail, email: string, label: string, result: Clas
 export function repairHealthcareAmounts(item: Invoice, mail: Mail): Invoice {
   if (item.Category !== 0 || item.DocumentRole !== "expense") return item;
   const result: Classification = {
-    healthcare: item.Healthcare,
+    healthcare: receiptProvider(mail.subject) ? { ...item.Healthcare, InsurerPayments: {}, OriginalBilledAmount: null } : item.Healthcare,
     kind: item.DocumentType,
     confidence: Math.max(0, Math.min(1, item.Confidence / 100)),
     transaction: true,
@@ -178,6 +181,9 @@ export function repairHealthcareAmounts(item: Invoice, mail: Mail): Invoice {
   return {
     ...item,
     Healthcare: healthcare,
+    Provider: healthcare.Provider || (memberName(item.Provider) !== "unknown" ? "" : item.Provider),
+    ServiceDate: healthcare.ServiceDate || item.ServiceDate,
+    ClaimedService: healthcare.ServiceType || item.ClaimedService,
     BilledAmount: original,
     DetectedAmount: original ?? (residualOnly ? null : item.DetectedAmount),
     AmountSource: original != null ? "email-text" : residualOnly ? "missing" : item.AmountSource,

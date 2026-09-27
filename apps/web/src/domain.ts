@@ -41,6 +41,11 @@ export function isoDay(value: Date): string {
 }
 
 export function dateLabel(value: string): string {
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    const date = new Date(`${value}T00:00:00Z`);
+    return Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== value ? value
+      : date.toLocaleDateString(undefined, { timeZone: "UTC", weekday: "short", month: "short", day: "numeric", year: "numeric" });
+  }
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric", year: "numeric" });
 }

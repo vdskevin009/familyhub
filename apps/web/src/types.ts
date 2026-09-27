@@ -71,7 +71,8 @@ export type ReimbursementAttachment = {
 };
 
 export type ReimbursementItem = {
-  Healthcare?: { InvoiceNumber?: string | null };
+  Healthcare?: { InvoiceNumber?: string | null; Provider?: string | null; ServiceType?: string | null };
+  ClaimedService?: string;
   AnalysisVersion?: number;
   Id: string;
   AccountLabel: string;
@@ -137,6 +138,7 @@ export type AgentReview = {
 };
 
 export type ReconciliationCase = {
+  ServiceType?: string | null;
   Id: string; Member: "Kevin" | "Jasmine" | "Nathan" | "unknown"; Provider: string; ServiceDate: string | null;
   PreviouslyFound?: boolean;
   Unreconciled?: boolean;
