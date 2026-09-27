@@ -15,7 +15,7 @@ export function applyLearnedClassification(extracted: Classification, rule?: Cor
   if (!rule || extracted.transaction && ["ignore", "marketing"].includes(rule.kind)) return extracted;
   return { ...extracted, kind: rule.kind, reason: `${extracted.reason} Prior category correction applied.` };
 }
-type AccountProgress = { through?: number; window?: Window; error?: string; lastSuccess?: string };
+type AccountProgress = { through?: number; window?: Window; error?: string; lastSuccess?: string; healthReceiptRepairVersion?: number; healthReceiptRepairPage?: string };
 type Decision = { id: string; itemId: string; type: "classification" | "status"; before: Partial<Invoice>; after: Partial<Invoice>; at: string; undoneAt?: string; correctionBefore?: Correction };
 type State = { items: Invoice[]; corrections: Correction[]; decisions: Decision[]; reviews: AgentReview[]; accounts: Record<string, AccountProgress>; lastAttempt?: string; lastSuccess?: string; error?: string };
 const statePath = join(dataDirectory, "invoices.json");
@@ -176,6 +176,16 @@ export async function classify(mail: Mail, email: string, label = email, diagnos
   if (proof.marketing) return { source: "rules", result: { kind: "marketing", confidence: .98, transaction: false,
     reimbursement: "no", amount: null, currency: "", category: "other", member: "unknown", documentRole: "other", insurer: null,
     serviceDate: null, billedAmount: null, reimbursedAmount: null, attention: "none", attentionReason: "", reason: "Promotional signals without evidence of a completed transaction." } };
+  // The email body may omit prices; an extracted clinic invoice still proves an expense.
+  const clinicReceipt = /janeapp\.com/i.test(mail.sender) && /\breceipt\b/i.test(mail.subject)
+    && mail.attachments.some(a => /invoice[-_ .0-9]/i.test(a.FileName) && a.AnalysisStatus === "text-extracted")
+    && /\binvoice\s*(?:number|no\.?|#)\s*[:#-]?\s*[a-z0-9-]{3,}/i.test(mail.attachmentText || "")
+    && /\b(?:massage|physiotherapy|physical therapy|chiropractic|osteopath|acupuncture|rmt)\b/i.test(mail.attachmentText || "");
+  const clinicFallback = (): { source: Invoice["ClassificationSource"]; result: Classification } =>
+    ({ source: "rules", result: { kind: "receipt", confidence: .85, transaction: true,
+      reimbursement: "possible", amount: null, currency: "", category: "health", member: "unknown", documentRole: "expense",
+      insurer: null, serviceDate: null, billedAmount: null, reimbursedAmount: null, attention: "none", attentionReason: "",
+      reason: "Reçu de soins et numéro de facture confirmés par la pièce jointe; montants et remboursement à vérifier." } });
   try {
     const work = join(dataDirectory, "classification-work");
     await mkdir(work, { recursive: true });
@@ -213,8 +223,11 @@ export async function classify(mail: Mail, email: string, label = email, diagnos
     ].join("\n");
     const turn = await thread.run(prompt, { outputSchema: classificationSchema, signal: AbortSignal.timeout(90_000) });
     const extracted = validateClassification(JSON.parse(turn.finalResponse));
-    return { source: "codex", result: applyLearnedClassification(extracted, rule) };
+    const classified = applyLearnedClassification(extracted, rule);
+    return clinicReceipt && (classified.category !== "health" || classified.documentRole !== "expense" || !classified.transaction)
+      ? clinicFallback() : { source: "codex", result: classified };
   } catch (error) {
+    if (clinicReceipt) return clinicFallback();
     if (diagnostic) throw error;
     return { source: "unavailable", result: { kind: "other", confidence: 0, transaction: false, reimbursement: "unknown",
       amount: null, currency: "", category: "other", member: "unknown", documentRole: "other", insurer: null, serviceDate: null,
@@ -249,10 +262,12 @@ export async function collectInvoices(overrides: Partial<CollectionDependencies>
         });
         const window = progress.window!;
         let retryBudget = 10;
-        const processMessage = async (id: string, retry = false) => {
+        const processMessage = async (id: string, retry = false, repair = false) => {
           const existing = state.items.find(x => x.Id === recordId(key, id));
           const needsUpgrade = existing && (existing.AnalysisVersion !== 4 || !existing.DocumentRole || !existing.Member || !("BilledAmount" in existing));
-          if (existing && !needsUpgrade && (!retry || existing.ClassificationSource !== "unavailable")) return;
+          if (existing?.CorrectedAt && !needsUpgrade) return;
+          if (existing && !needsUpgrade && (!retry || existing.ClassificationSource !== "unavailable")
+            && (!repair || existing.Category === 0 && existing.DocumentRole === "expense" && existing.Status !== 4)) return;
           const normalized = normalizeMail(await callGmail<RawMail>(token, `messages/${encodeURIComponent(id)}?format=full`));
           if (normalized.blueCrossExport) {
             await edit(() => { mergeBlueCross(blueCrossInvoices(normalized, key, account.label)); });
@@ -293,7 +308,23 @@ export async function collectInvoices(overrides: Partial<CollectionDependencies>
           });
           if (!list.nextPageToken) break;
         }
-        if (progress.window) complete = false;
+        // Recover recent clinic receipts missed before the regular watermark advanced. Persist the
+        // cursor so a failed or backlogged pass resumes without silently losing the remainder.
+        if (progress.healthReceiptRepairVersion !== 1 && !progress.window) {
+          const after = Math.max(0, Math.floor(Date.now() / 1000) - 60 * 86400);
+          for (let pages = 0; pages < 2; pages++) {
+            const params = new URLSearchParams({ q: `after:${after} from:notifications@janeapp.com subject:"Your Receipt" -in:trash -in:spam`, maxResults: "50",
+              ...(progress.healthReceiptRepairPage ? { pageToken: progress.healthReceiptRepairPage } : {}) });
+            const list = await callGmail<{ messages?: { id: string }[]; nextPageToken?: string }>(token, `messages?${params}`);
+            for (const { id } of list.messages || []) await processMessage(id, false, true);
+            await edit(() => {
+              progress.healthReceiptRepairPage = list.nextPageToken;
+              if (!list.nextPageToken) progress.healthReceiptRepairVersion = 1;
+            });
+            if (!list.nextPageToken) break;
+          }
+        }
+        if (progress.window || progress.healthReceiptRepairVersion !== 1) complete = false;
       } catch (error) {
         complete = false;
         await edit(() => { progress.error = error instanceof Error ? error.message : "Gmail collection failed."; });
