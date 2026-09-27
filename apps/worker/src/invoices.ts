@@ -265,6 +265,8 @@ export async function collectInvoices(overrides: Partial<CollectionDependencies>
             const index = state.items.findIndex(x => x.Id === item.Id);
             if (index >= 0) {
               const current = state.items[index];
+              // A temporary model failure cannot turn an indexed expense into an unknown document.
+              if (source === "unavailable" && current.ClassificationSource !== "unavailable") return;
               // A user's correction/status during classification wins over the background result.
               state.items[index] = current.CorrectedAt
                 ? { ...item, DocumentType: current.DocumentType, Status: current.Status, NeedsReview: current.NeedsReview, ClassificationSource: current.ClassificationSource, CorrectedAt: current.CorrectedAt, Notes: current.Notes, LastDecisionId: current.LastDecisionId }

@@ -102,8 +102,9 @@ const dateDistance = (left: string | null | undefined, right: string | null | un
 const isPatientName = (value: string) => /^(?:kevin|jasmine|nathan)(?:\s|$)/i.test(value.trim());
 
 /** Collapse receipt/statement copies into one expense before matching insurer rows. */
-function canonicalExpenses(expenses: Invoice[]): Invoice[] {
-  const result: Invoice[] = [];
+type CanonicalExpense = Invoice & { RelatedDocumentIds: string[] };
+function canonicalExpenses(expenses: Invoice[]): CanonicalExpense[] {
+  const result: CanonicalExpense[] = [];
   for (const item of expenses) {
     const h = healthcareEvidence(item);
     const provider = h.Provider || item.Provider;
@@ -115,10 +116,11 @@ function canonicalExpenses(expenses: Invoice[]): Invoice[] {
       const patientProviderPair = (isPatientName(candidate.Provider) && !isPatientName(provider)) || (isPatientName(provider) && !isPatientName(candidate.Provider));
       const sameInvoice = Boolean(h.InvoiceNumber && c.InvoiceNumber && h.InvoiceNumber.toLowerCase() === c.InvoiceNumber.toLowerCase());
       const residualLink = sameMoney(candidate.BilledAmount, h.AmountNotCovered) || sameMoney(item.BilledAmount, c.OriginalBilledAmount);
-      return (key === ckey && (patientProviderPair || sameInvoice || residualLink)) || (candidate.Member === item.Member && dateDistance(candidate.ServiceDate, item.ServiceDate) === 0 &&
+      return (key === ckey && (sameInvoice || residualLink && (patientProviderPair || providerMatch))) || (candidate.Member === item.Member && dateDistance(candidate.ServiceDate, item.ServiceDate) === 0 &&
         patientProviderPair && (sameMoney(candidate.BilledAmount, h.AmountNotCovered) || sameMoney(item.BilledAmount, c.OriginalBilledAmount)));
     });
-    if (!existing) { result.push({ ...item, Provider: isPatientName(provider) && h.Provider ? h.Provider : provider, Healthcare: h }); continue; }
+    if (!existing) { result.push({ ...item, Provider: isPatientName(provider) && h.Provider ? h.Provider : provider, Healthcare: h, RelatedDocumentIds: [item.Id] }); continue; }
+    existing.RelatedDocumentIds.push(item.Id);
     const eh = healthcareEvidence(existing);
     const original = eh.OriginalBilledAmount ?? h.OriginalBilledAmount ??
       (existing.BilledAmount != null && existing.BilledAmount > (h.AmountNotCovered ?? 0) ? existing.BilledAmount : item.BilledAmount);
@@ -274,7 +276,7 @@ export function buildReconciliationSnapshot(items: Invoice[]): ReconciliationSna
       Currency: expense.Currency || "CAD", NextInsurer: next, Action: action, Summary: summary,
       Status: status,
       Confidence: matched.length ? Math.min(expense.Confidence, ...matched.map(item => item.Confidence)) : expense.Confidence,
-      DocumentIds: [expense.Id, ...matched.map(item => item.Id)], Evidence: evidenceMap,
+      DocumentIds: [...expense.RelatedDocumentIds, ...matched.map(item => item.Id)], Evidence: evidenceMap,
       Explanation: `Case ${expense.Id} uses ${[expense.Id, ...matched.map(item => item.Id)].length} linked evidence records. ${summary}`,
       ExtractionConfidence: expense.Confidence, MatchConfidence: matched.length ? Math.min(...matched.map(item => item.Confidence)) : 0,
       ReconciliationConfidence: matched.length ? Math.min(expense.Confidence, ...matched.map(item => item.Confidence)) : expense.Confidence

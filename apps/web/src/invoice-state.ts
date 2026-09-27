@@ -1,4 +1,4 @@
-import { ReimbursementItem, ReimbursementStatus } from "./types";
+import { ReconciliationCase, ReimbursementCategory, ReimbursementItem, ReimbursementStatus } from "./types";
 
 function autoTriageKnownItem(item: ReimbursementItem): ReimbursementItem {
   if (item.ClassificationSource === "manual") return item;
@@ -26,12 +26,17 @@ function autoTriageKnownItem(item: ReimbursementItem): ReimbursementItem {
 }
 
 export function mergeInvoiceItems(existing: ReimbursementItem[], incoming: ReimbursementItem[]): ReimbursementItem[] {
-  const map = new Map(existing.map(item => [`${item.AccountEmail.toLowerCase()}:${item.SourceMessageId}`, item]));
+  const messageKey = (item: ReimbursementItem) => `message:${item.AccountEmail.toLowerCase()}:${item.SourceMessageId}`;
+  // One insurer email can contain many independent claim rows. Worker IDs identify rows.
+  const keyFor = (item: ReimbursementItem) => item.WorkerManaged ? `id:${item.Id}` : messageKey(item);
+  const map = new Map(existing.map(item => [keyFor(item), item]));
   for (const incomingItem of incoming) {
     const next = autoTriageKnownItem(incomingItem);
-    const key = `${next.AccountEmail.toLowerCase()}:${next.SourceMessageId}`;
-    const current = map.get(key);
-    if (current?.WorkerManaged && !next.WorkerManaged) continue;
+    const key = keyFor(next);
+    const oldBrowserKey = messageKey(next);
+    const current = map.get(key) ?? (next.WorkerManaged ? map.get(oldBrowserKey) : undefined);
+    if (!next.WorkerManaged && [...map.values()].some(item => item.WorkerManaged && messageKey(item) === oldBrowserKey)) continue;
+    if (next.WorkerManaged) map.delete(oldBrowserKey);
     map.set(key, current ? {
       ...next,
       Id: next.WorkerManaged ? next.Id : current.Id,
@@ -43,4 +48,42 @@ export function mergeInvoiceItems(existing: ReimbursementItem[], incoming: Reimb
     } : next);
   }
   return [...map.values()];
+}
+
+/** Retain a reviewable trace when a partial or rebuilt worker index omits a case. */
+export function mergeReconciliationHistory(previous: ReconciliationCase[], incoming: ReconciliationCase[], items: ReimbursementItem[]): ReconciliationCase[] {
+  const currentDocuments = new Set(incoming.flatMap(item => item.DocumentIds));
+  const byId = new Map(items.map(item => [item.Id, item]));
+  const retained = previous.filter(item => item.DocumentIds.length > 0
+    && !item.DocumentIds.some(id => currentDocuments.has(id))
+    && byId.get(item.DocumentIds[0])?.Status !== ReimbursementStatus.Ignored)
+    .map(item => ({ ...item, PreviouslyFound: true }));
+  return [...incoming.map(item => ({ ...item, PreviouslyFound: false })), ...retained];
+}
+
+/** Surface indexed healthcare invoices even when no reconciliation case was produced. */
+export function unreconciledInvoiceCases(cases: ReconciliationCase[], items: ReimbursementItem[]): ReconciliationCase[] {
+  const covered = new Set(cases.flatMap(item => item.DocumentIds));
+  const candidates = items.filter(item => (item.Category === ReimbursementCategory.HealthBenefit || item.DocumentRole === "expense" && item.ReimbursementEligibility === "possible")
+    && item.Status !== ReimbursementStatus.Ignored && !covered.has(item.Id)
+    && (item.DocumentRole === "expense" || (!item.DocumentRole || item.DocumentRole === "other")
+      && ["receipt", "invoice", "bill"].includes(item.DocumentType || "")));
+  const grouped = new Map<string, ReimbursementItem[]>();
+  for (const item of candidates) {
+    // Only an explicit shared invoice number justifies consolidating source documents.
+    const invoiceNumber = item.Healthcare?.InvoiceNumber?.trim().toLowerCase();
+    const key = invoiceNumber ? `${item.Member || "unknown"}:${item.ServiceDate || "unknown"}:${invoiceNumber}` : item.Id;
+    grouped.set(key, [...(grouped.get(key) ?? []), item]);
+  }
+  return [...grouped.values()].map(group => {
+    const item = group.find(entry => entry.BilledAmount != null) ?? group[0];
+    return {
+      Id: `unreconciled:${item.Id}`, DocumentIds: group.map(entry => entry.Id), Member: item.Member || "unknown",
+      Provider: item.Provider || item.Subject, ServiceDate: item.ServiceDate || null,
+      OriginalAmount: item.BilledAmount ?? item.DetectedAmount, ReimbursedAmount: 0, PotentialRemaining: null,
+      Currency: item.Currency || "CAD", NextInsurer: null, Action: "review-amount" as const,
+      Status: "needs-attention" as const, Summary: "Indexed invoice without a confirmed reconciliation case.",
+      Confidence: item.Confidence, PreviouslyFound: true, Unreconciled: true
+    };
+  });
 }
