@@ -38,3 +38,15 @@ test("review cannot cite or link an ID outside its evidence", () => {
   assert.throws(() => validateReview({ verdict: "possible-match", candidateId: "fabricated", confidence: .99,
     explanation: "Unknown", evidenceIds: ["fabricated"] }, target), /Invalid reviewer output/);
 });
+
+
+test("rejected match pair is not re-proposed by the second reviewer", () => {
+  const items = [invoice("a", "expense"), invoice("s", "insurer-statement")];
+  const snapshot = buildReconciliationSnapshot(items, [
+    { reimbursementId: "s", expenseId: "a", decision: "rejected", at: "2026-09-27T12:00:00Z", confidence: 88 }
+  ]);
+  assert.deepEqual(snapshot.unmatched, [{ DocumentId: "s", Reason: "no-expense-match" }]);
+  const target = reviewTargets(items, snapshot).find(item => item.key === "unmatched:s");
+  assert.ok(target);
+  assert.deepEqual(target.candidateIds, []);
+});
