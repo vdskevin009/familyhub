@@ -36,8 +36,8 @@ function workflowExpenseId(entry: ReconciliationCase): string {
 }
 
 function workflowRecord(entry: ReconciliationCase): ReimbursementWorkflowRecord | undefined {
-  const expenseId = workflowExpenseId(entry);
-  return state.workflowRecords.find(item => item.ExpenseDocumentId === expenseId);
+  const expenseIds = new Set([workflowExpenseId(entry), ...(entry.ExpenseDocumentIds ?? [])].filter(Boolean));
+  return state.workflowRecords.find(item => expenseIds.has(item.ExpenseDocumentId));
 }
 
 function appendWorkflowHistory(record: ReimbursementWorkflowRecord, status: ReimbursementWorkflowStatus,
