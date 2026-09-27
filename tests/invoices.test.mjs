@@ -124,6 +124,57 @@ test('QubeCore/Jane direct-insurance receipt keeps gross expense, primary paymen
   assert.equal(repaired.CorrectedAt, oldIndexed.CorrectedAt);
 });
 
+test('matched partial insurer evidence is derived from assignments and never remains unmatched', () => {
+  const source = { ...mail, id: 'qubecore-partial-match', subject: 'Your Receipt - QubeCore Sports & Rehab',
+    sender: 'QubeCore Sports & Rehab <notifications@janeapp.com>', receivedAt: '2026-09-17T21:32:00Z',
+    text: 'Invoice #138636-P01. Service date: 2026-09-17. SEPTEMBER 17, 2026 - 1:15PM, RMT - FOLLOW UP MASSAGE (60 MINUTES) $142.86 $7.14 $150.00\nDESJARDINS INSURANCE (TELUS eClaims) Massage therapy Amount not covered: $38.00 -$112.00\nTOTAL $38.00',
+    attachmentText: '' };
+  const expense = toInvoice(source, 'kevin@example.test', 'Kevin', { ...classification, category: 'health', member: 'Kevin',
+    documentRole: 'expense', amount: 150, billedAmount: 150, serviceDate: '2026-09-17', reason: 'receipt' }, 'codex');
+  assert.equal(expense.Healthcare?.InsurerPayments?.desjardins, 112);
+
+  // This mirrors the troublesome non-structured insurer row: its generic BilledAmount is the
+  // partial paid amount, not an explicit submitted/gross amount.
+  const statement = { ...expense, Id: 'desjardins-partial-112', AccountLabel: 'Desjardins email',
+    Provider: 'Desjardins · Massothérapeute - visite subséquente', Subject: 'Desjardins claim · Massage therapy',
+    DocumentType: 'claim', DocumentRole: 'insurer-statement', Insurer: 'desjardins',
+    BilledAmount: 112, DetectedAmount: 112, ReimbursedAmount: 112, NeedsReview: false, Confidence: 99,
+    Healthcare: { ServiceDate: '2026-09-17', ServiceType: 'Massage therapy', InsurerPayments: { desjardins: 112 } } };
+
+  const first = buildReconciliationSnapshot([expense, statement]);
+  assert.equal(first.unmatched.length, 0);
+  assert.equal(first.cases.length, 1);
+  assert.deepEqual(
+    [first.cases[0].OriginalAmount, first.cases[0].PrimaryReimbursedAmount, first.cases[0].SecondaryReimbursedAmount, first.cases[0].PotentialRemaining],
+    [150, 112, 0, 38]
+  );
+  assert.equal(first.cases[0].ReimbursedAmount, 112, 'embedded receipt payment and matching statement are the same payment, not additive');
+  assert.ok(first.cases[0].DocumentIds.includes(statement.Id));
+
+  const repeated = buildReconciliationSnapshot([expense, statement]);
+  assert.deepEqual(repeated, first, 'rebuilding the snapshot is deterministic');
+
+  const removed = buildReconciliationSnapshot([statement]);
+  assert.deepEqual(removed.unmatched, [{ DocumentId: statement.Id, Reason: 'no-expense-match' }]);
+  const restored = buildReconciliationSnapshot([expense, statement]);
+  assert.equal(restored.unmatched.length, 0);
+});
+
+test('a partial paid amount does not need to equal the expense total to match', () => {
+  const expense = toInvoice({ ...mail, id: 'partial-expense', subject: 'Massage clinic receipt', text: 'Massage therapy. Total paid CAD 150.00' },
+    'kevin@example.test', 'Kevin', { ...classification, category: 'health', member: 'Kevin', documentRole: 'expense',
+      amount: 150, billedAmount: 150, serviceDate: '2026-09-17', reason: 'receipt',
+      healthcare: { ServiceType: 'Massage therapy', OriginalBilledAmount: 150 } }, 'codex');
+  const statement = { ...expense, Id: 'partial-statement', Provider: 'Desjardins · Massage therapy', Subject: 'Desjardins claim',
+    DocumentType: 'claim', DocumentRole: 'insurer-statement', Insurer: 'desjardins', BilledAmount: 112,
+    DetectedAmount: 112, ReimbursedAmount: 112, NeedsReview: false, Confidence: 99,
+    Healthcare: { ServiceDate: '2026-09-17', ServiceType: 'Massage therapy' } };
+  const snapshot = buildReconciliationSnapshot([expense, statement]);
+  assert.equal(snapshot.unmatched.length, 0);
+  assert.equal(snapshot.cases[0].PrimaryReimbursedAmount, 112);
+  assert.equal(snapshot.cases[0].PotentialRemaining, 38);
+});
+
 test('QubeCore residual-only receipt keeps gross expense and Desjardins payment unknown until reconciliation', () => {
   const source = { ...mail, id: 'qubecore-residual-only', subject: 'Your Receipt - QubeCore Sports & Rehab',
     sender: 'QubeCore Sports & Rehab <notifications@janeapp.com>', receivedAt: '2026-08-20T21:15:00Z',
