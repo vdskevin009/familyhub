@@ -180,3 +180,29 @@ test('historical intake retains medical receipts with unknown coverage and no in
   assert.equal(result.result.billedAmount, null);
   assert.equal(toInvoice(mail, 'test@example.test', 'Test', result.result, result.source).NeedsReview, true);
 });
+
+test('Gmail retries only transient rate errors without exposing response contents', async () => {
+  const { gmail } = await import('../apps/worker/dist/gmail-client.js');
+  let calls = 0; const pauses = [];
+  const result = await gmail('synthetic', 'messages', { pause: async ms => { pauses.push(ms); }, fetch: async () => {
+    calls++;
+    return calls === 1 ? new Response(JSON.stringify({ error: { errors: [{ reason: 'userRateLimitExceeded', message: 'synthetic-private-value' }] } }), { status: 403 })
+      : new Response(JSON.stringify({ messages: [] }), { status: 200 });
+  } });
+  assert.deepEqual(result, { messages: [] }); assert.equal(calls, 2); assert.ok(pauses.some(ms => ms >= 2000));
+  calls = 0;
+  await assert.rejects(() => gmail('synthetic', 'messages', { pause: async () => {}, fetch: async () => {
+    calls++; return new Response(JSON.stringify({ error: { errors: [{ reason: 'domainPolicy', message: 'synthetic-private-value' }] } }), { status: 403 });
+  } }), error => error.message.includes('domainPolicy') && !error.message.includes('synthetic-private-value'));
+  assert.equal(calls, 1);
+});
+
+test('scheduled private Codex resolves the installed native CLI without a PATH override', async () => {
+  const { privateCodexBinary } = await import('../apps/worker/dist/private-codex.js');
+  const { existsSync } = await import('node:fs');
+  const { isAbsolute } = await import('node:path');
+  const old = process.env.FAMILYHUB_CODEX_PATH;
+  delete process.env.FAMILYHUB_CODEX_PATH;
+  try { const binary = privateCodexBinary(); assert.ok(isAbsolute(binary)); assert.ok(existsSync(binary)); }
+  finally { if (old !== undefined) process.env.FAMILYHUB_CODEX_PATH = old; }
+});
