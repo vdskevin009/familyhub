@@ -164,7 +164,7 @@ export function recoverMissingDesjardinsExpenses(items: Invoice[], imported: Inv
 
 function matchScore(expense: Invoice, statement: Invoice): number {
   if (expense.Member !== "unknown" && statement.Member !== "unknown" && expense.Member !== statement.Member) return -1;
-  if (!statement.Insurer || statement.NeedsReview || expense.NeedsReview) return -1;
+  if (!statement.Insurer || statement.NeedsReview) return -1;
   const amount = expense.BilledAmount ?? expense.DetectedAmount;
   const paid = statement.ReimbursedAmount;
   if (expense.Currency && statement.Currency && expense.Currency !== statement.Currency) return -1;
@@ -184,9 +184,14 @@ function matchScore(expense: Invoice, statement: Invoice): number {
   const corroboratesEmbeddedPayment = embeddedPayment != null && paid != null && sameMoney(embeddedPayment, paid)
     && expense.Member !== "unknown" && expense.Member === statement.Member
     && expense.ServiceDate != null && expense.ServiceDate === statement.ServiceDate
-    && (!expenseService || !statementService || expenseService === statementService)
-    && Math.min(expense.Confidence, statement.Confidence) >= 90;
+    && (expenseService == null || statementService == null || expenseService === statementService)
+    && expense.Confidence >= 80 && statement.Confidence >= 90;
   if (corroboratesEmbeddedPayment) return 25;
+
+  // Document-level review is not the same thing as reconciliation uncertainty. A NeedsReview
+  // expense may pass only through the strict corroboration path above; all other automatic
+  // matching remains blocked until the expense is reviewed.
+  if (expense.NeedsReview) return -1;
 
   if (structuredClaim) {
     if (expense.Member === "unknown" || expense.Member !== statement.Member || expense.ServiceDate !== statement.ServiceDate
@@ -314,7 +319,11 @@ export function buildReconciliationSnapshot(items: Invoice[]): ReconciliationSna
     });
     const explicitPrimaryProcessed = evidence.ProcessedInsurers?.includes(order[0]);
     const explicitSecondaryProcessed = evidence.ProcessedInsurers?.includes(order[1]);
-    if (expense.NeedsReview || !order.length || pending || remaining == null || original != null && reimbursed > original + .005) {
+    // Keep the source document review flag intact, but do not let it override a reimbursement
+    // workflow that already has a strict deterministic insurer assignment. If no insurer row
+    // could be confidently assigned, the document review still blocks the reimbursement case.
+    const unresolvedExpenseReview = expense.NeedsReview && matched.length === 0;
+    if (unresolvedExpenseReview || !order.length || pending || remaining == null || original != null && reimbursed > original + .005) {
       action = "review-amount"; status = "needs-attention";
       summary = !order.length ? `Ordre des assureurs à confirmer. Paiements trouvés : Desjardins ${matched.filter(item => item.Insurer === "desjardins").reduce((sum, item) => sum + (item.ReimbursedAmount ?? 0), 0).toFixed(2)} $; Blue Cross ${matched.filter(item => item.Insurer === "blue-cross").reduce((sum, item) => sum + (item.ReimbursedAmount ?? 0), 0).toFixed(2)} $.`
         : original != null && reimbursed > original + .005 ? "Les paiements dépassent le montant de la dépense; vérifiez les doublons ou ajustements."
