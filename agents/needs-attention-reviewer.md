@@ -1,0 +1,3 @@
+# Needs Attention Reviewer
+
+`apps/worker/src/agents.ts` runs this second Codex pass after collection and deterministic reconciliation. It receives only bounded structured evidence for unmatched insurer records and cases already needing attention. It may suggest a possible invoice, missing evidence, a duplicate candidate or human review. Output must match the schema and refer only to supplied IDs. Suggestions are cached against an evidence fingerprint and discarded when inputs change. It has no write path to financial assignments, and its UI wording must say that human confirmation is still needed.
