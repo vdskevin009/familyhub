@@ -58,6 +58,17 @@ export function extractHealthcareEvidence(mail: Mail, result: Classification): H
     const match = text.match(new RegExp(`(?:${label})\\s*[:=-]?\\s*(?:CAD\\s*)?\\$?\\s*([0-9]{1,7}(?:,[0-9]{3})*\\.[0-9]{2})`, "i"));
     return match ? Number(match[1].replace(/,/g, "")) : null;
   };
+  const directInsurerPayment = (text: string, insurer: Insurer): number | null => {
+    const insurerPattern = insurer === "desjardins" ? /desjardins/i : /blue\s*cross|croix\s*bleue/i;
+    const match = insurerPattern.exec(text);
+    if (!match || match.index == null) return null;
+    const tail = text.slice(match.index + match[0].length);
+    const nextInsurer = tail.search(/desjardins|blue\s*cross|croix\s*bleue/i);
+    const window = text.slice(match.index, nextInsurer >= 0 ? match.index + match[0].length + nextInsurer : Math.min(text.length, match.index + 700));
+    const values = [...window.matchAll(/-\s*(?:CAD\s*)?\$?\s*([0-9]{1,7}(?:,[0-9]{3})*\.[0-9]{2})/gi)]
+      .map(item => Number(item[1].replace(/,/g, ""))).filter(validMoney);
+    return values.length ? Math.max(...values) : null;
+  };
   // Detailed attachment fields take precedence over a brief email; contradictions stay visible.
   for (const [source, text] of [["email", mail.text], ["attachment", mail.attachmentText || ""]] as const) {
     const fields: Array<[typeof healthcareMoney[number], string]> = [
@@ -73,6 +84,16 @@ export function extractHealthcareEvidence(mail: Mail, result: Classification): H
       if (output[field] != null && Math.abs(output[field]! - amount) > .005) output.Conflicts = [...(output.Conflicts || []), `${field} differs between extracted evidence (${output[field]}) and ${source} (${amount}).`];
       output[field] = amount; output.FieldSources![field] = source; output.FieldStates![field] = "confirmed";
     }
+    if (result.documentRole === "expense") for (const insurer of ["desjardins", "blue-cross"] as const) {
+      const payment = directInsurerPayment(text, insurer);
+      if (payment == null) continue;
+      const previous = output.InsurerPayments?.[insurer];
+      if (previous != null && Math.abs(previous - payment) > .005) output.Conflicts = [...(output.Conflicts || []), `InsurerPayments.${insurer} differs between extracted evidence (${previous}) and ${source} (${payment}).`];
+      output.InsurerPayments = { ...(output.InsurerPayments || {}), [insurer]: payment };
+      output.ProcessedInsurers = [...new Set([...(output.ProcessedInsurers || []), insurer])];
+      output.FieldSources![`InsurerPayments.${insurer}`] = source;
+      output.FieldStates![`InsurerPayments.${insurer}`] = "confirmed";
+    }
     const invoice = text.match(/(?:invoice|facture)\s*(?:number|no\.?|#|n[°º])\s*[:#-]?\s*([a-z0-9][a-z0-9-]{2,})/i)?.[1];
     if (invoice) { output.InvoiceNumber = invoice; output.FieldSources!.InvoiceNumber = source; }
     const date = text.match(/(?:service date|date (?:of service|du soin|de service))\s*[:=-]?\s*(\d{4}-\d{2}-\d{2})/i)?.[1];
@@ -81,7 +102,7 @@ export function extractHealthcareEvidence(mail: Mail, result: Classification): H
   const all = `${mail.sender}\n${mail.subject}\n${mail.text}\n${mail.attachmentText || ""}`;
   if (/qubecore/i.test(all)) { output.Provider = "QubeCore Sports & Rehab"; output.FieldSources!.Provider = /qubecore/i.test(mail.attachmentText || "") ? "attachment" : "email"; }
   if (output.Provider && memberName(output.Provider) !== "unknown") output.Provider = null;
-  const residual = output.AmountNotCovered;
+  const residual = output.PatientBalance ?? output.AmountNotCovered;
   if (residual != null) {
     output.PatientBalance ??= residual;
     const processed = new Set(output.ProcessedInsurers || []);
@@ -89,8 +110,19 @@ export function extractHealthcareEvidence(mail: Mail, result: Classification): H
     if (/blue\s*cross|croix\s*bleue/i.test(all)) processed.add("blue-cross");
     // TELUS is a processor, not enough by itself to name an insurer.
     output.ProcessedInsurers = [...processed];
+    const explicitPayments = Object.entries(output.InsurerPayments || {}).filter(([, amount]) => validMoney(amount));
+    if (result.documentRole === "expense" && explicitPayments.length) {
+      const reconstructed = Math.round((residual + explicitPayments.reduce((sum, [, amount]) => sum + Number(amount), 0)) * 100) / 100;
+      if (output.OriginalBilledAmount != null && Math.abs(output.OriginalBilledAmount - reconstructed) > .005) {
+        output.Conflicts = [...(output.Conflicts || []), `OriginalBilledAmount differs from direct-insurance arithmetic (${output.OriginalBilledAmount} vs ${reconstructed}).`];
+      }
+      output.OriginalBilledAmount = reconstructed;
+      const paymentSources = explicitPayments.map(([insurer]) => output.FieldSources?.[`InsurerPayments.${insurer}`]).filter(Boolean);
+      output.FieldSources!.OriginalBilledAmount = paymentSources.includes("attachment") ? "attachment" : paymentSources.includes("email") ? "email" : "extraction";
+      output.FieldStates!.OriginalBilledAmount = "reconstructed";
+    }
     // The generic classifier amount must never become the billed amount of a residual receipt.
-    if (output.OriginalBilledAmount === residual && !/(?:invoice total|total charges|total factur[eé])/i.test(all)) output.OriginalBilledAmount = null;
+    else if (output.OriginalBilledAmount === residual && !/(?:invoice total|total charges|total factur[eé])/i.test(all)) output.OriginalBilledAmount = null;
   }
   output.ServiceDate ??= result.serviceDate;
   return validateHealthcare(output);

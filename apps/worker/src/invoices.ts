@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto";
 import { privateCodex } from "./private-codex.js";
 import { atomicJson, dataDirectory } from "./private-store.js";
 import { credentials, accessToken, gmail, normalizeMail, withAttachmentText, type RawMail } from "./gmail-client.js";
-import { applyCorrection, classificationSchema, evidence, fingerprint, recordId, toInvoice, validateClassification, type Classification, type Correction, type Invoice, type Mail } from "./invoice-model.js";
+import { applyCorrection, classificationSchema, evidence, fingerprint, recordId, repairHealthcareAmounts, toInvoice, validateClassification, type Classification, type Correction, type Invoice, type Mail } from "./invoice-model.js";
 import { buildCleanupSuggestions, buildReconciliationSnapshot, recoverMissingDesjardinsExpenses } from "./reconciliation.js";
 import { blueCrossInvoices } from "./bluecross.js";
 import { reviewReconciliations, reviewTargets, codexReviewer, type AgentReview, type Reviewer } from "./agents.js";
@@ -17,6 +17,7 @@ export function applyLearnedClassification(extracted: Classification, rule?: Cor
 }
 export const invoiceHistoryStart = Math.floor(Date.parse("2025-06-01T00:00:00-07:00") / 1000) - 1;
 export const invoiceHistoryVersion = 1;
+export const healthReceiptRepairVersion = 2;
 const invoiceSignals = '{receipt invoice facture reçu recu reimbursement remboursement claim statement "payment confirmation" "amount due" "explanation of benefits" "blue cross" "croix bleue" desjardins has:attachment}';
 const invoiceExclusions = '-in:spam -in:trash -in:sent -in:drafts -from:notifications@github.com';
 type AccountProgress = { through?: number; window?: Window; error?: string; lastSuccess?: string; healthReceiptRepairVersion?: number; healthReceiptRepairPage?: string;
@@ -295,12 +296,14 @@ export async function collectInvoices(overrides: Partial<CollectionDependencies>
         });
         const window = progress.window!;
         let retryBudget = 10;
-        const processMessage = async (id: string, retry = false, repair = false, historical = false) => {
+        const processMessage = async (id: string, retry = false, repair = false, historical = false, amountRepair = false) => {
           const existing = state.items.find(x => x.Id === recordId(key, id));
           const needsUpgrade = existing && (existing.AnalysisVersion !== 4 || !existing.DocumentRole || !existing.Member || !("BilledAmount" in existing));
-          if (existing?.IgnoredAt || existing?.CorrectedAt && !needsUpgrade) return;
-          if (historical && existing?.HistoricalCandidate) return;
-          if (existing && !needsUpgrade && (!retry || existing.ClassificationSource !== "unavailable")
+          const repairKnownExpense = Boolean(amountRepair && existing && existing.Category === 0 && existing.DocumentRole === "expense" && existing.Status !== 4);
+          if (existing?.IgnoredAt) return;
+          if (existing?.CorrectedAt && !needsUpgrade && !repairKnownExpense) return;
+          if (historical && existing?.HistoricalCandidate && !repairKnownExpense) return;
+          if (existing && !needsUpgrade && !repairKnownExpense && (!retry || existing.ClassificationSource !== "unavailable")
             && (!repair || existing.Category === 0 && existing.DocumentRole === "expense" && existing.Status !== 4)) return;
           const normalized = normalizeMail(await callGmail<RawMail>(token, `messages/${encodeURIComponent(id)}?format=full`));
           if (normalized.blueCrossExport) {
@@ -308,6 +311,17 @@ export async function collectInvoices(overrides: Partial<CollectionDependencies>
             return;
           }
           const mail = await withAttachmentText(normalized, token, callGmail);
+          if (repairKnownExpense) {
+            await edit(() => {
+              const index = state.items.findIndex(x => x.Id === recordId(key, id));
+              if (index < 0) return;
+              const current = state.items[index];
+              const repaired = repairHealthcareAmounts(current, mail);
+              state.items[index] = { ...current, Healthcare: repaired.Healthcare, BilledAmount: repaired.BilledAmount,
+                DetectedAmount: repaired.DetectedAmount, AmountSource: repaired.AmountSource, UpdatedAt: repaired.UpdatedAt };
+            });
+            return;
+          }
           const { result, source } = await (historical ? dependencies.historicalClassify : dependencies.classify)(mail, key, account.label);
           const item = toInvoice(mail, key, account.label, result, source);
           if (historical) {
@@ -348,16 +362,16 @@ export async function collectInvoices(overrides: Partial<CollectionDependencies>
         }
         // Recover recent clinic receipts missed before the regular watermark advanced. Persist the
         // cursor so a failed or backlogged pass resumes without silently losing the remainder.
-        if (progress.healthReceiptRepairVersion !== 1 && !progress.window) {
+        if (progress.healthReceiptRepairVersion !== healthReceiptRepairVersion && !progress.window) {
           const after = Math.max(0, Math.floor(Date.now() / 1000) - 60 * 86400);
           for (let pages = 0; pages < 2; pages++) {
             const params = new URLSearchParams({ q: `after:${after} from:notifications@janeapp.com subject:"Your Receipt" -in:trash -in:spam`, maxResults: "50",
               ...(progress.healthReceiptRepairPage ? { pageToken: progress.healthReceiptRepairPage } : {}) });
             const list = await callGmail<{ messages?: { id: string }[]; nextPageToken?: string }>(token, `messages?${params}`);
-            for (const { id } of list.messages || []) await processMessage(id, false, true, true);
+            for (const { id } of list.messages || []) await processMessage(id, false, true, true, true);
             await edit(() => {
               progress.healthReceiptRepairPage = list.nextPageToken;
-              if (!list.nextPageToken) progress.healthReceiptRepairVersion = 1;
+              if (!list.nextPageToken) progress.healthReceiptRepairVersion = healthReceiptRepairVersion;
             });
             if (!list.nextPageToken) break;
           }
@@ -384,7 +398,7 @@ export async function collectInvoices(overrides: Partial<CollectionDependencies>
             if (!list.nextPageToken) break;
           }
         }
-        if (progress.window || progress.healthReceiptRepairVersion !== 1 || progress.invoiceHistoryVersion !== invoiceHistoryVersion) complete = false;
+        if (progress.window || progress.healthReceiptRepairVersion !== healthReceiptRepairVersion || progress.invoiceHistoryVersion !== invoiceHistoryVersion) complete = false;
       } catch (error) {
         complete = false;
         await edit(() => { progress.error = error instanceof Error ? error.message : "Gmail collection failed."; });

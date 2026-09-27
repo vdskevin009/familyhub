@@ -44,7 +44,7 @@ assert.equal(snapshot.items[0].Category, 0);
 assert.equal(snapshot.items[0].DocumentRole, 'expense');
 assert.equal(snapshot.items[0].NeedsReview, true);
 assert.equal(snapshot.reconciliations.length, 1);
-assert.equal(snapshot.progress[account].healthReceiptRepairVersion, 1);
+assert.equal(snapshot.progress[account].healthReceiptRepairVersion, 2);
 await collectInvoices(deps);
 snapshot = await invoiceSnapshot();
 assert.equal(searched, 1);
