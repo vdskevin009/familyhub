@@ -140,8 +140,8 @@ export function filterInvoiceHistoryCases(cases: ReconciliationCase[], filters: 
       || (filters.has("fully-reimbursed") && status === "fully-reimbursed")
       || (filters.has("not-fully-reimbursed") && status !== "fully-reimbursed");
     const sourceMatches = !hasSourceFilter
-      || (filters.has("primary") && primaryReimbursementAmount(item) > 0)
-      || (filters.has("secondary") && secondaryReimbursementAmount(item) > 0);
+      || (filters.has("primary") && (primaryReimbursementAmount(item) ?? 0) > 0)
+      || (filters.has("secondary") && (secondaryReimbursementAmount(item) ?? 0) > 0);
     return statusMatches && sourceMatches;
   });
 }
