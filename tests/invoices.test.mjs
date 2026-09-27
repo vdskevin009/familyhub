@@ -124,9 +124,44 @@ test('QubeCore/Jane direct-insurance receipt keeps gross expense, primary paymen
   assert.equal(repaired.CorrectedAt, oldIndexed.CorrectedAt);
 });
 
+test('QubeCore residual-only receipt keeps gross expense and Desjardins payment unknown until reconciliation', () => {
+  const source = { ...mail, id: 'qubecore-residual-only', subject: 'Your Receipt - QubeCore Sports & Rehab',
+    sender: 'QubeCore Sports & Rehab <notifications@janeapp.com>', receivedAt: '2026-08-20T21:15:00Z',
+    text: 'Kevin, thanks for your payment of $38.00. Invoice #136916-P01. Service date: 2026-08-20. August 20, 2026 - 1:15pm, RMT - Follow Up Massage (60 Min) $36.19. DESJARDINS INSURANCE (TELUS eClaims) Massage therapy Amount not covered: $38.00. Subtotal $36.19 GST $1.81 Payer Total $38.00',
+    attachmentText: '' };
+  const receipt = toInvoice(source, 'kevin@example.test', 'Kevin', { ...classification, category: 'health', member: 'Kevin',
+    documentRole: 'expense', amount: 38, billedAmount: 36.19, serviceDate: '2026-08-20', reason: 'receipt' }, 'codex');
+
+  assert.equal(receipt.BilledAmount, null);
+  assert.equal(receipt.DetectedAmount, null);
+  assert.equal(receipt.Healthcare?.PatientBalance, 38);
+  assert.equal(receipt.Healthcare?.InsurerPayments?.desjardins, undefined);
+  assert.ok(receipt.Healthcare?.ProcessedInsurers?.includes('desjardins'));
+
+  const receiptOnly = buildReconciliationSnapshot([receipt]).cases[0];
+  assert.equal(receiptOnly.OriginalAmount, null);
+  assert.equal(receiptOnly.PrimaryReimbursedAmount, null);
+  assert.equal(receiptOnly.SecondaryReimbursedAmount, 0);
+  assert.equal(receiptOnly.PotentialRemaining, 38);
+  assert.equal(receiptOnly.Status, 'waiting-secondary');
+
+  const stale = { ...receipt, BilledAmount: 36.19, DetectedAmount: 36.19,
+    Healthcare: { ...receipt.Healthcare, OriginalBilledAmount: 36.19, InsurerPayments: {}, ProcessedInsurers: ['desjardins'] } };
+  const repaired = repairHealthcareAmounts(stale, source);
+  assert.equal(repaired.BilledAmount, null);
+  assert.equal(repaired.DetectedAmount, null);
+  assert.equal(repaired.Healthcare?.PatientBalance, 38);
+  assert.equal(repaired.Healthcare?.OriginalBilledAmount, null);
+});
+
 test('QubeCore direct-insurance receipt becomes one canonical residual case', () => {
   const receipt = toInvoice({ ...mail, id: 'qubecore-receipt', subject: 'Your Receipt - QubeCore Sports & Rehab', sender: 'QubeCore Sports & Rehab', text: 'Invoice #136916-P01. Service date: 2026-08-20. Amount not covered: $38.00. DESJARDINS INSURANCE (TELUS eClaims). Visa Kevin Vanderstraeten payment of $38.00', attachmentText: 'Amount not covered: $38.00\nDESJARDINS INSURANCE (TELUS eClaims)\nInvoice #136916-P01' }, 'kevin@example.test', 'Kevin', { ...classification, category: 'health', member: 'Kevin', documentRole: 'expense', amount: 38, billedAmount: 38, serviceDate: '2026-08-20', reason: 'receipt' }, 'codex');
   const desjardins = { ...receipt, Id: 'desjardins-qubecore', AccountLabel: 'Local Desjardins import', Provider: 'Desjardins · Massage Therapy', Subject: 'Desjardins claim · Massage Therapy', DocumentType: 'claim', DocumentRole: 'insurer-statement', Insurer: 'desjardins', BilledAmount: 150, ReimbursedAmount: 112, DetectedAmount: 112, Healthcare: { ServiceDate: '2026-08-20', OriginalBilledAmount: 150, SubmittedAmount: 150, InsurerPayments: { desjardins: 112 }, FieldSources: { OriginalBilledAmount: 'structured', SubmittedAmount: 'structured' }, FieldStates: { OriginalBilledAmount: 'confirmed' } }, Notes: 'Submitted 150.00; paid 112.00;' };
+  const beforeStatement = buildReconciliationSnapshot([receipt]).cases[0];
+  assert.equal(beforeStatement.OriginalAmount, null);
+  assert.equal(beforeStatement.PrimaryReimbursedAmount, null);
+  assert.equal(beforeStatement.PotentialRemaining, 38);
+
   const result = buildReconciliationSnapshot([receipt, desjardins]);
   assert.equal(result.cases.length, 1);
   assert.equal(result.cases[0].Provider, 'QubeCore Sports & Rehab');
