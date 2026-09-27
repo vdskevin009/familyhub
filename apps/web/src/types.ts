@@ -71,6 +71,7 @@ export type ReimbursementAttachment = {
 };
 
 export type ReimbursementItem = {
+  Healthcare?: { InvoiceNumber?: string | null };
   AnalysisVersion?: number;
   Id: string;
   AccountLabel: string;
@@ -134,6 +135,8 @@ export type AgentReview = {
 
 export type ReconciliationCase = {
   Id: string; Member: "Kevin" | "Jasmine" | "Nathan" | "unknown"; Provider: string; ServiceDate: string | null;
+  PreviouslyFound?: boolean;
+  Unreconciled?: boolean;
   UnallocatedReimbursedAmount?: number;
   OriginalAmount: number | null; ReimbursedAmount: number; PotentialRemaining: number | null; Currency: string;
   PrimaryInsurer?: "Desjardins" | "Blue Cross" | null; PrimaryReimbursedAmount?: number;

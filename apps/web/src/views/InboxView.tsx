@@ -4,7 +4,7 @@ import {
 } from "lucide-react";
 import { dateLabel } from "../domain";
 import { googleBridge } from "../google";
-import { mergeInvoiceItems } from "../invoice-state";
+import { mergeInvoiceItems, mergeReconciliationHistory } from "../invoice-state";
 import type { HubState } from "../state";
 import { fetchInvoices, correctInvoice, saveInvoiceStatus, undoInvoiceDecision, downloadWorkerAttachment, type InvoiceSnapshot } from "../worker";
 import { ReimbursementCategory, ReimbursementItem, ReimbursementStatus, ScanStats } from "../types";
@@ -65,7 +65,7 @@ export default function InboxView({ hub }: Props) {
         const snapshot = await fetchInvoices(hub.worker);
         if (cancelled) return;
         setCollection(snapshot); setWorkerError("");
-        hub.setReimbursements(previous => ({ ...previous, SchemaVersion: 2, Items: mergeInvoiceItems(previous.Items, snapshot.items), Reconciliations: snapshot.reconciliations, CleanupSuggestions: snapshot.cleanupSuggestions, ImportantMail: snapshot.importantMail, LearningDecisions: Number(snapshot.learning?.decisions || 0), UnmatchedReimbursements: snapshot.unmatchedReimbursements }));
+        hub.setReimbursements(previous => ({ ...previous, SchemaVersion: 2, Items: mergeInvoiceItems(previous.Items, snapshot.items), Reconciliations: mergeReconciliationHistory(previous.Reconciliations ?? [], snapshot.reconciliations, mergeInvoiceItems(previous.Items, snapshot.items)), CleanupSuggestions: snapshot.cleanupSuggestions, ImportantMail: snapshot.importantMail, LearningDecisions: Number(snapshot.learning?.decisions || 0), UnmatchedReimbursements: snapshot.unmatchedReimbursements }));
       } catch (err) { if (!cancelled) setWorkerError(err instanceof Error ? err.message : "PC unavailable."); }
       finally { fetching = false; }
     };
@@ -79,7 +79,7 @@ export default function InboxView({ hub }: Props) {
     try {
       const snapshot = await fetchInvoices(hub.worker);
       setCollection(snapshot);
-      hub.setReimbursements(previous => ({ ...previous, SchemaVersion: 2, Items: mergeInvoiceItems(previous.Items, snapshot.items), Reconciliations: snapshot.reconciliations, CleanupSuggestions: snapshot.cleanupSuggestions, ImportantMail: snapshot.importantMail, LearningDecisions: Number(snapshot.learning?.decisions || 0), UnmatchedReimbursements: snapshot.unmatchedReimbursements }));
+      hub.setReimbursements(previous => ({ ...previous, SchemaVersion: 2, Items: mergeInvoiceItems(previous.Items, snapshot.items), Reconciliations: mergeReconciliationHistory(previous.Reconciliations ?? [], snapshot.reconciliations, mergeInvoiceItems(previous.Items, snapshot.items)), CleanupSuggestions: snapshot.cleanupSuggestions, ImportantMail: snapshot.importantMail, LearningDecisions: Number(snapshot.learning?.decisions || 0), UnmatchedReimbursements: snapshot.unmatchedReimbursements }));
     } catch (err) { setWorkerError(err instanceof Error ? err.message : "PC collection failed."); }
     finally { setBusy(""); }
   }

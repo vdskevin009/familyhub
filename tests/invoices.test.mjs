@@ -72,6 +72,17 @@ test('reconciliation leaves an ambiguous insurer statement unmatched instead of 
   assert.equal(result.cases[1].ReimbursedAmount, 0);
   assert.deepEqual(result.unmatched, [{ DocumentId: statement.Id, Reason: 'ambiguous-match' }]);
 });
+test('same-day expenses are not collapsed just because one provider is a patient name', () => {
+  const first = toInvoice({ ...mail, id: 'september-15-a', subject: 'Massage receipt', text: 'Massage paid CAD 95.00' }, 'kevin@example.test', 'Kevin',
+    { ...classification, category: 'health', serviceDate: '2026-09-15', amount: 95, billedAmount: 95 }, 'codex');
+  const second = toInvoice({ ...mail, id: 'september-15-b', subject: 'Physio receipt', text: 'Physio paid CAD 140.00' }, 'kevin@example.test', 'Kevin',
+    { ...classification, category: 'health', serviceDate: '2026-09-15', amount: 140, billedAmount: 140 }, 'codex');
+  first.Provider = 'Kevin Vanderstraeten';
+  second.Provider = 'North Shore Physio';
+  const cases = buildReconciliationSnapshot([first, second]).cases;
+  assert.equal(cases.length, 2);
+  assert.deepEqual(new Set(cases.flatMap(item => item.DocumentIds)), new Set([first.Id, second.Id]));
+});
 test('fully reimbursed expenses expose primary and secondary totals separately', () => {
   const expense = toInvoice({ ...mail, id: 'expense-full' }, 'kevin@example.test', 'Kevin', { ...classification, category: 'health', amount: 200, billedAmount: 200 }, 'codex');
   const primary = toInvoice({ ...mail, id: 'primary-eob', subject: 'Desjardins statement' }, 'kevin@example.test', 'Kevin', { ...classification, kind: 'claim', category: 'health', documentRole: 'insurer-statement', insurer: 'desjardins', amount: 120, billedAmount: null, reimbursedAmount: 120 }, 'codex');

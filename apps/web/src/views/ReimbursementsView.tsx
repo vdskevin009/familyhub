@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { AlertTriangle, CheckCircle2, CircleDollarSign, ExternalLink, RefreshCw } from "lucide-react";
 import { dateLabel } from "../domain";
 import { googleBridge } from "../google";
-import { mergeInvoiceItems } from "../invoice-state";
+import { mergeInvoiceItems, mergeReconciliationHistory, unreconciledInvoiceCases } from "../invoice-state";
 import type { HubState } from "../state";
 import type { ReconciliationCase, ReimbursementItem, UnmatchedReimbursement } from "../types";
 import { fetchInvoices } from "../worker";
@@ -20,6 +20,7 @@ const statusCopy: Record<CaseStatus, string> = {
 };
 
 function caseStatus(item: ReconciliationCase): CaseStatus {
+  if (item.PreviouslyFound) return "needs-attention";
   if (item.Status) return item.Status;
   if (item.Action === "complete") return "fully-reimbursed";
   if (item.Action === "submit-primary") return "waiting-primary";
@@ -74,7 +75,7 @@ export default function ReimbursementsView({ hub }: Props) {
         ...previous,
         SchemaVersion: 2,
         Items: mergeInvoiceItems(previous.Items, snapshot.items),
-        Reconciliations: snapshot.reconciliations,
+        Reconciliations: mergeReconciliationHistory(previous.Reconciliations ?? [], snapshot.reconciliations, mergeInvoiceItems(previous.Items, snapshot.items)),
         CleanupSuggestions: snapshot.cleanupSuggestions,
         ImportantMail: snapshot.importantMail,
         LearningDecisions: snapshot.learning.decisions,
@@ -91,20 +92,22 @@ export default function ReimbursementsView({ hub }: Props) {
   useEffect(() => { if (paired) void refresh(); }, [paired, hub.worker.Endpoint, hub.worker.ApiKey]);
 
   const model = useMemo(() => {
-    const cases = [...(hub.reimbursements.Reconciliations ?? [])]
-      .sort((a, b) => dateValue(b.ServiceDate) - dateValue(a.ServiceDate));
     const byId = new Map(hub.reimbursements.Items.map(item => [item.Id, item]));
+    const caseDate = (item: ReconciliationCase) => item.ServiceDate || byId.get(item.DocumentIds[0])?.ServiceDate
+      || byId.get(item.DocumentIds[0])?.ReceivedAt;
+    const cases = [...(hub.reimbursements.Reconciliations ?? []), ...unreconciledInvoiceCases(hub.reimbursements.Reconciliations ?? [], hub.reimbursements.Items)]
+      .sort((a, b) => dateValue(caseDate(b)) - dateValue(caseDate(a)) || a.Id.localeCompare(b.Id));
     const unmatched = (hub.reimbursements.UnmatchedReimbursements ?? [])
       .map(result => ({ result, item: byId.get(result.DocumentId) }))
       .filter((entry): entry is { result: UnmatchedReimbursement; item: ReimbursementItem } => Boolean(entry.item))
       .sort((a, b) => dateValue(b.item.ServiceDate || b.item.StatementDate || b.item.ReceivedAt)
         - dateValue(a.item.ServiceDate || a.item.StatementDate || a.item.ReceivedAt));
-    const cad = cases.filter(item => (item.Currency || "CAD") === "CAD");
+    const cad = cases.filter(item => !item.PreviouslyFound && (item.Currency || "CAD") === "CAD");
     const totalPaid = cad.reduce((sum, item) => sum + (item.OriginalAmount ?? 0), 0);
     const primary = cad.reduce((sum, item) => sum + primaryAmount(item), 0);
     const secondary = cad.reduce((sum, item) => sum + secondaryAmount(item), 0);
     const outstanding = cad.reduce((sum, item) => sum + (item.PotentialRemaining ?? 0), 0);
-    const attention = cases.filter(item => caseStatus(item) !== "fully-reimbursed").length + unmatched.length;
+    const attention = cases.filter(item => !item.PreviouslyFound && caseStatus(item) !== "fully-reimbursed").length + unmatched.length;
     const warnings = [...new Set(hub.reimbursements.Items.filter(item => item.Status !== 4).map(item => item.ImportWarning).filter(Boolean))];
     return { cases, unmatched, totalPaid, primary, secondary, outstanding, attention, warnings };
   }, [hub.reimbursements.Items, hub.reimbursements.Reconciliations, hub.reimbursements.UnmatchedReimbursements]);
@@ -204,8 +207,8 @@ export default function ReimbursementsView({ hub }: Props) {
           const status = caseStatus(item);
           return <article className="expense-card" key={item.Id}>
             <div className="expense-heading">
-              <div><strong>{item.Provider || "Provider to confirm"}</strong><small>{item.Member === "unknown" ? "Person to confirm" : item.Member}{item.ServiceDate ? ` · ${dateLabel(item.ServiceDate)}` : " · Service date missing"}</small></div>
-              <span className={`reimbursement-status ${status}`}>{status === "fully-reimbursed" && <CheckCircle2 size={14} />}{statusCopy[status]}</span>
+              <div><strong>{item.Provider || "Provider to confirm"}</strong><small>{item.Member === "unknown" ? "Person to confirm" : item.Member}{item.ServiceDate ? ` · ${dateLabel(item.ServiceDate)}` : invoiceById.get(item.DocumentIds[0])?.ReceivedAt ? ` · Received ${dateLabel(invoiceById.get(item.DocumentIds[0])!.ReceivedAt)}` : " · Date missing"}</small></div>
+              <span className={`reimbursement-status ${item.PreviouslyFound ? "needs-attention" : status}`}>{item.PreviouslyFound ? "Verify source" : <>{status === "fully-reimbursed" && <CheckCircle2 size={14} />}{statusCopy[status]}</>}</span>
             </div>
             <div className="expense-amounts">
               <div><small>Expense</small><strong>{money(item.OriginalAmount, item.Currency)}</strong></div>
@@ -214,6 +217,9 @@ export default function ReimbursementsView({ hub }: Props) {
               <div className="remaining"><small>Remaining</small><strong>{money(item.PotentialRemaining, item.Currency)}</strong></div>
             </div>
             {!!item.UnallocatedReimbursedAmount && <p className="privacy-note expense-warning">Known payments: {money(item.UnallocatedReimbursedAmount, item.Currency)} · insurer order to confirm</p>}
+            {item.PreviouslyFound && <p className="privacy-note expense-warning">{item.Unreconciled
+              ? "Indexed invoice without a reconciliation case. Check the source before relying on its amounts or reimbursement status."
+              : "Previously found invoice; the latest PC result did not include it. Check the source before relying on its amounts or reimbursement status."}</p>}
             <div className="expense-note"><span>{item.Summary}</span><small>Match confidence {Math.round(item.Confidence)}%</small></div>
             {item.Status === "needs-attention" && item.DocumentIds[0] && reviews.get(`case:${item.DocumentIds[0]}`) &&
               <p className="privacy-note expense-warning">Second AI review: {reviews.get(`case:${item.DocumentIds[0]}`)!.explanation} · Suggestion only; check the source documents.</p>}

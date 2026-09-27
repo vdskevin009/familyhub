@@ -50,9 +50,10 @@ Rules:
 | FH-REIMB-002 | Show paid, primary-insurer, secondary-insurer and outstanding totals with one status per expense. | Implemented | Current reimbursement model. |
 | FH-REIMB-003 | Reconciliation must be conservative: ambiguous matches must not be auto-linked. | Implemented | Unmatched/review queue is part of the current flow. |
 | FH-REIMB-004 | Reconciliation must respect the configured Kevin/Jasmine insurer order and preserve an undoable decision history. | Implemented | Current documented behavior. |
-| FH-REIMB-005 | Reimbursement history must be ordered by date descending by default. | Implemented | Baseline commit specifically updates reimbursement history ordering/UI. |
+| FH-REIMB-005 | Reimbursement history must be ordered by service date descending by default, across all reimbursement statuses. | Implemented | `ReimbursementsView` sorts the combined history before optional filters; missing service dates go last. |
 | FH-REIMB-006 | Reimbursement history must support a compact filter surface for statuses/categories such as fully reimbursed/not reimbursed and primary/secondary. | Implemented | Baseline commit adds filterable app-like history. |
-| FH-REIMB-007 | The history should remain complete and scrollable rather than hiding older invoices behind a reduced summary. | Accepted | Canonical UX requirement from current product direction. |
+| FH-REIMB-007 | The history should remain complete and scrollable rather than hiding older invoices behind a reduced summary. | Implemented | All cases render in one scrollable list; optional filters start cleared. |
+| FH-REIMB-012 | A rescan must not silently erase a previously found healthcare expense. Show one chronological line per expense, consolidating related source documents only with explicit shared-invoice or residual evidence. Show indexed invoices even when reconciliation omits them, retain missing past cases for review, and exclude stale amounts from current totals. | Implemented | Issue #25; worker source identity, stricter canonicalization, browser invoice/history retention and classifier-failure guard. Actual missing September expense requires a live worker/browser check. |
 | FH-REIMB-008 | “Needs attention” should be minimized through better reconciliation logic, while uncertain cases remain reviewable rather than guessed. | Accepted | Quality goal; do not trade correctness for fewer warnings. |
 
 ## Local worker / automation
@@ -103,6 +104,7 @@ Rules:
 | 2026-09-26 | Establish `REQUIREMENTS.md` as the canonical requirement source for FamilyHub. | Accepted |
 | 2026-09-26 | Baseline current requirements against commit `d85650e104075b08f58516ee147b7cb896f26687`. | Accepted |
 | 2026-09-26 | Adopt a local AI-agent runner as the initial automation direction for reimbursement collection/reconciliation, using deterministic code plus specialized Codex/OpenAI reasoning agents before introducing a separately billed hosted Agents API. | Accepted |
+| 2026-09-26 | Preserve historical invoice visibility across incomplete rescans, with stale results clearly marked and excluded from live totals. | Accepted |
 
 ## Maintenance checklist
 
