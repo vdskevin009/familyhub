@@ -160,6 +160,48 @@ test('matched partial insurer evidence is derived from assignments and never rem
   assert.equal(restored.unmatched.length, 0);
 });
 
+test('an 85%-confidence reviewed expense can reconcile only through exact deterministic insurer corroboration', () => {
+  const source = { ...mail, id: 'qubecore-reviewed-expense', subject: 'Your Receipt - QubeCore Sports & Rehab',
+    sender: 'QubeCore Sports & Rehab <notifications@janeapp.com>', receivedAt: '2026-09-17T21:32:00Z',
+    text: 'Invoice #138636-P01. Service date: 2026-09-17. SEPTEMBER 17, 2026 - 1:15PM, RMT - FOLLOW UP MASSAGE (60 MINUTES) $142.86 $7.14 $150.00\nDESJARDINS INSURANCE (TELUS eClaims) Massage therapy Amount not covered: $38.00 -$112.00\nTOTAL $38.00',
+    attachmentText: '' };
+  const extracted = toInvoice(source, 'kevin@example.test', 'Kevin', { ...classification, category: 'health', member: 'Kevin',
+    documentRole: 'expense', amount: 150, billedAmount: 150, serviceDate: '2026-09-17', reason: 'attachment fallback' }, 'codex');
+  const expense = { ...extracted, NeedsReview: true, Confidence: 85 };
+  assert.equal(expense.Healthcare?.InsurerPayments?.desjardins, 112);
+
+  const statement = { ...expense, Id: 'desjardins-reviewed-112', AccountLabel: 'Desjardins email',
+    Provider: 'Desjardins · Massothérapeute - visite subséquente', Subject: 'Desjardins claim · Massage therapy',
+    DocumentType: 'claim', DocumentRole: 'insurer-statement', Insurer: 'desjardins',
+    BilledAmount: 112, DetectedAmount: 112, ReimbursedAmount: 112, NeedsReview: false, Confidence: 99,
+    Healthcare: { ServiceDate: '2026-09-17', ServiceType: 'Massage therapy', InsurerPayments: { desjardins: 112 } } };
+
+  const snapshot = buildReconciliationSnapshot([expense, statement]);
+  assert.equal(snapshot.unmatched.length, 0);
+  assert.deepEqual(
+    [snapshot.cases[0].OriginalAmount, snapshot.cases[0].PrimaryReimbursedAmount, snapshot.cases[0].SecondaryReimbursedAmount, snapshot.cases[0].PotentialRemaining],
+    [150, 112, 0, 38]
+  );
+  assert.equal(snapshot.cases[0].Status, 'waiting-secondary');
+  assert.equal(snapshot.cases[0].Action, 'submit-secondary');
+  assert.equal(expense.NeedsReview, true, 'source review metadata is preserved rather than rewritten');
+  assert.equal(expense.Confidence, 85);
+
+  const noExactReceiptPayment = { ...expense, Healthcare: { ...expense.Healthcare, InsurerPayments: {} } };
+  const blocked = buildReconciliationSnapshot([noExactReceiptPayment, statement]);
+  assert.deepEqual(blocked.unmatched, [{ DocumentId: statement.Id, Reason: 'no-expense-match' }]);
+  assert.equal(blocked.cases[0].Status, 'needs-attention');
+
+  const conflictingService = { ...statement, Id: 'desjardins-reviewed-conflict',
+    Provider: 'Desjardins · Physiotherapy', Healthcare: { ...statement.Healthcare, ServiceType: 'Physiotherapy' } };
+  assert.deepEqual(buildReconciliationSnapshot([expense, conflictingService]).unmatched,
+    [{ DocumentId: conflictingService.Id, Reason: 'no-expense-match' }]);
+
+  const reviewedStatement = { ...statement, Id: 'desjardins-needs-review', NeedsReview: true };
+  assert.deepEqual(buildReconciliationSnapshot([expense, reviewedStatement]).unmatched,
+    [{ DocumentId: reviewedStatement.Id, Reason: 'needs-review' }]);
+});
+
 test('a partial paid amount does not need to equal the expense total to match', () => {
   const expense = toInvoice({ ...mail, id: 'partial-expense', subject: 'Massage clinic receipt', text: 'Massage therapy. Total paid CAD 150.00' },
     'kevin@example.test', 'Kevin', { ...classification, category: 'health', member: 'Kevin', documentRole: 'expense',
