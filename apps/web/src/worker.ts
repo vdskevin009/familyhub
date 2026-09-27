@@ -1,4 +1,4 @@
-import { AgentReview, CleanupSuggestion, ReconciliationCase, ReimbursementItem, ResearchWatch, UnmatchedReimbursement, WorkerConfig, WorkerTask, WorkerTaskType } from "./types";
+import { AgentReview, CleanupSuggestion, ReconciliationCase, ReimbursementItem, ReimbursementWorkflowStatus, ResearchWatch, UnmatchedReimbursement, WorkerConfig, WorkerTask, WorkerTaskType } from "./types";
 
 function endpoint(config: WorkerConfig, path: string): string {
   const base = config.Endpoint.trim().replace(/\/$/, "");
@@ -84,6 +84,9 @@ export function setExpenseIgnored(config: WorkerConfig, documentIds: string[], i
 }
 export function setMatchDecision(config: WorkerConfig, reimbursementId: string, expenseId: string, decision: "confirmed" | "rejected"): Promise<{ saved: boolean }> {
   return request(config, "/invoices/matches/decision", { method: "POST", body: JSON.stringify({ reimbursementId, expenseId, decision }) });
+}
+export function setReimbursementWorkflowStatus(config: WorkerConfig, expenseId: string, status: ReimbursementWorkflowStatus | "automatic"): Promise<{ saved: boolean }> {
+  return request(config, "/invoices/workflow/status", { method: "POST", body: JSON.stringify({ expenseId, status }) });
 }
 export function undoInvoiceDecision(config: WorkerConfig, decisionId: string): Promise<ReimbursementItem> {
   return request(config, "/invoices/decisions/undo", { method: "POST", body: JSON.stringify({ decisionId }) });
