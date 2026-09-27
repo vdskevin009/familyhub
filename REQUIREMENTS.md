@@ -7,7 +7,7 @@
 - **Repository:** `vdskevin009/familyhub`
 - **Default branch:** `main`
 - **Baseline verified:** 2026-09-27
-- **Code reference:** `df7c78df6e487f214c6063ffb36053ff026c7dc8`
+- **Code reference:** `60325981169a6aeb155ab507bf8b13a03f40f375`
 - **Baseline evidence:** current repository implementation and README at the code reference above.
 
 ## Requirement lifecycle
@@ -119,6 +119,7 @@ Rules:
 | 2026-09-27 | For direct-insurance provider receipts, treat gross expense, insurer adjustment and patient balance as distinct financial facts. Repair existing recent Jane receipt amounts without re-evaluating invoice eligibility or manual classification decisions. | Implemented |
 | 2026-09-27 | Align canonical baseline to `df7c78df6e487f214c6063ffb36053ff026c7dc8`: direct-insurance receipt amount extraction/reconciliation and Jane amount-only repair merged after passing PR CI. | Verified |
 | 2026-09-27 | Lock invoice-history visibility into regression coverage so sorting, filters, reconciliation refreshes and partial worker snapshots cannot silently remove an already indexed invoice. | Verified |
+| 2026-09-27 | Align canonical baseline to `60325981169a6aeb155ab507bf8b13a03f40f375`: issue #35 invoice-visibility regression safety net merged after green PR CI; main build/test/deploy also passed. | Verified |
 
 ## Maintenance checklist
 
