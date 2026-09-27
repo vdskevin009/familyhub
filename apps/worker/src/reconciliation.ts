@@ -4,6 +4,8 @@ import { healthcareEvidence, memberName, type EvidenceState } from "./healthcare
 
 export type ReconciliationCase = {
   Id: string;
+  ExpenseDocumentId: string;
+  ExpenseDocumentIds: string[];
   Member: Invoice["Member"];
   Provider: string;
   ServiceType?: string | null;
@@ -29,6 +31,16 @@ export type ReconciliationCase = {
   MatchConfidence?: number;
   ReconciliationConfidence?: number;
   MatchAssignments?: MatchAssignment[];
+  WorkflowStatus?: "open" | "closed" | "ignore";
+  WorkflowOrigin?: "automatic" | "manual";
+  WorkflowChangedAt?: string;
+  AutomaticWorkflowStatus?: "open" | "closed";
+  WorkflowHistory?: Array<{
+    Status: "open" | "closed" | "ignore";
+    Origin: "automatic" | "manual";
+    At: string;
+    Reason?: "automatic-rule" | "manual-override" | "reset-to-automatic" | "legacy-ignore";
+  }>;
 };
 
 export type MatchVerification = "auto" | "review-recommended" | "confirmed-manually";
@@ -426,6 +438,8 @@ export function buildReconciliationSnapshot(items: Invoice[], matchDecisions: Ma
     };
     return {
       Id: createHash("sha256").update(expense.Id + matched.map(item => item.Id).sort().join(":" )).digest("hex").slice(0, 24),
+      ExpenseDocumentId: expense.Id,
+      ExpenseDocumentIds: [...expense.RelatedDocumentIds],
       Member: member, Provider: expense.Provider, ServiceType: evidence.ServiceType || matched.map(item => healthcareEvidence(item).ServiceType).find(Boolean) || null,
       ServiceDate: expense.ServiceDate,
       OriginalAmount: original, ReimbursedAmount: reimbursed,
