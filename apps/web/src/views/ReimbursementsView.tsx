@@ -2,11 +2,11 @@ import { useEffect, useMemo, useState } from "react";
 import { AlertTriangle, CheckCircle2, CircleDollarSign, ExternalLink, RefreshCw } from "lucide-react";
 import { dateLabel } from "../domain";
 import { googleBridge } from "../google";
-import { buildInvoiceHistoryCases, filterInvoiceHistoryCases, healthcareTitle, mergeInvoiceItems, mergeReconciliationHistory, primaryReimbursementAmount, reimbursementCaseStatus, secondaryReimbursementAmount } from "../invoice-state";
-import type { InvoiceHistoryFilter, ReimbursementCaseStatus } from "../invoice-state";
+import { buildInvoiceHistoryCases, filterInvoiceHistoryCases, filterReimbursementWorkflowCases, healthcareTitle, mergeInvoiceItems, mergeReconciliationHistory, primaryReimbursementAmount, reimbursementCaseStatus, reimbursementWorkflowStatus, reimbursementWorkflowSummary, secondaryReimbursementAmount } from "../invoice-state";
+import type { InvoiceHistoryFilter, ReimbursementCaseStatus, ReimbursementPersonScope, WorkflowStatusFilter } from "../invoice-state";
 import type { HubState } from "../state";
-import type { MatchAssignment, ReconciliationCase, ReimbursementItem, UnmatchedReimbursement } from "../types";
-import { fetchInvoices, setExpenseIgnored, setMatchDecision } from "../worker";
+import type { MatchAssignment, ReconciliationCase, ReimbursementItem, ReimbursementWorkflowStatus, UnmatchedReimbursement } from "../types";
+import { fetchInvoices, setMatchDecision, setReimbursementWorkflowStatus } from "../worker";
 
 type Props = { hub: HubState };
 const statusCopy: Record<ReimbursementCaseStatus, string> = {
@@ -48,6 +48,9 @@ export default function ReimbursementsView({ hub }: Props) {
   const [savedMessage, setSavedMessage] = useState("");
   const [expandedMatchId, setExpandedMatchId] = useState("");
   const [filters, setFilters] = useState<Set<InvoiceHistoryFilter>>(() => new Set());
+  const [personScope, setPersonScope] = useState<ReimbursementPersonScope>("all");
+  const [workflowFilter, setWorkflowFilter] = useState<WorkflowStatusFilter>("open");
+  const [reconciliationFilter, setReconciliationFilter] = useState<"all" | "matched" | "unmatched">("all");
   const paired = Boolean(hub.worker.Endpoint.trim() && hub.worker.ApiKey.trim());
 
   async function refresh() {
@@ -91,15 +94,19 @@ export default function ReimbursementsView({ hub }: Props) {
     finally { setSavingId(""); }
   }
 
-  async function ignoreExpense(item: ReconciliationCase, ignored: boolean) {
+  async function changeWorkflow(item: ReconciliationCase, status: ReimbursementWorkflowStatus | "automatic") {
     if (!paired || savingId) return;
-    setSavingId(item.Id); setError(""); setSavedMessage("");
+    const expenseId = item.ExpenseDocumentId || item.ExpenseDocumentIds?.[0] || item.DocumentIds[0];
+    if (!expenseId) return;
+    const key = `workflow:${expenseId}`;
+    setSavingId(key); setError(""); setSavedMessage("");
     try {
-      await setExpenseIgnored(hub.worker, item.DocumentIds, ignored);
+      await setReimbursementWorkflowStatus(hub.worker, expenseId, status);
       await refresh();
-      setSavedMessage(ignored ? "Ignored on the PC. This expense will stay out of future scans and totals. You can restore it below."
-        : "Expense restored. Its eligibility still needs to be checked.");
-    } catch (err) { setError(err instanceof Error ? err.message : "The decision could not be saved. Try again."); }
+      setSavedMessage(status === "automatic"
+        ? "Manual override removed. FamilyHub is using the automatic workflow rule again."
+        : `Workflow marked ${status}. This manual choice will survive refreshes and rescans.`);
+    } catch (err) { setError(err instanceof Error ? err.message : "The workflow status could not be saved. Refresh and try again."); }
     finally { setSavingId(""); }
   }
 
