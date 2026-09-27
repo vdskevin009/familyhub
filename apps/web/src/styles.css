@@ -611,3 +611,59 @@ label small { font-weight: 500; }
 }
 .expense-actions { display: flex; flex-wrap: wrap; align-items: center; gap: .6rem; margin-top: .75rem; }
 .ignored-expenses summary { cursor: pointer; font-weight: 600; padding: .5rem 0; }
+
+
+/* Reimbursements: family scope + operational workflow */
+.reimbursement-family-scopes {
+  display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 9px;
+}
+.family-scope-card {
+  min-width: 0; border: 1px solid var(--line); border-radius: 18px; background: rgba(255,255,255,.9);
+  padding: 14px 15px; text-align: left; display: grid; gap: 3px; cursor: pointer; color: var(--ink);
+  box-shadow: 0 7px 22px rgba(35,58,50,.035);
+}
+.family-scope-card small { color: var(--muted); font-size: .72rem; font-weight: 800; }
+.family-scope-card strong { font-size: 1.22rem; letter-spacing: -.025em; }
+.family-scope-card span { color: var(--muted); font-size: .7rem; }
+.family-scope-card em { margin-top: 5px; font-style: normal; font-size: .72rem; font-weight: 800; color: var(--green); }
+.family-scope-card.active { border-color: #8eb3a2; background: #edf5f0; box-shadow: 0 8px 24px rgba(34,83,65,.08); }
+.reimbursement-filter-group { display: grid; gap: 6px; }
+.reimbursement-filter-group > small {
+  color: #7a8b83; font-size: .65rem; font-weight: 850; letter-spacing: .04em; text-transform: uppercase;
+}
+.expense-status-stack { display: flex; flex-direction: column; align-items: flex-end; gap: 5px; }
+.workflow-status {
+  display: inline-flex; align-items: center; border-radius: 999px; padding: 5px 9px; font-size: .7rem; font-weight: 850;
+}
+.workflow-status.open { background: #fff0cd; color: #805b0b; }
+.workflow-status.closed { background: #dfeee6; color: #2d7155; }
+.workflow-status.ignore { background: #edf0ee; color: #64736c; }
+.workflow-control {
+  margin: 11px 18px 0; padding: 10px 11px; border: 1px solid #dfe7e2; border-radius: 14px; background: #f7f9f7;
+  display: grid; grid-template-columns: minmax(0,1fr) minmax(170px,220px); gap: 10px; align-items: center;
+}
+.workflow-control > div strong, .workflow-control > div small { display: block; }
+.workflow-control > div strong { font-size: .78rem; }
+.workflow-control > div small { color: var(--muted); font-size: .68rem; margin-top: 2px; }
+.workflow-control select { min-height: 36px; padding: 7px 30px 7px 10px; border-radius: 11px; font-size: .74rem; }
+.workflow-saving { grid-column: 1 / -1; color: var(--muted); font-size: .7rem; }
+.workflow-history { margin: 8px 18px 0; border-top: 1px solid #e5ebe7; padding-top: 7px; }
+.workflow-history summary { cursor: pointer; color: #5d7268; font-size: .72rem; font-weight: 800; }
+.workflow-history > div { display: grid; gap: 5px; margin-top: 7px; }
+.workflow-history p { margin: 0; display: flex; justify-content: space-between; gap: 12px; font-size: .7rem; color: var(--muted); }
+.workflow-history p strong { color: var(--ink); text-transform: capitalize; }
+
+@media (max-width: 820px) {
+  .reimbursement-family-scopes { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .family-scope-card { padding: 12px; border-radius: 16px; }
+}
+
+@media (max-width: 520px) {
+  .reimbursement-family-scopes { grid-template-columns: 1fr 1fr; gap: 7px; }
+  .family-scope-card strong { font-size: 1.02rem; }
+  .workflow-control { margin-inline: 12px; grid-template-columns: 1fr; }
+  .workflow-control select { width: 100%; }
+  .workflow-history { margin-inline: 12px; }
+  .workflow-history p { align-items: flex-start; flex-direction: column; gap: 1px; }
+  .expense-status-stack { align-items: flex-start; }
+}
