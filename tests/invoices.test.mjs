@@ -168,3 +168,15 @@ test('June history resumes failures and retains reversible expense ignore decisi
     assert.equal(result.status, 0, result.stderr || result.stdout);
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
+
+test('historical intake retains medical receipts with unknown coverage and no invented amounts', async () => {
+  const { classifyHistorical } = await import('../apps/worker/dist/invoices.js');
+  const result = await classifyHistorical({ ...mail, subject: 'Your Receipt - Example Clinic', sender: 'Example Clinic',
+    text: 'Kinesiology visit. Invoice #SYNTHETIC-2.', attachmentText: '' }, 'test@example.test');
+  assert.equal(result.source, 'rules');
+  assert.equal(result.result.category, 'health');
+  assert.equal(result.result.documentRole, 'expense');
+  assert.equal(result.result.reimbursement, 'unknown');
+  assert.equal(result.result.billedAmount, null);
+  assert.equal(toInvoice(mail, 'test@example.test', 'Test', result.result, result.source).NeedsReview, true);
+});
