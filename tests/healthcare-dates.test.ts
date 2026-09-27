@@ -138,3 +138,12 @@ test("source repair replaces stale patient/provider/date/payment facts while pre
   for (const field of ["Id", "SourceMessageId", "Status", "Member", "NeedsReview", "ReimbursementEligibility", "ClassificationSource", "CorrectedAt", "LastDecisionId"])
     assert.equal(repaired[field], item[field]);
 });
+
+test("a linked statement with no paid amount stays unknown and cannot establish a remaining balance", () => {
+  const expense = { ...receipt(), BilledAmount: 200, Healthcare: { ...receipt().Healthcare, OriginalBilledAmount: 200 } };
+  const entry = buildReconciliationSnapshot([expense, statement({ ReimbursedAmount: null, DetectedAmount: 200 })]).cases[0];
+  assert.equal(entry.PrimaryReimbursedAmount, null);
+  assert.equal(entry.Evidence.PrimaryPaid.confidence, "unknown");
+  assert.equal(entry.PotentialRemaining, null);
+  assert.equal(entry.Status, "needs-attention");
+});

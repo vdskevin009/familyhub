@@ -7,7 +7,7 @@
 - **Repository:** `vdskevin009/familyhub`
 - **Default branch:** `main`
 - **Baseline verified:** 2026-09-27
-- **Code reference:** `e5087c2e76ef0cf9f8da0f4dabb0e6ad540046de`
+- **Code reference:** [PR #41](https://github.com/vdskevin009/familyhub/pull/41), healthcare calendar/service repair based on `7296601ba1f7004b5dd98972f6fff8bc89e4e2c9` (merge and installed-runtime evidence tracked in issue #40).
 - **Baseline evidence:** current repository implementation and README at the code reference above.
 
 ## Requirement lifecycle
@@ -108,8 +108,7 @@ Rules:
 
 ## Open questions / Needs confirmation
 
-- None recorded at baseline. Add unresolved requirements here instead of guessing.
-  Issue #40: paired-phone visual acceptance remains separate from tests, private-source replay and installed-worker acceptance. Low-confidence or contradictory records remain reviewable.
+- Issue #40: paired-phone visual acceptance remains separate from tests, private-source replay and installed-worker acceptance. Low-confidence or contradictory records remain reviewable.
 
 ## Decision log
 

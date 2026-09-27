@@ -270,8 +270,11 @@ export function buildReconciliationSnapshot(items: Invoice[]): ReconciliationSna
     const reimbursed = Math.round((primaryAmount + secondaryAmount + otherMatched) * 100) / 100;
     const processedInsurers = new Set(evidence.ProcessedInsurers || []);
     const paymentsAfterResidual = matched.filter(item => item.Insurer && !processedInsurers.has(item.Insurer))
-      .reduce((sum, item) => sum + (item.ReimbursedAmount ?? item.DetectedAmount ?? 0), 0);
-    const remaining = original != null
+      .reduce((sum, item) => sum + (item.ReimbursedAmount ?? 0), 0);
+    const missingMatchedPayment = matched.some(item => item.ReimbursedAmount == null);
+    const missingProcessedPayment = [...processedInsurers].some(insurer => !matched.some(item => item.Insurer === insurer)
+      && evidence.InsurerPayments?.[insurer] == null);
+    const remaining = missingMatchedPayment ? null : original != null && !missingProcessedPayment
       ? Math.max(0, Math.round((original - reimbursed) * 100) / 100)
       : residual != null ? Math.max(0, Math.round((residual - paymentsAfterResidual) * 100) / 100) : null;
     const seen = new Set(matched.map(item => item.Insurer).filter(Boolean));
@@ -287,11 +290,12 @@ export function buildReconciliationSnapshot(items: Invoice[]): ReconciliationSna
     });
     const explicitPrimaryProcessed = evidence.ProcessedInsurers?.includes(order[0]);
     const explicitSecondaryProcessed = evidence.ProcessedInsurers?.includes(order[1]);
-    if (expense.NeedsReview || !order.length || pending || original != null && reimbursed > original + .005) {
+    if (expense.NeedsReview || !order.length || pending || remaining == null || original != null && reimbursed > original + .005) {
       action = "review-amount"; status = "needs-attention";
       summary = !order.length ? `Ordre des assureurs à confirmer. Paiements trouvés : Desjardins ${matched.filter(item => item.Insurer === "desjardins").reduce((sum, item) => sum + (item.ReimbursedAmount ?? 0), 0).toFixed(2)} $; Blue Cross ${matched.filter(item => item.Insurer === "blue-cross").reduce((sum, item) => sum + (item.ReimbursedAmount ?? 0), 0).toFixed(2)} $.`
         : original != null && reimbursed > original + .005 ? "Les paiements dépassent le montant de la dépense; vérifiez les doublons ou ajustements."
         : pending ? "Un relevé associé reste non rapproché; vérifiez les doublons, ajustements ou la facture."
+        : remaining == null ? "Montant de dépense ou paiement d'assureur inconnu; vérifiez les preuves avant de calculer le solde."
         : "Vérifiez la personne ou la classification avant le rapprochement.";
     }
     else if (!seen.has(order[0]) && !explicitPrimaryProcessed) { action = "submit-primary"; status = "waiting-primary"; next = insurerName(order[0]); summary = `En attente d'un relevé de ${next}.`; }
@@ -305,10 +309,10 @@ export function buildReconciliationSnapshot(items: Invoice[]): ReconciliationSna
       PatientBalance: { value: residual, source: evidence.FieldSources?.PatientBalance || evidence.FieldSources?.AmountNotCovered || "unknown", confidence: evidence.FieldStates?.PatientBalance || evidence.FieldStates?.AmountNotCovered || "unknown" },
       PrimaryPaid: { value: primaryKnown,
         source: matched.find(item => item.Insurer === order[0])?.Id || (directPrimary != null ? "receipt-explicit-payment" : explicitPrimaryProcessed ? "receipt-insurer-processing" : "not found"),
-        confidence: matched.some(item => item.Insurer === order[0]) || directPrimary != null ? "confirmed" : explicitPrimaryProcessed ? "inferred" : "not-found" },
+        confidence: primaryKnown != null ? "confirmed" : matched.some(item => item.Insurer === order[0]) ? "unknown" : explicitPrimaryProcessed ? "inferred" : "not-found" },
       SecondaryPaid: { value: secondaryKnown,
         source: matched.find(item => item.Insurer === order[1])?.Id || (directSecondary != null ? "receipt-explicit-payment" : explicitSecondaryProcessed ? "receipt-insurer-processing" : "no matching Blue Cross record"),
-        confidence: matched.some(item => item.Insurer === order[1]) || directSecondary != null ? "confirmed" : explicitSecondaryProcessed ? "inferred" : "not-found" }
+        confidence: secondaryKnown != null ? "confirmed" : matched.some(item => item.Insurer === order[1]) ? "unknown" : explicitSecondaryProcessed ? "inferred" : "not-found" }
     };
     return {
       Id: createHash("sha256").update(expense.Id + matched.map(item => item.Id).sort().join(":" )).digest("hex").slice(0, 24),
@@ -316,9 +320,9 @@ export function buildReconciliationSnapshot(items: Invoice[]): ReconciliationSna
       ServiceDate: expense.ServiceDate,
       OriginalAmount: original, ReimbursedAmount: reimbursed,
       PrimaryInsurer: order[0] ? insurerName(order[0]) : null,
-      PrimaryReimbursedAmount: primaryKnown ?? (explicitPrimaryProcessed ? null : 0),
+      PrimaryReimbursedAmount: primaryKnown ?? (explicitPrimaryProcessed || matched.some(item => item.Insurer === order[0]) ? null : 0),
       SecondaryInsurer: order[1] ? insurerName(order[1]) : null,
-      SecondaryReimbursedAmount: secondaryKnown ?? (explicitSecondaryProcessed ? null : 0),
+      SecondaryReimbursedAmount: secondaryKnown ?? (explicitSecondaryProcessed || matched.some(item => item.Insurer === order[1]) ? null : 0),
       UnallocatedReimbursedAmount: order.length ? otherMatched : reimbursed,
       PotentialRemaining: remaining,
       Currency: expense.Currency || "CAD", NextInsurer: next, Action: action, Summary: summary,
