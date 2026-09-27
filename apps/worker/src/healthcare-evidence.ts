@@ -59,13 +59,13 @@ export function extractHealthcareEvidence(mail: Mail, result: Classification): H
     return match ? Number(match[1].replace(/,/g, "")) : null;
   };
   const directInsurerPayment = (text: string, insurer: Insurer): number | null => {
-    const insurerPattern = insurer === "desjardins" ? /desjardins/i : /blue\\s*cross|croix\\s*bleue/i;
+    const insurerPattern = insurer === "desjardins" ? /desjardins/i : /blue\s*cross|croix\s*bleue/i;
     const match = insurerPattern.exec(text);
     if (!match || match.index == null) return null;
     const tail = text.slice(match.index + match[0].length);
-    const nextInsurer = tail.search(/desjardins|blue\\s*cross|croix\\s*bleue/i);
+    const nextInsurer = tail.search(/desjardins|blue\s*cross|croix\s*bleue/i);
     const window = text.slice(match.index, nextInsurer >= 0 ? match.index + match[0].length + nextInsurer : Math.min(text.length, match.index + 700));
-    const values = [...window.matchAll(/-\\s*(?:CAD\\s*)?\\$?\\s*([0-9]{1,7}(?:,[0-9]{3})*\\.[0-9]{2})/gi)]
+    const values = [...window.matchAll(/-\s*(?:CAD\s*)?\$?\s*([0-9]{1,7}(?:,[0-9]{3})*\.[0-9]{2})/gi)]
       .map(item => Number(item[1].replace(/,/g, ""))).filter(validMoney);
     return values.length ? Math.max(...values) : null;
   };
@@ -94,9 +94,9 @@ export function extractHealthcareEvidence(mail: Mail, result: Classification): H
       output.FieldSources![`InsurerPayments.${insurer}`] = source;
       output.FieldStates![`InsurerPayments.${insurer}`] = "confirmed";
     }
-    const invoice = text.match(/(?:invoice|facture)\\s*(?:number|no\\.?|#|n[°º])\\s*[:#-]?\\s*([a-z0-9][a-z0-9-]{2,})/i)?.[1];
+    const invoice = text.match(/(?:invoice|facture)\s*(?:number|no\.?|#|n[°º])\s*[:#-]?\s*([a-z0-9][a-z0-9-]{2,})/i)?.[1];
     if (invoice) { output.InvoiceNumber = invoice; output.FieldSources!.InvoiceNumber = source; }
-    const date = text.match(/(?:service date|date (?:of service|du soin|de service))\\s*[:=-]?\\s*(\\d{4}-\\d{2}-\\d{2})/i)?.[1];
+    const date = text.match(/(?:service date|date (?:of service|du soin|de service))\s*[:=-]?\s*(\d{4}-\d{2}-\d{2})/i)?.[1];
     if (calendarDate(date)) { output.ServiceDate = date; output.FieldSources!.ServiceDate = source; }
   }
   const all = `${mail.sender}\n${mail.subject}\n${mail.text}\n${mail.attachmentText || ""}`;
@@ -107,7 +107,7 @@ export function extractHealthcareEvidence(mail: Mail, result: Classification): H
     output.PatientBalance ??= residual;
     const processed = new Set(output.ProcessedInsurers || []);
     if (/desjardins/i.test(all)) processed.add("desjardins");
-    if (/blue\\s*cross|croix\\s*bleue/i.test(all)) processed.add("blue-cross");
+    if (/blue\s*cross|croix\s*bleue/i.test(all)) processed.add("blue-cross");
     // TELUS is a processor, not enough by itself to name an insurer.
     output.ProcessedInsurers = [...processed];
     const explicitPayments = Object.entries(output.InsurerPayments || {}).filter(([, amount]) => validMoney(amount));
