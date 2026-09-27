@@ -2,31 +2,20 @@ import { useEffect, useMemo, useState } from "react";
 import { AlertTriangle, CheckCircle2, CircleDollarSign, ExternalLink, RefreshCw } from "lucide-react";
 import { dateLabel } from "../domain";
 import { googleBridge } from "../google";
-import { mergeInvoiceItems, mergeReconciliationHistory, unreconciledInvoiceCases } from "../invoice-state";
+import { buildInvoiceHistoryCases, filterInvoiceHistoryCases, mergeInvoiceItems, mergeReconciliationHistory, primaryReimbursementAmount, reimbursementCaseStatus, secondaryReimbursementAmount } from "../invoice-state";
+import type { InvoiceHistoryFilter, ReimbursementCaseStatus } from "../invoice-state";
 import type { HubState } from "../state";
 import type { ReconciliationCase, ReimbursementItem, UnmatchedReimbursement } from "../types";
 import { fetchInvoices, setExpenseIgnored } from "../worker";
 
 type Props = { hub: HubState };
-type CaseStatus = NonNullable<ReconciliationCase["Status"]>;
-type HistoryFilter = "fully-reimbursed" | "not-fully-reimbursed" | "primary" | "secondary";
-
-const statusCopy: Record<CaseStatus, string> = {
+const statusCopy: Record<ReimbursementCaseStatus, string> = {
   "fully-reimbursed": "Fully reimbursed",
   "waiting-primary": "Waiting for primary",
   "waiting-secondary": "Waiting for secondary",
   "patient-balance": "Patient balance",
   "needs-attention": "Needs attention"
 };
-
-function caseStatus(item: ReconciliationCase): CaseStatus {
-  if (item.PreviouslyFound) return "needs-attention";
-  if (item.Status) return item.Status;
-  if (item.Action === "complete") return "fully-reimbursed";
-  if (item.Action === "submit-primary") return "waiting-primary";
-  if (item.Action === "submit-secondary") return "waiting-secondary";
-  return "needs-attention";
-}
 
 function money(value: number | null | undefined, code = "CAD"): string {
   if (value === null || value === undefined || !Number.isFinite(value)) return "—";
@@ -38,14 +27,6 @@ function dateValue(value: string | null | undefined): number {
   if (!value) return Number.NEGATIVE_INFINITY;
   const time = new Date(value).getTime();
   return Number.isNaN(time) ? Number.NEGATIVE_INFINITY : time;
-}
-
-function primaryAmount(item: ReconciliationCase): number {
-  return item.PrimaryReimbursedAmount ?? (item.Action === "submit-secondary" ? item.ReimbursedAmount : 0);
-}
-
-function secondaryAmount(item: ReconciliationCase): number {
-  return item.SecondaryReimbursedAmount ?? 0;
 }
 
 function unmatchedReason(item: UnmatchedReimbursement): string {
@@ -65,7 +46,7 @@ export default function ReimbursementsView({ hub }: Props) {
   const [lastSuccess, setLastSuccess] = useState("");
   const [savingId, setSavingId] = useState("");
   const [savedMessage, setSavedMessage] = useState("");
-  const [filters, setFilters] = useState<Set<HistoryFilter>>(() => new Set());
+  const [filters, setFilters] = useState<Set<InvoiceHistoryFilter>>(() => new Set());
   const paired = Boolean(hub.worker.Endpoint.trim() && hub.worker.ApiKey.trim());
 
   async function refresh() {
@@ -109,11 +90,7 @@ export default function ReimbursementsView({ hub }: Props) {
 
   const model = useMemo(() => {
     const byId = new Map(hub.reimbursements.Items.map(item => [item.Id, item]));
-    const caseDate = (item: ReconciliationCase) => item.ServiceDate || byId.get(item.DocumentIds[0])?.ServiceDate
-      || byId.get(item.DocumentIds[0])?.ReceivedAt;
-    const cases = [...(hub.reimbursements.Reconciliations ?? []), ...unreconciledInvoiceCases(hub.reimbursements.Reconciliations ?? [], hub.reimbursements.Items)]
-      .filter(item => !item.DocumentIds.some(id => byId.get(id)?.IgnoredAt))
-      .sort((a, b) => dateValue(caseDate(b)) - dateValue(caseDate(a)) || a.Id.localeCompare(b.Id));
+    const cases = buildInvoiceHistoryCases(hub.reimbursements.Reconciliations ?? [], hub.reimbursements.Items);
     const unmatched = (hub.reimbursements.UnmatchedReimbursements ?? [])
       .map(result => ({ result, item: byId.get(result.DocumentId) }))
       .filter((entry): entry is { result: UnmatchedReimbursement; item: ReimbursementItem } => Boolean(entry.item))
@@ -121,10 +98,10 @@ export default function ReimbursementsView({ hub }: Props) {
         - dateValue(a.item.ServiceDate || a.item.StatementDate || a.item.ReceivedAt));
     const cad = cases.filter(item => !item.PreviouslyFound && (item.Currency || "CAD") === "CAD");
     const totalPaid = cad.reduce((sum, item) => sum + (item.OriginalAmount ?? 0), 0);
-    const primary = cad.reduce((sum, item) => sum + primaryAmount(item), 0);
-    const secondary = cad.reduce((sum, item) => sum + secondaryAmount(item), 0);
+    const primary = cad.reduce((sum, item) => sum + primaryReimbursementAmount(item), 0);
+    const secondary = cad.reduce((sum, item) => sum + secondaryReimbursementAmount(item), 0);
     const outstanding = cad.reduce((sum, item) => sum + (item.PotentialRemaining ?? 0), 0);
-    const attention = cases.filter(item => !item.PreviouslyFound && caseStatus(item) !== "fully-reimbursed").length + unmatched.length;
+    const attention = cases.filter(item => !item.PreviouslyFound && reimbursementCaseStatus(item) !== "fully-reimbursed").length + unmatched.length;
     const warnings = [...new Set(hub.reimbursements.Items.filter(item => item.Status !== 4).map(item => item.ImportWarning).filter(Boolean))];
     return { cases, unmatched, totalPaid, primary, secondary, outstanding, attention, warnings };
   }, [hub.reimbursements.Items, hub.reimbursements.Reconciliations, hub.reimbursements.UnmatchedReimbursements]);
@@ -132,29 +109,15 @@ export default function ReimbursementsView({ hub }: Props) {
   const invoiceById = new Map(hub.reimbursements.Items.map(item => [item.Id, item]));
 
   const filterCounts = useMemo(() => ({
-    fully: model.cases.filter(item => caseStatus(item) === "fully-reimbursed").length,
-    outstanding: model.cases.filter(item => caseStatus(item) !== "fully-reimbursed").length,
-    primary: model.cases.filter(item => primaryAmount(item) > 0).length,
-    secondary: model.cases.filter(item => secondaryAmount(item) > 0).length
+    fully: model.cases.filter(item => reimbursementCaseStatus(item) === "fully-reimbursed").length,
+    outstanding: model.cases.filter(item => reimbursementCaseStatus(item) !== "fully-reimbursed").length,
+    primary: model.cases.filter(item => primaryReimbursementAmount(item) > 0).length,
+    secondary: model.cases.filter(item => secondaryReimbursementAmount(item) > 0).length
   }), [model.cases]);
 
-  const filteredCases = useMemo(() => {
-    const hasStatusFilter = filters.has("fully-reimbursed") || filters.has("not-fully-reimbursed");
-    const hasSourceFilter = filters.has("primary") || filters.has("secondary");
+  const filteredCases = useMemo(() => filterInvoiceHistoryCases(model.cases, filters), [filters, model.cases]);
 
-    return model.cases.filter(item => {
-      const status = caseStatus(item);
-      const statusMatches = !hasStatusFilter
-        || (filters.has("fully-reimbursed") && status === "fully-reimbursed")
-        || (filters.has("not-fully-reimbursed") && status !== "fully-reimbursed");
-      const sourceMatches = !hasSourceFilter
-        || (filters.has("primary") && primaryAmount(item) > 0)
-        || (filters.has("secondary") && secondaryAmount(item) > 0);
-      return statusMatches && sourceMatches;
-    });
-  }, [filters, model.cases]);
-
-  function toggleFilter(filter: HistoryFilter) {
+  function toggleFilter(filter: InvoiceHistoryFilter) {
     setFilters(previous => {
       const next = new Set(previous);
       if (next.has(filter)) next.delete(filter);
@@ -196,7 +159,7 @@ export default function ReimbursementsView({ hub }: Props) {
           <strong>History</strong>
           <span>Newest first</span>
         </div>
-        {filters.size > 0 && <button type="button" className="filter-clear" onClick={() => setFilters(new Set<HistoryFilter>())}>Clear filters</button>}
+        {filters.size > 0 && <button type="button" className="filter-clear" onClick={() => setFilters(new Set<InvoiceHistoryFilter>())}>Clear filters</button>}
       </div>
       <div className="reimbursement-filter-chips">
         <button type="button" className={`filter-chip ${filters.has("fully-reimbursed") ? "active" : ""}`} aria-pressed={filters.has("fully-reimbursed")} onClick={() => toggleFilter("fully-reimbursed")}>
@@ -225,7 +188,7 @@ export default function ReimbursementsView({ hub }: Props) {
 
       <div className="expense-list">
         {filteredCases.map(item => {
-          const status = caseStatus(item);
+          const status = reimbursementCaseStatus(item);
           return <article className="expense-card" key={item.Id}>
             <div className="expense-heading">
               <div><strong>{item.Provider || "Provider to confirm"}</strong><small>{item.Member === "unknown" ? "Person to confirm" : item.Member}{item.ServiceDate ? ` · ${dateLabel(item.ServiceDate)}` : invoiceById.get(item.DocumentIds[0])?.ReceivedAt ? ` · Received ${dateLabel(invoiceById.get(item.DocumentIds[0])!.ReceivedAt)}` : " · Date missing"}</small></div>
@@ -233,8 +196,8 @@ export default function ReimbursementsView({ hub }: Props) {
             </div>
             <div className="expense-amounts">
               <div><small>Expense</small><strong>{money(item.OriginalAmount, item.Currency)}</strong></div>
-              <div><small>{item.PrimaryInsurer || "Primary"}</small><strong>{money(primaryAmount(item), item.Currency)}</strong></div>
-              <div><small>{item.SecondaryInsurer || "Secondary"}</small><strong>{money(secondaryAmount(item), item.Currency)}</strong></div>
+              <div><small>{item.PrimaryInsurer || "Primary"}</small><strong>{money(primaryReimbursementAmount(item), item.Currency)}</strong></div>
+              <div><small>{item.SecondaryInsurer || "Secondary"}</small><strong>{money(secondaryReimbursementAmount(item), item.Currency)}</strong></div>
               <div className="remaining"><small>Remaining</small><strong>{money(item.PotentialRemaining, item.Currency)}</strong></div>
             </div>
             {!!item.UnallocatedReimbursedAmount && <p className="privacy-note expense-warning">Known payments: {money(item.UnallocatedReimbursedAmount, item.Currency)} · insurer order to confirm</p>}
