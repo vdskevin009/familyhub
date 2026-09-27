@@ -82,6 +82,9 @@ export function saveInvoiceStatus(config: WorkerConfig, id: string, status: numb
 export function setExpenseIgnored(config: WorkerConfig, documentIds: string[], ignored: boolean): Promise<{ saved: boolean }> {
   return request(config, "/invoices/expenses/ignore", { method: "POST", body: JSON.stringify({ documentIds, ignored }) });
 }
+export function setMatchDecision(config: WorkerConfig, reimbursementId: string, expenseId: string, decision: "confirmed" | "rejected"): Promise<{ saved: boolean }> {
+  return request(config, "/invoices/matches/decision", { method: "POST", body: JSON.stringify({ reimbursementId, expenseId, decision }) });
+}
 export function undoInvoiceDecision(config: WorkerConfig, decisionId: string): Promise<ReimbursementItem> {
   return request(config, "/invoices/decisions/undo", { method: "POST", body: JSON.stringify({ decisionId }) });
 }

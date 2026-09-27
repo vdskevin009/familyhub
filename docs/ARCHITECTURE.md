@@ -77,7 +77,7 @@ POST /invoices/:id/status
 GET  /invoices/:id/attachments/:attachmentId
 ```
 
-The invoice snapshot includes reconciliation cases and unmatched insurer records. Automatic matches require strong, unambiguous member/date/provider evidence; otherwise the reimbursement remains unmatched for review.
+The invoice snapshot includes reconciliation cases, match-specific confidence/evidence, persisted manual match decisions, and genuinely unmatched insurer records. A singular evidence-supported association stays matched even when it needs user verification; lower-confidence matches can be confirmed or rejected explicitly. Manual confirmations remain authoritative across recomputation, rejected pairs are not immediately recreated, and unresolved ties/conflicts remain unmatched rather than guessed.
 
 Default network binding is `127.0.0.1:4713`. A random pairing key is generated locally and required on every API request. CORS is restricted to configured FamilyHub origins.
 

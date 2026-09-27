@@ -199,8 +199,56 @@ test('an 85%-confidence reviewed expense can reconcile only through exact determ
     [{ DocumentId: conflictingService.Id, Reason: 'no-expense-match' }]);
 
   const reviewedStatement = { ...statement, Id: 'desjardins-needs-review', NeedsReview: true };
-  assert.deepEqual(buildReconciliationSnapshot([expense, reviewedStatement]).unmatched,
-    [{ DocumentId: reviewedStatement.Id, Reason: 'needs-review' }]);
+  const reviewedSnapshot = buildReconciliationSnapshot([expense, reviewedStatement]);
+  assert.equal(reviewedSnapshot.unmatched.length, 0, 'source review alone does not erase a singular supported match');
+  assert.equal(reviewedSnapshot.cases[0].MatchAssignments[0].Verification, 'review-recommended');
+});
+
+test('singular lower-confidence matches stay matched and expose match confidence for confirmation', () => {
+  const expense = toInvoice({ ...mail, id: 'review-match-expense', subject: 'Clinic receipt', sender: 'Sample Clinic',
+    text: 'Physiotherapy total CAD 100.00' }, 'kevin@example.test', 'Kevin',
+    { ...classification, category: 'health', member: 'Kevin', documentRole: 'expense', amount: 100, billedAmount: 100,
+      serviceDate: '2026-09-10', reason: 'review source', healthcare: { ServiceType: 'Physiotherapy', OriginalBilledAmount: 100 } }, 'codex');
+  expense.NeedsReview = true;
+  expense.Confidence = 85;
+  const statement = { ...expense, Id: 'review-match-statement', Subject: 'Desjardins physiotherapy claim',
+    Provider: 'Desjardins · Physiotherapy', DocumentType: 'claim', DocumentRole: 'insurer-statement',
+    Insurer: 'desjardins', BilledAmount: 50, DetectedAmount: 50, ReimbursedAmount: 50,
+    NeedsReview: false, Confidence: 99, Healthcare: { ServiceDate: '2026-09-10', ServiceType: 'Physiotherapy' } };
+
+  const snapshot = buildReconciliationSnapshot([expense, statement]);
+  assert.equal(snapshot.unmatched.length, 0);
+  assert.equal(snapshot.cases[0].MatchAssignments.length, 1);
+  assert.equal(snapshot.cases[0].MatchAssignments[0].ReimbursementDocumentId, statement.Id);
+  assert.equal(snapshot.cases[0].MatchAssignments[0].Verification, 'review-recommended');
+  assert.ok(snapshot.cases[0].MatchAssignments[0].Confidence < 90);
+  assert.equal(snapshot.cases[0].MatchConfidence, snapshot.cases[0].MatchAssignments[0].Confidence);
+});
+
+test('manual match confirmation is authoritative and rejection prevents the same pair from returning', () => {
+  const expense = toInvoice({ ...mail, id: 'decision-expense', subject: 'Clinic receipt', sender: 'Sample Clinic',
+    text: 'Physiotherapy total CAD 100.00' }, 'kevin@example.test', 'Kevin',
+    { ...classification, category: 'health', member: 'Kevin', documentRole: 'expense', amount: 100, billedAmount: 100,
+      serviceDate: '2026-09-11', reason: 'review source', healthcare: { ServiceType: 'Physiotherapy', OriginalBilledAmount: 100 } }, 'codex');
+  expense.NeedsReview = true; expense.Confidence = 85;
+  const statement = { ...expense, Id: 'decision-statement', Subject: 'Desjardins physiotherapy claim',
+    Provider: 'Desjardins · Physiotherapy', DocumentType: 'claim', DocumentRole: 'insurer-statement',
+    Insurer: 'desjardins', BilledAmount: 50, DetectedAmount: 50, ReimbursedAmount: 50,
+    NeedsReview: false, Confidence: 99, Healthcare: { ServiceDate: '2026-09-11', ServiceType: 'Physiotherapy' } };
+  const initial = buildReconciliationSnapshot([expense, statement]);
+  const confidence = initial.cases[0].MatchAssignments[0].Confidence;
+
+  const confirmed = buildReconciliationSnapshot([expense, { ...statement, Healthcare: { ServiceDate: '2026-09-11', ServiceType: 'Chiropractic' } }],
+    [{ reimbursementId: statement.Id, expenseId: expense.Id, decision: 'confirmed', at: '2026-09-27T12:00:00Z', confidence }]);
+  assert.equal(confirmed.unmatched.length, 0);
+  assert.equal(confirmed.cases[0].MatchAssignments[0].Verification, 'confirmed-manually');
+  assert.equal(confirmed.cases[0].MatchAssignments[0].Confidence, confidence);
+  assert.equal(confirmed.cases[0].MatchAssignments[0].ConfirmedAt, '2026-09-27T12:00:00Z');
+
+  const rejected = buildReconciliationSnapshot([expense, statement],
+    [{ reimbursementId: statement.Id, expenseId: expense.Id, decision: 'rejected', at: '2026-09-27T12:05:00Z', confidence }]);
+  assert.deepEqual(rejected.unmatched, [{ DocumentId: statement.Id, Reason: 'no-expense-match' }]);
+  assert.equal(rejected.cases[0].MatchAssignments.length, 0);
 });
 
 test('a partial paid amount does not need to equal the expense total to match', () => {
