@@ -121,8 +121,14 @@ export function extractHealthcareEvidence(mail: Mail, result: Classification): H
       output.FieldSources!.OriginalBilledAmount = paymentSources.includes("attachment") ? "attachment" : paymentSources.includes("email") ? "email" : "extraction";
       output.FieldStates!.OriginalBilledAmount = "reconstructed";
     }
-    // The generic classifier amount must never become the billed amount of a residual receipt.
-    else if (output.OriginalBilledAmount === residual && !/(?:invoice total|total charges|total factur[eé])/i.test(all)) output.OriginalBilledAmount = null;
+    // A residual proves what the patient still owes after processing; it does not prove the gross expense.
+    // If the source never labels a gross/original total and no explicit insurer payment lets us reconstruct it,
+    // discard any classifier/stale-index amount instead of promoting a subtotal or patient payment.
+    else if (!/(?:original (?:billed )?amount|invoice total|total charges|total factur[eé]|prix total)/i.test(all)) {
+      output.OriginalBilledAmount = null;
+      delete output.FieldSources!.OriginalBilledAmount;
+      output.FieldStates!.OriginalBilledAmount = "unknown";
+    }
   }
   output.ServiceDate ??= result.serviceDate;
   return validateHealthcare(output);
