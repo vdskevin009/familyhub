@@ -281,12 +281,12 @@ export default function ReimbursementsView({ hub }: Props) {
 
     <section className="reimbursement-history" aria-labelledby="reimbursement-history-title">
       <div className="reimbursement-history-heading">
-        <h2 id="reimbursement-history-title">All invoices</h2>
-        <span>{filteredCases.length}{filteredCases.length !== model.cases.length ? ` of ${model.cases.length}` : ""}</span>
+        <h2 id="reimbursement-history-title">{workflowFilter === "all" ? "All" : workflowFilter[0].toUpperCase() + workflowFilter.slice(1)} invoices · {scopeLabel}</h2>
+        <span>{filteredCases.length}</span>
       </div>
 
       {!model.cases.length && <div className="empty-state reimbursement-empty"><CircleDollarSign size={30} /><strong>No healthcare expenses yet</strong><span>Run the PC collection after importing invoices and insurer statements.</span></div>}
-      {!!model.cases.length && !filteredCases.length && <div className="empty-state reimbursement-empty"><strong>No invoices match these filters</strong><span>Clear one or more filters to restore the full history.</span></div>}
+      {!!model.cases.length && !filteredCases.length && reconciliationFilter !== "unmatched" && <div className="empty-state reimbursement-empty"><strong>No invoices match these filters</strong><span>Change the workflow, person or reimbursement filters to continue the review.</span></div>}
 
       <div className="expense-list">
         {filteredCases.map(item => {
@@ -298,10 +298,17 @@ export default function ReimbursementsView({ hub }: Props) {
           const manuallyConfirmed = matchAssignments.length > 0 && matchAssignments.every(match => match.Verification === "confirmed-manually");
           const reviewRecommended = matchAssignments.some(match => match.Verification === "review-recommended");
           const matchExpanded = expandedMatchId === item.Id;
+          const workflow = reimbursementWorkflowStatus(item);
+          const workflowSavingId = `workflow:${item.ExpenseDocumentId || item.ExpenseDocumentIds?.[0] || item.DocumentIds[0]}`;
+          const workflowSaving = savingId === workflowSavingId;
+          const workflowValue: ReimbursementWorkflowStatus | "automatic" = item.WorkflowOrigin === "manual" ? workflow : "automatic";
           return <article className="expense-card" key={item.Id}>
             <div className="expense-heading">
               <div><strong>{healthcareTitle(item)}</strong><small>{item.Member === "unknown" ? "Person to confirm" : item.Member}{item.ServiceType && healthcareTitle(item) !== item.ServiceType ? ` · ${item.ServiceType}` : ""}{item.ServiceDate ? ` · ${dateLabel(item.ServiceDate)}` : invoiceById.get(item.DocumentIds[0])?.ReceivedAt ? ` · Received ${dateLabel(invoiceById.get(item.DocumentIds[0])!.ReceivedAt)}` : " · Date missing"}</small></div>
-              <span className={`reimbursement-status ${item.PreviouslyFound ? "needs-attention" : status}`}>{item.PreviouslyFound ? "Verify source" : <>{status === "fully-reimbursed" && <CheckCircle2 size={14} />}{statusCopy[status]}</>}</span>
+              <div className="expense-status-stack">
+                <span className={`workflow-status ${workflow}`}>{workflow === "open" ? "Open" : workflow === "closed" ? "Closed" : "Ignore"}</span>
+                <span className={`reimbursement-status ${item.PreviouslyFound ? "needs-attention" : status}`}>{item.PreviouslyFound ? "Verify source" : <>{status === "fully-reimbursed" && <CheckCircle2 size={14} />}{statusCopy[status]}</>}</span>
+              </div>
             </div>
             <div className="expense-amounts">
               <div><small>Expense</small><strong>{money(item.OriginalAmount, item.Currency)}</strong></div>
@@ -309,6 +316,26 @@ export default function ReimbursementsView({ hub }: Props) {
               <div><small>{item.SecondaryInsurer || "Secondary"}</small><strong>{money(secondaryReimbursementAmount(item), item.Currency)}</strong></div>
               <div className="remaining"><small>Remaining</small><strong>{money(item.PotentialRemaining, item.Currency)}</strong></div>
             </div>
+            <div className="workflow-control">
+              <div>
+                <strong>Workflow</strong>
+                <small>{item.WorkflowOrigin === "manual" ? "Manual override" : "Automatic"}{item.WorkflowChangedAt ? ` · ${new Date(item.WorkflowChangedAt).toLocaleString()}` : ""}</small>
+              </div>
+              <select aria-label="Reimbursement workflow status" value={workflowValue} disabled={!paired || !!savingId || busy}
+                onChange={event => void changeWorkflow(item, event.target.value as ReimbursementWorkflowStatus | "automatic")}>
+                <option value="automatic">Automatic ({item.AutomaticWorkflowStatus === "closed" ? "Closed" : "Open"})</option>
+                <option value="open">Open manually</option>
+                <option value="closed">Closed manually</option>
+                <option value="ignore">Ignore manually</option>
+              </select>
+              {workflowSaving && <span className="workflow-saving">Saving…</span>}
+            </div>
+            {!!item.WorkflowHistory?.length && <details className="workflow-history">
+              <summary>Status history</summary>
+              <div>{[...item.WorkflowHistory].slice(-6).reverse().map((entry, index) =>
+                <p key={`${entry.At}:${index}`}><strong>{entry.Status === "open" ? "Open" : entry.Status === "closed" ? "Closed" : "Ignore"}</strong>
+                  <span>{entry.Origin === "manual" ? "Manual" : "Automatic"} · {new Date(entry.At).toLocaleString()}</span></p>)}</div>
+            </details>}
             {matchAssignments.length > 0 && <div className="match-summary">
               <button type="button" className={`match-confidence-button ${reviewRecommended ? "review" : manuallyConfirmed ? "confirmed" : ""}`}
                 aria-expanded={matchExpanded} onClick={() => setExpandedMatchId(matchExpanded ? "" : item.Id)}>
@@ -346,30 +373,14 @@ export default function ReimbursementsView({ hub }: Props) {
             <div className="expense-note"><span>{item.Summary}</span><small>{matchAssignments.length ? `${matchAssignments.length} matched insurer record${matchAssignments.length === 1 ? "" : "s"}` : `Source confidence ${Math.round(item.Confidence)}%`}</small></div>
             {item.Status === "needs-attention" && item.DocumentIds[0] && reviews.get(`case:${item.DocumentIds[0]}`) &&
               <p className="privacy-note expense-warning">Second AI review: {reviews.get(`case:${item.DocumentIds[0]}`)!.explanation} · Suggestion only; check the source documents.</p>}
-            <div className="expense-actions">
-              <button type="button" className="mini-button" disabled={!paired || !!savingId || busy} onClick={() => void ignoreExpense(item, true)}>
-                {savingId === item.Id ? "Saving…" : "Ignore this expense"}
-              </button>
-              <small className="privacy-note">Saved on the PC · reversible · future invoices stay eligible for review</small>
-            </div>
           </article>;
         })}
       </div>
     </section>
 
-    {(hub.reimbursements.IgnoredExpenses ?? []).length > 0 && <details className="surface ignored-expenses">
-      <summary>Ignored expenses ({hub.reimbursements.IgnoredExpenses!.length})</summary>
-      <p className="privacy-note">Excluded from attention and totals. Source documents are kept; no insurer decision is implied.</p>
-      {hub.reimbursements.IgnoredExpenses!.map(item => <article className="expense-card" key={item.Id}>
-        <div className="expense-heading"><div><strong>{healthcareTitle(item)}</strong><small>{item.ServiceDate ? dateLabel(item.ServiceDate) : "Date to confirm"}</small></div>
-          <button type="button" className="mini-button" disabled={!paired || !!savingId || busy} onClick={() => void ignoreExpense(item, false)}>{savingId === item.Id ? "Saving…" : "Restore"}</button>
-        </div>
-      </article>)}
-    </details>}
-
-    {model.unmatched.length > 0 && <section className="surface unmatched-panel has-items" aria-labelledby="unmatched-title">
-      <div className="section-heading inline"><div><span className="eyebrow">Needs review</span><h2 id="unmatched-title">Unmatched reimbursements</h2></div><span className="unmatched-count">{model.unmatched.length}</span></div>
-      {model.unmatched.map(({ result, item }) => <article className="unmatched-row" key={result.DocumentId}>
+    {visibleUnmatched.length > 0 && <section className="surface unmatched-panel has-items" aria-labelledby="unmatched-title">
+      <div className="section-heading inline"><div><span className="eyebrow">Needs review · {scopeLabel}</span><h2 id="unmatched-title">Unmatched reimbursements</h2></div><span className="unmatched-count">{visibleUnmatched.length}</span></div>
+      {visibleUnmatched.map(({ result, item }) => <article className="unmatched-row" key={result.DocumentId}>
         <span className="reimbursement-status unmatched">Unmatched</span>
         <div><strong>{item.Provider || item.Subject || "Insurer record"}</strong><small>{item.Member && item.Member !== "unknown" ? `${item.Member} · ` : ""}{item.Insurer === "blue-cross" ? "Blue Cross" : item.Insurer === "desjardins" ? "Desjardins" : "Insurer unknown"} · {dateLabel(item.ServiceDate || item.ReceivedAt)}{item.StatementDate ? ` · Statement ${dateLabel(item.StatementDate)}` : ""}</small><p>{item.NeedsReview && item.Reasons?.length ? item.Reasons[0] : unmatchedReason(result)}</p>
           {reviews.get(`unmatched:${item.Id}`) && <p className="privacy-note expense-warning">Second AI review: {reviews.get(`unmatched:${item.Id}`)!.explanation}{reviews.get(`unmatched:${item.Id}`)!.candidateId ? ` · Possible invoice: ${invoiceById.get(reviews.get(`unmatched:${item.Id}`)!.candidateId!)?.Provider || "see source"}` : ""}. Suggestion only; no automatic link.</p>}</div>
