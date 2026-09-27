@@ -159,3 +159,12 @@ test('a past clinic receipt is recovered after the Gmail watermark and appears o
     assert.equal(result.status, 0, result.stderr || result.stdout);
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
+
+test('June history resumes failures and retains reversible expense ignore decisions', async () => {
+  const { spawnSync } = await import('node:child_process');
+  const dir = await mkdtemp(join(tmpdir(), 'familyhub-history-ignore-'));
+  try {
+    const result = spawnSync(process.execPath, ['tests/fixtures/history-ignore-runner.mjs'], { cwd: process.cwd(), env: { ...process.env, FAMILYHUB_WORKER_DATA: dir }, encoding: 'utf8' });
+    assert.equal(result.status, 0, result.stderr || result.stdout);
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});

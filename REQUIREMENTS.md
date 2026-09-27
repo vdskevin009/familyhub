@@ -93,6 +93,14 @@ Rules:
 | FH-REIMB-010 | Missing dates, amounts, providers or insurer roles must remain unknown rather than be invented. “Needs attention” should be reduced through stronger reconciliation/deduplication, not by guessing. | Accepted | Current quality goal; keep ambiguous evidence reviewable. |
 | FH-REIMB-011 | Low-confidence reconciliation candidates must receive a second AI review before being surfaced as Needs Attention; reconciliation output should preserve supporting evidence/confidence, and only genuinely unresolved or ambiguous cases should remain for Kevin to review. | Partial | Issue #23; bounded second Codex review returns evidence-linked suggestions and invalidates stale results. Failed/unprocessed cases stay visible, and AI does not resolve or suppress uncertainty automatically. Better precision needs real-data validation. |
 
+## Historical collection and explicit exclusions (Issue #28)
+
+| ID | Requirement | Status | Implementation notes |
+|---|---|---|---|
+| FH-REIMB-013 | Audit potential invoice messages from June 1, 2025 for every connected PC account, including archived and attachment-only messages, independently of the incremental watermark. Preserve resume cursors and expose coverage honestly. | Implemented | Versioned frozen historical window, paginated Gmail search, sequential daily-run continuation, and coverage in Reimbursements. Completion proves query traversal, not recognition of every invoice or insurance eligibility. Sent, Drafts, Spam, Trash and GitHub notifications remain excluded. Unreadable/image-only/oversize attachments require review. Live completeness remains to verify. |
+| FH-REIMB-014 | Allow a reimbursement expense to be ignored and restored in the app; persist the exact grouped-source decision on the PC across collection and restarts without training a provider-wide exclusion. Keep evidence and remove ignored expenses from attention/totals. | Implemented | Atomic authenticated case action, per-document IgnoredAt, exact duplicate inheritance and collapsed Ignored expenses with Restore. Original statuses and sources remain stored. |
+| FH-TECH-004 | Do not persist Gmail prompts, personal amounts or private identifiers in diagnostic logs from invoice classification/review. | Implemented | Private Codex CLI uses stdin and --ephemeral; stdout parsed in memory, stderr discarded, generic failures only. No new paid API. |
+
 ## Open questions / Needs confirmation
 
 - None recorded at baseline. Add unresolved requirements here instead of guessing.

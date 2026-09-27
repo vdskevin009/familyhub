@@ -42,6 +42,7 @@ export type Invoice = {
   AmountSource: "ai" | "email-text" | "missing"; HasUnsubscribe: boolean;
   AttentionLevel: "critical" | "action" | "important" | "none"; AttentionReason: string;
   CorrectedAt?: string; UpdatedAt: string; Fingerprint: string; LastDecisionId?: string;
+  IgnoredAt?: string;
   ImportWarning?: string; ClaimedService?: string; StatementDate?: string; StructuredSource?: "blue-cross-portal";
 };
 export type Correction = { account: string; fingerprint: string; kind: Kind; at: string; confirmations?: number; sender?: string; subject?: string };

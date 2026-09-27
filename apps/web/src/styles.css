@@ -583,3 +583,5 @@ label small { font-weight: 500; }
   .reimbursement-history-heading { padding-inline: 1px; }
   .reimbursement-history .expense-card { border-radius: 16px; }
 }
+.expense-actions { display: flex; flex-wrap: wrap; align-items: center; gap: .6rem; margin-top: .75rem; }
+.ignored-expenses summary { cursor: pointer; font-weight: 600; padding: .5rem 0; }

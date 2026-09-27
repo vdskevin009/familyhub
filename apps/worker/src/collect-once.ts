@@ -8,7 +8,8 @@ try {
   const key = (await readFile(join(dataDirectory, "pairing-key.txt"), "utf8")).trim();
   const call = async (path: string, method = "GET") => {
     const response = await fetch(base + path, { method, headers: { "x-familyhub-key": key }, signal: AbortSignal.timeout(30_000) });
-    const data = await response.json() as { error?: string; busy?: boolean; setupRequired?: boolean };
+    const data = await response.json() as { error?: string; busy?: boolean; setupRequired?: boolean;
+      progress?: Record<string, { error?: string; window?: unknown; invoiceHistoryWindow?: unknown; healthReceiptRepairVersion?: number }> };
     if (!response.ok) throw new Error(data.error || `Worker returned ${response.status}.`);
     return data;
   };
@@ -19,8 +20,19 @@ try {
   for (;;) {
     await new Promise(resolve => setTimeout(resolve, 5000));
     const state = await call("/invoices");
-    if (!state.busy) { if (state.error) throw new Error(state.error); break; }
     if (Date.now() > deadline) throw new Error("Collection is still running. Inspect FamilyHub before retrying.");
+    if (!state.busy) {
+      if (state.error) {
+        const progress = Object.values(state.progress || {});
+        // Continue bounded pages sequentially; never retry an account error automatically.
+        if (progress.length && progress.every(item => !item.error)
+          && progress.some(item => item.window || item.invoiceHistoryWindow || item.healthReceiptRepairVersion !== 1)) {
+          await call("/invoices/collect", "POST"); continue;
+        }
+        throw new Error("Daily collection is incomplete. Check the local account status in FamilyHub.");
+      }
+      break;
+    }
   }
   console.log("FamilyHub daily collection completed.");
 } catch (error) {
