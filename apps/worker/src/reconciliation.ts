@@ -184,7 +184,7 @@ function matchScore(expense: Invoice, statement: Invoice): number {
   const corroboratesEmbeddedPayment = embeddedPayment != null && paid != null && sameMoney(embeddedPayment, paid)
     && expense.Member !== "unknown" && expense.Member === statement.Member
     && expense.ServiceDate != null && expense.ServiceDate === statement.ServiceDate
-    && expenseService != null && statementService != null && expenseService === statementService
+    && (expenseService == null || statementService == null || expenseService === statementService)
     && expense.Confidence >= 80 && statement.Confidence >= 90;
   if (corroboratesEmbeddedPayment) return 25;
 
