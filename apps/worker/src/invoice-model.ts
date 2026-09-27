@@ -123,6 +123,8 @@ export function toInvoice(mail: Mail, email: string, label: string, result: Clas
   const needsReview = !excluded && !acceptedAdministrative && (result.confidence < .9 || source === "unavailable" || !result.transaction || !evidence(mail).transaction);
   const fallback = result.amount == null ? textAmount(mail) : null;
   const amount = result.amount ?? fallback?.amount ?? null;
+  const detectedAmount = result.category === "health" && result.documentRole === "expense" && healthcare.OriginalBilledAmount != null
+    ? healthcare.OriginalBilledAmount : amount;
   const member = result.member === "unknown" && /jasmine/i.test(label) ? "Jasmine" : result.member === "unknown" && /kevin/i.test(label) ? "Kevin" : result.member;
   return {
     AnalysisVersion: 4,
@@ -131,7 +133,7 @@ export function toInvoice(mail: Mail, email: string, label: string, result: Clas
     SourceMessageId: mail.id, ThreadId: mail.threadId, InternetMessageId: mail.internetMessageId,
     Subject: mail.subject, Sender: mail.sender, Provider: healthcare.Provider || mail.sender.split("<")[0].replace(/"/g, "").trim(),
     ReceivedAt: mail.receivedAt, Category: result.category === "health" ? 0 : result.category === "travel" ? 1 : 2,
-    Status: excluded ? 4 : 0, DetectedAmount: amount, Currency: result.currency || fallback?.currency || "",
+    Status: excluded ? 4 : 0, DetectedAmount: detectedAmount, Currency: result.currency || fallback?.currency || "",
     Confidence: Math.round(result.confidence * 100), Notes: "", Attachments: mail.attachments,
     DocumentType: result.kind, Reasons: [result.reason], WorkerManaged: true, NeedsReview: needsReview,
     ReimbursementEligibility: result.transaction ? result.reimbursement : "unknown", ClassificationSource: source,
@@ -142,6 +144,40 @@ export function toInvoice(mail: Mail, email: string, label: string, result: Clas
     HasUnsubscribe: mail.unsubscribe,
     AttentionLevel: result.attention || "none", AttentionReason: result.attentionReason || "",
     UpdatedAt: new Date().toISOString(), Fingerprint: fingerprint(mail)
+  };
+}
+
+/** Re-read only healthcare amount evidence from the source document; classification and eligibility stay unchanged. */
+export function repairHealthcareAmounts(item: Invoice, mail: Mail): Invoice {
+  if (item.Category !== 0 || item.DocumentRole !== "expense") return item;
+  const result: Classification = {
+    healthcare: item.Healthcare,
+    kind: item.DocumentType,
+    confidence: Math.max(0, Math.min(1, item.Confidence / 100)),
+    transaction: true,
+    reimbursement: item.ReimbursementEligibility,
+    reason: item.Reasons[0] || "Existing healthcare expense.",
+    amount: item.DetectedAmount,
+    currency: item.Currency,
+    category: "health",
+    member: item.Member,
+    documentRole: item.DocumentRole,
+    insurer: item.Insurer,
+    serviceDate: item.ServiceDate,
+    billedAmount: item.BilledAmount,
+    reimbursedAmount: item.ReimbursedAmount,
+    attention: item.AttentionLevel,
+    attentionReason: item.AttentionReason
+  };
+  const healthcare = extractHealthcareEvidence(mail, result);
+  const original = healthcare.OriginalBilledAmount ?? item.BilledAmount;
+  return {
+    ...item,
+    Healthcare: healthcare,
+    BilledAmount: original,
+    DetectedAmount: original ?? item.DetectedAmount,
+    AmountSource: original != null ? "email-text" : item.AmountSource,
+    UpdatedAt: new Date().toISOString()
   };
 }
 
