@@ -5,6 +5,7 @@ import { healthcareTitle } from "../apps/web/src/invoice-state.ts";
 import { healthcareEvidence } from "../apps/worker/dist/healthcare-evidence.js";
 import { repairHealthcareAmounts, toInvoice, validateClassification } from "../apps/worker/dist/invoice-model.js";
 import { buildReconciliationSnapshot } from "../apps/worker/dist/reconciliation.js";
+import { automaticWorkflowStatus } from "../apps/worker/dist/reimbursement-workflow.js";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -104,6 +105,7 @@ test("known zero primary reimbursement stays confirmed and secondary subtracts f
   assert.equal(entry.Evidence.PrimaryPaid.value, 0);
   assert.equal(entry.Evidence.PrimaryPaid.confidence, "confirmed");
   assert.equal(entry.Status, "patient-balance");
+  assert.equal(automaticWorkflowStatus(entry), "closed", "trusted Primary + Secondary adjudications close the workflow even with a patient balance");
 });
 
 test("the collector repairs forwarded receipts resumably without classification or decision changes", async () => {
