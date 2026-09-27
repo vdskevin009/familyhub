@@ -30,7 +30,7 @@ export async function gmail<T>(token: string, path: string,
   const pause = options.pause || (async (ms: number) => { await new Promise(resolve => setTimeout(resolve, ms)); });
   for (let attempt = 0; attempt < 4; attempt++) {
     const delay = Math.max(0, nextGmailRequest - Date.now());
-    nextGmailRequest = Math.max(Date.now(), nextGmailRequest) + 100;
+    nextGmailRequest = Math.max(Date.now(), nextGmailRequest) + 1000;
     if (delay) await pause(delay);
     const response = await (options.fetch || fetch)("https://gmail.googleapis.com/gmail/v1/users/me/" + path, {
       headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(30_000)
@@ -40,7 +40,8 @@ export async function gmail<T>(token: string, path: string,
     const reason = error.error?.errors?.[0]?.reason || "";
     if (retryableGmailError(response.status, reason) && attempt < 3) {
       const retryAfter = Number(response.headers.get("retry-after")) * 1000;
-      await pause(Math.min(60_000, Math.max(2000 * 2 ** attempt, Number.isFinite(retryAfter) ? retryAfter : 0))); continue;
+      const backoff = response.status === 403 ? 60_000 : 2000 * 2 ** attempt;
+      await pause(Math.min(60_000, Math.max(backoff, Number.isFinite(retryAfter) ? retryAfter : 0))); continue;
     }
     const safeReason = ["rateLimitExceeded", "userRateLimitExceeded", "dailyLimitExceeded", "domainPolicy", "insufficientPermissions"].includes(reason) ? ` Reason: ${reason}.` : "";
     throw new Error(`Gmail request failed (${response.status}).${safeReason} No collection checkpoint was advanced for this page.`);
