@@ -33,6 +33,8 @@ export type InvoiceSnapshot = {
   importantMail: ReimbursementItem[];
   unmatchedReimbursements: UnmatchedReimbursement[];
   agentReviews?: AgentReview[];
+  ignoredExpenses?: ReconciliationCase[];
+  coverage?: { since: string; complete: boolean };
   diagnostics?: { totalExpenses: number; fullyReimbursed: number; waitingPrimary: number; waitingSecondary: number; patientBalance: number; needsAttention: number; unmatchedInsurerRecords: number; duplicateCandidates: number; missingServiceDates: number; unknownMembers: number; patientAsProvider: number; amountsReconstructed: number; insurerPaymentsOverBilled: number; contradictoryEvidence: number; averageMatchConfidence: number };
   learning: { decisions: number; undoable: Array<{ id: string; itemId: string; type: string; at: string }> };
   accounts: { email: string; label: string }[];
@@ -57,6 +59,8 @@ export async function fetchInvoices(config: WorkerConfig): Promise<InvoiceSnapsh
     importantMail: Array.isArray(raw.importantMail) ? raw.importantMail : [],
     unmatchedReimbursements: Array.isArray(raw.unmatchedReimbursements) ? raw.unmatchedReimbursements : [],
     agentReviews: Array.isArray(raw.agentReviews) ? raw.agentReviews : [],
+    ignoredExpenses: Array.isArray(raw.ignoredExpenses) ? raw.ignoredExpenses : [],
+    coverage: raw.coverage,
     diagnostics: raw.diagnostics,
     learning,
     accounts: Array.isArray(raw.accounts) ? raw.accounts : [],
@@ -74,6 +78,9 @@ export function correctInvoice(config: WorkerConfig, id: string, kind: string): 
 }
 export function saveInvoiceStatus(config: WorkerConfig, id: string, status: number): Promise<ReimbursementItem> {
   return request(config, `/invoices/${encodeURIComponent(id)}/status`, { method: "POST", body: JSON.stringify({ status }) });
+}
+export function setExpenseIgnored(config: WorkerConfig, documentIds: string[], ignored: boolean): Promise<{ saved: boolean }> {
+  return request(config, "/invoices/expenses/ignore", { method: "POST", body: JSON.stringify({ documentIds, ignored }) });
 }
 export function undoInvoiceDecision(config: WorkerConfig, decisionId: string): Promise<ReimbursementItem> {
   return request(config, "/invoices/decisions/undo", { method: "POST", body: JSON.stringify({ decisionId }) });

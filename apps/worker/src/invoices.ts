@@ -1,7 +1,7 @@
 import { mkdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
-import { Codex } from "@openai/codex-sdk";
+import { privateCodex } from "./private-codex.js";
 import { atomicJson, dataDirectory } from "./private-store.js";
 import { credentials, accessToken, gmail, normalizeMail, withAttachmentText, type RawMail } from "./gmail-client.js";
 import { applyCorrection, classificationSchema, evidence, fingerprint, recordId, toInvoice, validateClassification, type Classification, type Correction, type Invoice, type Mail } from "./invoice-model.js";
@@ -15,7 +15,12 @@ export function applyLearnedClassification(extracted: Classification, rule?: Cor
   if (!rule || extracted.transaction && ["ignore", "marketing"].includes(rule.kind)) return extracted;
   return { ...extracted, kind: rule.kind, reason: `${extracted.reason} Prior category correction applied.` };
 }
-type AccountProgress = { through?: number; window?: Window; error?: string; lastSuccess?: string; healthReceiptRepairVersion?: number; healthReceiptRepairPage?: string };
+export const invoiceHistoryStart = Math.floor(Date.parse("2025-06-01T00:00:00-07:00") / 1000) - 1;
+export const invoiceHistoryVersion = 1;
+const invoiceSignals = '{receipt invoice facture reçu recu reimbursement remboursement claim statement "payment confirmation" "amount due" "explanation of benefits" "blue cross" "croix bleue" desjardins has:attachment}';
+const invoiceExclusions = '-in:spam -in:trash -in:sent -in:drafts -from:notifications@github.com';
+type AccountProgress = { through?: number; window?: Window; error?: string; lastSuccess?: string; healthReceiptRepairVersion?: number; healthReceiptRepairPage?: string;
+  invoiceHistoryVersion?: number; invoiceHistoryWindow?: Window; invoiceHistoryThrough?: number; invoiceHistoryExamined?: number };
 type Decision = { id: string; itemId: string; type: "classification" | "status"; before: Partial<Invoice>; after: Partial<Invoice>; at: string; undoneAt?: string; correctionBefore?: Correction };
 type State = { items: Invoice[]; corrections: Correction[]; decisions: Decision[]; reviews: AgentReview[]; accounts: Record<string, AccountProgress>; lastAttempt?: string; lastSuccess?: string; error?: string };
 const statePath = join(dataDirectory, "invoices.json");
@@ -76,7 +81,15 @@ function normalizeStoredMetadata(): boolean {
 function edit(action: () => void | Promise<void>): Promise<void> {
   const next = mutation.then(async () => {
     const before = structuredClone(state);
-    try { await action(); await atomicJson(statePath, state); }
+    try {
+      await action();
+      // A later exact duplicate or insurer source of an ignored case inherits the choice.
+      for (const entry of buildReconciliationSnapshot(state.items).cases) {
+        const ignoredAt = entry.DocumentIds.map(id => state.items.find(item => item.Id === id)?.IgnoredAt).find(Boolean);
+        if (ignoredAt) for (const item of state.items.filter(item => entry.DocumentIds.includes(item.Id))) item.IgnoredAt = ignoredAt;
+      }
+      await atomicJson(statePath, state);
+    }
     catch (error) { state = before; throw error; }
   });
   mutation = next.catch(() => {});
@@ -93,13 +106,19 @@ export async function initializeInvoices(): Promise<void> {
 export async function invoiceSnapshot() {
   let accounts: { email: string; label: string }[] = [];
   try { accounts = (await credentials()).accounts.map(({ email, label }) => ({ email, label })); } catch { /* Visible setup-required status. */ }
-  const reconciliation = buildReconciliationSnapshot(state.items);
-  const signatures = new Map(reviewTargets(state.items, reconciliation).map(target => [target.key, target.signature]));
+  const effectiveItems = state.items.map(item => item.IgnoredAt ? { ...item, Status: 4, NeedsReview: false } : item);
+  const reconciliation = buildReconciliationSnapshot(effectiveItems);
+  const ignoredExpenses = buildReconciliationSnapshot(state.items).cases.filter(entry => entry.DocumentIds.some(id => state.items.find(item => item.Id === id)?.IgnoredAt));
+  const signatures = new Map(reviewTargets(effectiveItems, reconciliation).map(target => [target.key, target.signature]));
   const reviews = state.reviews.filter(item => signatures.get(item.key) === item.signature);
-  return { items: state.items, reconciliations: reconciliation.cases, unmatchedReimbursements: reconciliation.unmatched, diagnostics: reconciliation.diagnostics,
+  return { items: effectiveItems, reconciliations: reconciliation.cases, ignoredExpenses, unmatchedReimbursements: reconciliation.unmatched, diagnostics: reconciliation.diagnostics,
+    coverage: { since: "2025-06-01", complete: accounts.length > 0 && accounts.every(account => {
+      const progress = state.accounts[account.email.toLowerCase()];
+      return progress?.invoiceHistoryVersion === invoiceHistoryVersion && !progress.invoiceHistoryWindow && !progress.window && !progress.error;
+    }) },
     agentReviews: reviews,
     cleanupSuggestions: buildCleanupSuggestions(state.items, state.corrections),
-    importantMail: state.items.filter(item => item.AttentionLevel && item.AttentionLevel !== "none" && item.Status !== 4)
+    importantMail: effectiveItems.filter(item => item.AttentionLevel && item.AttentionLevel !== "none" && item.Status !== 4)
       .sort((a, b) => attentionRank[b.AttentionLevel] - attentionRank[a.AttentionLevel] || Date.parse(b.ReceivedAt) - Date.parse(a.ReceivedAt)),
     learning: { decisions: state.decisions.filter(item => !item.undoneAt).length, undoable: state.decisions.filter(item => !item.undoneAt).slice(-10).reverse() },
     busy, accounts, progress: state.accounts, lastAttempt: state.lastAttempt, lastSuccess: state.lastSuccess,
@@ -118,7 +137,7 @@ function mergeBlueCross(items: Invoice[]): number {
       // Keep the first source link and all review/status choices when another copied page repeats a row.
       state.items[index] = { ...item, AccountEmail: current.AccountEmail, SourceMessageId: current.SourceMessageId,
         InternetMessageId: current.InternetMessageId, ThreadId: current.ThreadId, Status: current.Status,
-        Notes: current.Notes, LastDecisionId: current.LastDecisionId };
+        Notes: current.Notes, LastDecisionId: current.LastDecisionId, IgnoredAt: current.IgnoredAt };
     }
   }
   return added;
@@ -190,10 +209,6 @@ export async function classify(mail: Mail, email: string, label = email, diagnos
     const work = join(dataDirectory, "classification-work");
     await mkdir(work, { recursive: true });
     // Do not expose shell, MCP or web tools to untrusted email text. No paid API key is configured here.
-    const codex = new Codex({ codexPathOverride: process.env.FAMILYHUB_CODEX_PATH || undefined,
-      configOverrides: ["features.shell_tool=false", "mcp_servers={}", "features.apps=false"] });
-    const thread = codex.startThread({ sandboxMode: "read-only", approvalPolicy: "never", networkAccessEnabled: false,
-      webSearchMode: "disabled", skipGitRepoCheck: true, workingDirectory: work });
     const learnedExamples = state.corrections.filter(item => item.account === email && item.sender && item.subject).slice(-12).map(item => ({
       sender: item.sender, subject: item.subject, correctedKind: item.kind, confirmations: item.confirmations || 1
     }));
@@ -221,8 +236,7 @@ export async function classify(mail: Mail, email: string, label = email, diagnos
         priorUserCorrections: learnedExamples
       })
     ].join("\n");
-    const turn = await thread.run(prompt, { outputSchema: classificationSchema, signal: AbortSignal.timeout(90_000) });
-    const extracted = validateClassification(JSON.parse(turn.finalResponse));
+    const extracted = validateClassification(JSON.parse(await privateCodex(prompt, classificationSchema, work)));
     const classified = applyLearnedClassification(extracted, rule);
     return clinicReceipt && (classified.category !== "health" || classified.documentRole !== "expense" || !classified.transaction)
       ? clinicFallback() : { source: "codex", result: classified };
@@ -265,7 +279,7 @@ export async function collectInvoices(overrides: Partial<CollectionDependencies>
         const processMessage = async (id: string, retry = false, repair = false) => {
           const existing = state.items.find(x => x.Id === recordId(key, id));
           const needsUpgrade = existing && (existing.AnalysisVersion !== 4 || !existing.DocumentRole || !existing.Member || !("BilledAmount" in existing));
-          if (existing?.CorrectedAt && !needsUpgrade) return;
+          if (existing?.IgnoredAt || existing?.CorrectedAt && !needsUpgrade) return;
           if (existing && !needsUpgrade && (!retry || existing.ClassificationSource !== "unavailable")
             && (!repair || existing.Category === 0 && existing.DocumentRole === "expense" && existing.Status !== 4)) return;
           const normalized = normalizeMail(await callGmail<RawMail>(token, `messages/${encodeURIComponent(id)}?format=full`));
@@ -284,8 +298,8 @@ export async function collectInvoices(overrides: Partial<CollectionDependencies>
               if (source === "unavailable" && current.ClassificationSource !== "unavailable") return;
               // A user's correction/status during classification wins over the background result.
               state.items[index] = current.CorrectedAt
-                ? { ...item, DocumentType: current.DocumentType, Status: current.Status, NeedsReview: current.NeedsReview, ClassificationSource: current.ClassificationSource, CorrectedAt: current.CorrectedAt, Notes: current.Notes, LastDecisionId: current.LastDecisionId }
-                : { ...item, Status: current.Status === 0 ? item.Status : current.Status, Notes: current.Notes };
+                ? { ...item, DocumentType: current.DocumentType, Status: current.Status, NeedsReview: current.NeedsReview, ClassificationSource: current.ClassificationSource, CorrectedAt: current.CorrectedAt, Notes: current.Notes, LastDecisionId: current.LastDecisionId, IgnoredAt: current.IgnoredAt }
+                : { ...item, Status: current.Status === 0 || repair && current.Status === 4 && !current.LastDecisionId ? item.Status : current.Status, Notes: current.Notes, LastDecisionId: current.LastDecisionId, IgnoredAt: current.IgnoredAt };
             } else state.items.push(item);
           });
         };
@@ -297,7 +311,7 @@ export async function collectInvoices(overrides: Partial<CollectionDependencies>
           if (item.AccountEmail === key && item.ClassificationSource === "unavailable" && !item.CorrectedAt && retryBudget-- > 0) await processMessage(item.SourceMessageId, true);
         }
         for (let pages = 0; pages < 2; pages++) {
-          const q = `after:${window.after} before:${window.before} {receipt invoice facture reçu recu reimbursement remboursement claim statement "payment confirmation" "amount due" "booking confirmation" "reservation confirmation" "explanation of benefits" "renewal notice" "blue cross" "croix bleue" desjardins "security alert" "new sign-in" "password changed" "action required" "response required" "account limited" "temporary limitations" "action requise" "réponse requise"} -in:spam -in:trash -in:sent -in:drafts -from:notifications@github.com`;
+          const q = `after:${window.after} before:${window.before} {receipt invoice facture reçu recu reimbursement remboursement claim statement has:attachment "payment confirmation" "amount due" "booking confirmation" "reservation confirmation" "explanation of benefits" "renewal notice" "blue cross" "croix bleue" desjardins "security alert" "new sign-in" "password changed" "action required" "response required" "account limited" "temporary limitations" "action requise" "réponse requise"} ${invoiceExclusions}`;
           const params = new URLSearchParams({ q, maxResults: "50", ...(window.page ? { pageToken: window.page } : {}) });
           const list = await callGmail<{ messages?: { id: string }[]; nextPageToken?: string }>(token, `messages?${params}`);
           for (const { id } of list.messages || []) await processMessage(id);
@@ -324,7 +338,29 @@ export async function collectInvoices(overrides: Partial<CollectionDependencies>
             if (!list.nextPageToken) break;
           }
         }
-        if (progress.window || progress.healthReceiptRepairVersion !== 1) complete = false;
+        // Audit the entire requested period independently of the incremental watermark.
+        // The frozen end and page cursor survive restarts and failures. Archived mail and
+        // attachment-only messages are included; coverage means query completion, not eligibility.
+        if (progress.invoiceHistoryVersion !== invoiceHistoryVersion && !progress.window) {
+          if (!progress.invoiceHistoryWindow) await edit(() => {
+            progress.invoiceHistoryWindow = { after: invoiceHistoryStart, before: Math.floor(Date.now() / 1000) };
+            progress.invoiceHistoryExamined = 0;
+          });
+          const history = progress.invoiceHistoryWindow!;
+          for (let pages = 0; pages < 2; pages++) {
+            const params = new URLSearchParams({ q: `after:${history.after} before:${history.before} ${invoiceSignals} ${invoiceExclusions}`,
+              maxResults: "50", ...(history.page ? { pageToken: history.page } : {}) });
+            const list = await callGmail<{ messages?: { id: string }[]; nextPageToken?: string }>(token, `messages?${params}`);
+            for (const { id } of list.messages || []) await processMessage(id, false, true);
+            await edit(() => {
+              progress.invoiceHistoryExamined = (progress.invoiceHistoryExamined || 0) + (list.messages?.length || 0);
+              if (list.nextPageToken) history.page = list.nextPageToken;
+              else { progress.invoiceHistoryVersion = invoiceHistoryVersion; progress.invoiceHistoryThrough = history.before; progress.invoiceHistoryWindow = undefined; }
+            });
+            if (!list.nextPageToken) break;
+          }
+        }
+        if (progress.window || progress.healthReceiptRepairVersion !== 1 || progress.invoiceHistoryVersion !== invoiceHistoryVersion) complete = false;
       } catch (error) {
         complete = false;
         await edit(() => { progress.error = error instanceof Error ? error.message : "Gmail collection failed."; });
@@ -336,12 +372,32 @@ export async function collectInvoices(overrides: Partial<CollectionDependencies>
     });
     // The collector indexes evidence; the reconciler remains deterministic. The reviewer only
     // suggests explanations for uncertain cases and cannot mutate any financial assignment.
-    const reviews = await reviewReconciliations(state.items, state.reviews, dependencies.reviewer);
+    const reviews = await reviewReconciliations(state.items.filter(item => !item.IgnoredAt), state.reviews, dependencies.reviewer);
     await edit(() => { state.reviews = reviews; });
   } catch (error) {
     await edit(() => { state.error = error instanceof Error ? error.message : "Collection failed."; });
     throw error;
   } finally { busy = false; }
+}
+
+/** Exact case decision, never a sender/template training rule. Both directions are atomic. */
+export async function setExpenseIgnored(documentIds: unknown, ignored: unknown): Promise<void> {
+  if (!Array.isArray(documentIds) || !documentIds.length || documentIds.length > 50
+    || documentIds.some(id => typeof id !== "string") || typeof ignored !== "boolean") throw new Error("Provide expense document IDs and an ignore flag.");
+  await edit(() => {
+    const documents = documentIds.map(id => state.items.find(item => item.Id === id));
+    if (documents.some(item => !item)) throw new Error("Expense source is unavailable. Refresh before saving.");
+    const cases = buildReconciliationSnapshot(state.items).cases;
+    const entry = cases.find(item => documentIds.some(id => item.DocumentIds.includes(id)));
+    if (entry && documentIds.some(id => !entry.DocumentIds.includes(id))) throw new Error("Documents belong to different expenses.");
+    if (!entry && (documents.length !== 1 || documents[0]?.DocumentRole !== "expense")) throw new Error("Expense not found. Refresh before saving.");
+    const ids = entry?.DocumentIds ?? documentIds;
+    const at = new Date().toISOString();
+    for (const item of state.items.filter(item => ids.includes(item.Id))) {
+      item.IgnoredAt = ignored ? at : undefined;
+      item.UpdatedAt = at;
+    }
+  });
 }
 
 export async function correctInvoice(id: string, kind: unknown): Promise<Invoice> {

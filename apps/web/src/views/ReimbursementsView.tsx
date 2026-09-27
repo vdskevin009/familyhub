@@ -5,7 +5,7 @@ import { googleBridge } from "../google";
 import { mergeInvoiceItems, mergeReconciliationHistory, unreconciledInvoiceCases } from "../invoice-state";
 import type { HubState } from "../state";
 import type { ReconciliationCase, ReimbursementItem, UnmatchedReimbursement } from "../types";
-import { fetchInvoices } from "../worker";
+import { fetchInvoices, setExpenseIgnored } from "../worker";
 
 type Props = { hub: HubState };
 type CaseStatus = NonNullable<ReconciliationCase["Status"]>;
@@ -63,6 +63,8 @@ export default function ReimbursementsView({ hub }: Props) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [lastSuccess, setLastSuccess] = useState("");
+  const [savingId, setSavingId] = useState("");
+  const [savedMessage, setSavedMessage] = useState("");
   const [filters, setFilters] = useState<Set<HistoryFilter>>(() => new Set());
   const paired = Boolean(hub.worker.Endpoint.trim() && hub.worker.ApiKey.trim());
 
@@ -80,7 +82,9 @@ export default function ReimbursementsView({ hub }: Props) {
         ImportantMail: snapshot.importantMail,
         LearningDecisions: snapshot.learning.decisions,
         UnmatchedReimbursements: snapshot.unmatchedReimbursements,
-        AgentReviews: snapshot.agentReviews ?? []
+        AgentReviews: snapshot.agentReviews ?? [],
+        IgnoredExpenses: snapshot.ignoredExpenses ?? [],
+        InvoiceCoverage: snapshot.coverage
       }));
       setLastSuccess(snapshot.lastSuccess || new Date().toISOString());
       if (snapshot.error) setError(snapshot.error);
@@ -91,11 +95,24 @@ export default function ReimbursementsView({ hub }: Props) {
 
   useEffect(() => { if (paired) void refresh(); }, [paired, hub.worker.Endpoint, hub.worker.ApiKey]);
 
+  async function ignoreExpense(item: ReconciliationCase, ignored: boolean) {
+    if (!paired || savingId) return;
+    setSavingId(item.Id); setError(""); setSavedMessage("");
+    try {
+      await setExpenseIgnored(hub.worker, item.DocumentIds, ignored);
+      await refresh();
+      setSavedMessage(ignored ? "Ignored on the PC. This expense will stay out of future scans and totals. You can restore it below."
+        : "Expense restored. Its eligibility still needs to be checked.");
+    } catch (err) { setError(err instanceof Error ? err.message : "The decision could not be saved. Try again."); }
+    finally { setSavingId(""); }
+  }
+
   const model = useMemo(() => {
     const byId = new Map(hub.reimbursements.Items.map(item => [item.Id, item]));
     const caseDate = (item: ReconciliationCase) => item.ServiceDate || byId.get(item.DocumentIds[0])?.ServiceDate
       || byId.get(item.DocumentIds[0])?.ReceivedAt;
     const cases = [...(hub.reimbursements.Reconciliations ?? []), ...unreconciledInvoiceCases(hub.reimbursements.Reconciliations ?? [], hub.reimbursements.Items)]
+      .filter(item => !item.DocumentIds.some(id => byId.get(id)?.IgnoredAt))
       .sort((a, b) => dateValue(caseDate(b)) - dateValue(caseDate(a)) || a.Id.localeCompare(b.Id));
     const unmatched = (hub.reimbursements.UnmatchedReimbursements ?? [])
       .map(result => ({ result, item: byId.get(result.DocumentId) }))
@@ -159,6 +176,10 @@ export default function ReimbursementsView({ hub }: Props) {
     </section>
 
     {error && <div className="banner error" role="status"><AlertTriangle size={17} />{error} — Previously synced results remain below.</div>}
+    {savedMessage && <div className="banner" role="status">{savedMessage}</div>}
+    <p className="privacy-note">{hub.reimbursements.InvoiceCoverage?.complete
+      ? "Potential invoice search completed since June 1, 2025 for connected accounts. Scanned images and unreadable attachments may still need review."
+      : "Historical collection since June 1, 2025 is not yet confirmed complete. Run the PC collection to resume it."} Insurance coverage is not confirmed by a receipt.</p>
     {model.warnings.map(warning => <div className="banner" role="status" key={warning}><AlertTriangle size={17} />{warning}</div>)}
 
     <section className="reimbursement-summary" aria-label="Reimbursement summary">
@@ -223,10 +244,26 @@ export default function ReimbursementsView({ hub }: Props) {
             <div className="expense-note"><span>{item.Summary}</span><small>Match confidence {Math.round(item.Confidence)}%</small></div>
             {item.Status === "needs-attention" && item.DocumentIds[0] && reviews.get(`case:${item.DocumentIds[0]}`) &&
               <p className="privacy-note expense-warning">Second AI review: {reviews.get(`case:${item.DocumentIds[0]}`)!.explanation} · Suggestion only; check the source documents.</p>}
+            <div className="expense-actions">
+              <button type="button" className="mini-button" disabled={!paired || !!savingId || busy} onClick={() => void ignoreExpense(item, true)}>
+                {savingId === item.Id ? "Saving…" : "Ignore this expense"}
+              </button>
+              <small className="privacy-note">Saved on the PC · reversible · future invoices stay eligible for review</small>
+            </div>
           </article>;
         })}
       </div>
     </section>
+
+    {(hub.reimbursements.IgnoredExpenses ?? []).length > 0 && <details className="surface ignored-expenses">
+      <summary>Ignored expenses ({hub.reimbursements.IgnoredExpenses!.length})</summary>
+      <p className="privacy-note">Excluded from attention and totals. Source documents are kept; no insurer decision is implied.</p>
+      {hub.reimbursements.IgnoredExpenses!.map(item => <article className="expense-card" key={item.Id}>
+        <div className="expense-heading"><div><strong>{item.Provider || "Provider to confirm"}</strong><small>{item.ServiceDate ? dateLabel(item.ServiceDate) : "Date to confirm"}</small></div>
+          <button type="button" className="mini-button" disabled={!paired || !!savingId || busy} onClick={() => void ignoreExpense(item, false)}>{savingId === item.Id ? "Saving…" : "Restore"}</button>
+        </div>
+      </article>)}
+    </details>}
 
     {model.unmatched.length > 0 && <section className="surface unmatched-panel has-items" aria-labelledby="unmatched-title">
       <div className="section-heading inline"><div><span className="eyebrow">Needs review</span><h2 id="unmatched-title">Unmatched reimbursements</h2></div><span className="unmatched-count">{model.unmatched.length}</span></div>

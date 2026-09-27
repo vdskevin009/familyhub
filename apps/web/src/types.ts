@@ -109,6 +109,7 @@ export type ReimbursementItem = {
   AttentionReason?: string;
   LastDecisionId?: string;
   CorrectedAt?: string;
+  IgnoredAt?: string;
   UpdatedAt?: string;
   Reasons?: string[];
   DriveFileId?: string;
@@ -125,6 +126,8 @@ export type ReimbursementState = {
   LearningDecisions?: number;
   UnmatchedReimbursements?: UnmatchedReimbursement[];
   AgentReviews?: AgentReview[];
+  IgnoredExpenses?: ReconciliationCase[];
+  InvoiceCoverage?: { since: string; complete: boolean };
 };
 
 export type AgentReview = {
