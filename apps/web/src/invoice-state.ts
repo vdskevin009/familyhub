@@ -87,3 +87,60 @@ export function unreconciledInvoiceCases(cases: ReconciliationCase[], items: Rei
     };
   });
 }
+
+export type InvoiceHistoryFilter = "fully-reimbursed" | "not-fully-reimbursed" | "primary" | "secondary";
+export type ReimbursementCaseStatus = NonNullable<ReconciliationCase["Status"]>;
+
+export function reimbursementCaseStatus(item: ReconciliationCase): ReimbursementCaseStatus {
+  if (item.PreviouslyFound) return "needs-attention";
+  if (item.Status) return item.Status;
+  if (item.Action === "complete") return "fully-reimbursed";
+  if (item.Action === "submit-primary") return "waiting-primary";
+  if (item.Action === "submit-secondary") return "waiting-secondary";
+  return "needs-attention";
+}
+
+export function primaryReimbursementAmount(item: ReconciliationCase): number {
+  return item.PrimaryReimbursedAmount ?? (item.Action === "submit-secondary" ? item.ReimbursedAmount : 0);
+}
+
+export function secondaryReimbursementAmount(item: ReconciliationCase): number {
+  return item.SecondaryReimbursedAmount ?? 0;
+}
+
+function invoiceHistoryDateValue(value: string | null | undefined): number {
+  if (!value) return Number.NEGATIVE_INFINITY;
+  const time = new Date(value).getTime();
+  return Number.isNaN(time) ? Number.NEGATIVE_INFINITY : time;
+}
+
+/**
+ * Build the complete visible reimbursement history without mutating the persisted data.
+ * Sorting is presentation-only: it must never remove an already indexed invoice.
+ */
+export function buildInvoiceHistoryCases(reconciliations: ReconciliationCase[], items: ReimbursementItem[]): ReconciliationCase[] {
+  const byId = new Map(items.map(item => [item.Id, item]));
+  const caseDate = (item: ReconciliationCase) => item.ServiceDate || byId.get(item.DocumentIds[0])?.ServiceDate
+    || byId.get(item.DocumentIds[0])?.ReceivedAt;
+  return [...reconciliations, ...unreconciledInvoiceCases(reconciliations, items)]
+    .filter(item => !item.DocumentIds.some(id => byId.get(id)?.IgnoredAt))
+    .sort((a, b) => invoiceHistoryDateValue(caseDate(b)) - invoiceHistoryDateValue(caseDate(a)) || a.Id.localeCompare(b.Id));
+}
+
+/** Filters are a temporary view over history; clearing them restores the complete input set. */
+export function filterInvoiceHistoryCases(cases: ReconciliationCase[], filters: ReadonlySet<InvoiceHistoryFilter>): ReconciliationCase[] {
+  const hasStatusFilter = filters.has("fully-reimbursed") || filters.has("not-fully-reimbursed");
+  const hasSourceFilter = filters.has("primary") || filters.has("secondary");
+
+  return cases.filter(item => {
+    const status = reimbursementCaseStatus(item);
+    const statusMatches = !hasStatusFilter
+      || (filters.has("fully-reimbursed") && status === "fully-reimbursed")
+      || (filters.has("not-fully-reimbursed") && status !== "fully-reimbursed");
+    const sourceMatches = !hasSourceFilter
+      || (filters.has("primary") && primaryReimbursementAmount(item) > 0)
+      || (filters.has("secondary") && secondaryReimbursementAmount(item) > 0);
+    return statusMatches && sourceMatches;
+  });
+}
+
