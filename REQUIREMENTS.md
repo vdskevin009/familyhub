@@ -6,8 +6,8 @@
 
 - **Repository:** `vdskevin009/familyhub`
 - **Default branch:** `main`
-- **Baseline verified:** 2026-09-26
-- **Code reference:** `a25e7f81f58c1796646fe276f148e01ab14ac1d4`
+- **Baseline verified:** 2026-09-27
+- **Code reference:** `df7c78df6e487f214c6063ffb36053ff026c7dc8`
 - **Baseline evidence:** current repository implementation and README at the code reference above.
 
 ## Requirement lifecycle
@@ -116,6 +116,7 @@ Rules:
 | 2026-09-26 | Preserve historical invoice visibility across incomplete rescans, with stale results clearly marked and excluded from live totals. | Accepted |
 | 2026-09-26 | Align code reference with worker 2.5.3 at `a25e7f81f58c1796646fe276f148e01ab14ac1d4`: June history, exact Ignore/Restore, private analysis and Gmail quota recovery. Windows update/build and targeted restart preserved protected files, indexed sources and corrections; 37 synthetic tests plus worker/web builds and .NET CI passed. Paired-app acceptance remains open in #25/#28. | Implemented |
 | 2026-09-27 | For direct-insurance provider receipts, treat gross expense, insurer adjustment and patient balance as distinct financial facts. Repair existing recent Jane receipt amounts without re-evaluating invoice eligibility or manual classification decisions. | Implemented |
+| 2026-09-27 | Align canonical baseline to `df7c78df6e487f214c6063ffb36053ff026c7dc8`: direct-insurance receipt amount extraction/reconciliation and Jane amount-only repair merged after passing PR CI. | Verified |
 
 ## Maintenance checklist
 
