@@ -7,7 +7,7 @@
 - **Repository:** `vdskevin009/familyhub`
 - **Default branch:** `main`
 - **Baseline verified:** 2026-09-27
-- **Code reference:** `60325981169a6aeb155ab507bf8b13a03f40f375`
+- **Code reference:** `e5087c2e76ef0cf9f8da0f4dabb0e6ad540046de`
 - **Baseline evidence:** current repository implementation and README at the code reference above.
 
 ## Requirement lifecycle
@@ -122,6 +122,7 @@ Rules:
 | 2026-09-27 | Lock invoice-history visibility into regression coverage so sorting, filters, reconciliation refreshes and partial worker snapshots cannot silently remove an already indexed invoice. | Verified |
 | 2026-09-27 | Align canonical baseline to `60325981169a6aeb155ab507bf8b13a03f40f375`: issue #35 invoice-visibility regression safety net merged after green PR CI; main build/test/deploy also passed. | Verified |
 | 2026-09-27 | Preserve partial financial knowledge: a residual-only provider receipt may establish the patient balance and processed insurer while gross expense and insurer payment remain unknown until corroborating insurer evidence arrives. | Verified |
+| 2026-09-27 | Align canonical baseline to `e5087c2e76ef0cf9f8da0f4dabb0e6ad540046de`: issue #38 residual-only QubeCore/Jane handling merged after green PR CI; main build/test/deploy also passed. | Verified |
 
 ## Maintenance checklist
 
