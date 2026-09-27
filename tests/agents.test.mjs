@@ -12,9 +12,9 @@ function invoice(id, role, overrides = {}) {
 }
 
 test("reviewer suggests a possible match but cannot assign a payment", async () => {
-  const items = [invoice("a", "expense"), invoice("s", "insurer-statement", { NeedsReview: true })];
+  const items = [invoice("a", "expense"), invoice("s", "insurer-statement", { Insurer: null })];
   const before = buildReconciliationSnapshot(items);
-  assert.equal(before.unmatched[0].Reason, "needs-review");
+  assert.equal(before.unmatched[0].Reason, "missing-insurer");
   let calls = 0;
   const reviewer = async target => { calls++; return target.candidateIds.length
     ? { verdict: "possible-match", candidateId: "a", confidence: .72,
@@ -33,7 +33,7 @@ test("reviewer suggests a possible match but cannot assign a payment", async () 
 });
 
 test("review cannot cite or link an ID outside its evidence", () => {
-  const items = [invoice("a", "expense"), invoice("s", "insurer-statement", { NeedsReview: true })];
+  const items = [invoice("a", "expense"), invoice("s", "insurer-statement", { Insurer: null })];
   const target = reviewTargets(items, buildReconciliationSnapshot(items))[0];
   assert.throws(() => validateReview({ verdict: "possible-match", candidateId: "fabricated", confidence: .99,
     explanation: "Unknown", evidenceIds: ["fabricated"] }, target), /Invalid reviewer output/);
