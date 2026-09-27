@@ -417,7 +417,7 @@ export async function collectInvoices(overrides: Partial<CollectionDependencies>
     });
     // The collector indexes evidence; the reconciler remains deterministic. The reviewer only
     // suggests explanations for uncertain cases and cannot mutate any financial assignment.
-    const reviews = complete ? await reviewReconciliations(state.items.filter(item => !item.IgnoredAt), state.reviews, dependencies.reviewer) : state.reviews;
+    const reviews = complete ? await reviewReconciliations(state.items.filter(item => !item.IgnoredAt), state.reviews, dependencies.reviewer, 10, state.matchDecisions) : state.reviews;
     await edit(() => { state.reviews = reviews; });
   } catch (error) {
     await edit(() => { state.error = error instanceof Error ? error.message : "Collection failed."; });
