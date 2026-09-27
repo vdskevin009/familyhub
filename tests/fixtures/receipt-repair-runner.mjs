@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { initializeInvoices, collectInvoices, classify, invoiceSnapshot } from '../../apps/worker/dist/invoices.js';
+import { initializeInvoices, collectInvoices, classify, invoiceSnapshot, healthReceiptRepairVersion } from '../../apps/worker/dist/invoices.js';
 import { toInvoice } from '../../apps/worker/dist/invoice-model.js';
 
 process.env.FAMILYHUB_CODEX_PATH = '/synthetic/no-codex';
@@ -25,7 +25,7 @@ const deps = { credentials: async () => ({ accounts: [{ email: account, label: '
   gmail: async (_token, request) => {
     if (request.startsWith('messages?')) {
       const q = new URL(request, 'https://example.test/').searchParams.get('q');
-      if (q.includes('from:notifications@janeapp.com')) { searched++; return { messages: [{ id: mail.id }] }; }
+      if (q.includes('subject:"Your Receipt"')) { searched++; return { messages: [{ id: mail.id }] }; }
       return { messages: [] };
     }
     if (request === `messages/${mail.id}?format=full`) return { id: mail.id, threadId: mail.threadId,
@@ -44,7 +44,7 @@ assert.equal(snapshot.items[0].Category, 0);
 assert.equal(snapshot.items[0].DocumentRole, 'expense');
 assert.equal(snapshot.items[0].NeedsReview, true);
 assert.equal(snapshot.reconciliations.length, 1);
-assert.equal(snapshot.progress[account].healthReceiptRepairVersion, 3);
+assert.equal(snapshot.progress[account].healthReceiptRepairVersion, healthReceiptRepairVersion);
 await collectInvoices(deps);
 snapshot = await invoiceSnapshot();
 assert.equal(searched, 1);

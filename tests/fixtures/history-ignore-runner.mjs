@@ -17,6 +17,7 @@ const deps = {
     if (path.startsWith('messages?')) {
       const params = new URL(path, 'https://example.test/').searchParams;
       const query = params.get('q');
+      if (query.includes('subject:"Your Receipt"')) return { messages: [] };
       if (!query.includes(`after:${invoiceHistoryStart} `)) return { messages: [] };
       assert.match(query, /has:attachment/);
       assert.doesNotMatch(query, /in:inbox/);

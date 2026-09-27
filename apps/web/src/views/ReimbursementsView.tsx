@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { AlertTriangle, CheckCircle2, CircleDollarSign, ExternalLink, RefreshCw } from "lucide-react";
 import { dateLabel } from "../domain";
 import { googleBridge } from "../google";
-import { buildInvoiceHistoryCases, filterInvoiceHistoryCases, mergeInvoiceItems, mergeReconciliationHistory, primaryReimbursementAmount, reimbursementCaseStatus, secondaryReimbursementAmount } from "../invoice-state";
+import { buildInvoiceHistoryCases, filterInvoiceHistoryCases, healthcareTitle, mergeInvoiceItems, mergeReconciliationHistory, primaryReimbursementAmount, reimbursementCaseStatus, secondaryReimbursementAmount } from "../invoice-state";
 import type { InvoiceHistoryFilter, ReimbursementCaseStatus } from "../invoice-state";
 import type { HubState } from "../state";
 import type { ReconciliationCase, ReimbursementItem, UnmatchedReimbursement } from "../types";
@@ -191,7 +191,7 @@ export default function ReimbursementsView({ hub }: Props) {
           const status = reimbursementCaseStatus(item);
           return <article className="expense-card" key={item.Id}>
             <div className="expense-heading">
-              <div><strong>{item.Provider || "Provider to confirm"}</strong><small>{item.Member === "unknown" ? "Person to confirm" : item.Member}{item.ServiceDate ? ` · ${dateLabel(item.ServiceDate)}` : invoiceById.get(item.DocumentIds[0])?.ReceivedAt ? ` · Received ${dateLabel(invoiceById.get(item.DocumentIds[0])!.ReceivedAt)}` : " · Date missing"}</small></div>
+              <div><strong>{healthcareTitle(item)}</strong><small>{item.Member === "unknown" ? "Person to confirm" : item.Member}{item.ServiceType && healthcareTitle(item) !== item.ServiceType ? ` · ${item.ServiceType}` : ""}{item.ServiceDate ? ` · ${dateLabel(item.ServiceDate)}` : invoiceById.get(item.DocumentIds[0])?.ReceivedAt ? ` · Received ${dateLabel(invoiceById.get(item.DocumentIds[0])!.ReceivedAt)}` : " · Date missing"}</small></div>
               <span className={`reimbursement-status ${item.PreviouslyFound ? "needs-attention" : status}`}>{item.PreviouslyFound ? "Verify source" : <>{status === "fully-reimbursed" && <CheckCircle2 size={14} />}{statusCopy[status]}</>}</span>
             </div>
             <div className="expense-amounts">
@@ -222,7 +222,7 @@ export default function ReimbursementsView({ hub }: Props) {
       <summary>Ignored expenses ({hub.reimbursements.IgnoredExpenses!.length})</summary>
       <p className="privacy-note">Excluded from attention and totals. Source documents are kept; no insurer decision is implied.</p>
       {hub.reimbursements.IgnoredExpenses!.map(item => <article className="expense-card" key={item.Id}>
-        <div className="expense-heading"><div><strong>{item.Provider || "Provider to confirm"}</strong><small>{item.ServiceDate ? dateLabel(item.ServiceDate) : "Date to confirm"}</small></div>
+        <div className="expense-heading"><div><strong>{healthcareTitle(item)}</strong><small>{item.ServiceDate ? dateLabel(item.ServiceDate) : "Date to confirm"}</small></div>
           <button type="button" className="mini-button" disabled={!paired || !!savingId || busy} onClick={() => void ignoreExpense(item, false)}>{savingId === item.Id ? "Saving…" : "Restore"}</button>
         </div>
       </article>)}

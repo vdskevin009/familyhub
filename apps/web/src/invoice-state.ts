@@ -1,5 +1,12 @@
 import { ReconciliationCase, ReimbursementCategory, ReimbursementItem, ReimbursementStatus } from "./types";
 
+/** A patient is shown separately; an unknown clinic uses the documented service title. */
+export function healthcareTitle(item: { Provider?: string | null; ServiceType?: string | null }): string {
+  const patient = /^(?:visa\s+)?(?:kevin(?: henri)?(?: vanderstraeten)?|jas(?:mine)?(?: wing)?|nathan(?: vanderstraeten)?)$/i;
+  const provider = item.Provider?.trim();
+  return provider && !patient.test(provider) ? provider : item.ServiceType || "Provider to confirm";
+}
+
 function autoTriageKnownItem(item: ReimbursementItem): ReimbursementItem {
   if (item.ClassificationSource === "manual") return item;
   const sender = item.Sender.toLowerCase();
@@ -79,7 +86,8 @@ export function unreconciledInvoiceCases(cases: ReconciliationCase[], items: Rei
     const item = group.find(entry => entry.BilledAmount != null) ?? group[0];
     return {
       Id: `unreconciled:${item.Id}`, DocumentIds: group.map(entry => entry.Id), Member: item.Member || "unknown",
-      Provider: item.Provider || item.Subject, ServiceDate: item.ServiceDate || null,
+      Provider: item.Healthcare?.Provider || item.Provider, ServiceType: item.Healthcare?.ServiceType || item.ClaimedService,
+      ServiceDate: item.ServiceDate || null,
       OriginalAmount: item.BilledAmount ?? item.DetectedAmount, ReimbursedAmount: 0, PotentialRemaining: null,
       Currency: item.Currency || "CAD", NextInsurer: null, Action: "review-amount" as const,
       Status: "needs-attention" as const, Summary: "Indexed invoice without a confirmed reconciliation case.",

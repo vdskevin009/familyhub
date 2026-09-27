@@ -7,7 +7,7 @@
 - **Repository:** `vdskevin009/familyhub`
 - **Default branch:** `main`
 - **Baseline verified:** 2026-09-27
-- **Code reference:** `e5087c2e76ef0cf9f8da0f4dabb0e6ad540046de`
+- **Code reference:** [PR #41](https://github.com/vdskevin009/familyhub/pull/41), healthcare calendar/service repair based on `7296601ba1f7004b5dd98972f6fff8bc89e4e2c9` (merge and installed-runtime evidence tracked in issue #40).
 - **Baseline evidence:** current repository implementation and README at the code reference above.
 
 ## Requirement lifecycle
@@ -57,6 +57,8 @@ Rules:
 | FH-REIMB-008 | “Needs attention” should be minimized through better reconciliation logic, while uncertain cases remain reviewable rather than guessed. | Accepted | Quality goal; do not trade correctness for fewer warnings. |
 | FH-REIMB-015 | Provider receipts with direct insurer adjustments must keep the gross healthcare expense, explicit primary/secondary insurer payment(s), and final patient balance as separate amounts. Subtotals before tax must not replace the gross expense or final balance. Existing recent Jane receipts must receive an amount-only repair pass that preserves classification, eligibility and manual decisions. | Implemented | Direct-insurer negative adjustments are extracted deterministically, gross expense is reconstructed only when explicit payment + residual arithmetic supports it, reconciliation consumes embedded insurer payments without double counting matched statements, and receipt repair version 3 re-reads recent Jane receipts without reclassification. |
 | FH-REIMB-017 | When a provider receipt proves only a post-insurance patient residual and that an insurer processed the claim, but does not prove the gross expense or insurer payment amount, those unknown facts must stay null. The explicit residual remains the current outstanding amount, and later insurer evidence may enrich the same canonical expense without creating a duplicate. | Implemented | Issue #38; code/tests are merged for residual-only QubeCore/Jane handling and repair v3, but live PC acceptance is still pending because the Aug 20 invoice remains stale in the current Android view. Verify the local worker/runtime and repair snapshot before marking Verified. |
+| FH-REIMB-018 | Keep patient/member, healthcare provider, service type, service date and payment/statement date separate. Calendar dates must retain the source day in every timezone. Forwarding senders/cardholders must never become providers; when the clinic is unknown, show the documented service. | Implemented | Issue #40; UTC formatting only for date-only labels (timestamps remain local), deterministic billed-appointment extraction from plain email and flattened PDF text, service metadata in canonical cases/UI and a structured adapter for legacy Desjardins rows. Synthetic timezone, source-shape and display regressions run in normal CI. |
+| FH-REIMB-019 | Reconcile legacy submitted/service evidence conservatively, preserve explicit zero payments, reject conflicting services and ambiguous candidates, and repair original/forwarded healthcare receipts without changing identities, classification, eligibility or decisions. | Implemented | Issue #40; repair v4 spans the supported June-2025 history with resumable/resettable cursors and skips ignored records. Shared invoice identity groups compatible copies; primary evidence may supply the gross amount for secondary matching independently of source order. Insurer amounts cannot come from card payments or upcoming appointments. Private-source replay passed; installed-runtime acceptance is recorded separately. |
 | FH-REIMB-016 | A previously detected/imported healthcare invoice must remain available in the underlying reimbursement history across newest-first sorting, temporary filters, reconciliation refreshes and partial worker snapshots. | Verified | Issue #35; the UI history now uses tested pure helpers backed by `mergeInvoiceItems`, `mergeReconciliationHistory` and `unreconciledInvoiceCases`. The regression test runs in the normal CI invoice suite. |
 
 ## Local worker / automation
@@ -106,7 +108,7 @@ Rules:
 
 ## Open questions / Needs confirmation
 
-- None recorded at baseline. Add unresolved requirements here instead of guessing.
+- Issue #40: paired-phone visual acceptance remains separate from tests, private-source replay and installed-worker acceptance. Low-confidence or contradictory records remain reviewable.
 
 ## Decision log
 
@@ -123,6 +125,7 @@ Rules:
 | 2026-09-27 | Align canonical baseline to `60325981169a6aeb155ab507bf8b13a03f40f375`: issue #35 invoice-visibility regression safety net merged after green PR CI; main build/test/deploy also passed. | Verified |
 | 2026-09-27 | Preserve partial financial knowledge: a residual-only provider receipt may establish the patient balance and processed insurer while gross expense and insurer payment remain unknown until corroborating insurer evidence arrives. | Implemented; live acceptance pending |
 | 2026-09-27 | Align canonical baseline to `e5087c2e76ef0cf9f8da0f4dabb0e6ad540046de`: issue #38 residual-only QubeCore/Jane handling merged after green PR CI; main build/test/deploy also passed. | Verified |
+| 2026-09-27 | Issue #40: calendar-date display must preserve the source day; source appointment/service and clinic identity remain separate from patient, forwarding sender and payment metadata. Repair legacy receipt facts through a versioned collector pass, with service conflicts/ties left unresolved and zero payments kept known. | Implemented; CI and installed-worker acceptance tracked in #40 |
 
 ## Maintenance checklist
 
