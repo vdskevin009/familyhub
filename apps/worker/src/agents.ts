@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { privateCodex } from "./private-codex.js";
 import { dataDirectory } from "./private-store.js";
 import type { Invoice } from "./invoice-model.js";
-import { buildReconciliationSnapshot, type ReconciliationSnapshot } from "./reconciliation.js";
+import { buildReconciliationSnapshot, type MatchDecision, type ReconciliationSnapshot } from "./reconciliation.js";
 
 export type AgentReview = {
   key: string; signature: string; reviewedAt: string;
@@ -44,7 +44,9 @@ export function reviewTargets(items: Invoice[], snapshot: ReconciliationSnapshot
   for (const unmatched of snapshot.unmatched) {
     const statement = byId.get(unmatched.DocumentId);
     if (!statement) continue;
-    const candidates = expenses.filter(item => item.Member === statement.Member || item.Member === "unknown" || statement.Member === "unknown")
+    const rejected = new Set((snapshot.rejectedMatches || []).filter(item => item.ReimbursementDocumentId === statement.Id).map(item => item.ExpenseDocumentId));
+    const candidates = expenses.filter(item => !rejected.has(item.Id))
+      .filter(item => item.Member === statement.Member || item.Member === "unknown" || statement.Member === "unknown")
       .filter(item => !item.ServiceDate || !statement.ServiceDate || Math.abs(Date.parse(item.ServiceDate) - Date.parse(statement.ServiceDate)) <= 14 * 86_400_000)
       .slice(0, 8);
     targets.push(makeTarget(`unmatched:${statement.Id}`, `Unmatched insurer record: ${unmatched.Reason}`, [statement, ...candidates], candidates.map(item => item.Id)));
@@ -91,8 +93,8 @@ export const codexReviewer: Reviewer = async target => {
 };
 
 /** Bounded nightly work; failed reviews remain visible and retry on the next run. */
-export async function reviewReconciliations(items: Invoice[], previous: AgentReview[], reviewer: Reviewer = codexReviewer, limit = 10): Promise<AgentReview[]> {
-  const targets = reviewTargets(items, buildReconciliationSnapshot(items));
+export async function reviewReconciliations(items: Invoice[], previous: AgentReview[], reviewer: Reviewer = codexReviewer, limit = 10, matchDecisions: MatchDecision[] = []): Promise<AgentReview[]> {
+  const targets = reviewTargets(items, buildReconciliationSnapshot(items, matchDecisions));
   const existing = new Map(previous.map(item => [item.key, item]));
   const current: AgentReview[] = [];
   let attempted = 0;
