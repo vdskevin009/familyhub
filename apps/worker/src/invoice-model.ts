@@ -123,8 +123,11 @@ export function toInvoice(mail: Mail, email: string, label: string, result: Clas
   const needsReview = !excluded && !acceptedAdministrative && (result.confidence < .9 || source === "unavailable" || !result.transaction || !evidence(mail).transaction);
   const fallback = result.amount == null ? textAmount(mail) : null;
   const amount = result.amount ?? fallback?.amount ?? null;
-  const detectedAmount = result.category === "health" && result.documentRole === "expense" && healthcare.OriginalBilledAmount != null
-    ? healthcare.OriginalBilledAmount : amount;
+  const residualOnlyHealthcareExpense = result.category === "health" && result.documentRole === "expense"
+    && healthcare.OriginalBilledAmount == null && (healthcare.PatientBalance != null || healthcare.AmountNotCovered != null);
+  const detectedAmount = result.category === "health" && result.documentRole === "expense"
+    ? healthcare.OriginalBilledAmount ?? (residualOnlyHealthcareExpense ? null : amount)
+    : amount;
   const member = result.member === "unknown" && /jasmine/i.test(label) ? "Jasmine" : result.member === "unknown" && /kevin/i.test(label) ? "Kevin" : result.member;
   return {
     AnalysisVersion: 4,
@@ -170,13 +173,14 @@ export function repairHealthcareAmounts(item: Invoice, mail: Mail): Invoice {
     attentionReason: item.AttentionReason
   };
   const healthcare = extractHealthcareEvidence(mail, result);
-  const original = healthcare.OriginalBilledAmount ?? item.BilledAmount;
+  const residualOnly = healthcare.OriginalBilledAmount == null && (healthcare.PatientBalance != null || healthcare.AmountNotCovered != null);
+  const original = healthcare.OriginalBilledAmount ?? (residualOnly ? null : item.BilledAmount);
   return {
     ...item,
     Healthcare: healthcare,
     BilledAmount: original,
-    DetectedAmount: original ?? item.DetectedAmount,
-    AmountSource: original != null ? "email-text" : item.AmountSource,
+    DetectedAmount: original ?? (residualOnly ? null : item.DetectedAmount),
+    AmountSource: original != null ? "email-text" : residualOnly ? "missing" : item.AmountSource,
     UpdatedAt: new Date().toISOString()
   };
 }
