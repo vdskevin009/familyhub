@@ -169,10 +169,25 @@ function matchScore(expense: Invoice, statement: Invoice): number {
   const paid = statement.ReimbursedAmount;
   if (expense.Currency && statement.Currency && expense.Currency !== statement.Currency) return -1;
   const expenseService = service(expense); const statementService = service(statement);
-  const claimed = submitted(statement);
+  const expenseEvidence = healthcareEvidence(expense);
+  const statementEvidence = healthcareEvidence(statement);
+  const explicitSubmitted = statementEvidence.SubmittedAmount;
+  const claimed = explicitSubmitted ?? statement.BilledAmount;
   const structuredClaim = Boolean(statement.StructuredSource || statement.AccountLabel === "Local Desjardins import" && claimed != null);
-  const residualEvidence = healthcareEvidence(expense).PatientBalance ?? healthcareEvidence(expense).AmountNotCovered;
+  const residualEvidence = expenseEvidence.PatientBalance ?? expenseEvidence.AmountNotCovered;
   if (expenseService && statementService && expenseService !== statementService) return -1;
+
+  // A provider receipt can already contain the exact insurer adjustment. A later insurer row
+  // corroborating that same member/date/service/payment is matched evidence, not a second payment.
+  const embeddedPayment = statement.Insurer === "desjardins" || statement.Insurer === "blue-cross"
+    ? expenseEvidence.InsurerPayments?.[statement.Insurer] ?? null : null;
+  const corroboratesEmbeddedPayment = embeddedPayment != null && paid != null && sameMoney(embeddedPayment, paid)
+    && expense.Member !== "unknown" && expense.Member === statement.Member
+    && expense.ServiceDate != null && expense.ServiceDate === statement.ServiceDate
+    && (!expenseService || !statementService || expenseService === statementService)
+    && Math.min(expense.Confidence, statement.Confidence) >= 90;
+  if (corroboratesEmbeddedPayment) return 25;
+
   if (structuredClaim) {
     if (expense.Member === "unknown" || expense.Member !== statement.Member || expense.ServiceDate !== statement.ServiceDate
       || Math.min(expense.Confidence, statement.Confidence) < 90) return -1;
@@ -180,7 +195,9 @@ function matchScore(expense: Invoice, statement: Invoice): number {
       (sameMoney(amount, claimed - paid) || sameMoney(residualEvidence, claimed - paid));
     return sameMoney(amount, claimed) || coordinated ? 20 : -1;
   }
-  if (claimed != null && !sameMoney(amount, claimed)) return -1;
+  // Only an explicitly extracted submitted amount can disqualify a partial reimbursement.
+  // Generic statement BilledAmount frequently represents the paid amount, not the expense total.
+  if (explicitSubmitted != null && !sameMoney(amount, explicitSubmitted)) return -1;
   if (amount != null && paid != null && paid > amount * 1.05) return -1;
 
   // A person's name and a nearby date alone are not a confident match.
@@ -214,16 +231,15 @@ export function buildReconciliationSnapshot(items: Invoice[]): ReconciliationSna
   const expenses = canonicalExpenses(rawExpenses);
   const statements = health.filter(item => item.DocumentRole === "insurer-statement" || item.DocumentType === "claim");
   const assignments = new Map<string, Invoice[]>();
-  const unmatched: UnmatchedReimbursement[] = [];
+  const unmatchedReasons = new Map<string, UnmatchedReimbursement["Reason"]>();
 
   // First resolve available evidence; a uniquely linked primary row can then supply the gross
   // amount required to match a secondary row. Two passes make source order irrelevant.
   for (let pass = 0; pass < 2; pass++) for (const statement of statements) {
     if ([...assignments.values()].some(rows => rows.some(item => item.Id === statement.Id))) continue;
-    const prior = unmatched.findIndex(item => item.DocumentId === statement.Id);
-    if (prior >= 0) unmatched.splice(prior, 1);
-    if (statement.NeedsReview) { unmatched.push({ DocumentId: statement.Id, Reason: "needs-review" }); continue; }
-    if (!statement.Insurer) { unmatched.push({ DocumentId: statement.Id, Reason: "missing-insurer" }); continue; }
+    unmatchedReasons.delete(statement.Id);
+    if (statement.NeedsReview) { unmatchedReasons.set(statement.Id, "needs-review"); continue; }
+    if (!statement.Insurer) { unmatchedReasons.set(statement.Id, "missing-insurer"); continue; }
     const ranked = expenses.map(expense => {
       const h = healthcareEvidence(expense);
       const primary = (assignments.get(expense.Id) || []).filter(item => item.Insurer === insurerOrder(expense.Member)[0]
@@ -234,10 +250,18 @@ export function buildReconciliationSnapshot(items: Invoice[]): ReconciliationSna
     }).sort((a, b) => b.score - a.score);
     const best = ranked[0];
     const runnerUp = ranked[1];
-    if (!best || best.score < 8) { unmatched.push({ DocumentId: statement.Id, Reason: "no-expense-match" }); continue; }
-    if (runnerUp && runnerUp.score >= best.score - 1) { unmatched.push({ DocumentId: statement.Id, Reason: "ambiguous-match" }); continue; }
+    if (!best || best.score < 8) { unmatchedReasons.set(statement.Id, "no-expense-match"); continue; }
+    if (runnerUp && runnerUp.score >= best.score - 1) { unmatchedReasons.set(statement.Id, "ambiguous-match"); continue; }
     assignments.set(best.expense.Id, [...(assignments.get(best.expense.Id) ?? []), statement]);
+    unmatchedReasons.delete(statement.Id);
   }
+
+  // Unmatched is a projection of the final assignment graph. An assigned insurer record can
+  // therefore never remain in the review queue because of a stale, independently persisted flag.
+  const assignedStatementIds = new Set([...assignments.values()].flat().map(item => item.Id));
+  const unmatched: UnmatchedReimbursement[] = statements
+    .filter(statement => !assignedStatementIds.has(statement.Id))
+    .map(statement => ({ DocumentId: statement.Id, Reason: unmatchedReasons.get(statement.Id) ?? "no-expense-match" }));
 
   const cases = expenses.map(expense => {
     const matched = assignments.get(expense.Id) ?? [];
