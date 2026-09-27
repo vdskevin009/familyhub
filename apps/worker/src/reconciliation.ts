@@ -28,6 +28,25 @@ export type ReconciliationCase = {
   ExtractionConfidence?: number;
   MatchConfidence?: number;
   ReconciliationConfidence?: number;
+  MatchAssignments?: MatchAssignment[];
+};
+
+export type MatchVerification = "auto" | "review-recommended" | "confirmed-manually";
+export type MatchAssignment = {
+  ExpenseDocumentId: string;
+  ReimbursementDocumentId: string;
+  Insurer: Invoice["Insurer"];
+  Confidence: number;
+  Verification: MatchVerification;
+  Evidence: string[];
+  ConfirmedAt?: string;
+};
+export type MatchDecision = {
+  reimbursementId: string;
+  expenseId: string;
+  decision: "confirmed" | "rejected";
+  at: string;
+  confidence?: number;
 };
 
 export type UnmatchedReimbursement = {
@@ -164,7 +183,7 @@ export function recoverMissingDesjardinsExpenses(items: Invoice[], imported: Inv
 
 function matchScore(expense: Invoice, statement: Invoice): number {
   if (expense.Member !== "unknown" && statement.Member !== "unknown" && expense.Member !== statement.Member) return -1;
-  if (!statement.Insurer || statement.NeedsReview) return -1;
+  if (!statement.Insurer) return -1;
   const amount = expense.BilledAmount ?? expense.DetectedAmount;
   const paid = statement.ReimbursedAmount;
   if (expense.Currency && statement.Currency && expense.Currency !== statement.Currency) return -1;
@@ -188,14 +207,12 @@ function matchScore(expense: Invoice, statement: Invoice): number {
     && expense.Confidence >= 80 && statement.Confidence >= 90;
   if (corroboratesEmbeddedPayment) return 25;
 
-  // Document-level review is not the same thing as reconciliation uncertainty. A NeedsReview
-  // expense may pass only through the strict corroboration path above; all other automatic
-  // matching remains blocked until the expense is reviewed.
-  if (expense.NeedsReview) return -1;
+  // Document-level review is separate from match identity. Review flags lower match confidence
+  // below, but do not by themselves erase a singular evidence-supported association.
 
   if (structuredClaim) {
     if (expense.Member === "unknown" || expense.Member !== statement.Member || expense.ServiceDate !== statement.ServiceDate
-      || Math.min(expense.Confidence, statement.Confidence) < 90) return -1;
+      || Math.min(expense.Confidence, statement.Confidence) < 80) return -1;
     const coordinated = claimed != null && paid != null &&
       (sameMoney(amount, claimed - paid) || sameMoney(residualEvidence, claimed - paid));
     return sameMoney(amount, claimed) || coordinated ? 20 : -1;
@@ -229,23 +246,71 @@ function matchScore(expense: Invoice, statement: Invoice): number {
   return score;
 }
 
-export function buildReconciliationSnapshot(items: Invoice[]): ReconciliationSnapshot {
+function matchConfidence(score: number, expense: Invoice, statement: Invoice): number {
+  let confidence = score >= 25 ? 98 : score >= 20 ? 95 : score >= 13 ? 92 : score >= 12 ? 89 : score >= 10 ? 84 : score >= 8 ? 76 : 65;
+  if (expense.NeedsReview) confidence -= 4;
+  if (statement.NeedsReview) confidence -= 6;
+  return Math.max(50, Math.min(99, confidence));
+}
+
+function matchEvidence(expense: Invoice, statement: Invoice): string[] {
+  const result: string[] = [];
+  const expenseService = service(expense);
+  const statementService = service(statement);
+  const expenseEvidence = healthcareEvidence(expense);
+  const statementEvidence = healthcareEvidence(statement);
+  if (expense.Member !== "unknown" && expense.Member === statement.Member) result.push(`Member matches: ${expense.Member}`);
+  if (expense.ServiceDate && expense.ServiceDate === statement.ServiceDate) result.push(`Service date matches: ${expense.ServiceDate}`);
+  if (expenseService && statementService && expenseService === statementService) result.push(`Service matches: ${statementService}`);
+  const embedded = statement.Insurer ? expenseEvidence.InsurerPayments?.[statement.Insurer] : null;
+  if (embedded != null && statement.ReimbursedAmount != null && sameMoney(embedded, statement.ReimbursedAmount))
+    result.push(`Exact insurer payment matches receipt: ${statement.ReimbursedAmount.toFixed(2)} ${statement.Currency || expense.Currency || "CAD"}`);
+  const submittedAmount = statementEvidence.SubmittedAmount;
+  const expenseAmount = expense.BilledAmount ?? expense.DetectedAmount;
+  if (submittedAmount != null && expenseAmount != null && sameMoney(submittedAmount, expenseAmount))
+    result.push(`Submitted amount matches expense: ${submittedAmount.toFixed(2)} ${statement.Currency || expense.Currency || "CAD"}`);
+  if (expense.NeedsReview || statement.NeedsReview) result.push("One source document is marked for review.");
+  return result.length ? result : ["FamilyHub found one supported expense candidate."];
+}
+
+const pairKey = (reimbursementId: string, expenseId: string) => `${reimbursementId}::${expenseId}`;
+
+export function buildReconciliationSnapshot(items: Invoice[], matchDecisions: MatchDecision[] = []): ReconciliationSnapshot {
   const health = items.filter(item => item.Category === 0 && item.Status !== 4);
   const rawExpenses = health.filter(item => item.DocumentRole === "expense"
     || ((!item.DocumentRole || item.DocumentRole === "other") && ["receipt", "invoice", "bill"].includes(item.DocumentType)));
   const expenses = canonicalExpenses(rawExpenses);
   const statements = health.filter(item => item.DocumentRole === "insurer-statement" || item.DocumentType === "claim");
   const assignments = new Map<string, Invoice[]>();
+  const assignmentMeta = new Map<string, MatchAssignment>();
   const unmatchedReasons = new Map<string, UnmatchedReimbursement["Reason"]>();
+  const latestByPair = new Map<string, MatchDecision>();
+  for (const decision of matchDecisions) latestByPair.set(pairKey(decision.reimbursementId, decision.expenseId), decision);
+  const rejectedPairs = new Set([...latestByPair.entries()].filter(([, decision]) => decision.decision === "rejected").map(([key]) => key));
+  const confirmedByStatement = new Map<string, MatchDecision>();
+  for (const decision of matchDecisions) if (decision.decision === "confirmed") confirmedByStatement.set(decision.reimbursementId, decision);
+
+  // Manual confirmation is authoritative for the association while source records still exist.
+  for (const [statementId, decision] of confirmedByStatement) {
+    const statement = statements.find(item => item.Id === statementId);
+    const expense = expenses.find(item => item.Id === decision.expenseId || item.RelatedDocumentIds.includes(decision.expenseId));
+    if (!statement || !expense) continue;
+    assignments.set(expense.Id, [...(assignments.get(expense.Id) ?? []), statement]);
+    const score = matchScore(expense, statement);
+    assignmentMeta.set(statement.Id, {
+      ExpenseDocumentId: expense.Id, ReimbursementDocumentId: statement.Id, Insurer: statement.Insurer,
+      Confidence: decision.confidence ?? (score >= 0 ? matchConfidence(score, expense, statement) : 100),
+      Verification: "confirmed-manually", Evidence: matchEvidence(expense, statement), ConfirmedAt: decision.at
+    });
+  }
 
   // First resolve available evidence; a uniquely linked primary row can then supply the gross
   // amount required to match a secondary row. Two passes make source order irrelevant.
   for (let pass = 0; pass < 2; pass++) for (const statement of statements) {
     if ([...assignments.values()].some(rows => rows.some(item => item.Id === statement.Id))) continue;
     unmatchedReasons.delete(statement.Id);
-    if (statement.NeedsReview) { unmatchedReasons.set(statement.Id, "needs-review"); continue; }
     if (!statement.Insurer) { unmatchedReasons.set(statement.Id, "missing-insurer"); continue; }
-    const ranked = expenses.map(expense => {
+    const ranked = expenses.filter(expense => !rejectedPairs.has(pairKey(statement.Id, expense.Id))).map(expense => {
       const h = healthcareEvidence(expense);
       const primary = (assignments.get(expense.Id) || []).filter(item => item.Insurer === insurerOrder(expense.Member)[0]
         && submitted(item) != null && item.ReimbursedAmount != null
@@ -255,9 +320,15 @@ export function buildReconciliationSnapshot(items: Invoice[]): ReconciliationSna
     }).sort((a, b) => b.score - a.score);
     const best = ranked[0];
     const runnerUp = ranked[1];
-    if (!best || best.score < 8) { unmatchedReasons.set(statement.Id, "no-expense-match"); continue; }
+    if (!best || best.score < 8) { unmatchedReasons.set(statement.Id, statement.NeedsReview ? "needs-review" : "no-expense-match"); continue; }
     if (runnerUp && runnerUp.score >= best.score - 1) { unmatchedReasons.set(statement.Id, "ambiguous-match"); continue; }
     assignments.set(best.expense.Id, [...(assignments.get(best.expense.Id) ?? []), statement]);
+    const confidence = matchConfidence(best.score, best.expense, statement);
+    assignmentMeta.set(statement.Id, {
+      ExpenseDocumentId: best.expense.Id, ReimbursementDocumentId: statement.Id, Insurer: statement.Insurer,
+      Confidence: confidence, Verification: confidence >= 90 ? "auto" : "review-recommended",
+      Evidence: matchEvidence(best.expense, statement)
+    });
     unmatchedReasons.delete(statement.Id);
   }
 
@@ -270,6 +341,8 @@ export function buildReconciliationSnapshot(items: Invoice[]): ReconciliationSna
 
   const cases = expenses.map(expense => {
     const matched = assignments.get(expense.Id) ?? [];
+    const matchAssignments = matched.map(item => assignmentMeta.get(item.Id)).filter((item): item is MatchAssignment => Boolean(item));
+    const matchConfidenceValue = matchAssignments.length ? Math.min(...matchAssignments.map(item => item.Confidence)) : 0;
     const evidence = healthcareEvidence(expense);
     const residual = evidence.PatientBalance ?? evidence.AmountNotCovered ?? null;
     let original = evidence.OriginalBilledAmount ?? expense.BilledAmount ?? (residual == null ? expense.DetectedAmount : null);
@@ -363,7 +436,8 @@ export function buildReconciliationSnapshot(items: Invoice[]): ReconciliationSna
       Confidence: matched.length ? Math.min(expense.Confidence, ...matched.map(item => item.Confidence)) : expense.Confidence,
       DocumentIds: [...expense.RelatedDocumentIds, ...matched.map(item => item.Id)], Evidence: evidenceMap,
       Explanation: `Case ${expense.Id} uses ${[expense.Id, ...matched.map(item => item.Id)].length} linked evidence records. ${summary}`,
-      ExtractionConfidence: expense.Confidence, MatchConfidence: matched.length ? Math.min(...matched.map(item => item.Confidence)) : 0,
+      ExtractionConfidence: expense.Confidence, MatchConfidence: matchConfidenceValue,
+      MatchAssignments: matchAssignments,
       ReconciliationConfidence: matched.length ? Math.min(expense.Confidence, ...matched.map(item => item.Confidence)) : expense.Confidence
     };
   });
