@@ -112,32 +112,75 @@ export default function ReimbursementsView({ hub }: Props) {
 
   const model = useMemo(() => {
     const byId = new Map(hub.reimbursements.Items.map(item => [item.Id, item]));
-    const cases = buildInvoiceHistoryCases(hub.reimbursements.Reconciliations ?? [], hub.reimbursements.Items);
+    const ignoredCases = (hub.reimbursements.IgnoredExpenses ?? []).map(item => ({
+      ...item,
+      WorkflowStatus: item.WorkflowStatus ?? "ignore" as const,
+      WorkflowOrigin: item.WorkflowOrigin ?? "manual" as const
+    }));
+    const cases = buildInvoiceHistoryCases([...(hub.reimbursements.Reconciliations ?? []), ...ignoredCases], hub.reimbursements.Items);
     const unmatched = (hub.reimbursements.UnmatchedReimbursements ?? [])
       .map(result => ({ result, item: byId.get(result.DocumentId) }))
       .filter((entry): entry is { result: UnmatchedReimbursement; item: ReimbursementItem } => Boolean(entry.item))
       .sort((a, b) => dateValue(b.item.ServiceDate || b.item.StatementDate || b.item.ReceivedAt)
         - dateValue(a.item.ServiceDate || a.item.StatementDate || a.item.ReceivedAt));
-    const cad = cases.filter(item => !item.PreviouslyFound && (item.Currency || "CAD") === "CAD");
-    const totalPaid = cad.reduce((sum, item) => sum + (item.OriginalAmount ?? 0), 0);
-    const primary = cad.reduce((sum, item) => sum + (primaryReimbursementAmount(item) ?? 0), 0);
-    const secondary = cad.reduce((sum, item) => sum + (secondaryReimbursementAmount(item) ?? 0), 0);
-    const outstanding = cad.reduce((sum, item) => sum + (item.PotentialRemaining ?? 0), 0);
-    const attention = cases.filter(item => !item.PreviouslyFound && reimbursementCaseStatus(item) !== "fully-reimbursed").length + unmatched.length;
     const warnings = [...new Set(hub.reimbursements.Items.filter(item => item.Status !== 4).map(item => item.ImportWarning).filter(Boolean))];
-    return { cases, unmatched, totalPaid, primary, secondary, outstanding, attention, warnings };
-  }, [hub.reimbursements.Items, hub.reimbursements.Reconciliations, hub.reimbursements.UnmatchedReimbursements]);
+    return { cases, unmatched, warnings };
+  }, [hub.reimbursements.Items, hub.reimbursements.Reconciliations, hub.reimbursements.IgnoredExpenses, hub.reimbursements.UnmatchedReimbursements]);
+
   const reviews = new Map((hub.reimbursements.AgentReviews ?? []).map(review => [review.key, review]));
   const invoiceById = new Map(hub.reimbursements.Items.map(item => [item.Id, item]));
+  const scopedCases = useMemo(() => filterReimbursementWorkflowCases(model.cases, personScope, "all"), [model.cases, personScope]);
+  const scopedUnmatched = useMemo(() => model.unmatched.filter(({ item }) => personScope === "all" || item.Member === personScope), [model.unmatched, personScope]);
+
+  const scopeSummaries = useMemo(() => {
+    const scopes: ReimbursementPersonScope[] = ["all", "Kevin", "Jasmine", "Nathan"];
+    return new Map(scopes.map(scope => [scope, reimbursementWorkflowSummary(model.cases, scope)]));
+  }, [model.cases]);
+
+  const workflowCounts = useMemo(() => ({
+    open: scopedCases.filter(item => reimbursementWorkflowStatus(item) === "open").length,
+    closed: scopedCases.filter(item => reimbursementWorkflowStatus(item) === "closed").length,
+    ignore: scopedCases.filter(item => reimbursementWorkflowStatus(item) === "ignore").length
+  }), [scopedCases]);
+
+  const finance = useMemo(() => {
+    const cad = scopedCases.filter(item => !item.PreviouslyFound && reimbursementWorkflowStatus(item) !== "ignore" && (item.Currency || "CAD") === "CAD");
+    return {
+      totalPaid: cad.reduce((sum, item) => sum + (item.OriginalAmount ?? 0), 0),
+      primary: cad.reduce((sum, item) => sum + (primaryReimbursementAmount(item) ?? 0), 0),
+      secondary: cad.reduce((sum, item) => sum + (secondaryReimbursementAmount(item) ?? 0), 0),
+      outstanding: cad.reduce((sum, item) => sum + (item.PotentialRemaining ?? 0), 0),
+      attention: scopedCases.filter(item => reimbursementWorkflowStatus(item) === "open" && reimbursementCaseStatus(item) === "needs-attention").length + scopedUnmatched.length
+    };
+  }, [scopedCases, scopedUnmatched]);
 
   const filterCounts = useMemo(() => ({
-    fully: model.cases.filter(item => reimbursementCaseStatus(item) === "fully-reimbursed").length,
-    outstanding: model.cases.filter(item => reimbursementCaseStatus(item) !== "fully-reimbursed").length,
-    primary: model.cases.filter(item => (primaryReimbursementAmount(item) ?? 0) > 0).length,
-    secondary: model.cases.filter(item => (secondaryReimbursementAmount(item) ?? 0) > 0).length
-  }), [model.cases]);
+    fully: scopedCases.filter(item => reimbursementCaseStatus(item) === "fully-reimbursed").length,
+    outstanding: scopedCases.filter(item => reimbursementCaseStatus(item) !== "fully-reimbursed").length,
+    primary: scopedCases.filter(item => (primaryReimbursementAmount(item) ?? 0) > 0).length,
+    secondary: scopedCases.filter(item => (secondaryReimbursementAmount(item) ?? 0) > 0).length,
+    matched: scopedCases.filter(item => (item.MatchAssignments?.length ?? 0) > 0).length,
+    unmatched: scopedUnmatched.length
+  }), [scopedCases, scopedUnmatched]);
 
-  const filteredCases = useMemo(() => filterInvoiceHistoryCases(model.cases, filters), [filters, model.cases]);
+  const workflowScopedCases = useMemo(() => filterReimbursementWorkflowCases(model.cases, personScope, workflowFilter),
+    [model.cases, personScope, workflowFilter]);
+  const filteredCases = useMemo(() => {
+    if (reconciliationFilter === "unmatched") return [];
+    const history = filterInvoiceHistoryCases(workflowScopedCases, filters);
+    return reconciliationFilter === "matched" ? history.filter(item => (item.MatchAssignments?.length ?? 0) > 0) : history;
+  }, [filters, reconciliationFilter, workflowScopedCases]);
+  const visibleUnmatched = useMemo(() => workflowFilter !== "closed" && workflowFilter !== "ignore" && reconciliationFilter !== "matched"
+    ? scopedUnmatched : [], [reconciliationFilter, scopedUnmatched, workflowFilter]);
+
+  const scopeLabel = personScope === "all" ? "All family" : personScope;
+
+  function selectScope(scope: ReimbursementPersonScope) {
+    setPersonScope(scope);
+    setWorkflowFilter("open");
+    setReconciliationFilter("all");
+    setFilters(new Set<InvoiceHistoryFilter>());
+  }
 
   function toggleFilter(filter: InvoiceHistoryFilter) {
     setFilters(previous => {
