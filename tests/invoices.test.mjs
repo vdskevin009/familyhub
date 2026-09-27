@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { evidence, fingerprint, recordId, toInvoice, applyCorrection, validateClassification } from '../apps/worker/dist/invoice-model.js';
+import { evidence, fingerprint, recordId, toInvoice, applyCorrection, repairHealthcareAmounts, validateClassification } from '../apps/worker/dist/invoice-model.js';
 import { buildReconciliationSnapshot, buildReconciliations } from '../apps/worker/dist/reconciliation.js';
 import { normalizeMail, withAttachmentText } from '../apps/worker/dist/gmail-client.js';
 
@@ -92,6 +92,36 @@ test('fully reimbursed expenses expose primary and secondary totals separately',
   assert.equal(result.SecondaryReimbursedAmount, 80);
   assert.equal(result.PotentialRemaining, 0);
   assert.equal(result.Status, 'fully-reimbursed');
+});
+
+test('QubeCore/Jane direct-insurance receipt keeps gross expense, primary payment and patient balance separate', () => {
+  const source = { ...mail, id: 'qubecore-direct-receipt', subject: 'Your Receipt - QubeCore Sports & Rehab',
+    sender: 'QubeCore Sports & Rehab <notifications@janeapp.com>', receivedAt: '2026-09-17T21:32:00Z',
+    text: 'Invoice #138636-P01. Service date: 2026-09-17. SEPTEMBER 17, 2026 - 1:15PM, RMT - FOLLOW UP MASSAGE (60 MINUTES) $142.86 $7.14 $150.00\nDESJARDINS INSURANCE (TELUS eClaims) #060824356 / 869198 Massage therapy Amount not covered: $38.00 -$106.67 -$5.33 -$112.00\nSUBTOTAL $36.19\nGST $1.81\nTOTAL $38.00',
+    attachmentText: '' };
+  const receipt = toInvoice(source, 'kevin@example.test', 'Kevin', { ...classification, category: 'health', member: 'Kevin',
+    documentRole: 'expense', amount: 36.19, billedAmount: 36.19, serviceDate: '2026-09-17', reason: 'receipt' }, 'codex');
+  assert.equal(receipt.BilledAmount, 150);
+  assert.equal(receipt.DetectedAmount, 150);
+  assert.equal(receipt.Healthcare?.InsurerPayments?.desjardins, 112);
+  assert.equal(receipt.Healthcare?.PatientBalance, 38);
+  const result = buildReconciliationSnapshot([receipt]).cases[0];
+  assert.equal(result.OriginalAmount, 150);
+  assert.equal(result.PrimaryReimbursedAmount, 112);
+  assert.equal(result.SecondaryReimbursedAmount, 0);
+  assert.equal(result.PotentialRemaining, 38);
+  assert.equal(result.Status, 'waiting-secondary');
+
+  const oldIndexed = { ...receipt, BilledAmount: 36.19, DetectedAmount: 36.19,
+    Healthcare: { ...receipt.Healthcare, OriginalBilledAmount: 36.19, InsurerPayments: {}, ProcessedInsurers: ['desjardins'] },
+    ReimbursementEligibility: 'unknown', ClassificationSource: 'codex', CorrectedAt: '2026-09-18T00:00:00Z' };
+  const repaired = repairHealthcareAmounts(oldIndexed, source);
+  assert.equal(repaired.BilledAmount, 150);
+  assert.equal(repaired.DetectedAmount, 150);
+  assert.equal(repaired.Healthcare?.InsurerPayments?.desjardins, 112);
+  assert.equal(repaired.ReimbursementEligibility, oldIndexed.ReimbursementEligibility);
+  assert.equal(repaired.ClassificationSource, oldIndexed.ClassificationSource);
+  assert.equal(repaired.CorrectedAt, oldIndexed.CorrectedAt);
 });
 
 test('QubeCore direct-insurance receipt becomes one canonical residual case', () => {
