@@ -43,6 +43,7 @@ export type Invoice = {
   AttentionLevel: "critical" | "action" | "important" | "none"; AttentionReason: string;
   CorrectedAt?: string; UpdatedAt: string; Fingerprint: string; LastDecisionId?: string;
   IgnoredAt?: string;
+  HistoricalCandidate?: boolean;
   ImportWarning?: string; ClaimedService?: string; StatementDate?: string; StructuredSource?: "blue-cross-portal";
 };
 export type Correction = { account: string; fingerprint: string; kind: Kind; at: string; confirmations?: number; sender?: string; subject?: string };

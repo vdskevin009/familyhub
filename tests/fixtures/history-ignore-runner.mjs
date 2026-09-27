@@ -11,6 +11,7 @@ let fail = true, classified = 0, historyCalls = [];
 const deps = {
   credentials: async () => ({ accounts: [{ email: account, label: 'Test' }] }), accessToken: async () => 'synthetic',
   classify: async () => { classified++; return { result: classification, source: 'codex' }; },
+  historicalClassify: async () => { classified++; return { result: classification, source: 'codex' }; },
   reviewer: async () => ({ verdict: 'missing-evidence', candidateId: null, confidence: .5, explanation: 'Synthetic', evidenceIds: [] }),
   gmail: async (_token, path) => {
     if (path.startsWith('messages?')) {

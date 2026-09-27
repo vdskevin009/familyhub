@@ -249,11 +249,30 @@ export async function classify(mail: Mail, email: string, label = email, diagnos
   }
 }
 
-type CollectionDependencies = { credentials: typeof credentials; accessToken: typeof accessToken; gmail: typeof gmail; classify: typeof classify; reviewer: Reviewer };
+/** Fast historical intake. Facts without explicit evidence remain unknown. */
+export async function classifyHistorical(mail: Mail, _email: string, _label?: string): Promise<{ result: Classification; source: Invoice["ClassificationSource"] }> {
+  const proof = evidence(mail);
+  const rule = metadataClassification(mail.sender, mail.subject, mail.text);
+  const text = `${mail.sender} ${mail.subject} ${mail.text} ${mail.attachmentText || ""} ${mail.attachments.map(item => item.FileName).join(" ")}`;
+  const health = /janeapp|qubecore|clinic|clinique|medical|médical|health|dental|dentist|dentaire|pharmac|prescription|massage|physiotherap|physical therapy|chiropr|ost[eé]opath|acupunct|kinesiol|kinési|rehab|r[eé]adaptation|psycholog|counsell|psychotherap|desjardins|blue\s*cross|croix\s*bleue/i.test(text);
+  const insurer = /desjardins/i.test(text) ? "desjardins" : /blue\s*cross|croix\s*bleue/i.test(text) ? "blue-cross" : null;
+  const statement = Boolean(insurer && /explanation of benefits|claim statement|relev[eé] de prestations|statement of benefits/i.test(text));
+  const expense = !statement && (proof.transaction || /\b(?:receipt|invoice|facture|reçu|recu|bill)\b/i.test(mail.subject));
+  const excluded = rule?.kind === "ignore" || !health && proof.marketing;
+  return { source: "rules", result: { kind: rule?.kind || (excluded ? "marketing" : statement ? "claim" : expense ? "invoice" : "other"),
+    confidence: rule ? .99 : excluded ? .98 : .6, transaction: rule ? false : expense || statement,
+    reimbursement: "unknown", reason: rule?.reason || (excluded ? "Promotional signals without transaction evidence."
+      : "Historical document candidate indexed from explicit evidence; classification and insurance coverage need review."),
+    amount: null, currency: "", category: rule?.category || (health ? "health" : "other"), member: "unknown",
+    documentRole: rule ? "other" : statement ? "insurer-statement" : expense ? "expense" : "other", insurer: statement ? insurer : null,
+    serviceDate: null, billedAmount: null, reimbursedAmount: null, attention: rule?.attention || "none", attentionReason: rule?.attention ? rule.reason : "" } };
+}
+
+type CollectionDependencies = { credentials: typeof credentials; accessToken: typeof accessToken; gmail: typeof gmail; classify: typeof classify; historicalClassify: typeof classifyHistorical; reviewer: Reviewer };
 export async function collectInvoices(overrides: Partial<CollectionDependencies> = {}): Promise<void> {
   if (busy) throw new Error("Invoice collection is already running.");
   busy = true;
-  const dependencies: CollectionDependencies = { credentials, accessToken, gmail, classify, reviewer: codexReviewer, ...overrides };
+  const dependencies: CollectionDependencies = { credentials, accessToken, gmail, classify, historicalClassify: classifyHistorical, reviewer: codexReviewer, ...overrides };
   try {
     await edit(() => { state.lastAttempt = new Date().toISOString(); state.error = undefined; });
     const accounts = (await dependencies.credentials()).accounts;
@@ -276,10 +295,11 @@ export async function collectInvoices(overrides: Partial<CollectionDependencies>
         });
         const window = progress.window!;
         let retryBudget = 10;
-        const processMessage = async (id: string, retry = false, repair = false) => {
+        const processMessage = async (id: string, retry = false, repair = false, historical = false) => {
           const existing = state.items.find(x => x.Id === recordId(key, id));
           const needsUpgrade = existing && (existing.AnalysisVersion !== 4 || !existing.DocumentRole || !existing.Member || !("BilledAmount" in existing));
           if (existing?.IgnoredAt || existing?.CorrectedAt && !needsUpgrade) return;
+          if (historical && existing?.HistoricalCandidate) return;
           if (existing && !needsUpgrade && (!retry || existing.ClassificationSource !== "unavailable")
             && (!repair || existing.Category === 0 && existing.DocumentRole === "expense" && existing.Status !== 4)) return;
           const normalized = normalizeMail(await callGmail<RawMail>(token, `messages/${encodeURIComponent(id)}?format=full`));
@@ -288,8 +308,12 @@ export async function collectInvoices(overrides: Partial<CollectionDependencies>
             return;
           }
           const mail = await withAttachmentText(normalized, token, callGmail);
-          const { result, source } = await dependencies.classify(mail, key, account.label);
+          const { result, source } = await (historical ? dependencies.historicalClassify : dependencies.classify)(mail, key, account.label);
           const item = toInvoice(mail, key, account.label, result, source);
+          if (historical && item.Status !== 4) {
+            item.HistoricalCandidate = true;
+            item.ServiceDate = item.Healthcare?.ServiceDate || item.ServiceDate;
+          }
           await edit(() => {
             const index = state.items.findIndex(x => x.Id === item.Id);
             if (index >= 0) {
@@ -304,10 +328,10 @@ export async function collectInvoices(overrides: Partial<CollectionDependencies>
           });
         };
         let upgradeBudget = 25;
-        for (const item of [...state.items]) {
+        for (const item of progress.invoiceHistoryVersion === invoiceHistoryVersion ? [...state.items] : []) {
           if (item.AccountEmail === key && item.SourceMessageId && !item.StructuredSource && (item.AnalysisVersion !== 4 || !item.DocumentRole || !item.Member || !("BilledAmount" in item)) && upgradeBudget-- > 0) await processMessage(item.SourceMessageId, true);
         }
-        for (const item of [...state.items]) {
+        for (const item of progress.invoiceHistoryVersion === invoiceHistoryVersion ? [...state.items] : []) {
           if (item.AccountEmail === key && item.ClassificationSource === "unavailable" && !item.CorrectedAt && retryBudget-- > 0) await processMessage(item.SourceMessageId, true);
         }
         for (let pages = 0; pages < 2; pages++) {
@@ -330,7 +354,7 @@ export async function collectInvoices(overrides: Partial<CollectionDependencies>
             const params = new URLSearchParams({ q: `after:${after} from:notifications@janeapp.com subject:"Your Receipt" -in:trash -in:spam`, maxResults: "50",
               ...(progress.healthReceiptRepairPage ? { pageToken: progress.healthReceiptRepairPage } : {}) });
             const list = await callGmail<{ messages?: { id: string }[]; nextPageToken?: string }>(token, `messages?${params}`);
-            for (const { id } of list.messages || []) await processMessage(id, false, true);
+            for (const { id } of list.messages || []) await processMessage(id, false, true, true);
             await edit(() => {
               progress.healthReceiptRepairPage = list.nextPageToken;
               if (!list.nextPageToken) progress.healthReceiptRepairVersion = 1;
@@ -351,7 +375,7 @@ export async function collectInvoices(overrides: Partial<CollectionDependencies>
             const params = new URLSearchParams({ q: `after:${history.after} before:${history.before} ${invoiceSignals} ${invoiceExclusions}`,
               maxResults: "50", ...(history.page ? { pageToken: history.page } : {}) });
             const list = await callGmail<{ messages?: { id: string }[]; nextPageToken?: string }>(token, `messages?${params}`);
-            for (const { id } of list.messages || []) await processMessage(id, false, true);
+            for (const { id } of list.messages || []) await processMessage(id, false, true, true);
             await edit(() => {
               progress.invoiceHistoryExamined = (progress.invoiceHistoryExamined || 0) + (list.messages?.length || 0);
               if (list.nextPageToken) history.page = list.nextPageToken;
@@ -372,7 +396,7 @@ export async function collectInvoices(overrides: Partial<CollectionDependencies>
     });
     // The collector indexes evidence; the reconciler remains deterministic. The reviewer only
     // suggests explanations for uncertain cases and cannot mutate any financial assignment.
-    const reviews = await reviewReconciliations(state.items.filter(item => !item.IgnoredAt), state.reviews, dependencies.reviewer);
+    const reviews = complete ? await reviewReconciliations(state.items.filter(item => !item.IgnoredAt), state.reviews, dependencies.reviewer) : state.reviews;
     await edit(() => { state.reviews = reviews; });
   } catch (error) {
     await edit(() => { state.error = error instanceof Error ? error.message : "Collection failed."; });
