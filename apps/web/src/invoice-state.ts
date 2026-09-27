@@ -100,12 +100,14 @@ export function reimbursementCaseStatus(item: ReconciliationCase): Reimbursement
   return "needs-attention";
 }
 
-export function primaryReimbursementAmount(item: ReconciliationCase): number {
-  return item.PrimaryReimbursedAmount ?? (item.Action === "submit-secondary" ? item.ReimbursedAmount : 0);
+export function primaryReimbursementAmount(item: ReconciliationCase): number | null {
+  if ("PrimaryReimbursedAmount" in item) return item.PrimaryReimbursedAmount ?? null;
+  return item.Action === "submit-secondary" ? item.ReimbursedAmount : 0;
 }
 
-export function secondaryReimbursementAmount(item: ReconciliationCase): number {
-  return item.SecondaryReimbursedAmount ?? 0;
+export function secondaryReimbursementAmount(item: ReconciliationCase): number | null {
+  if ("SecondaryReimbursedAmount" in item) return item.SecondaryReimbursedAmount ?? null;
+  return 0;
 }
 
 function invoiceHistoryDateValue(value: string | null | undefined): number {
