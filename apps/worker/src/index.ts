@@ -4,7 +4,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { Codex } from "@openai/codex-sdk";
-import { initializeInvoices, invoiceSnapshot, collectInvoices, correctInvoice, updateInvoiceStatus, undoInvoiceDecision, invoiceAttachment, importBlueCrossMessages, setExpenseIgnored } from "./invoices.js";
+import { initializeInvoices, invoiceSnapshot, collectInvoices, correctInvoice, updateInvoiceStatus, undoInvoiceDecision, invoiceAttachment, importBlueCrossMessages, setExpenseIgnored, setMatchDecision } from "./invoices.js";
 
 type WorkerTaskType = "general" | "meal-plan" | "research" | "financial-review" | "admin-classify";
 type WorkerTask = {
@@ -30,7 +30,7 @@ type ResearchWatch = {
 };
 type PersistedState = { watches: ResearchWatch[] };
 
-const version = "2.5.4";
+const version = "2.6.0";
 const host = process.env.FAMILYHUB_WORKER_HOST?.trim() || "127.0.0.1";
 const port = Number(process.env.FAMILYHUB_WORKER_PORT || "4713");
 const stateDir = process.env.FAMILYHUB_WORKER_DATA?.trim() || join(homedir(), ".familyhub-worker");
@@ -213,6 +213,11 @@ const server = createServer(async (request, response) => {
       if (request.method === "POST" && parts.length === 3 && parts[1] === "expenses" && parts[2] === "ignore") {
         const body = await readJson<{ documentIds?: unknown; ignored?: unknown }>(request);
         await setExpenseIgnored(body.documentIds, body.ignored);
+        json(response, 200, { saved: true }, origin); return;
+      }
+      if (request.method === "POST" && parts.length === 3 && parts[1] === "matches" && parts[2] === "decision") {
+        const body = await readJson<{ reimbursementId?: unknown; expenseId?: unknown; decision?: unknown }>(request);
+        await setMatchDecision(body.reimbursementId, body.expenseId, body.decision);
         json(response, 200, { saved: true }, origin); return;
       }
       if (request.method === "POST" && parts.length === 2 && parts[1] === "import-bluecross") {
