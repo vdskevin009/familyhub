@@ -57,6 +57,7 @@ export type UnmatchedReimbursement = {
 export type ReconciliationSnapshot = {
   cases: ReconciliationCase[];
   unmatched: UnmatchedReimbursement[];
+  rejectedMatches?: Array<{ ReimbursementDocumentId: string; ExpenseDocumentId: string }>;
   diagnostics?: ReconciliationDiagnostics;
 };
 export type ReconciliationDiagnostics = {
@@ -286,7 +287,9 @@ export function buildReconciliationSnapshot(items: Invoice[], matchDecisions: Ma
   const unmatchedReasons = new Map<string, UnmatchedReimbursement["Reason"]>();
   const latestByPair = new Map<string, MatchDecision>();
   for (const decision of matchDecisions) latestByPair.set(pairKey(decision.reimbursementId, decision.expenseId), decision);
-  const rejectedPairs = new Set([...latestByPair.entries()].filter(([, decision]) => decision.decision === "rejected").map(([key]) => key));
+  const rejectedMatches = [...latestByPair.values()].filter(decision => decision.decision === "rejected")
+    .map(decision => ({ ReimbursementDocumentId: decision.reimbursementId, ExpenseDocumentId: decision.expenseId }));
+  const rejectedPairs = new Set(rejectedMatches.map(item => pairKey(item.ReimbursementDocumentId, item.ExpenseDocumentId)));
   const confirmedByStatement = new Map<string, MatchDecision>();
   for (const decision of matchDecisions) if (decision.decision === "confirmed") confirmedByStatement.set(decision.reimbursementId, decision);
 
@@ -310,7 +313,8 @@ export function buildReconciliationSnapshot(items: Invoice[], matchDecisions: Ma
     if ([...assignments.values()].some(rows => rows.some(item => item.Id === statement.Id))) continue;
     unmatchedReasons.delete(statement.Id);
     if (!statement.Insurer) { unmatchedReasons.set(statement.Id, "missing-insurer"); continue; }
-    const ranked = expenses.filter(expense => !rejectedPairs.has(pairKey(statement.Id, expense.Id))).map(expense => {
+    const ranked = expenses.filter(expense => ![expense.Id, ...expense.RelatedDocumentIds]
+      .some(id => rejectedPairs.has(pairKey(statement.Id, id)))).map(expense => {
       const h = healthcareEvidence(expense);
       const primary = (assignments.get(expense.Id) || []).filter(item => item.Insurer === insurerOrder(expense.Member)[0]
         && submitted(item) != null && item.ReimbursedAmount != null
@@ -444,7 +448,7 @@ export function buildReconciliationSnapshot(items: Invoice[], matchDecisions: Ma
   const diagnostics = buildReconciliationDiagnostics(cases, unmatched, items);
   return {
     cases: cases.sort((a, b) => Number(a.Action === "complete") - Number(b.Action === "complete") || (b.PotentialRemaining ?? 0) - (a.PotentialRemaining ?? 0)),
-    unmatched, diagnostics
+    unmatched, rejectedMatches, diagnostics
   };
 }
 
