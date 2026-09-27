@@ -5,7 +5,7 @@ import { privateCodex } from "./private-codex.js";
 import { atomicJson, dataDirectory } from "./private-store.js";
 import { credentials, accessToken, gmail, normalizeMail, withAttachmentText, type RawMail } from "./gmail-client.js";
 import { applyCorrection, classificationSchema, evidence, fingerprint, recordId, repairHealthcareAmounts, toInvoice, validateClassification, type Classification, type Correction, type Invoice, type Mail } from "./invoice-model.js";
-import { buildCleanupSuggestions, buildReconciliationSnapshot, recoverMissingDesjardinsExpenses } from "./reconciliation.js";
+import { buildCleanupSuggestions, buildReconciliationSnapshot, recoverMissingDesjardinsExpenses, type MatchDecision } from "./reconciliation.js";
 import { blueCrossInvoices } from "./bluecross.js";
 import { reviewReconciliations, reviewTargets, codexReviewer, type AgentReview, type Reviewer } from "./agents.js";
 
@@ -23,9 +23,9 @@ const invoiceExclusions = '-in:spam -in:trash -in:sent -in:drafts -from:notifica
 type AccountProgress = { through?: number; window?: Window; error?: string; lastSuccess?: string; healthReceiptRepairVersion?: number; healthReceiptRepairPage?: string; healthReceiptRepairTargetVersion?: number;
   invoiceHistoryVersion?: number; invoiceHistoryWindow?: Window; invoiceHistoryThrough?: number; invoiceHistoryExamined?: number };
 type Decision = { id: string; itemId: string; type: "classification" | "status"; before: Partial<Invoice>; after: Partial<Invoice>; at: string; undoneAt?: string; correctionBefore?: Correction };
-type State = { items: Invoice[]; corrections: Correction[]; decisions: Decision[]; reviews: AgentReview[]; accounts: Record<string, AccountProgress>; lastAttempt?: string; lastSuccess?: string; error?: string };
+type State = { items: Invoice[]; corrections: Correction[]; decisions: Decision[]; matchDecisions: MatchDecision[]; reviews: AgentReview[]; accounts: Record<string, AccountProgress>; lastAttempt?: string; lastSuccess?: string; error?: string };
 const statePath = join(dataDirectory, "invoices.json");
-const empty = (): State => ({ items: [], corrections: [], decisions: [], reviews: [], accounts: {} });
+const empty = (): State => ({ items: [], corrections: [], decisions: [], matchDecisions: [], reviews: [], accounts: {} });
 let state = empty();
 let busy = false;
 let mutation = Promise.resolve();
@@ -99,7 +99,7 @@ function edit(action: () => void | Promise<void>): Promise<void> {
 export async function initializeInvoices(): Promise<void> {
   try {
     const saved = JSON.parse(await readFile(statePath, "utf8")) as Partial<State>;
-    state = { ...empty(), ...saved, items: saved.items || [], corrections: saved.corrections || [], decisions: saved.decisions || [], reviews: saved.reviews || [], accounts: saved.accounts || {} };
+    state = { ...empty(), ...saved, items: saved.items || [], corrections: saved.corrections || [], decisions: saved.decisions || [], matchDecisions: saved.matchDecisions || [], reviews: saved.reviews || [], accounts: saved.accounts || {} };
     if (normalizeStoredMetadata()) await atomicJson(statePath, state);
   }
   catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw new Error("Invoice index is unreadable. Restore the index before collecting; it was not overwritten."); }
@@ -108,8 +108,8 @@ export async function invoiceSnapshot() {
   let accounts: { email: string; label: string }[] = [];
   try { accounts = (await credentials()).accounts.map(({ email, label }) => ({ email, label })); } catch { /* Visible setup-required status. */ }
   const effectiveItems = state.items.map(item => item.IgnoredAt ? { ...item, Status: 4, NeedsReview: false } : item);
-  const reconciliation = buildReconciliationSnapshot(effectiveItems);
-  const ignoredExpenses = buildReconciliationSnapshot(state.items).cases.filter(entry => entry.DocumentIds.some(id => state.items.find(item => item.Id === id)?.IgnoredAt));
+  const reconciliation = buildReconciliationSnapshot(effectiveItems, state.matchDecisions);
+  const ignoredExpenses = buildReconciliationSnapshot(state.items, state.matchDecisions).cases.filter(entry => entry.DocumentIds.some(id => state.items.find(item => item.Id === id)?.IgnoredAt));
   const signatures = new Map(reviewTargets(effectiveItems, reconciliation).map(target => [target.key, target.signature]));
   const reviews = state.reviews.filter(item => signatures.get(item.key) === item.signature);
   return { items: effectiveItems, reconciliations: reconciliation.cases, ignoredExpenses, unmatchedReimbursements: reconciliation.unmatched, diagnostics: reconciliation.diagnostics,
@@ -432,7 +432,7 @@ export async function setExpenseIgnored(documentIds: unknown, ignored: unknown):
   await edit(() => {
     const documents = documentIds.map(id => state.items.find(item => item.Id === id));
     if (documents.some(item => !item)) throw new Error("Expense source is unavailable. Refresh before saving.");
-    const cases = buildReconciliationSnapshot(state.items).cases;
+    const cases = buildReconciliationSnapshot(state.items, state.matchDecisions).cases;
     const entry = cases.find(item => documentIds.some(id => item.DocumentIds.includes(id)));
     if (entry && documentIds.some(id => !entry.DocumentIds.includes(id))) throw new Error("Documents belong to different expenses.");
     if (!entry && (documents.length !== 1 || documents[0]?.DocumentRole !== "expense")) throw new Error("Expense not found. Refresh before saving.");
@@ -441,6 +441,25 @@ export async function setExpenseIgnored(documentIds: unknown, ignored: unknown):
     for (const item of state.items.filter(item => ids.includes(item.Id))) {
       item.IgnoredAt = ignored ? at : undefined;
       item.UpdatedAt = at;
+    }
+  });
+}
+
+export async function setMatchDecision(reimbursementId: unknown, expenseId: unknown, decision: unknown): Promise<void> {
+  if (typeof reimbursementId !== "string" || typeof expenseId !== "string"
+    || (decision !== "confirmed" && decision !== "rejected")) throw new Error("Provide reimbursement, expense and confirmed/rejected decision.");
+  await edit(() => {
+    const snapshot = buildReconciliationSnapshot(state.items, state.matchDecisions);
+    const assignment = snapshot.cases.flatMap(item => item.MatchAssignments || [])
+      .find(item => item.ReimbursementDocumentId === reimbursementId && item.ExpenseDocumentId === expenseId);
+    if (!assignment) throw new Error("This match is no longer current. Refresh before confirming or rejecting it.");
+    const at = new Date().toISOString();
+    if (decision === "confirmed") {
+      state.matchDecisions = state.matchDecisions.filter(item => item.reimbursementId !== reimbursementId);
+      state.matchDecisions.push({ reimbursementId, expenseId, decision: "confirmed", at, confidence: assignment.Confidence });
+    } else {
+      state.matchDecisions = state.matchDecisions.filter(item => !(item.reimbursementId === reimbursementId && item.expenseId === expenseId));
+      state.matchDecisions.push({ reimbursementId, expenseId, decision: "rejected", at, confidence: assignment.Confidence });
     }
   });
 }
