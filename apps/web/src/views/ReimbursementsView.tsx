@@ -78,7 +78,8 @@ export default function ReimbursementsView({ hub }: Props) {
         CleanupSuggestions: snapshot.cleanupSuggestions,
         ImportantMail: snapshot.importantMail,
         LearningDecisions: snapshot.learning.decisions,
-        UnmatchedReimbursements: snapshot.unmatchedReimbursements
+        UnmatchedReimbursements: snapshot.unmatchedReimbursements,
+        AgentReviews: snapshot.agentReviews ?? []
       }));
       setLastSuccess(snapshot.lastSuccess || new Date().toISOString());
       if (snapshot.error) setError(snapshot.error);
@@ -107,6 +108,8 @@ export default function ReimbursementsView({ hub }: Props) {
     const warnings = [...new Set(hub.reimbursements.Items.filter(item => item.Status !== 4).map(item => item.ImportWarning).filter(Boolean))];
     return { cases, unmatched, totalPaid, primary, secondary, outstanding, attention, warnings };
   }, [hub.reimbursements.Items, hub.reimbursements.Reconciliations, hub.reimbursements.UnmatchedReimbursements]);
+  const reviews = new Map((hub.reimbursements.AgentReviews ?? []).map(review => [review.key, review]));
+  const invoiceById = new Map(hub.reimbursements.Items.map(item => [item.Id, item]));
 
   const filterCounts = useMemo(() => ({
     fully: model.cases.filter(item => caseStatus(item) === "fully-reimbursed").length,
@@ -212,6 +215,8 @@ export default function ReimbursementsView({ hub }: Props) {
             </div>
             {!!item.UnallocatedReimbursedAmount && <p className="privacy-note expense-warning">Known payments: {money(item.UnallocatedReimbursedAmount, item.Currency)} · insurer order to confirm</p>}
             <div className="expense-note"><span>{item.Summary}</span><small>Match confidence {Math.round(item.Confidence)}%</small></div>
+            {item.Status === "needs-attention" && item.DocumentIds[0] && reviews.get(`case:${item.DocumentIds[0]}`) &&
+              <p className="privacy-note expense-warning">Second AI review: {reviews.get(`case:${item.DocumentIds[0]}`)!.explanation} · Suggestion only; check the source documents.</p>}
           </article>;
         })}
       </div>
@@ -221,7 +226,8 @@ export default function ReimbursementsView({ hub }: Props) {
       <div className="section-heading inline"><div><span className="eyebrow">Needs review</span><h2 id="unmatched-title">Unmatched reimbursements</h2></div><span className="unmatched-count">{model.unmatched.length}</span></div>
       {model.unmatched.map(({ result, item }) => <article className="unmatched-row" key={result.DocumentId}>
         <span className="reimbursement-status unmatched">Unmatched</span>
-        <div><strong>{item.Provider || item.Subject || "Insurer record"}</strong><small>{item.Member && item.Member !== "unknown" ? `${item.Member} · ` : ""}{item.Insurer === "blue-cross" ? "Blue Cross" : item.Insurer === "desjardins" ? "Desjardins" : "Insurer unknown"} · {dateLabel(item.ServiceDate || item.ReceivedAt)}{item.StatementDate ? ` · Statement ${dateLabel(item.StatementDate)}` : ""}</small><p>{item.NeedsReview && item.Reasons?.length ? item.Reasons[0] : unmatchedReason(result)}</p></div>
+        <div><strong>{item.Provider || item.Subject || "Insurer record"}</strong><small>{item.Member && item.Member !== "unknown" ? `${item.Member} · ` : ""}{item.Insurer === "blue-cross" ? "Blue Cross" : item.Insurer === "desjardins" ? "Desjardins" : "Insurer unknown"} · {dateLabel(item.ServiceDate || item.ReceivedAt)}{item.StatementDate ? ` · Statement ${dateLabel(item.StatementDate)}` : ""}</small><p>{item.NeedsReview && item.Reasons?.length ? item.Reasons[0] : unmatchedReason(result)}</p>
+          {reviews.get(`unmatched:${item.Id}`) && <p className="privacy-note expense-warning">Second AI review: {reviews.get(`unmatched:${item.Id}`)!.explanation}{reviews.get(`unmatched:${item.Id}`)!.candidateId ? ` · Possible invoice: ${invoiceById.get(reviews.get(`unmatched:${item.Id}`)!.candidateId!)?.Provider || "see source"}` : ""}. Suggestion only; no automatic link.</p>}</div>
         <div className="unmatched-amount"><strong>{money(reimbursementAmount(item), item.Currency)}</strong><small>reimbursement</small></div>
         <button className="mini-button" onClick={() => googleBridge.openMessage(item.AccountEmail, item.InternetMessageId, item.SourceMessageId)}><ExternalLink size={14} /> Email</button>
       </article>)}

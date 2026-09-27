@@ -123,6 +123,13 @@ export type ReimbursementState = {
   ImportantMail?: ReimbursementItem[];
   LearningDecisions?: number;
   UnmatchedReimbursements?: UnmatchedReimbursement[];
+  AgentReviews?: AgentReview[];
+};
+
+export type AgentReview = {
+  key: string; signature: string; reviewedAt: string;
+  verdict: "possible-match" | "missing-evidence" | "duplicate-candidate" | "needs-human-review";
+  candidateId: string | null; confidence: number; explanation: string; evidenceIds: string[];
 };
 
 export type ReconciliationCase = {

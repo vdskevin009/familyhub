@@ -7,6 +7,7 @@ import { credentials, accessToken, gmail, normalizeMail, withAttachmentText, typ
 import { applyCorrection, classificationSchema, evidence, fingerprint, recordId, toInvoice, validateClassification, type Classification, type Correction, type Invoice, type Mail } from "./invoice-model.js";
 import { buildCleanupSuggestions, buildReconciliationSnapshot, recoverMissingDesjardinsExpenses } from "./reconciliation.js";
 import { blueCrossInvoices } from "./bluecross.js";
+import { reviewReconciliations, reviewTargets, codexReviewer, type AgentReview, type Reviewer } from "./agents.js";
 
 type Window = { after: number; before: number; page?: string };
 /** A learned category is a preference, never a replacement for freshly extracted facts. */
@@ -16,9 +17,9 @@ export function applyLearnedClassification(extracted: Classification, rule?: Cor
 }
 type AccountProgress = { through?: number; window?: Window; error?: string; lastSuccess?: string };
 type Decision = { id: string; itemId: string; type: "classification" | "status"; before: Partial<Invoice>; after: Partial<Invoice>; at: string; undoneAt?: string; correctionBefore?: Correction };
-type State = { items: Invoice[]; corrections: Correction[]; decisions: Decision[]; accounts: Record<string, AccountProgress>; lastAttempt?: string; lastSuccess?: string; error?: string };
+type State = { items: Invoice[]; corrections: Correction[]; decisions: Decision[]; reviews: AgentReview[]; accounts: Record<string, AccountProgress>; lastAttempt?: string; lastSuccess?: string; error?: string };
 const statePath = join(dataDirectory, "invoices.json");
-const empty = (): State => ({ items: [], corrections: [], decisions: [], accounts: {} });
+const empty = (): State => ({ items: [], corrections: [], decisions: [], reviews: [], accounts: {} });
 let state = empty();
 let busy = false;
 let mutation = Promise.resolve();
@@ -84,7 +85,7 @@ function edit(action: () => void | Promise<void>): Promise<void> {
 export async function initializeInvoices(): Promise<void> {
   try {
     const saved = JSON.parse(await readFile(statePath, "utf8")) as Partial<State>;
-    state = { ...empty(), ...saved, items: saved.items || [], corrections: saved.corrections || [], decisions: saved.decisions || [], accounts: saved.accounts || {} };
+    state = { ...empty(), ...saved, items: saved.items || [], corrections: saved.corrections || [], decisions: saved.decisions || [], reviews: saved.reviews || [], accounts: saved.accounts || {} };
     if (normalizeStoredMetadata()) await atomicJson(statePath, state);
   }
   catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw new Error("Invoice index is unreadable. Restore the index before collecting; it was not overwritten."); }
@@ -93,7 +94,10 @@ export async function invoiceSnapshot() {
   let accounts: { email: string; label: string }[] = [];
   try { accounts = (await credentials()).accounts.map(({ email, label }) => ({ email, label })); } catch { /* Visible setup-required status. */ }
   const reconciliation = buildReconciliationSnapshot(state.items);
+  const signatures = new Map(reviewTargets(state.items, reconciliation).map(target => [target.key, target.signature]));
+  const reviews = state.reviews.filter(item => signatures.get(item.key) === item.signature);
   return { items: state.items, reconciliations: reconciliation.cases, unmatchedReimbursements: reconciliation.unmatched, diagnostics: reconciliation.diagnostics,
+    agentReviews: reviews,
     cleanupSuggestions: buildCleanupSuggestions(state.items, state.corrections),
     importantMail: state.items.filter(item => item.AttentionLevel && item.AttentionLevel !== "none" && item.Status !== 4)
       .sort((a, b) => attentionRank[b.AttentionLevel] - attentionRank[a.AttentionLevel] || Date.parse(b.ReceivedAt) - Date.parse(a.ReceivedAt)),
@@ -218,11 +222,11 @@ export async function classify(mail: Mail, email: string, label = email, diagnos
   }
 }
 
-type CollectionDependencies = { credentials: typeof credentials; accessToken: typeof accessToken; gmail: typeof gmail; classify: typeof classify };
+type CollectionDependencies = { credentials: typeof credentials; accessToken: typeof accessToken; gmail: typeof gmail; classify: typeof classify; reviewer: Reviewer };
 export async function collectInvoices(overrides: Partial<CollectionDependencies> = {}): Promise<void> {
   if (busy) throw new Error("Invoice collection is already running.");
   busy = true;
-  const dependencies: CollectionDependencies = { credentials, accessToken, gmail, classify, ...overrides };
+  const dependencies: CollectionDependencies = { credentials, accessToken, gmail, classify, reviewer: codexReviewer, ...overrides };
   try {
     await edit(() => { state.lastAttempt = new Date().toISOString(); state.error = undefined; });
     const accounts = (await dependencies.credentials()).accounts;
@@ -297,6 +301,10 @@ export async function collectInvoices(overrides: Partial<CollectionDependencies>
       if (complete) state.lastSuccess = new Date().toISOString();
       else state.error = "Some accounts are incomplete. Check account status; the next run resumes unfinished work.";
     });
+    // The collector indexes evidence; the reconciler remains deterministic. The reviewer only
+    // suggests explanations for uncertain cases and cannot mutate any financial assignment.
+    const reviews = await reviewReconciliations(state.items, state.reviews, dependencies.reviewer);
+    await edit(() => { state.reviews = reviews; });
   } catch (error) {
     await edit(() => { state.error = error instanceof Error ? error.message : "Collection failed."; });
     throw error;

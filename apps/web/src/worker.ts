@@ -1,4 +1,4 @@
-import { CleanupSuggestion, ReconciliationCase, ReimbursementItem, ResearchWatch, UnmatchedReimbursement, WorkerConfig, WorkerTask, WorkerTaskType } from "./types";
+import { AgentReview, CleanupSuggestion, ReconciliationCase, ReimbursementItem, ResearchWatch, UnmatchedReimbursement, WorkerConfig, WorkerTask, WorkerTaskType } from "./types";
 
 function endpoint(config: WorkerConfig, path: string): string {
   const base = config.Endpoint.trim().replace(/\/$/, "");
@@ -32,6 +32,7 @@ export type InvoiceSnapshot = {
   reconciliations: ReconciliationCase[]; cleanupSuggestions: CleanupSuggestion[];
   importantMail: ReimbursementItem[];
   unmatchedReimbursements: UnmatchedReimbursement[];
+  agentReviews?: AgentReview[];
   diagnostics?: { totalExpenses: number; fullyReimbursed: number; waitingPrimary: number; waitingSecondary: number; patientBalance: number; needsAttention: number; unmatchedInsurerRecords: number; duplicateCandidates: number; missingServiceDates: number; unknownMembers: number; patientAsProvider: number; amountsReconstructed: number; insurerPaymentsOverBilled: number; contradictoryEvidence: number; averageMatchConfidence: number };
   learning: { decisions: number; undoable: Array<{ id: string; itemId: string; type: string; at: string }> };
   accounts: { email: string; label: string }[];
@@ -55,6 +56,7 @@ export async function fetchInvoices(config: WorkerConfig): Promise<InvoiceSnapsh
     cleanupSuggestions: Array.isArray(raw.cleanupSuggestions) ? raw.cleanupSuggestions : [],
     importantMail: Array.isArray(raw.importantMail) ? raw.importantMail : [],
     unmatchedReimbursements: Array.isArray(raw.unmatchedReimbursements) ? raw.unmatchedReimbursements : [],
+    agentReviews: Array.isArray(raw.agentReviews) ? raw.agentReviews : [],
     diagnostics: raw.diagnostics,
     learning,
     accounts: Array.isArray(raw.accounts) ? raw.accounts : [],
