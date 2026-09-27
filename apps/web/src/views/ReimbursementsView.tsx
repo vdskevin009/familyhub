@@ -98,8 +98,8 @@ export default function ReimbursementsView({ hub }: Props) {
         - dateValue(a.item.ServiceDate || a.item.StatementDate || a.item.ReceivedAt));
     const cad = cases.filter(item => !item.PreviouslyFound && (item.Currency || "CAD") === "CAD");
     const totalPaid = cad.reduce((sum, item) => sum + (item.OriginalAmount ?? 0), 0);
-    const primary = cad.reduce((sum, item) => sum + primaryReimbursementAmount(item), 0);
-    const secondary = cad.reduce((sum, item) => sum + secondaryReimbursementAmount(item), 0);
+    const primary = cad.reduce((sum, item) => sum + (primaryReimbursementAmount(item) ?? 0), 0);
+    const secondary = cad.reduce((sum, item) => sum + (secondaryReimbursementAmount(item) ?? 0), 0);
     const outstanding = cad.reduce((sum, item) => sum + (item.PotentialRemaining ?? 0), 0);
     const attention = cases.filter(item => !item.PreviouslyFound && reimbursementCaseStatus(item) !== "fully-reimbursed").length + unmatched.length;
     const warnings = [...new Set(hub.reimbursements.Items.filter(item => item.Status !== 4).map(item => item.ImportWarning).filter(Boolean))];
@@ -111,8 +111,8 @@ export default function ReimbursementsView({ hub }: Props) {
   const filterCounts = useMemo(() => ({
     fully: model.cases.filter(item => reimbursementCaseStatus(item) === "fully-reimbursed").length,
     outstanding: model.cases.filter(item => reimbursementCaseStatus(item) !== "fully-reimbursed").length,
-    primary: model.cases.filter(item => primaryReimbursementAmount(item) > 0).length,
-    secondary: model.cases.filter(item => secondaryReimbursementAmount(item) > 0).length
+    primary: model.cases.filter(item => (primaryReimbursementAmount(item) ?? 0) > 0).length,
+    secondary: model.cases.filter(item => (secondaryReimbursementAmount(item) ?? 0) > 0).length
   }), [model.cases]);
 
   const filteredCases = useMemo(() => filterInvoiceHistoryCases(model.cases, filters), [filters, model.cases]);

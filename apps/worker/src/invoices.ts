@@ -17,7 +17,7 @@ export function applyLearnedClassification(extracted: Classification, rule?: Cor
 }
 export const invoiceHistoryStart = Math.floor(Date.parse("2025-06-01T00:00:00-07:00") / 1000) - 1;
 export const invoiceHistoryVersion = 1;
-export const healthReceiptRepairVersion = 2;
+export const healthReceiptRepairVersion = 3;
 const invoiceSignals = '{receipt invoice facture reçu recu reimbursement remboursement claim statement "payment confirmation" "amount due" "explanation of benefits" "blue cross" "croix bleue" desjardins has:attachment}';
 const invoiceExclusions = '-in:spam -in:trash -in:sent -in:drafts -from:notifications@github.com';
 type AccountProgress = { through?: number; window?: Window; error?: string; lastSuccess?: string; healthReceiptRepairVersion?: number; healthReceiptRepairPage?: string;
