@@ -199,8 +199,9 @@ test('an 85%-confidence reviewed expense can reconcile only through exact determ
     [{ DocumentId: conflictingService.Id, Reason: 'no-expense-match' }]);
 
   const reviewedStatement = { ...statement, Id: 'desjardins-needs-review', NeedsReview: true };
-  assert.deepEqual(buildReconciliationSnapshot([expense, reviewedStatement]).unmatched,
-    [{ DocumentId: reviewedStatement.Id, Reason: 'needs-review' }]);
+  const reviewedSnapshot = buildReconciliationSnapshot([expense, reviewedStatement]);
+  assert.equal(reviewedSnapshot.unmatched.length, 0, 'source review alone does not erase a singular supported match');
+  assert.equal(reviewedSnapshot.cases[0].MatchAssignments[0].Verification, 'review-recommended');
 });
 
 test('singular lower-confidence matches stay matched and expose match confidence for confirmation', () => {
