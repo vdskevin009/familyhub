@@ -150,3 +150,12 @@ test('collection resumes an interrupted page, deduplicates, preserves manual cor
     assert.ok(saved.accounts['test@example.test'].through);
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
+
+test('a past clinic receipt is recovered after the Gmail watermark and appears once', async () => {
+  const { spawnSync } = await import('node:child_process');
+  const dir = await mkdtemp(join(tmpdir(), 'familyhub-receipt-repair-'));
+  try {
+    const result = spawnSync(process.execPath, ['tests/fixtures/receipt-repair-runner.mjs'], { cwd: process.cwd(), env: { ...process.env, FAMILYHUB_WORKER_DATA: dir }, encoding: 'utf8' });
+    assert.equal(result.status, 0, result.stderr || result.stdout);
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
