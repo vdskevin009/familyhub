@@ -137,6 +137,16 @@ export type AgentReview = {
   candidateId: string | null; confidence: number; explanation: string; evidenceIds: string[];
 };
 
+export type MatchAssignment = {
+  ExpenseDocumentId: string;
+  ReimbursementDocumentId: string;
+  Insurer?: "desjardins" | "blue-cross" | null;
+  Confidence: number;
+  Verification: "auto" | "review-recommended" | "confirmed-manually";
+  Evidence: string[];
+  ConfirmedAt?: string;
+};
+
 export type ReconciliationCase = {
   ServiceType?: string | null;
   Id: string; Member: "Kevin" | "Jasmine" | "Nathan" | "unknown"; Provider: string; ServiceDate: string | null;
@@ -150,6 +160,8 @@ export type ReconciliationCase = {
   Action: "review-amount" | "submit-primary" | "submit-secondary" | "verify-balance" | "complete";
   Status?: "fully-reimbursed" | "waiting-primary" | "waiting-secondary" | "patient-balance" | "needs-attention";
   Summary: string; Confidence: number; DocumentIds: string[];
+  MatchConfidence?: number;
+  MatchAssignments?: MatchAssignment[];
 };
 
 export type UnmatchedReimbursement = {
