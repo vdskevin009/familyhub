@@ -192,9 +192,10 @@ test('an 85%-confidence reviewed expense can reconcile only through exact determ
   assert.deepEqual(blocked.unmatched, [{ DocumentId: statement.Id, Reason: 'no-expense-match' }]);
   assert.equal(blocked.cases[0].Status, 'needs-attention');
 
+  const expenseWithService = { ...expense, Healthcare: { ...expense.Healthcare, ServiceType: 'Massage therapy' } };
   const conflictingService = { ...statement, Id: 'desjardins-reviewed-conflict',
     Provider: 'Desjardins · Physiotherapy', Healthcare: { ...statement.Healthcare, ServiceType: 'Physiotherapy' } };
-  assert.deepEqual(buildReconciliationSnapshot([expense, conflictingService]).unmatched,
+  assert.deepEqual(buildReconciliationSnapshot([expenseWithService, conflictingService]).unmatched,
     [{ DocumentId: conflictingService.Id, Reason: 'no-expense-match' }]);
 
   const reviewedStatement = { ...statement, Id: 'desjardins-needs-review', NeedsReview: true };
