@@ -5,8 +5,8 @@ import { googleBridge } from "../google";
 import { buildInvoiceHistoryCases, filterInvoiceHistoryCases, healthcareTitle, mergeInvoiceItems, mergeReconciliationHistory, primaryReimbursementAmount, reimbursementCaseStatus, secondaryReimbursementAmount } from "../invoice-state";
 import type { InvoiceHistoryFilter, ReimbursementCaseStatus } from "../invoice-state";
 import type { HubState } from "../state";
-import type { ReconciliationCase, ReimbursementItem, UnmatchedReimbursement } from "../types";
-import { fetchInvoices, setExpenseIgnored } from "../worker";
+import type { MatchAssignment, ReconciliationCase, ReimbursementItem, UnmatchedReimbursement } from "../types";
+import { fetchInvoices, setExpenseIgnored, setMatchDecision } from "../worker";
 
 type Props = { hub: HubState };
 const statusCopy: Record<ReimbursementCaseStatus, string> = {
@@ -46,6 +46,7 @@ export default function ReimbursementsView({ hub }: Props) {
   const [lastSuccess, setLastSuccess] = useState("");
   const [savingId, setSavingId] = useState("");
   const [savedMessage, setSavedMessage] = useState("");
+  const [expandedMatchId, setExpandedMatchId] = useState("");
   const [filters, setFilters] = useState<Set<InvoiceHistoryFilter>>(() => new Set());
   const paired = Boolean(hub.worker.Endpoint.trim() && hub.worker.ApiKey.trim());
 
@@ -75,6 +76,20 @@ export default function ReimbursementsView({ hub }: Props) {
   }
 
   useEffect(() => { if (paired) void refresh(); }, [paired, hub.worker.Endpoint, hub.worker.ApiKey]);
+
+  async function decideMatch(assignment: MatchAssignment, decision: "confirmed" | "rejected") {
+    if (!paired || savingId) return;
+    const key = `match:${assignment.ReimbursementDocumentId}`;
+    setSavingId(key); setError(""); setSavedMessage("");
+    try {
+      await setMatchDecision(hub.worker, assignment.ReimbursementDocumentId, assignment.ExpenseDocumentId, decision);
+      await refresh();
+      setSavedMessage(decision === "confirmed"
+        ? "Match confirmed manually. FamilyHub will keep this association across future refreshes."
+        : "Match rejected. FamilyHub will not recreate this same pairing automatically.");
+    } catch (err) { setError(err instanceof Error ? err.message : "The match decision could not be saved. Refresh and try again."); }
+    finally { setSavingId(""); }
+  }
 
   async function ignoreExpense(item: ReconciliationCase, ignored: boolean) {
     if (!paired || savingId) return;
@@ -189,6 +204,13 @@ export default function ReimbursementsView({ hub }: Props) {
       <div className="expense-list">
         {filteredCases.map(item => {
           const status = reimbursementCaseStatus(item);
+          const matchAssignments = item.MatchAssignments ?? [];
+          const matchConfidence = matchAssignments.length
+            ? Math.round(item.MatchConfidence ?? Math.min(...matchAssignments.map(match => match.Confidence)))
+            : null;
+          const manuallyConfirmed = matchAssignments.length > 0 && matchAssignments.every(match => match.Verification === "confirmed-manually");
+          const reviewRecommended = matchAssignments.some(match => match.Verification === "review-recommended");
+          const matchExpanded = expandedMatchId === item.Id;
           return <article className="expense-card" key={item.Id}>
             <div className="expense-heading">
               <div><strong>{healthcareTitle(item)}</strong><small>{item.Member === "unknown" ? "Person to confirm" : item.Member}{item.ServiceType && healthcareTitle(item) !== item.ServiceType ? ` · ${item.ServiceType}` : ""}{item.ServiceDate ? ` · ${dateLabel(item.ServiceDate)}` : invoiceById.get(item.DocumentIds[0])?.ReceivedAt ? ` · Received ${dateLabel(invoiceById.get(item.DocumentIds[0])!.ReceivedAt)}` : " · Date missing"}</small></div>
@@ -200,11 +222,41 @@ export default function ReimbursementsView({ hub }: Props) {
               <div><small>{item.SecondaryInsurer || "Secondary"}</small><strong>{money(secondaryReimbursementAmount(item), item.Currency)}</strong></div>
               <div className="remaining"><small>Remaining</small><strong>{money(item.PotentialRemaining, item.Currency)}</strong></div>
             </div>
+            {matchAssignments.length > 0 && <div className="match-summary">
+              <button type="button" className={`match-confidence-button ${reviewRecommended ? "review" : manuallyConfirmed ? "confirmed" : ""}`}
+                aria-expanded={matchExpanded} onClick={() => setExpandedMatchId(matchExpanded ? "" : item.Id)}>
+                <CheckCircle2 size={15} />
+                <span>Matched · {matchConfidence}%</span>
+                {manuallyConfirmed && <small>Confirmed manually</small>}
+                {!manuallyConfirmed && reviewRecommended && <small>Review</small>}
+              </button>
+              {matchExpanded && <div className="match-details">
+                <div className="match-details-heading"><strong>Why FamilyHub matched this</strong><span>Match confidence is separate from document extraction confidence.</span></div>
+                {matchAssignments.map(match => {
+                  const reimbursement = invoiceById.get(match.ReimbursementDocumentId);
+                  const isSaving = savingId === `match:${match.ReimbursementDocumentId}`;
+                  return <div className="match-detail-row" key={match.ReimbursementDocumentId}>
+                    <div className="match-detail-main">
+                      <div><strong>{match.Insurer === "desjardins" ? "Desjardins" : match.Insurer === "blue-cross" ? "Blue Cross" : reimbursement?.Provider || "Insurer record"}</strong>
+                        <span>{Math.round(match.Confidence)}% match{match.Verification === "confirmed-manually" ? " · Confirmed manually" : match.Verification === "review-recommended" ? " · Review recommended" : " · Auto-matched"}</span></div>
+                      <strong>{money(reimbursementAmount(reimbursement ?? {} as ReimbursementItem), reimbursement?.Currency || item.Currency)}</strong>
+                    </div>
+                    <div className="match-evidence">{match.Evidence.map((evidence, index) => <span key={index}>✓ {evidence}</span>)}</div>
+                    <div className="match-actions">
+                      {match.Verification === "review-recommended" && <button type="button" className="mini-button" disabled={!paired || !!savingId || busy}
+                        onClick={() => void decideMatch(match, "confirmed")}>{isSaving ? "Saving…" : "Confirm match"}</button>}
+                      <button type="button" className="mini-button subtle" disabled={!paired || !!savingId || busy}
+                        onClick={() => void decideMatch(match, "rejected")}>{isSaving ? "Saving…" : "Reject match"}</button>
+                    </div>
+                  </div>;
+                })}
+              </div>}
+            </div>}
             {!!item.UnallocatedReimbursedAmount && <p className="privacy-note expense-warning">Known payments: {money(item.UnallocatedReimbursedAmount, item.Currency)} · insurer order to confirm</p>}
             {item.PreviouslyFound && <p className="privacy-note expense-warning">{item.Unreconciled
               ? "Indexed invoice without a reconciliation case. Check the source before relying on its amounts or reimbursement status."
               : "Previously found invoice; the latest PC result did not include it. Check the source before relying on its amounts or reimbursement status."}</p>}
-            <div className="expense-note"><span>{item.Summary}</span><small>Match confidence {Math.round(item.Confidence)}%</small></div>
+            <div className="expense-note"><span>{item.Summary}</span><small>{matchAssignments.length ? `${matchAssignments.length} matched insurer record${matchAssignments.length === 1 ? "" : "s"}` : `Source confidence ${Math.round(item.Confidence)}%`}</small></div>
             {item.Status === "needs-attention" && item.DocumentIds[0] && reviews.get(`case:${item.DocumentIds[0]}`) &&
               <p className="privacy-note expense-warning">Second AI review: {reviews.get(`case:${item.DocumentIds[0]}`)!.explanation} · Suggestion only; check the source documents.</p>}
             <div className="expense-actions">
