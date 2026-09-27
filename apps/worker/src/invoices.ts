@@ -310,7 +310,7 @@ export async function collectInvoices(overrides: Partial<CollectionDependencies>
           const mail = await withAttachmentText(normalized, token, callGmail);
           const { result, source } = await (historical ? dependencies.historicalClassify : dependencies.classify)(mail, key, account.label);
           const item = toInvoice(mail, key, account.label, result, source);
-          if (historical && item.Status !== 4) {
+          if (historical) {
             item.HistoricalCandidate = true;
             item.ServiceDate = item.Healthcare?.ServiceDate || item.ServiceDate;
           }
