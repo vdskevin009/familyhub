@@ -7,7 +7,7 @@
 - **Repository:** `vdskevin009/familyhub`
 - **Default branch:** `main`
 - **Baseline verified:** 2026-09-26
-- **Code reference:** `d85650e104075b08f58516ee147b7cb896f26687`
+- **Code reference:** `a25e7f81f58c1796646fe276f148e01ab14ac1d4`
 - **Baseline evidence:** current repository implementation and README at the code reference above.
 
 ## Requirement lifecycle
@@ -97,7 +97,7 @@ Rules:
 
 | ID | Requirement | Status | Implementation notes |
 |---|---|---|---|
-| FH-REIMB-013 | Audit potential invoice messages from June 1, 2025 for every connected PC account, including archived and attachment-only messages, independently of the incremental watermark. Preserve resume cursors and expose coverage honestly. | Implemented | Issue #28; versioned frozen historical window, paginated Gmail search, sequential daily-run continuation, and coverage in Reimbursements. Historical intake indexes deterministic candidates and readable evidence before optional AI work; incremental collection retains Codex classification. Completion proves query traversal, not recognition of every invoice or insurance eligibility. Sent, Drafts, Spam, Trash and GitHub notifications remain excluded. Unreadable/image-only/oversize attachments require review. Live completeness remains to verify. |
+| FH-REIMB-013 | Audit potential invoice messages from June 1, 2025 for every connected PC account, including archived and attachment-only messages, independently of the incremental watermark. Preserve resume cursors and expose coverage honestly. | Implemented | Issue #28; versioned frozen historical window, paginated Gmail search, sequential daily-run continuation, and coverage in Reimbursements. Historical intake indexes deterministic candidates and readable evidence before optional AI work; incremental collection retains Codex classification. Completion proves query traversal, not recognition of every invoice or insurance eligibility. Sent, Drafts, Spam, Trash and GitHub notifications remain excluded. Unreadable/image-only/oversize attachments require review. Live source completeness requires a separate source-ID comparison; acceptance is tracked in #28. |
 | FH-REIMB-014 | Allow a reimbursement expense to be ignored and restored in the app; persist the exact grouped-source decision on the PC across collection and restarts without training a provider-wide exclusion. Keep evidence and remove ignored expenses from attention/totals. | Implemented | Atomic authenticated case action, per-document IgnoredAt, exact duplicate inheritance and collapsed Ignored expenses with Restore. Original statuses and sources remain stored. |
 | FH-TECH-004 | Do not persist Gmail prompts, personal amounts or private identifiers in diagnostic logs from invoice classification/review. | Implemented | Private Codex CLI uses stdin and --ephemeral; stdout parsed in memory, stderr discarded, generic failures only. No new paid API. |
 
@@ -113,6 +113,7 @@ Rules:
 | 2026-09-26 | Baseline current requirements against commit `d85650e104075b08f58516ee147b7cb896f26687`. | Accepted |
 | 2026-09-26 | Adopt a local AI-agent runner as the initial automation direction for reimbursement collection/reconciliation, using deterministic code plus specialized Codex/OpenAI reasoning agents before introducing a separately billed hosted Agents API. | Accepted |
 | 2026-09-26 | Preserve historical invoice visibility across incomplete rescans, with stale results clearly marked and excluded from live totals. | Accepted |
+| 2026-09-26 | Align code reference with worker 2.5.3 at `a25e7f81f58c1796646fe276f148e01ab14ac1d4`: June history, exact Ignore/Restore, private analysis and Gmail quota recovery. Windows update/build and targeted restart preserved protected files, indexed sources and corrections; 37 synthetic tests plus worker/web builds and .NET CI passed. Paired-app acceptance remains open in #25/#28. | Implemented |
 
 ## Maintenance checklist
 
