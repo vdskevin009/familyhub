@@ -3,8 +3,11 @@ import test from "node:test";
 import {
   buildInvoiceHistoryCases,
   filterInvoiceHistoryCases,
+  filterReimbursementWorkflowCases,
   mergeInvoiceItems,
   mergeReconciliationHistory,
+  reimbursementWorkflowStatus,
+  reimbursementWorkflowSummary,
   unreconciledInvoiceCases
 } from "../apps/web/src/invoice-state.ts";
 import {
@@ -130,4 +133,26 @@ test("invoice history survives sorting, temporary filters, reconciliation refres
     september17.Id
   ]);
   assert.equal(afterPartialSnapshot.length, 3);
+});
+
+
+test("workflow summaries are person-scoped and exclude Closed/Ignore from recoverable totals", () => {
+  const kevinOpenInvoice = invoice("kevin-open", "2026-09-26", { Member: "Kevin" });
+  const kevinClosedInvoice = invoice("kevin-closed", "2026-09-25", { Member: "Kevin" });
+  const jasmineIgnoredInvoice = invoice("jasmine-ignore", "2026-09-24", { Member: "Jasmine" });
+  const nathanOpenInvoice = invoice("nathan-open", "2026-09-23", { Member: "Nathan" });
+
+  const cases = [
+    reconciliation(kevinOpenInvoice, { WorkflowStatus: "open", WorkflowOrigin: "automatic", PotentialRemaining: 38 }),
+    reconciliation(kevinClosedInvoice, { WorkflowStatus: "closed", WorkflowOrigin: "manual", PotentialRemaining: 50 }),
+    reconciliation(jasmineIgnoredInvoice, { WorkflowStatus: "ignore", WorkflowOrigin: "manual", PotentialRemaining: 75 }),
+    reconciliation(nathanOpenInvoice, { WorkflowStatus: "open", WorkflowOrigin: "automatic", PotentialRemaining: null })
+  ];
+
+  assert.deepEqual(reimbursementWorkflowSummary(cases, "all"), { open: 2, potentiallyRecoverable: 38 });
+  assert.deepEqual(reimbursementWorkflowSummary(cases, "Kevin"), { open: 1, potentiallyRecoverable: 38 });
+  assert.deepEqual(reimbursementWorkflowSummary(cases, "Jasmine"), { open: 0, potentiallyRecoverable: 0 });
+  assert.deepEqual(filterReimbursementWorkflowCases(cases, "Kevin", "all").map(item => item.DocumentIds[0]), ["kevin-open", "kevin-closed"]);
+  assert.deepEqual(filterReimbursementWorkflowCases(cases, "all", "ignore").map(item => item.DocumentIds[0]), ["jasmine-ignore"]);
+  assert.equal(reimbursementWorkflowStatus(reconciliation(invoice("legacy-closed", "2026-09-22"), { Status: "fully-reimbursed", Action: "complete" })), "closed");
 });

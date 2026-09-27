@@ -1,4 +1,4 @@
-import { ReconciliationCase, ReimbursementCategory, ReimbursementItem, ReimbursementStatus } from "./types";
+import { ReconciliationCase, ReimbursementCategory, ReimbursementItem, ReimbursementStatus, ReimbursementWorkflowStatus } from "./types";
 
 /** A patient is shown separately; an unknown clinic uses the documented service title. */
 export function healthcareTitle(item: { Provider?: string | null; ServiceType?: string | null }): string {
@@ -98,6 +98,27 @@ export function unreconciledInvoiceCases(cases: ReconciliationCase[], items: Rei
 
 export type InvoiceHistoryFilter = "fully-reimbursed" | "not-fully-reimbursed" | "primary" | "secondary";
 export type ReimbursementCaseStatus = NonNullable<ReconciliationCase["Status"]>;
+export type ReimbursementPersonScope = "all" | "Kevin" | "Jasmine" | "Nathan";
+export type WorkflowStatusFilter = ReimbursementWorkflowStatus | "all";
+
+export function reimbursementWorkflowStatus(item: ReconciliationCase): ReimbursementWorkflowStatus {
+  if (item.WorkflowStatus) return item.WorkflowStatus;
+  return reimbursementCaseStatus(item) === "fully-reimbursed" ? "closed" : "open";
+}
+
+export function filterReimbursementWorkflowCases(cases: ReconciliationCase[], scope: ReimbursementPersonScope,
+  workflow: WorkflowStatusFilter): ReconciliationCase[] {
+  return cases.filter(item => (scope === "all" || item.Member === scope)
+    && (workflow === "all" || reimbursementWorkflowStatus(item) === workflow));
+}
+
+export function reimbursementWorkflowSummary(cases: ReconciliationCase[], scope: ReimbursementPersonScope): { open: number; potentiallyRecoverable: number } {
+  const openCases = cases.filter(item => (scope === "all" || item.Member === scope) && reimbursementWorkflowStatus(item) === "open");
+  return {
+    open: openCases.length,
+    potentiallyRecoverable: Math.round(openCases.reduce((sum, item) => sum + Math.max(0, item.PotentialRemaining ?? 0), 0) * 100) / 100
+  };
+}
 
 export function reimbursementCaseStatus(item: ReconciliationCase): ReimbursementCaseStatus {
   if (item.PreviouslyFound) return "needs-attention";
@@ -133,7 +154,7 @@ export function buildInvoiceHistoryCases(reconciliations: ReconciliationCase[], 
   const caseDate = (item: ReconciliationCase) => item.ServiceDate || byId.get(item.DocumentIds[0])?.ServiceDate
     || byId.get(item.DocumentIds[0])?.ReceivedAt;
   return [...reconciliations, ...unreconciledInvoiceCases(reconciliations, items)]
-    .filter(item => !item.DocumentIds.some(id => byId.get(id)?.IgnoredAt))
+    .filter(item => reimbursementWorkflowStatus(item) === "ignore" || !item.DocumentIds.some(id => byId.get(id)?.IgnoredAt))
     .sort((a, b) => invoiceHistoryDateValue(caseDate(b)) - invoiceHistoryDateValue(caseDate(a)) || a.Id.localeCompare(b.Id));
 }
 

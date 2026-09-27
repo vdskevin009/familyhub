@@ -147,9 +147,21 @@ export type MatchAssignment = {
   ConfirmedAt?: string;
 };
 
+export type ReimbursementWorkflowStatus = "open" | "closed" | "ignore";
+export type ReimbursementWorkflowOrigin = "automatic" | "manual";
+export type ReimbursementWorkflowHistoryEntry = {
+  Status: ReimbursementWorkflowStatus;
+  Origin: ReimbursementWorkflowOrigin;
+  At: string;
+  Reason?: "automatic-rule" | "manual-override" | "reset-to-automatic" | "legacy-ignore";
+};
+
 export type ReconciliationCase = {
   ServiceType?: string | null;
-  Id: string; Member: "Kevin" | "Jasmine" | "Nathan" | "unknown"; Provider: string; ServiceDate: string | null;
+  Id: string;
+  ExpenseDocumentId?: string;
+  ExpenseDocumentIds?: string[];
+  Member: "Kevin" | "Jasmine" | "Nathan" | "unknown"; Provider: string; ServiceDate: string | null;
   PreviouslyFound?: boolean;
   Unreconciled?: boolean;
   UnallocatedReimbursedAmount?: number;
@@ -162,6 +174,11 @@ export type ReconciliationCase = {
   Summary: string; Confidence: number; DocumentIds: string[];
   MatchConfidence?: number;
   MatchAssignments?: MatchAssignment[];
+  WorkflowStatus?: ReimbursementWorkflowStatus;
+  WorkflowOrigin?: ReimbursementWorkflowOrigin;
+  WorkflowChangedAt?: string;
+  AutomaticWorkflowStatus?: "open" | "closed";
+  WorkflowHistory?: ReimbursementWorkflowHistoryEntry[];
 };
 
 export type UnmatchedReimbursement = {

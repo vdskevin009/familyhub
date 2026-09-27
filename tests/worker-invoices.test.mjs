@@ -110,3 +110,97 @@ test('manual match confirmation and rejection persist across worker restarts', a
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+
+test('reimbursement workflow overrides persist, audit, ignore and reset to automatic', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'familyhub-workflow-decision-'));
+  const reservation = createServer(); reservation.listen(0, '127.0.0.1'); await once(reservation, 'listening');
+  const port = reservation.address().port; await new Promise(resolve => reservation.close(resolve));
+  await writeFile(join(dir, 'pairing-key.txt'), 'synthetic-workflow-key');
+  const common = {
+    AccountLabel: 'Test', AccountEmail: 'test@example.test', ThreadId: 'thread', InternetMessageId: '<workflow@example.test>',
+    Sender: 'Example', ReceivedAt: '2026-09-12T12:00:00Z', Category: 0, Status: 0, Currency: 'CAD',
+    Notes: '', Attachments: [], WorkerManaged: true, ReimbursementEligibility: 'possible',
+    ClassificationSource: 'rules', AmountSource: 'email-text', HasUnsubscribe: false,
+    AttentionLevel: 'none', AttentionReason: '', Fingerprint: 'workflow-synthetic', Reasons: ['Synthetic']
+  };
+  const expense = { ...common, Id: 'workflow-expense', SourceMessageId: 'workflow-expense-message', Subject: 'Clinic receipt',
+    Provider: 'Sample Clinic', Member: 'Kevin', DocumentRole: 'expense', DocumentType: 'receipt',
+    ServiceDate: '2026-09-12', BilledAmount: 100, DetectedAmount: 100, ReimbursedAmount: null,
+    Insurer: null, Confidence: 99, NeedsReview: false, Healthcare: { ServiceType: 'Physiotherapy', OriginalBilledAmount: 100 } };
+  const primary = { ...common, Id: 'workflow-primary', SourceMessageId: 'workflow-primary-message', Subject: 'Desjardins claim',
+    Provider: 'Desjardins · Physiotherapy', Member: 'Kevin', DocumentRole: 'insurer-statement', DocumentType: 'claim',
+    ServiceDate: '2026-09-12', BilledAmount: 100, DetectedAmount: 60, ReimbursedAmount: 60,
+    Insurer: 'desjardins', Confidence: 99, NeedsReview: false, Healthcare: { ServiceDate: '2026-09-12', ServiceType: 'Physiotherapy', SubmittedAmount: 100 } };
+  const secondary = { ...common, Id: 'workflow-secondary', SourceMessageId: 'workflow-secondary-message', Subject: 'Blue Cross claim',
+    Provider: 'Blue Cross · Physiotherapy', Member: 'Kevin', DocumentRole: 'insurer-statement', DocumentType: 'claim',
+    ServiceDate: '2026-09-12', BilledAmount: 100, DetectedAmount: 20, ReimbursedAmount: 20,
+    Insurer: 'blue-cross', Confidence: 99, NeedsReview: false, Healthcare: { ServiceDate: '2026-09-12', ServiceType: 'Physiotherapy', SubmittedAmount: 100 } };
+  const at = '2026-09-12T15:00:00.000Z';
+  await writeFile(join(dir, 'invoices.json'), JSON.stringify({
+    items: [expense, primary, secondary], corrections: [], decisions: [], reviews: [], accounts: {},
+    matchDecisions: [
+      { reimbursementId: 'workflow-primary', expenseId: 'workflow-expense', decision: 'confirmed', at, confidence: 99 },
+      { reimbursementId: 'workflow-secondary', expenseId: 'workflow-expense', decision: 'confirmed', at, confidence: 99 }
+    ]
+  }));
+
+  const headers = { 'x-familyhub-key': 'synthetic-workflow-key', Origin: 'https://vdskevin009.github.io' };
+  const jsonHeaders = { ...headers, 'Content-Type': 'application/json' };
+  let child;
+  const start = async () => {
+    child = spawn(process.execPath, ['apps/worker/dist/index.js'], { env: { ...process.env, FAMILYHUB_WORKER_PORT: String(port), FAMILYHUB_WORKER_DATA: dir, FAMILYHUB_WORKER_HOST: '127.0.0.1' }, stdio: ['ignore', 'pipe', 'pipe'] });
+    for (let i = 0; i < 80; i++) {
+      try { if ((await fetch(`http://127.0.0.1:${port}/health`, { headers })).ok) return; } catch {}
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+    throw new Error('worker did not start');
+  };
+  const stop = async () => {
+    if (!child) return;
+    const done = once(child, 'exit'); child.kill(); await done; child = undefined;
+  };
+  const snapshot = async () => (await fetch(`http://127.0.0.1:${port}/invoices`, { headers })).json();
+  const setWorkflow = (status) => fetch(`http://127.0.0.1:${port}/invoices/workflow/status`, {
+    method: 'POST', headers: jsonHeaders, body: JSON.stringify({ expenseId: 'workflow-expense', status })
+  });
+
+  try {
+    await start();
+    let state = await snapshot();
+    assert.equal(state.reconciliations.length, 1);
+    assert.equal(state.reconciliations[0].PotentialRemaining, 20);
+    assert.equal(state.reconciliations[0].WorkflowStatus, 'closed', 'both trusted insurer matches close automatically despite remaining balance');
+    assert.equal(state.reconciliations[0].WorkflowOrigin, 'automatic');
+
+    assert.equal((await setWorkflow('open')).status, 200);
+    state = await snapshot();
+    assert.equal(state.reconciliations[0].WorkflowStatus, 'open');
+    assert.equal(state.reconciliations[0].WorkflowOrigin, 'manual');
+    assert.ok(state.reconciliations[0].WorkflowChangedAt);
+    assert.ok(state.reconciliations[0].WorkflowHistory.some(entry => entry.Status === 'open' && entry.Origin === 'manual'));
+
+    await stop(); await start();
+    state = await snapshot();
+    assert.equal(state.reconciliations[0].WorkflowStatus, 'open', 'manual override survives restart');
+    assert.equal(state.reconciliations[0].WorkflowOrigin, 'manual');
+
+    assert.equal((await setWorkflow('ignore')).status, 200);
+    state = await snapshot();
+    assert.equal(state.reconciliations.length, 0);
+    assert.equal(state.ignoredExpenses.length, 1);
+    assert.equal(state.ignoredExpenses[0].WorkflowStatus, 'ignore');
+    assert.equal(state.ignoredExpenses[0].WorkflowOrigin, 'manual');
+
+    assert.equal((await setWorkflow('automatic')).status, 200);
+    state = await snapshot();
+    assert.equal(state.ignoredExpenses.length, 0);
+    assert.equal(state.reconciliations.length, 1);
+    assert.equal(state.reconciliations[0].WorkflowStatus, 'closed');
+    assert.equal(state.reconciliations[0].WorkflowOrigin, 'automatic');
+    assert.ok(state.reconciliations[0].WorkflowHistory.some(entry => entry.Reason === 'reset-to-automatic'));
+  } finally {
+    await stop();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
