@@ -118,7 +118,7 @@ export function extractHealthcareEvidence(mail: Mail, result: Classification): H
         if (serviceDate) {
           if (output.ServiceDate && output.ServiceDate !== serviceDate) output.Conflicts = [...(output.Conflicts || []), `ServiceDate differs from labelled appointment (${output.ServiceDate} vs ${serviceDate}).`];
           output.ServiceDate = serviceDate; output.FieldSources!.ServiceDate = source; output.FieldStates!.ServiceDate = "confirmed";
-          const service = row[4].split(/\s+(?:Dr\.\s|[A-Z][a-z]+\s+[A-Z][a-z]+\s+(?:RMT|DC|PT)\b)/)[0].trim().slice(0, 240);
+          const service = row[4].split(/\s+(?:Dr\.\s|[A-Z][a-z]+\s+[A-Z][a-z]+(?:\s+(?:RMT|DC|PT))?,?\s*License\b)/)[0].trim().slice(0, 240);
           output.ServiceType = service; output.FieldSources!.ServiceType = source; output.FieldStates!.ServiceType = "confirmed";
         }
       }
@@ -128,6 +128,17 @@ export function extractHealthcareEvidence(mail: Mail, result: Classification): H
   if (/qubecore/i.test(all)) { output.Provider = "QubeCore Sports & Rehab"; output.FieldSources!.Provider = /qubecore/i.test(mail.attachmentText || "") ? "attachment" : "email"; }
   output.Provider ||= receiptProvider(mail.subject);
   if (output.Provider && memberName(output.Provider) !== "unknown") output.Provider = null;
+  // Some Jane receipts label the final patient total after GST instead of "Amount not covered".
+  // This becomes a residual only when an explicit insurer adjustment also exists.
+  if (receiptProvider(mail.subject) && output.PatientBalance == null && output.AmountNotCovered == null
+    && Object.values(output.InsurerPayments || {}).some(validMoney)) {
+    for (const [source, text] of [["email", mail.text], ["attachment", mail.attachmentText || ""]] as const) {
+      const total = text.match(/\bGST\s*[:=]?\s*\$?\s*\d+\.\d{2}\s+(?:Payer\s+)?Total\s*[:=]?\s*\$?\s*(\d+\.\d{2})/i)?.[1];
+      if (total) {
+        output.PatientBalance = Number(total); output.FieldSources!.PatientBalance = source; output.FieldStates!.PatientBalance = "confirmed";
+      }
+    }
+  }
   const residual = output.PatientBalance ?? output.AmountNotCovered;
   if (residual != null) {
     if (receiptProvider(mail.subject) && output.AmountNotCovered != null) output.PatientBalance = output.AmountNotCovered;

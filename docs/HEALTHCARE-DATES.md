@@ -19,6 +19,7 @@ The attachment reader flattens PDF whitespace. The billed appointment row must s
 - Match normalized service/member/date/currency/amount evidence. Reject explicit service conflicts and ties. Group compatible copies by invoice identity, retaining all document IDs.
 - Use a uniquely linked primary statement to supply a missing gross amount for secondary matching, independent of input order. Preserve explicit zero payments and record supporting document IDs in evidence.
 - Receipt repair v4 searches the supported historical period, including forwarded receipts. Its versioned cursor resumes failures and resets obsolete query cursors. It preserves classification, eligibility, IDs, decisions and ignored records.
+- Where a Jane receipt gives an explicit insurer adjustment and the final patient total after GST, reconstruct the gross amount from those separate facts even without an `Amount not covered` label. A generic subtotal or unlabeled payment cannot establish it.
 - Collector/reconciler instructions carry the same rules for future runs. Private documents and diagnostic source text are not committed.
 
 ## Verification and limitations

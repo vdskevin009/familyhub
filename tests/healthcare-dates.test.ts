@@ -147,3 +147,16 @@ test("a linked statement with no paid amount stays unknown and cannot establish 
   assert.equal(entry.PotentialRemaining, null);
   assert.equal(entry.Status, "needs-attention");
 });
+
+test("an explicit insurer adjustment plus final total after GST proves the gross expense without Amount not covered", () => {
+  const source = { ...mail(), text: "Receipt in attachment", attachmentText:
+    "Example Clinic Receipt Items Details Tax Total July 16, 2026 - 1:15pm, Massage therapy Jane Example, License #TEST Invoice #EXAMPLE-16 $9.52 $200.00 Pacific Blue Cross Eligible amount: $140.00 -$6.66 -$140.00 GST $2.86 Total $60.00 Payments Visa - Kevin - $60.00 -$60.00" };
+  const item = receipt(source);
+  assert.equal(item.ServiceDate, "2026-07-16");
+  assert.equal(item.Healthcare.ServiceType, "Massage therapy");
+  assert.equal(item.Healthcare.PatientBalance, 60);
+  assert.equal(item.Healthcare.InsurerPayments["blue-cross"], 140);
+  assert.equal(item.BilledAmount, 200);
+  assert.equal(item.Healthcare.FieldStates.OriginalBilledAmount, "reconstructed");
+  assert.equal(buildReconciliationSnapshot([item]).cases[0].PotentialRemaining, 60);
+});
