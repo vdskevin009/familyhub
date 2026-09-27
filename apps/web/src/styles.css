@@ -219,6 +219,30 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 .expense-amounts .remaining { background: #f1f5ed; }
 .expense-note { display: flex; justify-content: space-between; gap: 18px; padding: 12px 18px; color: var(--muted); font-size: .8rem; line-height: 1.4; }
 .expense-note small { flex: 0 0 auto; }
+.match-summary { padding: 11px 18px 0; }
+.match-confidence-button {
+  border: 1px solid #cfe0d6; border-radius: 999px; background: #eef6f1; color: #2f6c53;
+  padding: 7px 10px; display: inline-flex; align-items: center; gap: 6px; cursor: pointer;
+  font-size: .76rem; font-weight: 850;
+}
+.match-confidence-button small { padding-left: 3px; color: #577268; font-size: .68rem; font-weight: 800; }
+.match-confidence-button.review { border-color: #ead5a8; background: #fff8e8; color: #805b0b; }
+.match-confidence-button.confirmed { border-color: #bed7c8; background: #e4f1e9; color: #286348; }
+.match-details {
+  margin-top: 10px; border: 1px solid var(--line); border-radius: 16px; overflow: hidden; background: white;
+}
+.match-details-heading { padding: 13px 14px; border-bottom: 1px solid var(--line); background: #f7f9f7; }
+.match-details-heading strong, .match-details-heading span { display: block; }
+.match-details-heading span { margin-top: 3px; color: var(--muted); font-size: .72rem; }
+.match-detail-row { padding: 14px; border-top: 1px solid var(--line); }
+.match-detail-row:first-of-type { border-top: 0; }
+.match-detail-main { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; }
+.match-detail-main > div strong, .match-detail-main > div span { display: block; }
+.match-detail-main > div span { margin-top: 3px; color: var(--muted); font-size: .72rem; }
+.match-evidence { display: grid; gap: 4px; margin-top: 10px; color: #53675f; font-size: .76rem; }
+.match-actions { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+.mini-button.subtle { background: #edf1ee; color: #40564e; }
+
 .reimbursement-status { display: inline-flex; align-items: center; gap: 5px; width: fit-content; border-radius: 999px; padding: 5px 9px; background: #e8ede9; color: #53675f; font-size: .7rem; font-weight: 800; white-space: nowrap; }
 .reimbursement-status.fully-reimbursed { background: #dfeee6; color: #2d7155; }
 .reimbursement-status.waiting-primary, .reimbursement-status.waiting-secondary { background: #e8ecf7; color: #465b86; }
@@ -485,6 +509,8 @@ label small { font-weight: 500; }
   .cleanup-row { grid-template-columns: 1fr; gap: 7px; }
   .important-mail-row { grid-template-columns: 1fr; gap: 8px; }
   .expense-heading, .expense-note { align-items: flex-start; flex-direction: column; }
+  .match-detail-main { flex-direction: column; }
+  .match-confidence-button { width: 100%; justify-content: center; }
   .unmatched-row { grid-template-columns: 1fr; }
   .unmatched-amount { text-align: left; }
   .inbox-leading { display: none; }
