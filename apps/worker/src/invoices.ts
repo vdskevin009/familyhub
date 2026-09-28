@@ -616,7 +616,7 @@ export async function setManualMatch(reimbursementId: unknown, expenseId: unknow
     if (!unmatched) throw new Error("This reimbursement is no longer unmatched. Refresh before assigning it.");
     const statement = state.items.find(item => item.Id === reimbursementId);
     const entry = snapshot.cases.find(item => item.ExpenseDocumentId === expenseId || item.ExpenseDocumentIds?.includes(expenseId));
-    if (!statement || statement.DocumentRole !== "insurer-statement") throw new Error("Reimbursement source not found.");
+    if (!statement || (statement.DocumentRole !== "insurer-statement" && statement.DocumentType !== "claim")) throw new Error("Reimbursement source not found.");
     if (!entry) throw new Error("Target expense not found. Refresh before assigning it.");
     if (statement.Member === "unknown" || entry.Member === "unknown" || statement.Member !== entry.Member)
       throw new Error("Manual matching requires the same known family member.");
@@ -642,7 +642,7 @@ export async function setUnmatchedIgnored(reimbursementId: unknown, ignored: unk
     throw new Error("Provide an unmatched reimbursement and an ignore flag.");
   await edit(() => {
     const source = state.items.find(item => item.Id === reimbursementId);
-    if (!source || source.DocumentRole !== "insurer-statement") throw new Error("Reimbursement source not found.");
+    if (!source || (source.DocumentRole !== "insurer-statement" && source.DocumentType !== "claim")) throw new Error("Reimbursement source not found.");
     if (ignored) {
       const snapshot = buildReconciliationSnapshot(activeReconciliationItems(), state.matchDecisions);
       const unmatched = snapshot.unmatched.find(item => item.DocumentId === reimbursementId);
