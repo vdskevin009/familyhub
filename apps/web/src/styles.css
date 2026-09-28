@@ -667,3 +667,90 @@ label small { font-weight: 500; }
   .workflow-history p { align-items: flex-start; flex-direction: column; gap: 1px; }
   .expense-status-stack { align-items: flex-start; }
 }
+
+
+/* Reimbursements: compact filter overlay */
+.reimbursement-filter-bar {
+  display: block;
+  padding: 9px 11px;
+  overflow: visible;
+}
+.reimbursement-filter-heading {
+  min-height: 40px;
+}
+.reimbursement-filter-summary {
+  display: flex; align-items: center; gap: 10px; min-width: 0;
+}
+.reimbursement-filter-summary > div { min-width: 0; }
+.reimbursement-filter-summary strong,
+.reimbursement-filter-summary > div > span { display: block; }
+.reimbursement-filter-summary strong { font-size: .82rem; line-height: 1.15; }
+.reimbursement-filter-summary > div > span {
+  margin-top: 2px; color: var(--muted); font-size: .68rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.workflow-status.all { background: #e8ede9; color: #53675f; }
+.reimbursement-filter-actions { display: flex; align-items: center; gap: 7px; flex: 0 0 auto; }
+.filter-toggle {
+  min-height: 38px; padding: 0 10px; border: 1px solid #cad7d0; border-radius: 12px;
+  background: rgba(255,255,255,.94); color: var(--ink); cursor: pointer;
+  display: inline-flex; align-items: center; gap: 7px; font-size: .76rem; font-weight: 850;
+}
+.filter-toggle:hover { border-color: #a8bdb2; }
+.filter-toggle-count {
+  min-width: 21px; height: 21px; padding: 0 6px; border-radius: 999px; display: grid; place-items: center;
+  background: var(--green); color: white; font-size: .66rem;
+}
+.filter-toggle-chevron { color: var(--muted); font-size: .76rem; }
+.reimbursement-filter-panel {
+  position: absolute; top: calc(100% + 8px); left: 0; right: 0; z-index: 30;
+  display: grid; gap: 12px; padding: 14px;
+  max-height: min(66vh, 520px); overflow-y: auto; overscroll-behavior: contain;
+  border: 1px solid rgba(198,211,203,.98); border-radius: 17px;
+  background: rgba(250,252,250,.985); box-shadow: 0 22px 48px rgba(24,49,40,.18);
+  backdrop-filter: blur(18px);
+}
+.reimbursement-filter-panel-footer {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding-top: 10px; border-top: 1px solid var(--line);
+}
+.reimbursement-filter-panel-footer > span { color: var(--muted); font-size: .68rem; line-height: 1.35; }
+.reimbursement-filter-panel-footer .mini-button { flex: 0 0 auto; }
+
+/* Keep the actions that matter visible without turning each reimbursement into a tall form. */
+.workflow-control {
+  margin-top: 8px; padding: 8px 9px;
+  grid-template-columns: minmax(0,1fr) minmax(155px,205px);
+}
+.match-summary { padding-top: 8px; }
+.workflow-history { margin-top: 6px; padding-top: 5px; }
+
+@media (max-width: 520px) {
+  .reimbursement-filter-bar { padding: 7px 8px; margin-inline: -2px; }
+  .reimbursement-filter-heading { min-height: 38px; gap: 8px; }
+  .reimbursement-filter-summary { gap: 7px; }
+  .reimbursement-filter-summary > div > span { display: none; }
+  .reimbursement-filter-summary strong { font-size: .76rem; }
+  .workflow-status { padding: 4px 8px; font-size: .66rem; }
+  .reimbursement-filter-actions { gap: 4px; }
+  .filter-clear { padding-inline: 4px; font-size: .68rem; }
+  .filter-toggle { min-height: 34px; padding-inline: 8px; border-radius: 10px; }
+  .reimbursement-filter-panel {
+    top: calc(100% + 6px); left: -2px; right: -2px; padding: 11px 10px; gap: 10px;
+    max-height: 68vh; border-radius: 15px;
+  }
+  .reimbursement-filter-panel-footer { align-items: flex-end; }
+  .reimbursement-filter-panel-footer > span { max-width: 28ch; }
+
+  .reimbursement-history .expense-heading { padding: 12px 12px 10px; }
+  .reimbursement-history .expense-amounts > div { padding: 10px 12px; }
+  .workflow-control {
+    margin: 7px 12px 0; padding: 7px 8px;
+    grid-template-columns: auto minmax(0,1fr); gap: 8px;
+  }
+  .workflow-control > div small { display: none; }
+  .workflow-control select { width: 100%; min-height: 34px; padding-block: 5px; }
+  .workflow-history { margin: 5px 12px 0; }
+  .match-summary { padding: 7px 12px 0; }
+  .match-confidence-button { width: auto; justify-content: flex-start; padding-block: 6px; }
+  .expense-note { padding: 9px 12px; font-size: .74rem; }
+}
