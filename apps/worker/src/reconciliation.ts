@@ -16,6 +16,8 @@ export type ReconciliationCase = {
   PrimaryReimbursedAmount: number | null;
   SecondaryInsurer: "Desjardins" | "Blue Cross" | null;
   SecondaryReimbursedAmount: number | null;
+  DesjardinsReimbursedAmount?: number | null;
+  BlueCrossReimbursedAmount?: number | null;
   PotentialRemaining: number | null;
   Currency: string;
   NextInsurer: "Desjardins" | "Blue Cross" | null;
@@ -394,19 +396,21 @@ export function buildReconciliationSnapshot(items: Invoice[], matchDecisions: Ma
       return rows.length && rows.every(item => item.ReimbursedAmount != null)
         ? rows.reduce((sum, item) => sum + item.ReimbursedAmount!, 0) : null;
     };
-    const matchedPrimary = knownPayment(order[0]);
-    const matchedSecondary = knownPayment(order[1]);
+    const insurerKnown = (insurer: "desjardins" | "blue-cross"): number | null => {
+      const matchedAmount = knownPayment(insurer);
+      return matched.some(item => item.Insurer === insurer) ? matchedAmount : evidence.InsurerPayments?.[insurer] ?? null;
+    };
+    const desjardinsKnown = insurerKnown("desjardins");
+    const blueCrossKnown = insurerKnown("blue-cross");
     const directPrimary = order[0] ? evidence.InsurerPayments?.[order[0]] ?? null : null;
     const directSecondary = order[1] ? evidence.InsurerPayments?.[order[1]] ?? null : null;
+    const primaryKnown = order[0] === "desjardins" ? desjardinsKnown : order[0] === "blue-cross" ? blueCrossKnown : null;
+    const secondaryKnown = order[1] === "desjardins" ? desjardinsKnown : order[1] === "blue-cross" ? blueCrossKnown : null;
     // A payment embedded in the provider receipt is the same insurer payment, not an extra reimbursement.
     // Prefer a matched insurer statement when one exists; otherwise use the explicit receipt adjustment.
-    const primaryKnown = matched.some(item => item.Insurer === order[0]) ? matchedPrimary : directPrimary;
-    const secondaryKnown = matched.some(item => item.Insurer === order[1]) ? matchedSecondary : directSecondary;
-    const primaryAmount = primaryKnown ?? 0;
-    const secondaryAmount = secondaryKnown ?? 0;
-    const otherMatched = matched.filter(item => !order.includes(item.Insurer as "desjardins" | "blue-cross"))
+    const otherMatched = matched.filter(item => !item.Insurer)
       .reduce((sum, item) => sum + (item.ReimbursedAmount ?? item.DetectedAmount ?? 0), 0);
-    const reimbursed = Math.round((primaryAmount + secondaryAmount + otherMatched) * 100) / 100;
+    const reimbursed = Math.round(((desjardinsKnown ?? 0) + (blueCrossKnown ?? 0) + otherMatched) * 100) / 100;
     const processedInsurers = new Set(evidence.ProcessedInsurers || []);
     const paymentsAfterResidual = matched.filter(item => item.Insurer && !processedInsurers.has(item.Insurer))
       .reduce((sum, item) => sum + (item.ReimbursedAmount ?? 0), 0);
@@ -465,9 +469,11 @@ export function buildReconciliationSnapshot(items: Invoice[], matchDecisions: Ma
       ServiceDate: expense.ServiceDate,
       OriginalAmount: original, ReimbursedAmount: reimbursed,
       PrimaryInsurer: order[0] ? insurerName(order[0]) : null,
-      PrimaryReimbursedAmount: primaryKnown ?? (explicitPrimaryProcessed || matched.some(item => item.Insurer === order[0]) ? null : 0),
+      PrimaryReimbursedAmount: order[0] ? primaryKnown ?? (explicitPrimaryProcessed || matched.some(item => item.Insurer === order[0]) ? null : 0) : null,
       SecondaryInsurer: order[1] ? insurerName(order[1]) : null,
-      SecondaryReimbursedAmount: secondaryKnown ?? (explicitSecondaryProcessed || matched.some(item => item.Insurer === order[1]) ? null : 0),
+      SecondaryReimbursedAmount: order[1] ? secondaryKnown ?? (explicitSecondaryProcessed || matched.some(item => item.Insurer === order[1]) ? null : 0) : null,
+      DesjardinsReimbursedAmount: desjardinsKnown,
+      BlueCrossReimbursedAmount: blueCrossKnown,
       UnallocatedReimbursedAmount: order.length ? otherMatched : reimbursed,
       PotentialRemaining: remaining,
       Currency: expense.Currency || "CAD", NextInsurer: next, Action: action, Summary: summary,

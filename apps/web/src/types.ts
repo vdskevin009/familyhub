@@ -168,6 +168,8 @@ export type ReconciliationCase = {
   OriginalAmount: number | null; ReimbursedAmount: number; PotentialRemaining: number | null; Currency: string;
   PrimaryInsurer?: "Desjardins" | "Blue Cross" | null; PrimaryReimbursedAmount?: number | null;
   SecondaryInsurer?: "Desjardins" | "Blue Cross" | null; SecondaryReimbursedAmount?: number | null;
+  DesjardinsReimbursedAmount?: number | null;
+  BlueCrossReimbursedAmount?: number | null;
   NextInsurer: "Desjardins" | "Blue Cross" | null;
   Action: "review-amount" | "submit-primary" | "submit-secondary" | "verify-balance" | "complete";
   Status?: "fully-reimbursed" | "waiting-primary" | "waiting-secondary" | "patient-balance" | "needs-attention";

@@ -139,6 +139,24 @@ export function secondaryReimbursementAmount(item: ReconciliationCase): number |
   return 0;
 }
 
+export function namedInsurerReimbursementAmount(item: ReconciliationCase, insurer: "Desjardins" | "Blue Cross",
+  itemsById?: ReadonlyMap<string, ReimbursementItem>): number | null {
+  const explicit = insurer === "Desjardins" ? item.DesjardinsReimbursedAmount : item.BlueCrossReimbursedAmount;
+  if (explicit != null) return explicit;
+  if (item.PrimaryInsurer === insurer && "PrimaryReimbursedAmount" in item) return item.PrimaryReimbursedAmount ?? null;
+  if (item.SecondaryInsurer === insurer && "SecondaryReimbursedAmount" in item) return item.SecondaryReimbursedAmount ?? null;
+  if (!itemsById) return null;
+  const insurerKey = insurer === "Desjardins" ? "desjardins" : "blue-cross";
+  const assignments = (item.MatchAssignments ?? []).filter(match => match.Insurer === insurerKey);
+  if (!assignments.length) return null;
+  const amounts = assignments.map(match => {
+    const reimbursement = itemsById.get(match.ReimbursementDocumentId);
+    return reimbursement?.ReimbursedAmount ?? reimbursement?.DetectedAmount ?? null;
+  });
+  if (amounts.some(amount => amount == null)) return null;
+  return Math.round(amounts.reduce<number>((sum, amount) => sum + (amount ?? 0), 0) * 100) / 100;
+}
+
 function invoiceHistoryDateValue(value: string | null | undefined): number {
   if (!value) return Number.NEGATIVE_INFINITY;
   const time = new Date(value).getTime();
