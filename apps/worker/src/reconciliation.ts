@@ -128,6 +128,10 @@ export function serviceKey(value: string): string | null {
 const service = (item: Invoice) => serviceKey(healthcareEvidence(item).ServiceType || item.ClaimedService || item.Provider);
 const submitted = (item: Invoice): number | null => healthcareEvidence(item).SubmittedAmount ?? item.BilledAmount;
 const sameMoney = (left: number | null | undefined, right: number | null | undefined) => left != null && right != null && Math.abs(left - right) < .005;
+const coordinatedBenefitsScore = 26;
+const ambiguousComplementaryScore = -2;
+const trustedInsurerSource = (item: Invoice) => item.StructuredSource === "blue-cross-portal"
+  || item.AccountLabel === "Local Desjardins import";
 const dateDistance = (left: string | null | undefined, right: string | null | undefined): number => {
   if (!left || !right) return Number.POSITIVE_INFINITY;
   const parse = (v: string) => Date.UTC(Number(v.slice(0, 4)), Number(v.slice(5, 7)) - 1, Number(v.slice(8, 10)));
@@ -342,6 +346,36 @@ export function buildReconciliationSnapshot(items: Invoice[], matchDecisions: Ma
     });
   }
 
+  // Conflicting service names are never synonyms. This exception requires two separately
+  // trusted insurer rows that exactly close one uniquely identified expense.
+  const complementaryScore = (expense: CanonicalExpense, statement: Invoice): number => {
+    const expenseService = service(expense); const statementService = service(statement);
+    const gross = healthcareEvidence(expense).OriginalBilledAmount ?? expense.BilledAmount;
+    const claimed = healthcareEvidence(statement).SubmittedAmount;
+    const paid = statement.ReimbursedAmount;
+    if (!expenseService || !statementService || expenseService === statementService
+      || expense.Member === "unknown" || expense.Member !== statement.Member
+      || !expense.ServiceDate || expense.ServiceDate !== statement.ServiceDate
+      || gross == null || claimed == null || paid == null || !sameMoney(claimed, gross)
+      || expense.Currency && statement.Currency && expense.Currency !== statement.Currency
+      || expense.NeedsReview || statement.NeedsReview || Math.min(expense.Confidence, statement.Confidence) < 80
+      || !trustedInsurerSource(statement)
+      || rejectedMatches.some(item => item.ReimbursementDocumentId === statement.Id)) return -1;
+    const sameGross = expenses.filter(item => item.Member === expense.Member && item.ServiceDate === expense.ServiceDate
+      && sameMoney(healthcareEvidence(item).OriginalBilledAmount ?? item.BilledAmount, gross));
+    const assigned = assignments.get(expense.Id) ?? [];
+    if (assigned.length !== 1) return -1;
+    const other = assigned[0];
+    const otherMatch = assignmentMeta.get(other.Id);
+    if (!other.Insurer || !statement.Insurer || other.Insurer === statement.Insurer
+      || other.ReimbursedAmount == null || !sameMoney(other.ReimbursedAmount + paid, gross)
+      || !trustedInsurerSource(other) || other.NeedsReview || other.Confidence < 80
+      || !otherMatch || otherMatch.Verification === "review-recommended"
+      || rejectedMatches.some(item => item.ReimbursementDocumentId === other.Id)) return -1;
+    if (sameGross.length !== 1 || sameGross[0].Id !== expense.Id) return ambiguousComplementaryScore;
+    return coordinatedBenefitsScore;
+  };
+
   // First resolve available evidence; a uniquely linked primary row can then supply the gross
   // amount required to match a secondary row. Two passes make source order irrelevant.
   for (let pass = 0; pass < 2; pass++) for (const statement of statements) {
@@ -355,10 +389,14 @@ export function buildReconciliationSnapshot(items: Invoice[], matchDecisions: Ma
         && submitted(item) != null && item.ReimbursedAmount != null
         && sameMoney(h.PatientBalance ?? h.AmountNotCovered, submitted(item)! - item.ReimbursedAmount));
       const scoringExpense = expense.BilledAmount == null && primary.length === 1 ? { ...expense, BilledAmount: submitted(primary[0]) } : expense;
-      return { expense, score: matchScore(scoringExpense, statement) };
+      const ordinaryScore = matchScore(scoringExpense, statement);
+      return { expense, score: ordinaryScore >= 0 ? ordinaryScore : complementaryScore(expense, statement) };
     }).sort((a, b) => b.score - a.score);
     const best = ranked[0];
     const runnerUp = ranked[1];
+    if (ranked.some(item => item.score === ambiguousComplementaryScore)) {
+      unmatchedReasons.set(statement.Id, "ambiguous-match"); continue;
+    }
     if (!best || best.score < 8) { unmatchedReasons.set(statement.Id, statement.NeedsReview ? "needs-review" : "no-expense-match"); continue; }
     if (runnerUp && runnerUp.score >= best.score - 1) { unmatchedReasons.set(statement.Id, "ambiguous-match"); continue; }
     assignments.set(best.expense.Id, [...(assignments.get(best.expense.Id) ?? []), statement]);
@@ -366,7 +404,9 @@ export function buildReconciliationSnapshot(items: Invoice[], matchDecisions: Ma
     assignmentMeta.set(statement.Id, {
       ExpenseDocumentId: best.expense.Id, ReimbursementDocumentId: statement.Id, Insurer: statement.Insurer,
       Confidence: confidence, Verification: confidence >= 90 ? "auto" : "review-recommended",
-      Evidence: matchEvidence(best.expense, statement)
+      Evidence: best.score === coordinatedBenefitsScore
+        ? [...matchEvidence(best.expense, statement), "Two trusted insurer payments exactly complete the unique expense despite conflicting service labels."]
+        : matchEvidence(best.expense, statement)
     });
     unmatchedReasons.delete(statement.Id);
   }

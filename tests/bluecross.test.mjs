@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { parseBlueCrossExport, blueCrossInvoices } from '../apps/worker/dist/bluecross.js';
 import { normalizeMail } from '../apps/worker/dist/gmail-client.js';
-import { buildReconciliationSnapshot, recoverMissingDesjardinsExpenses } from '../apps/worker/dist/reconciliation.js';
+import { buildReconciliationSnapshot, recoverMissingDesjardinsExpenses, serviceKey } from '../apps/worker/dist/reconciliation.js';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -67,12 +67,73 @@ test('coordinated submitted remainder is not the full expense; dependent insurer
   assert.equal(result.Status, 'needs-attention'); assert.equal(result.UnallocatedReimbursedAmount, 136.16);
 });
 test('social worker is not guessed equivalent to clinical counsellor; excess payments require review', () => {
+  assert.equal(serviceKey('Social Worker'), 'social-worker');
+  assert.equal(serviceKey('Conseiller clinique - Visite'), 'clinical-counsellor');
+  assert.notEqual(serviceKey('Social Worker'), serviceKey('Conseiller clinique - Visite'));
   const claims = documents(table([row('Jasmine Wing', 'Social Worker', 170, 68)]));
   assert.equal(buildReconciliationSnapshot([expense({ Provider: 'Conseiller clinique', BilledAmount: 170 }), ...claims]).unmatched.length, 1);
   const full = documents(table([row()]));
   const desj = { ...full[1], Id: 'desj', Insurer: 'desjardins', StructuredSource: undefined, ReimbursedAmount: 40 };
   const result = buildReconciliationSnapshot([expense(), ...full, desj]).cases[0];
   assert.equal(result.ReimbursedAmount, 120); assert.equal(result.Status, 'needs-attention');
+});
+
+test('exact complementary trusted payments match one expense despite conflicting insurer service labels', () => {
+  const source = expense({
+    Id: 'coordinated-expense', Member: 'Nathan', AccountLabel: 'Local Desjardins import',
+    Provider: 'Conseiller clinique - Visite', Subject: 'Clinical visit expense',
+    ServiceDate: '2026-03-12', BilledAmount: 170, DetectedAmount: 170, Healthcare: undefined,
+    ClaimedService: undefined, Confidence: 99, NeedsReview: false
+  });
+  const desjardins = {
+    ...source, Id: 'coordinated-desjardins', DocumentRole: 'insurer-statement', DocumentType: 'claim',
+    Insurer: 'desjardins', Provider: 'Desjardins · Conseiller clinique - Visite',
+    BilledAmount: null, DetectedAmount: 34, ReimbursedAmount: 34,
+    Notes: 'Submitted 170.00; paid 34.00;'
+  };
+  const blueCross = {
+    ...documents(table([row('Nathan Vanderstraeten', 'Social Worker', 170, 136)]))[1],
+    Id: 'coordinated-blue-cross', ServiceDate: source.ServiceDate
+  };
+
+  // Put the conflicting row first so the second matching pass has to use the assigned other insurer.
+  const matched = buildReconciliationSnapshot([source, blueCross, desjardins]);
+  assert.equal(matched.unmatched.length, 0);
+  assert.equal(matched.cases.length, 1);
+  const result = matched.cases[0];
+  assert.deepEqual([result.OriginalAmount, result.DesjardinsReimbursedAmount,
+    result.BlueCrossReimbursedAmount, result.PotentialRemaining], [170, 34, 136, 0]);
+  assert.equal(result.MatchAssignments.length, 2);
+  assert.equal(result.PrimaryInsurer, null);
+  assert.equal(result.SecondaryInsurer, null);
+  assert.equal(result.PrimaryReimbursedAmount, null);
+  assert.equal(result.SecondaryReimbursedAmount, null);
+  assert.match(result.MatchAssignments.find(item => item.ReimbursementDocumentId === blueCross.Id).Evidence.join(' '), /conflicting service labels/);
+
+  const shortPayment = buildReconciliationSnapshot([source, desjardins, { ...blueCross, ReimbursedAmount: 135, DetectedAmount: 135 }]);
+  assert.deepEqual(shortPayment.unmatched, [{ DocumentId: blueCross.Id, Reason: 'no-expense-match' }]);
+  assert.equal(shortPayment.cases[0].ReimbursedAmount, 34);
+
+  const noOtherInsurer = buildReconciliationSnapshot([source, blueCross]);
+  assert.deepEqual(noOtherInsurer.unmatched, [{ DocumentId: blueCross.Id, Reason: 'no-expense-match' }]);
+
+  const duplicate = { ...source, Id: 'same-date-same-gross-other-service', Provider: 'Massage therapy' };
+  const ambiguous = buildReconciliationSnapshot([source, duplicate, desjardins, blueCross]);
+  assert.equal(ambiguous.cases.length, 2);
+  assert.deepEqual(ambiguous.unmatched, [{ DocumentId: blueCross.Id, Reason: 'ambiguous-match' }]);
+
+  for (const blocked of [
+    { ...blueCross, NeedsReview: true },
+    { ...blueCross, Confidence: 70 },
+    { ...blueCross, StructuredSource: undefined },
+    { ...blueCross, BilledAmount: 169 },
+    { ...blueCross, Member: 'unknown' },
+    { ...blueCross, ServiceDate: '2026-03-13' }
+  ]) assert.ok(buildReconciliationSnapshot([source, desjardins, blocked]).unmatched.some(item => item.DocumentId === blueCross.Id));
+  const rejected = buildReconciliationSnapshot([source, desjardins, blueCross], [
+    { reimbursementId: blueCross.Id, expenseId: source.Id, decision: 'rejected', at: '2026-03-13T00:00:00Z' }
+  ]);
+  assert.deepEqual(rejected.unmatched, [{ DocumentId: blueCross.Id, Reason: 'no-expense-match' }]);
 });
 test('provider residual and legacy insurer-derived gross expense collapse into one canonical case', () => {
   const receipt = expense({
