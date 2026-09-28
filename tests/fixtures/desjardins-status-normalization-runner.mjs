@@ -45,6 +45,17 @@ const processed = {
   }, account, 'Kevin', statusClassification, 'rules'),
   HistoricalCandidate: true
 };
+const predetermination = {
+  ...toInvoice({
+    ...baseMail,
+    id: 'desjardins-predetermination',
+    subject: 'Your health or dental care predetermination has been processed',
+    receivedAt: '2025-07-04T15:05:13Z',
+    text: 'The explanation of benefits for your health or dental care predetermination is now available in the “Claims history” section of your secure site at www.desjardinslifeinsurance.com/planmember.',
+    attachments: [{ Id: 'logo', FileName: 'LogoAn.png', MimeType: 'image/png', Size: 100 }]
+  }, account, 'Kevin', statusClassification, 'rules'),
+  HistoricalCandidate: true
+};
 const realStatement = {
   ...toInvoice({
     ...baseMail,
@@ -55,10 +66,20 @@ const realStatement = {
   }, account, 'Kevin', { ...statusClassification, confidence: .99, amount: 75, reimbursedAmount: 75, serviceDate: '2025-06-01' }, 'rules'),
   HistoricalCandidate: true
 };
+const realPredeterminationStatement = {
+  ...toInvoice({
+    ...baseMail,
+    id: 'desjardins-predetermination-eob',
+    subject: 'Your health or dental care predetermination has been processed',
+    receivedAt: '2025-07-05T15:05:13Z',
+    text: 'Explanation of benefits. Amount paid: CAD $75.00.'
+  }, account, 'Kevin', { ...statusClassification, confidence: .99, amount: 75, reimbursedAmount: 75, serviceDate: '2025-07-01' }, 'rules'),
+  HistoricalCandidate: true
+};
 
 const path = join(process.env.FAMILYHUB_WORKER_DATA, 'invoices.json');
 await writeFile(path, JSON.stringify({
-  items: [received, processed, realStatement],
+  items: [received, processed, predetermination, realStatement, realPredeterminationStatement],
   corrections: [],
   decisions: [],
   matchDecisions: [],
@@ -70,7 +91,7 @@ await writeFile(path, JSON.stringify({
 await initializeInvoices();
 const snapshot = await invoiceSnapshot();
 const byId = new Map(snapshot.items.map(item => [item.SourceMessageId, item]));
-for (const id of ['desjardins-received', 'desjardins-processed']) {
+for (const id of ['desjardins-received', 'desjardins-processed', 'desjardins-predetermination']) {
   const item = byId.get(id);
   assert.equal(item.DocumentType, 'administrative');
   assert.equal(item.DocumentRole, 'other');
@@ -83,9 +104,15 @@ assert.equal(genuine.DocumentType, 'claim');
 assert.equal(genuine.DocumentRole, 'insurer-statement');
 assert.equal(genuine.Category, 0);
 assert.equal(genuine.ReimbursedAmount, 75);
-assert.deepEqual(snapshot.unmatchedReimbursements.map(item => item.DocumentId), [genuine.Id]);
+const genuinePredetermination = byId.get('desjardins-predetermination-eob');
+assert.equal(genuinePredetermination.DocumentType, 'claim');
+assert.equal(genuinePredetermination.DocumentRole, 'insurer-statement');
+assert.equal(genuinePredetermination.ReimbursedAmount, 75);
+assert.deepEqual(new Set(snapshot.unmatchedReimbursements.map(item => item.DocumentId)), new Set([genuine.Id, genuinePredetermination.Id]));
 
 const saved = JSON.parse(await readFile(path, 'utf8'));
 assert.equal(saved.items.find(item => item.SourceMessageId === 'desjardins-received').DocumentType, 'administrative');
 assert.equal(saved.items.find(item => item.SourceMessageId === 'desjardins-processed').DocumentRole, 'other');
+assert.equal(saved.items.find(item => item.SourceMessageId === 'desjardins-predetermination').DocumentRole, 'other');
 assert.equal(saved.items.find(item => item.SourceMessageId === 'desjardins-real-eob').DocumentRole, 'insurer-statement');
+assert.equal(saved.items.find(item => item.SourceMessageId === 'desjardins-predetermination-eob').DocumentRole, 'insurer-statement');

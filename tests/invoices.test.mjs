@@ -400,7 +400,7 @@ test('historical intake retains medical receipts with unknown coverage and no in
 });
 
 test('Desjardins claim-status notifications stay out of reimbursements while real EOB evidence remains a statement', async () => {
-  const { classifyHistorical } = await import('../apps/worker/dist/invoices.js');
+  const { classify, classifyHistorical } = await import('../apps/worker/dist/invoices.js');
   const base = {
     ...mail,
     sender: 'Desjardins Insurance <eob@dsf.ca>',
@@ -416,6 +416,11 @@ test('Desjardins claim-status notifications stay out of reimbursements while rea
     {
       subject: 'Your claim has been processed',
       text: 'The explanation of benefits for your claim has now been posted on the Claims history section of your secure site.'
+    },
+    {
+      subject: 'Your health or dental care predetermination has been processed',
+      text: 'The explanation of benefits for your health or dental care predetermination is now available in the “Claims history” section of your secure site at www.desjardinslifeinsurance.com/planmember.',
+      attachments: [{ Id: 'logo', FileName: 'LogoAn.png', MimeType: 'image/png', Size: 100 }]
     }
   ]) {
     const classified = await classifyHistorical({ ...base, ...source }, 'test@example.test');
@@ -448,6 +453,23 @@ test('Desjardins claim-status notifications stay out of reimbursements while rea
   }, 'test@example.test');
   assert.equal(attached.result.documentRole, 'insurer-statement');
   assert.equal(attached.result.insurer, 'desjardins');
+
+  const predeterminationEob = await classifyHistorical({
+    ...base,
+    subject: 'Your health or dental care predetermination has been processed',
+    text: 'Explanation of benefits. Amount paid: CAD $75.00.'
+  }, 'test@example.test');
+  assert.equal(predeterminationEob.result.documentRole, 'insurer-statement');
+  assert.equal(predeterminationEob.result.insurer, 'desjardins');
+
+  const currentPredetermination = await classify({
+    ...base,
+    subject: 'Your health or dental care predetermination has been processed',
+    text: 'The explanation of benefits for your predetermination is now available in Claims history.',
+    attachments: [{ Id: 'logo', FileName: 'LogoAn.png', MimeType: 'image/png', Size: 100 }]
+  }, 'test@example.test');
+  assert.equal(currentPredetermination.result.kind, 'administrative');
+  assert.equal(currentPredetermination.result.documentRole, 'other');
 });
 
 test('Gmail retries only transient rate errors without exposing response contents', async () => {
