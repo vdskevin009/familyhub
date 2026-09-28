@@ -120,6 +120,40 @@ export function reimbursementWorkflowSummary(cases: ReconciliationCase[], scope:
   };
 }
 
+/**
+ * Remove stale unmatched projections when the same insurer document is already assigned
+ * to a reconciliation case. The assignment graph is authoritative for matched/unmatched
+ * exclusivity; this does not create any new match.
+ */
+export function excludeAssignedUnmatched<T extends { DocumentId: string }>(unmatched: T[], cases: ReconciliationCase[]): T[] {
+  const assigned = new Set(cases.flatMap(item => (item.MatchAssignments ?? []).map(match => match.ReimbursementDocumentId)));
+  return unmatched.filter(item => !assigned.has(item.DocumentId));
+}
+
+/** Find an already archived PDF that belongs to the expense represented by a case. */
+export function reimbursementInvoiceDocument(item: ReconciliationCase,
+  itemsById: ReadonlyMap<string, ReimbursementItem>): ReimbursementItem | null {
+  const preferredIds = [
+    ...(item.ExpenseDocumentIds ?? []),
+    ...(item.ExpenseDocumentId ? [item.ExpenseDocumentId] : []),
+    ...item.DocumentIds
+  ];
+  const seen = new Set<string>();
+  const candidates = preferredIds
+    .filter(id => !seen.has(id) && seen.add(id))
+    .map(id => itemsById.get(id))
+    .filter((entry): entry is ReimbursementItem => Boolean(entry));
+  const hasPdf = (entry: ReimbursementItem) => entry.Attachments.some(attachment =>
+    attachment.MimeType === "application/pdf" || /\.pdf$/i.test(attachment.FileName));
+  return candidates.find(entry => entry.DocumentRole === "expense" && entry.DriveFileId && hasPdf(entry))
+    ?? candidates.find(entry => entry.DriveFileId && hasPdf(entry))
+    ?? null;
+}
+
+export function reimbursementInvoiceUrl(item: ReimbursementItem | null | undefined): string | null {
+  return item?.DriveFileId ? `https://drive.google.com/file/d/${encodeURIComponent(item.DriveFileId)}/view` : null;
+}
+
 export function reimbursementCaseStatus(item: ReconciliationCase): ReimbursementCaseStatus {
   if (item.PreviouslyFound) return "needs-attention";
   if (item.Status) return item.Status;
