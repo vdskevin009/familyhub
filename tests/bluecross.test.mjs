@@ -183,6 +183,42 @@ test('provider residual and legacy insurer-derived gross expense collapse into o
   assert.equal(conflict.cases.length, 2, 'different services on the same date must remain separate');
 });
 
+test('RMT receipts and a unique massage report form one case, while duplicate reports remain ambiguous in either source order', () => {
+  assert.equal(serviceKey('RMT - Initial Assessment'), 'massage');
+  const receipt = expense({ Id: 'synthetic-rmt-receipt', Member: 'Kevin', AccountLabel: 'mailbox',
+    Provider: 'Example Clinic', ServiceDate: '2026-04-10', BilledAmount: 150, DetectedAmount: 150,
+    ClaimedService: 'RMT - Initial Assessment', Healthcare: { ServiceDate: '2026-04-10',
+      ServiceType: 'RMT - Initial Assessment', OriginalBilledAmount: 150, PatientBalance: 38,
+      InsurerPayments: { desjardins: 112 }, FieldStates: { 'InsurerPayments.desjardins': 'confirmed' } },
+    Confidence: 60, NeedsReview: true });
+  const report = { ...receipt, Id: 'synthetic-report-expense', AccountLabel: 'Local Desjardins import',
+    Provider: 'Massothérapeute - visite initiale', Healthcare: undefined, ClaimedService: undefined,
+    Confidence: 99, NeedsReview: false };
+  const statement = { ...report, Id: 'synthetic-report-statement', DocumentRole: 'insurer-statement',
+    DocumentType: 'claim', Insurer: 'desjardins', ReimbursedAmount: 112,
+    BilledAmount: null, DetectedAmount: 112, Notes: 'Submitted 150.00; paid 112.00;' };
+  const secondary = { ...documents(table([row('Kevin Vanderstraeten', 'Massage therapy', 150, 38)]))[1],
+    Id: 'synthetic-secondary', ServiceDate: '2026-04-10' };
+  const merged = buildReconciliationSnapshot([receipt, report, statement, secondary]);
+  assert.equal(merged.cases.length, 1);
+  assert.deepEqual(new Set(merged.cases[0].ExpenseDocumentIds), new Set([receipt.Id, report.Id]));
+  assert.equal(merged.cases[0].MatchAssignments.length, 2);
+  assert.equal(merged.cases[0].ReimbursedAmount, 150);
+  assert.equal(merged.unmatched.length, 0);
+  const reversed = buildReconciliationSnapshot([report, receipt, statement, secondary]);
+  assert.equal(reversed.cases.length, 1);
+  assert.equal(reversed.cases[0].MatchAssignments.length, 2);
+  assert.equal(reversed.cases[0].ReimbursedAmount, 150);
+  assert.equal(reversed.unmatched.length, 0);
+
+  const anotherReport = { ...report, Id: 'another-distinct-report' };
+  for (const inputs of [[receipt, report, anotherReport], [report, anotherReport, receipt]]) {
+    const ambiguous = buildReconciliationSnapshot([...inputs, statement]);
+    assert.equal(ambiguous.cases.length, 3, 'an equal date, service and gross cannot choose one of two reports');
+    assert.deepEqual(ambiguous.unmatched, [{ DocumentId: statement.Id, Reason: 'ambiguous-match' }]);
+  }
+});
+
 test('recover omitted distinct dental expense once without manufacturing unmatched invoice payments', () => {
   const root = expense({ Member: 'Kevin', Provider: 'Aplan. de racines', BilledAmount: 121 });
   const statement = { ...root, Id: 'scale-statement', Fingerprint: 'scale-fingerprint', Provider: 'Desjardins · Détartrage', DocumentRole: 'insurer-statement', AccountLabel: 'Local Desjardins import', Notes: 'Submitted 121.00;', Insurer: 'desjardins', BilledAmount: null, ReimbursedAmount: 96.8 };

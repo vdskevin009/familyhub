@@ -70,6 +70,15 @@ Rules:
 | FH-REIMB-023 | A provider receipt that proves a post-insurance residual and a legacy/report-derived expense for the same member, exact service date and compatible normalized service must resolve to one canonical reimbursement case when exactly one insurer statement proves `submitted - reimbursed = residual`. Preserve all source document IDs/evidence, prefer the real provider identity, and never use this rule to merge conflicting services or ambiguous candidates. | Implemented | Issue #54; worker canonicalization now requires exact Desjardins arithmetic plus member/date/service corroboration before merging this legacy/provider pair. Regression fixture locks the observed 2026-05-28 chiropractic shape to one case with Expense 80 / Desjardins 12 / Blue Cross 0 / Remaining 68 / Waiting for secondary, and verifies a conflicting service stays separate. |
 | FH-REIMB-016 | A previously detected/imported healthcare invoice must remain available in the underlying reimbursement history across newest-first sorting, temporary filters, reconciliation refreshes and partial worker snapshots. | Verified | Issue #35; the UI history now uses tested pure helpers backed by `mergeInvoiceItems`, `mergeReconciliationHistory` and `unreconciledInvoiceCases`. The regression test runs in the normal CI invoice suite. |
 
+### Worker follow-up for issues #70, #72, #73 and #74
+
+| Existing IDs | Status | Implementation notes |
+|---|---|---|
+| FH-REIMB-012 / FH-REIMB-019 | Implemented; live acceptance pending | Canonical expense merging recognizes the generic RMT service label, preserves explicit insurer-payment evidence from either source order, and keeps equal report candidates separate when the source does not distinguish them. |
+| FH-REIMB-020 / FH-REIMB-021 | Implemented; live acceptance pending | A source-confirmed insurer payment in a reviewed receipt can corroborate an exact insurer row even when the receipt's overall extraction confidence is low. Matching still requires member, service date, compatible service, exact payment, reliable insurer evidence and a unique candidate; reviewed insurer rows remain review-recommended. Tests assert that final assignments and Unmatched are disjoint after automatic matching, manual decisions and duplicate handling. |
+| FH-REIMB-022 | Implemented; live acceptance pending | Automatic Combined Benefits closure uses two distinct trusted named-insurer assignments when Primary/Secondary order is unknown, without inferring the order. Known order and manual Open/Closed/Ignore decisions remain authoritative. An unresolved ambiguous insurer assignment blocks this automatic closure. |
+| FH-REIMB-028 | In progress | The worker already indexes invoice PDF attachments and exposes authenticated attachment retrieval; this worker phase adds no document contract. The merged web action currently uses an archived PDF reference, so unarchived worker attachments still need separate product acceptance. |
+
 ## Local worker / automation
 
 | ID | Requirement | Status | Implementation notes |
@@ -118,6 +127,7 @@ Rules:
 ## Open questions / Needs confirmation
 
 - Issue #40: paired-phone visual acceptance remains separate from tests, private-source replay and installed-worker acceptance. Low-confidence or contradictory records remain reviewable.
+- Issues #70/#72/#73/#74: read-only replay and synthetic tests do not verify the installed worker after restart, actual collection/re-ingestion, or the paired PWA. Keep those acceptance gates open.
 
 ## Decision log
 
@@ -151,6 +161,7 @@ Rules:
 | 2026-09-27 | Align dependent insurer display to `df8340bbd571ea2599b37a502fcc84a14b8a43e1`: Nathan cases with unknown insurer order show known Desjardins/Blue Cross amounts by name instead of Primary/Secondary zeroes, while Primary/Secondary semantics remain unresolved. PR run #135 and main run #136 passed full checks and deployment. | Verified |
 
 | 2026-09-28 | Issues #69-#74 web-only phase: keep worker logic untouched; fix only presentation/projection defects that can be proven from existing worker data, and hand off true worker/source defects separately. | In progress |
+| 2026-09-28 | Follow up the web phase in the worker: close two-insurer cases from trusted named assignments without inventing insurer order; corroborate exact source-confirmed insurer payments despite a low overall receipt score; preserve canonical evidence and unresolved ties. | Implemented in branch; worker regressions and read-only replay passed, with installed-worker/re-ingestion/PWA acceptance pending. |
 
 ## Maintenance checklist
 

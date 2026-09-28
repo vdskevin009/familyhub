@@ -1,6 +1,6 @@
 # FH-REIMB-028 — Open invoice PDF directly from reimbursements
 
-**Status:** Proposed
+**Status:** In progress
 
 ## User need
 When a reimbursement expense already has an invoice PDF available to FamilyHub, the user should be able to open it directly without manually searching for the source document.
@@ -17,7 +17,7 @@ The reimbursement card/detail must expose a direct action to open or view the as
 - Keep the experience mobile-first and usable from the installed FamilyHub PWA.
 
 ## Scope boundary
-This entry only documents the requested capability. No implementation is included in this change.
+The merged web phase opens an already archived PDF reference when one is available. The worker already indexes PDF attachments and exposes authenticated attachment retrieval; opening an unarchived worker attachment from a reimbursement card still needs separate product acceptance. This worker correction phase does not change the document contract.
 
 ## Acceptance criteria
 - [ ] A reimbursement with an available invoice PDF exposes an obvious open/view action.
