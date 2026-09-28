@@ -20,6 +20,7 @@ import {
   type ReconciliationCase,
   type ReimbursementItem
 } from "../apps/web/src/types.ts";
+import { manualReconciliationWorkerVersion, workerVersionAtLeast } from "../apps/web/src/worker.ts";
 
 function invoice(id: string, serviceDate: string, overrides: Partial<ReimbursementItem> = {}): ReimbursementItem {
   return {
@@ -238,4 +239,13 @@ test("invoice PDF action resolves only when a linked PDF is actually archived", 
     Attachments: [{ Id: "a2", FileName: "receipt.jpg", MimeType: "image/jpeg", Size: 100 }]
   });
   assert.equal(reimbursementInvoiceDocument(reconciliation(noPdf), new Map([[noPdf.Id, noPdf]])), null);
+});
+
+
+test("worker version guard requires manual reconciliation endpoints", () => {
+  assert.equal(manualReconciliationWorkerVersion, "2.8.0");
+  assert.equal(workerVersionAtLeast("2.7.0", manualReconciliationWorkerVersion), false);
+  assert.equal(workerVersionAtLeast("2.8.0", manualReconciliationWorkerVersion), true);
+  assert.equal(workerVersionAtLeast("2.8.1", manualReconciliationWorkerVersion), true);
+  assert.equal(workerVersionAtLeast("3.0.0", manualReconciliationWorkerVersion), true);
 });

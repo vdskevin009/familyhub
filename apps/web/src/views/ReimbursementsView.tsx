@@ -6,7 +6,7 @@ import { buildInvoiceHistoryCases, excludeAssignedUnmatched, filterInvoiceHistor
 import type { InvoiceHistoryFilter, ReimbursementCaseStatus, ReimbursementPersonScope, WorkflowStatusFilter } from "../invoice-state";
 import type { HubState } from "../state";
 import type { MatchAssignment, ReconciliationCase, ReimbursementItem, ReimbursementWorkflowStatus, UnmatchedReimbursement } from "../types";
-import { fetchInvoices, setManualMatch, setMatchDecision, setReimbursementWorkflowStatus, setUnmatchedIgnored } from "../worker";
+import { fetchInvoices, manualReconciliationWorkerVersion, setManualMatch, setMatchDecision, setReimbursementWorkflowStatus, setUnmatchedIgnored, testWorker, workerVersionAtLeast } from "../worker";
 
 type Props = { hub: HubState };
 const statusCopy: Record<ReimbursementCaseStatus, string> = {
@@ -52,7 +52,9 @@ export default function ReimbursementsView({ hub }: Props) {
   const [workflowFilter, setWorkflowFilter] = useState<WorkflowStatusFilter>("open");
   const [reconciliationFilter, setReconciliationFilter] = useState<"all" | "matched" | "unmatched" | "ignored-unmatched">("all");
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const [workerVersion, setWorkerVersion] = useState("");
   const paired = Boolean(hub.worker.Endpoint.trim() && hub.worker.ApiKey.trim());
+  const manualActionsAvailable = !workerVersion || workerVersionAtLeast(workerVersion, manualReconciliationWorkerVersion);
 
   async function refresh() {
     if (!paired) return;
@@ -80,7 +82,11 @@ export default function ReimbursementsView({ hub }: Props) {
     } finally { setBusy(false); }
   }
 
-  useEffect(() => { if (paired) void refresh(); }, [paired, hub.worker.Endpoint, hub.worker.ApiKey]);
+  useEffect(() => {
+    if (!paired) { setWorkerVersion(""); return; }
+    void refresh();
+    void testWorker(hub.worker).then(health => setWorkerVersion(health.version || "")).catch(() => setWorkerVersion(""));
+  }, [paired, hub.worker.Endpoint, hub.worker.ApiKey]);
 
   async function decideMatch(assignment: MatchAssignment, decision: "confirmed" | "rejected") {
     if (!paired || savingId) return;
@@ -261,6 +267,7 @@ export default function ReimbursementsView({ hub }: Props) {
     </section>
 
     {error && <div className="banner error" role="status"><AlertTriangle size={17} />{error} — Previously synced results remain below.</div>}
+    {workerVersion && !manualActionsAvailable && <div className="banner error" role="status"><AlertTriangle size={17} />PC worker {workerVersion} is outdated for manual reimbursement matching. Update/restart the FamilyHub worker to {manualReconciliationWorkerVersion} or later, then refresh this page.</div>}
     {savedMessage && <div className="banner" role="status">{savedMessage}</div>}
     <p className="privacy-note">{hub.reimbursements.InvoiceCoverage?.complete
       ? "Potential invoice search completed since June 1, 2025 for connected accounts. Scanned images and unreadable attachments may still need review."
@@ -439,10 +446,10 @@ export default function ReimbursementsView({ hub }: Props) {
                     <strong>{money(reimbursementAmount(candidate), candidate.Currency || item.Currency)}</strong>
                   </div>
                   <div className="match-actions">
-                    <button type="button" className="mini-button" disabled={!paired || !!savingId || busy}
-                      onClick={() => void matchUnmatched(item, candidate.Id)}>{candidateSaving ? "Saving…" : "Match to this expense"}</button>
-                    <button type="button" className="mini-button subtle" disabled={!paired || !!savingId || busy}
-                      onClick={() => void changeUnmatchedIgnored(candidate.Id, true)}>{candidateSaving ? "Saving…" : "Ignore"}</button>
+                    <button type="button" className="mini-button" disabled={!paired || !manualActionsAvailable || !!savingId || busy}
+                      onClick={() => void matchUnmatched(item, candidate.Id)}>{candidateSaving ? "Saving…" : manualActionsAvailable ? "Match to this expense" : "Update PC worker"}</button>
+                    <button type="button" className="mini-button subtle" disabled={!paired || !manualActionsAvailable || !!savingId || busy}
+                      onClick={() => void changeUnmatchedIgnored(candidate.Id, true)}>{candidateSaving ? "Saving…" : manualActionsAvailable ? "Ignore" : "Update PC worker"}</button>
                   </div>
                 </div>;
               })}
@@ -506,8 +513,8 @@ export default function ReimbursementsView({ hub }: Props) {
           {reviews.get(`unmatched:${item.Id}`) && <p className="privacy-note expense-warning">Second AI review: {reviews.get(`unmatched:${item.Id}`)!.explanation}{reviews.get(`unmatched:${item.Id}`)!.candidateId ? ` · Possible invoice: ${invoiceById.get(reviews.get(`unmatched:${item.Id}`)!.candidateId!)?.Provider || "see source"}` : ""}. Suggestion only; no automatic link.</p>}</div>
         <div className="unmatched-amount"><strong>{money(reimbursementAmount(item), item.Currency)}</strong><small>reimbursement</small></div>
         <div className="unmatched-actions">
-          <button className="mini-button subtle" disabled={!paired || !!savingId || busy}
-            onClick={() => void changeUnmatchedIgnored(item.Id, true)}>{savingId === `unmatched-ignore:${item.Id}` ? "Saving…" : "Ignore"}</button>
+          <button className="mini-button subtle" disabled={!paired || !manualActionsAvailable || !!savingId || busy}
+            onClick={() => void changeUnmatchedIgnored(item.Id, true)}>{savingId === `unmatched-ignore:${item.Id}` ? "Saving…" : manualActionsAvailable ? "Ignore" : "Update PC worker"}</button>
           <button className="mini-button" onClick={() => googleBridge.openMessage(item.AccountEmail, item.InternetMessageId, item.SourceMessageId)}><ExternalLink size={14} /> Email</button>
         </div>
       </article>)}
@@ -520,8 +527,8 @@ export default function ReimbursementsView({ hub }: Props) {
         <div><strong>{item.Provider || item.Subject || "Insurer record"}</strong><small>{item.Member && item.Member !== "unknown" ? `${item.Member} · ` : ""}{item.Insurer === "blue-cross" ? "Blue Cross" : item.Insurer === "desjardins" ? "Desjardins" : "Insurer unknown"} · {dateLabel(item.ServiceDate || item.ReceivedAt)}</small><p>{unmatchedReason(result)}{result.IgnoredAt ? ` · Ignored ${new Date(result.IgnoredAt).toLocaleString()}` : ""}</p></div>
         <div className="unmatched-amount"><strong>{money(reimbursementAmount(item), item.Currency)}</strong><small>reimbursement</small></div>
         <div className="unmatched-actions">
-          <button className="mini-button" disabled={!paired || !!savingId || busy}
-            onClick={() => void changeUnmatchedIgnored(item.Id, false)}>{savingId === `unmatched-ignore:${item.Id}` ? "Restoring…" : "Restore"}</button>
+          <button className="mini-button" disabled={!paired || !manualActionsAvailable || !!savingId || busy}
+            onClick={() => void changeUnmatchedIgnored(item.Id, false)}>{savingId === `unmatched-ignore:${item.Id}` ? "Restoring…" : manualActionsAvailable ? "Restore" : "Update PC worker"}</button>
           <button className="mini-button subtle" onClick={() => googleBridge.openMessage(item.AccountEmail, item.InternetMessageId, item.SourceMessageId)}><ExternalLink size={14} /> Email</button>
         </div>
       </article>)}
