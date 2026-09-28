@@ -71,6 +71,49 @@ test('social worker is not guessed equivalent to clinical counsellor; excess pay
   const result = buildReconciliationSnapshot([expense(), ...full, desj]).cases[0];
   assert.equal(result.ReimbursedAmount, 120); assert.equal(result.Status, 'needs-attention');
 });
+test('provider residual and legacy insurer-derived gross expense collapse into one canonical case', () => {
+  const receipt = expense({
+    Id: 'coast-receipt', Member: 'Kevin', Provider: 'Coast Performance Rehabilitation',
+    Subject: 'Your Receipt - Coast Performance Rehabilitation', ServiceDate: '2026-05-28',
+    ClaimedService: '20 min Chiropractic Return', BilledAmount: null, DetectedAmount: null, ReimbursedAmount: null,
+    Healthcare: {
+      Provider: 'Coast Performance Rehabilitation', ServiceType: '20 min Chiropractic Return', ServiceDate: '2026-05-28',
+      PatientBalance: 68, AmountNotCovered: 68, ProcessedInsurers: ['desjardins'], InsurerPayments: {},
+      FieldSources: { ServiceDate: 'attachment', ServiceType: 'attachment', PatientBalance: 'attachment', AmountNotCovered: 'attachment' },
+      FieldStates: { ServiceDate: 'confirmed', ServiceType: 'confirmed', PatientBalance: 'confirmed', AmountNotCovered: 'confirmed' }
+    }
+  });
+  const legacyExpense = {
+    ...receipt, Id: 'desj-expense', AccountLabel: 'Local Desjardins import',
+    Provider: 'Chiropraticien - visite subséquente', Subject: 'Desjardins claim · Chiropraticien - visite subséquente',
+    Healthcare: undefined, ClaimedService: undefined, DocumentRole: 'expense', DocumentType: 'receipt',
+    Insurer: null, BilledAmount: 80, DetectedAmount: 80, ReimbursedAmount: null, Notes: 'Submitted 80.00;'
+  };
+  const statement = {
+    ...legacyExpense, Id: 'desj-statement', DocumentRole: 'insurer-statement', DocumentType: 'claim',
+    Insurer: 'desjardins', BilledAmount: null, DetectedAmount: 12, ReimbursedAmount: 12,
+    Notes: 'Submitted 80.00; paid 12.00;'
+  };
+
+  const result = buildReconciliationSnapshot([receipt, legacyExpense, statement]);
+  assert.equal(result.cases.length, 1);
+  assert.equal(result.unmatched.length, 0);
+  assert.equal(result.cases[0].Provider, 'Coast Performance Rehabilitation');
+  assert.equal(result.cases[0].OriginalAmount, 80);
+  assert.equal(result.cases[0].PrimaryReimbursedAmount, 12);
+  assert.equal(result.cases[0].SecondaryReimbursedAmount, 0);
+  assert.equal(result.cases[0].PotentialRemaining, 68);
+  assert.equal(result.cases[0].Status, 'waiting-secondary');
+  assert.deepEqual(new Set(result.cases[0].DocumentIds), new Set(['coast-receipt', 'desj-expense', 'desj-statement']));
+
+  const conflictingReceipt = {
+    ...receipt, Id: 'physio-receipt', ClaimedService: 'Physiotherapy Treatment',
+    Healthcare: { ...receipt.Healthcare, ServiceType: 'Physiotherapy Treatment' }
+  };
+  const conflict = buildReconciliationSnapshot([conflictingReceipt, legacyExpense, statement]);
+  assert.equal(conflict.cases.length, 2, 'different services on the same date must remain separate');
+});
+
 test('recover omitted distinct dental expense once without manufacturing unmatched invoice payments', () => {
   const root = expense({ Member: 'Kevin', Provider: 'Aplan. de racines', BilledAmount: 121 });
   const statement = { ...root, Id: 'scale-statement', Fingerprint: 'scale-fingerprint', Provider: 'Desjardins · Détartrage', DocumentRole: 'insurer-statement', AccountLabel: 'Local Desjardins import', Notes: 'Submitted 121.00;', Insurer: 'desjardins', BilledAmount: null, ReimbursedAmount: 96.8 };
