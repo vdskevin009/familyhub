@@ -6,7 +6,7 @@ import { buildInvoiceHistoryCases, excludeAssignedUnmatched, filterInvoiceHistor
 import type { InvoiceHistoryFilter, ReimbursementCaseStatus, ReimbursementPersonScope, WorkflowStatusFilter } from "../invoice-state";
 import type { HubState } from "../state";
 import type { MatchAssignment, ReconciliationCase, ReimbursementItem, ReimbursementWorkflowStatus, UnmatchedReimbursement } from "../types";
-import { fetchInvoices, setMatchDecision, setReimbursementWorkflowStatus } from "../worker";
+import { fetchInvoices, setManualMatch, setMatchDecision, setReimbursementWorkflowStatus, setUnmatchedIgnored } from "../worker";
 
 type Props = { hub: HubState };
 const statusCopy: Record<ReimbursementCaseStatus, string> = {
@@ -50,7 +50,7 @@ export default function ReimbursementsView({ hub }: Props) {
   const [filters, setFilters] = useState<Set<InvoiceHistoryFilter>>(() => new Set());
   const [personScope, setPersonScope] = useState<ReimbursementPersonScope>("all");
   const [workflowFilter, setWorkflowFilter] = useState<WorkflowStatusFilter>("open");
-  const [reconciliationFilter, setReconciliationFilter] = useState<"all" | "matched" | "unmatched">("all");
+  const [reconciliationFilter, setReconciliationFilter] = useState<"all" | "matched" | "unmatched" | "ignored-unmatched">("all");
   const [filtersOpen, setFiltersOpen] = useState(false);
   const paired = Boolean(hub.worker.Endpoint.trim() && hub.worker.ApiKey.trim());
 
@@ -68,6 +68,7 @@ export default function ReimbursementsView({ hub }: Props) {
         ImportantMail: snapshot.importantMail,
         LearningDecisions: snapshot.learning.decisions,
         UnmatchedReimbursements: snapshot.unmatchedReimbursements,
+        IgnoredUnmatchedReimbursements: snapshot.ignoredUnmatchedReimbursements,
         AgentReviews: snapshot.agentReviews ?? [],
         IgnoredExpenses: snapshot.ignoredExpenses ?? [],
         InvoiceCoverage: snapshot.coverage
@@ -92,6 +93,34 @@ export default function ReimbursementsView({ hub }: Props) {
         ? "Match confirmed manually. FamilyHub will keep this association across future refreshes."
         : "Match rejected. FamilyHub will not recreate this same pairing automatically.");
     } catch (err) { setError(err instanceof Error ? err.message : "The match decision could not be saved. Refresh and try again."); }
+    finally { setSavingId(""); }
+  }
+
+  async function matchUnmatched(item: ReconciliationCase, reimbursementId: string) {
+    if (!paired || savingId) return;
+    const expenseId = item.ExpenseDocumentId || item.ExpenseDocumentIds?.[0] || item.DocumentIds[0];
+    if (!expenseId) return;
+    const key = `manual-match:${reimbursementId}`;
+    setSavingId(key); setError(""); setSavedMessage("");
+    try {
+      await setManualMatch(hub.worker, reimbursementId, expenseId);
+      await refresh();
+      setSavedMessage("Reimbursement matched manually. FamilyHub will keep this assignment across refreshes and rescans.");
+    } catch (err) { setError(err instanceof Error ? err.message : "The manual match could not be saved. Refresh and try again."); }
+    finally { setSavingId(""); }
+  }
+
+  async function changeUnmatchedIgnored(reimbursementId: string, ignored: boolean) {
+    if (!paired || savingId) return;
+    const key = `unmatched-ignore:${reimbursementId}`;
+    setSavingId(key); setError(""); setSavedMessage("");
+    try {
+      await setUnmatchedIgnored(hub.worker, reimbursementId, ignored);
+      await refresh();
+      setSavedMessage(ignored
+        ? "Unmatched reimbursement ignored. It will stay out of the active review queue until restored."
+        : "Ignored reimbursement restored to matching and review.");
+    } catch (err) { setError(err instanceof Error ? err.message : "The unmatched reimbursement decision could not be saved."); }
     finally { setSavingId(""); }
   }
 
@@ -124,14 +153,20 @@ export default function ReimbursementsView({ hub }: Props) {
       .filter((entry): entry is { result: UnmatchedReimbursement; item: ReimbursementItem } => Boolean(entry.item))
       .sort((a, b) => dateValue(b.item.ServiceDate || b.item.StatementDate || b.item.ReceivedAt)
         - dateValue(a.item.ServiceDate || a.item.StatementDate || a.item.ReceivedAt));
+    const ignoredUnmatched = (hub.reimbursements.IgnoredUnmatchedReimbursements ?? [])
+      .map(result => ({ result, item: byId.get(result.DocumentId) }))
+      .filter((entry): entry is { result: UnmatchedReimbursement; item: ReimbursementItem } => Boolean(entry.item))
+      .sort((a, b) => dateValue(b.item.ServiceDate || b.item.StatementDate || b.item.ReceivedAt)
+        - dateValue(a.item.ServiceDate || a.item.StatementDate || a.item.ReceivedAt));
     const warnings = [...new Set(hub.reimbursements.Items.filter(item => item.Status !== 4).map(item => item.ImportWarning).filter(Boolean))];
-    return { cases, unmatched, warnings };
-  }, [hub.reimbursements.Items, hub.reimbursements.Reconciliations, hub.reimbursements.IgnoredExpenses, hub.reimbursements.UnmatchedReimbursements]);
+    return { cases, unmatched, ignoredUnmatched, warnings };
+  }, [hub.reimbursements.Items, hub.reimbursements.Reconciliations, hub.reimbursements.IgnoredExpenses, hub.reimbursements.UnmatchedReimbursements, hub.reimbursements.IgnoredUnmatchedReimbursements]);
 
   const reviews = new Map((hub.reimbursements.AgentReviews ?? []).map(review => [review.key, review]));
   const invoiceById = useMemo(() => new Map(hub.reimbursements.Items.map(item => [item.Id, item])), [hub.reimbursements.Items]);
   const scopedCases = useMemo(() => filterReimbursementWorkflowCases(model.cases, personScope, "all"), [model.cases, personScope]);
   const scopedUnmatched = useMemo(() => model.unmatched.filter(({ item }) => personScope === "all" || item.Member === personScope), [model.unmatched, personScope]);
+  const scopedIgnoredUnmatched = useMemo(() => model.ignoredUnmatched.filter(({ item }) => personScope === "all" || item.Member === personScope), [model.ignoredUnmatched, personScope]);
 
   const scopeSummaries = useMemo(() => {
     const scopes: ReimbursementPersonScope[] = ["all", "Kevin", "Jasmine", "Nathan"];
@@ -167,8 +202,9 @@ export default function ReimbursementsView({ hub }: Props) {
     primary: scopedCases.filter(item => (primaryReimbursementAmount(item) ?? 0) > 0).length,
     secondary: scopedCases.filter(item => (secondaryReimbursementAmount(item) ?? 0) > 0).length,
     matched: scopedCases.filter(item => (item.MatchAssignments?.length ?? 0) > 0).length,
-    unmatched: scopedUnmatched.length
-  }), [scopedCases, scopedUnmatched]);
+    unmatched: scopedUnmatched.length,
+    ignoredUnmatched: scopedIgnoredUnmatched.length
+  }), [scopedCases, scopedIgnoredUnmatched, scopedUnmatched]);
 
   const activeFilterCount = filters.size
     + (workflowFilter === "open" ? 0 : 1)
@@ -185,12 +221,13 @@ export default function ReimbursementsView({ hub }: Props) {
         : scopedCases.length;
 
   const filteredCases = useMemo(() => {
-    if (reconciliationFilter === "unmatched") return [];
+    if (reconciliationFilter === "unmatched" || reconciliationFilter === "ignored-unmatched") return [];
     const history = filterInvoiceHistoryCases(workflowScopedCases, filters);
     return reconciliationFilter === "matched" ? history.filter(item => (item.MatchAssignments?.length ?? 0) > 0) : history;
   }, [filters, reconciliationFilter, workflowScopedCases]);
-  const visibleUnmatched = useMemo(() => workflowFilter !== "closed" && workflowFilter !== "ignore" && reconciliationFilter !== "matched"
+  const visibleUnmatched = useMemo(() => workflowFilter !== "closed" && workflowFilter !== "ignore" && reconciliationFilter !== "matched" && reconciliationFilter !== "ignored-unmatched"
     ? scopedUnmatched : [], [reconciliationFilter, scopedUnmatched, workflowFilter]);
+  const visibleIgnoredUnmatched = useMemo(() => reconciliationFilter === "ignored-unmatched" ? scopedIgnoredUnmatched : [], [reconciliationFilter, scopedIgnoredUnmatched]);
 
   const scopeLabel = personScope === "all" ? "All family" : personScope;
 
@@ -290,6 +327,7 @@ export default function ReimbursementsView({ hub }: Props) {
             <button type="button" className={`filter-chip ${reconciliationFilter === "all" ? "active" : ""}`} onClick={() => setReconciliationFilter("all")}>All</button>
             <button type="button" className={`filter-chip ${reconciliationFilter === "matched" ? "active" : ""}`} onClick={() => setReconciliationFilter("matched")}>Matched <span>{filterCounts.matched}</span></button>
             <button type="button" className={`filter-chip ${reconciliationFilter === "unmatched" ? "active" : ""}`} onClick={() => setReconciliationFilter("unmatched")}>Unmatched <span>{filterCounts.unmatched}</span></button>
+            <button type="button" className={`filter-chip ${reconciliationFilter === "ignored-unmatched" ? "active" : ""}`} onClick={() => setReconciliationFilter("ignored-unmatched")}>Ignored unmatched <span>{filterCounts.ignoredUnmatched}</span></button>
           </div>
         </div>
         <div className="reimbursement-filter-group">
@@ -323,7 +361,7 @@ export default function ReimbursementsView({ hub }: Props) {
       </div>
 
       {!model.cases.length && <div className="empty-state reimbursement-empty"><CircleDollarSign size={30} /><strong>No healthcare expenses yet</strong><span>Run the PC collection after importing invoices and insurer statements.</span></div>}
-      {!!model.cases.length && !filteredCases.length && reconciliationFilter !== "unmatched" && <div className="empty-state reimbursement-empty"><strong>No invoices match these filters</strong><span>Change the workflow, person or reimbursement filters to continue the review.</span></div>}
+      {!!model.cases.length && !filteredCases.length && reconciliationFilter !== "unmatched" && reconciliationFilter !== "ignored-unmatched" && <div className="empty-state reimbursement-empty"><strong>No invoices match these filters</strong><span>Change the workflow, person or reimbursement filters to continue the review.</span></div>}
 
       <div className="expense-list">
         {filteredCases.map(item => {
@@ -347,6 +385,8 @@ export default function ReimbursementsView({ hub }: Props) {
             ? namedInsurerReimbursementAmount(item, "Desjardins", invoiceById) : primaryReimbursementAmount(item);
           const secondInsurerAmount = insurerOrderUnknown
             ? namedInsurerReimbursementAmount(item, "Blue Cross", invoiceById) : secondaryReimbursementAmount(item);
+          const sameDayUnmatched = item.ServiceDate ? model.unmatched.filter(({ item: candidate }) =>
+            candidate.Member === item.Member && candidate.ServiceDate?.slice(0, 10) === item.ServiceDate?.slice(0, 10)) : [];
           return <article className="expense-card" key={item.Id}>
             <div className="expense-heading">
               <div><strong>{healthcareTitle(item)}</strong><small>{item.Member === "unknown" ? "Person to confirm" : item.Member}{item.ServiceType && healthcareTitle(item) !== item.ServiceType ? ` · ${item.ServiceType}` : ""}{item.ServiceDate ? ` · ${dateLabel(item.ServiceDate)}` : invoiceById.get(item.DocumentIds[0])?.ReceivedAt ? ` · Received ${dateLabel(invoiceById.get(item.DocumentIds[0])!.ReceivedAt)}` : " · Date missing"}</small></div>
@@ -381,6 +421,32 @@ export default function ReimbursementsView({ hub }: Props) {
                 <p key={`${entry.At}:${index}`}><strong>{entry.Status === "open" ? "Open" : entry.Status === "closed" ? "Closed" : "Ignore"}</strong>
                   <span>{entry.Origin === "manual" ? "Manual" : "Automatic"} · {new Date(entry.At).toLocaleString()}</span></p>)}</div>
             </details>}
+            {sameDayUnmatched.length > 0 && <div className="manual-match-candidates">
+              <div className="manual-match-candidates-heading">
+                <strong>Unmatched same-day reimbursements</strong>
+                <small>{sameDayUnmatched.length} candidate{sameDayUnmatched.length === 1 ? "" : "s"} · same person and service date</small>
+              </div>
+              {sameDayUnmatched.map(({ result, item: candidate }) => {
+                const candidateSaving = savingId === `manual-match:${candidate.Id}` || savingId === `unmatched-ignore:${candidate.Id}`;
+                const service = candidate.Healthcare?.ServiceType || candidate.ClaimedService || candidate.Provider || "Service not identified";
+                return <div className="manual-match-candidate" key={candidate.Id}>
+                  <div className="manual-match-candidate-main">
+                    <div>
+                      <strong>{candidate.Insurer === "desjardins" ? "Desjardins" : candidate.Insurer === "blue-cross" ? "Blue Cross" : "Insurer unknown"}</strong>
+                      <span>{dateLabel(candidate.ServiceDate || candidate.ReceivedAt)} · {service}</span>
+                      <small>{candidate.Provider && candidate.Provider !== service ? `${candidate.Provider} · ` : ""}{unmatchedReason(result)}</small>
+                    </div>
+                    <strong>{money(reimbursementAmount(candidate), candidate.Currency || item.Currency)}</strong>
+                  </div>
+                  <div className="match-actions">
+                    <button type="button" className="mini-button" disabled={!paired || !!savingId || busy}
+                      onClick={() => void matchUnmatched(item, candidate.Id)}>{candidateSaving ? "Saving…" : "Match to this expense"}</button>
+                    <button type="button" className="mini-button subtle" disabled={!paired || !!savingId || busy}
+                      onClick={() => void changeUnmatchedIgnored(candidate.Id, true)}>{candidateSaving ? "Saving…" : "Ignore"}</button>
+                  </div>
+                </div>;
+              })}
+            </div>}
             {matchAssignments.length > 0 && <div className="match-summary">
               <button type="button" className={`match-confidence-button ${reviewRecommended ? "review" : manuallyConfirmed ? "confirmed" : ""}`}
                 aria-expanded={matchExpanded} onClick={() => setExpandedMatchId(matchExpanded ? "" : item.Id)}>
@@ -439,7 +505,25 @@ export default function ReimbursementsView({ hub }: Props) {
         <div><strong>{item.Provider || item.Subject || "Insurer record"}</strong><small>{item.Member && item.Member !== "unknown" ? `${item.Member} · ` : ""}{item.Insurer === "blue-cross" ? "Blue Cross" : item.Insurer === "desjardins" ? "Desjardins" : "Insurer unknown"} · {dateLabel(item.ServiceDate || item.ReceivedAt)}{item.StatementDate ? ` · Statement ${dateLabel(item.StatementDate)}` : ""}</small><p>{item.NeedsReview && item.Reasons?.length ? item.Reasons[0] : unmatchedReason(result)}</p>
           {reviews.get(`unmatched:${item.Id}`) && <p className="privacy-note expense-warning">Second AI review: {reviews.get(`unmatched:${item.Id}`)!.explanation}{reviews.get(`unmatched:${item.Id}`)!.candidateId ? ` · Possible invoice: ${invoiceById.get(reviews.get(`unmatched:${item.Id}`)!.candidateId!)?.Provider || "see source"}` : ""}. Suggestion only; no automatic link.</p>}</div>
         <div className="unmatched-amount"><strong>{money(reimbursementAmount(item), item.Currency)}</strong><small>reimbursement</small></div>
-        <button className="mini-button" onClick={() => googleBridge.openMessage(item.AccountEmail, item.InternetMessageId, item.SourceMessageId)}><ExternalLink size={14} /> Email</button>
+        <div className="unmatched-actions">
+          <button className="mini-button subtle" disabled={!paired || !!savingId || busy}
+            onClick={() => void changeUnmatchedIgnored(item.Id, true)}>{savingId === `unmatched-ignore:${item.Id}` ? "Saving…" : "Ignore"}</button>
+          <button className="mini-button" onClick={() => googleBridge.openMessage(item.AccountEmail, item.InternetMessageId, item.SourceMessageId)}><ExternalLink size={14} /> Email</button>
+        </div>
+      </article>)}
+    </section>}
+
+    {visibleIgnoredUnmatched.length > 0 && <section className="surface unmatched-panel ignored-unmatched-panel has-items" aria-labelledby="ignored-unmatched-title">
+      <div className="section-heading inline"><div><span className="eyebrow">Hidden from active review · {scopeLabel}</span><h2 id="ignored-unmatched-title">Ignored unmatched reimbursements</h2></div><span className="unmatched-count">{visibleIgnoredUnmatched.length}</span></div>
+      {visibleIgnoredUnmatched.map(({ result, item }) => <article className="unmatched-row" key={result.DocumentId}>
+        <span className="reimbursement-status">Ignored</span>
+        <div><strong>{item.Provider || item.Subject || "Insurer record"}</strong><small>{item.Member && item.Member !== "unknown" ? `${item.Member} · ` : ""}{item.Insurer === "blue-cross" ? "Blue Cross" : item.Insurer === "desjardins" ? "Desjardins" : "Insurer unknown"} · {dateLabel(item.ServiceDate || item.ReceivedAt)}</small><p>{unmatchedReason(result)}{result.IgnoredAt ? ` · Ignored ${new Date(result.IgnoredAt).toLocaleString()}` : ""}</p></div>
+        <div className="unmatched-amount"><strong>{money(reimbursementAmount(item), item.Currency)}</strong><small>reimbursement</small></div>
+        <div className="unmatched-actions">
+          <button className="mini-button" disabled={!paired || !!savingId || busy}
+            onClick={() => void changeUnmatchedIgnored(item.Id, false)}>{savingId === `unmatched-ignore:${item.Id}` ? "Restoring…" : "Restore"}</button>
+          <button className="mini-button subtle" onClick={() => googleBridge.openMessage(item.AccountEmail, item.InternetMessageId, item.SourceMessageId)}><ExternalLink size={14} /> Email</button>
+        </div>
       </article>)}
     </section>}
   </div>;
