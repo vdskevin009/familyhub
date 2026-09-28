@@ -122,6 +122,11 @@ test('exact complementary trusted payments match one expense despite conflicting
   assert.equal(ambiguous.cases.length, 2);
   assert.deepEqual(ambiguous.unmatched, [{ DocumentId: blueCross.Id, Reason: 'ambiguous-match' }]);
 
+  const ordinaryExpense = { ...source, Id: 'same-gross-matching-service', Provider: 'Social Worker' };
+  const ordinary = buildReconciliationSnapshot([source, ordinaryExpense, desjardins, blueCross]);
+  assert.equal(ordinary.unmatched.length, 0, 'a valid ordinary match must survive another expense\'s ambiguous fallback');
+  assert.equal(ordinary.cases.find(item => item.ExpenseDocumentId === ordinaryExpense.Id).BlueCrossReimbursedAmount, 136);
+
   for (const blocked of [
     { ...blueCross, NeedsReview: true },
     { ...blueCross, Confidence: 70 },
