@@ -135,7 +135,7 @@ const isPatientName = (value: string) => memberName(value) !== "unknown";
 
 /** Collapse receipt/statement copies into one expense before matching insurer rows. */
 type CanonicalExpense = Invoice & { RelatedDocumentIds: string[] };
-function canonicalExpenses(expenses: Invoice[]): CanonicalExpense[] {
+function canonicalExpenses(expenses: Invoice[], statements: Invoice[] = []): CanonicalExpense[] {
   const result: CanonicalExpense[] = [];
   for (const item of expenses) {
     const h = healthcareEvidence(item);
@@ -152,7 +152,28 @@ function canonicalExpenses(expenses: Invoice[]): CanonicalExpense[] {
       const reportReceiptPair = (candidate.AccountLabel === "Local Desjardins import") !== (item.AccountLabel === "Local Desjardins import");
       const residualLink = sameMoney(c.OriginalBilledAmount, h.OriginalBilledAmount) || sameMoney(candidate.BilledAmount, h.AmountNotCovered)
         || sameMoney(item.BilledAmount, c.AmountNotCovered);
-      return sameInvoice && providerMatch || key === ckey && reportReceiptPair && residualLink && Boolean(service(item));
+      const reportExpense = candidate.AccountLabel === "Local Desjardins import" ? candidate
+        : item.AccountLabel === "Local Desjardins import" ? item : null;
+      const providerExpense = reportExpense === candidate ? item : candidate;
+      const providerEvidence = healthcareEvidence(providerExpense);
+      const providerResidual = providerEvidence.PatientBalance ?? providerEvidence.AmountNotCovered ?? null;
+      const reportSubmitted = reportExpense ? submitted(reportExpense) : null;
+      // Legacy/report-derived expenses can carry the gross amount while the real provider receipt
+      // carries only the post-insurance residual. Consolidate them only when one exact insurer row
+      // proves the arithmetic for the same member/date/service: submitted - paid = residual.
+      const coordinatedResidualMatches = reportExpense && providerResidual != null && reportSubmitted != null
+        ? statements.filter(statement => statement.AccountLabel === "Local Desjardins import"
+          && statement.DocumentRole === "insurer-statement" && statement.Insurer === "desjardins"
+          && statement.Member === reportExpense.Member
+          && dateDistance(statement.ServiceDate, reportExpense.ServiceDate) === 0
+          && (!service(statement) || !service(reportExpense) || service(statement) === service(reportExpense))
+          && sameMoney(submitted(statement), reportSubmitted)
+          && statement.ReimbursedAmount != null
+          && sameMoney(reportSubmitted - statement.ReimbursedAmount, providerResidual))
+        : [];
+      const coordinatedResidualLink = coordinatedResidualMatches.length === 1;
+      return sameInvoice && providerMatch
+        || key === ckey && reportReceiptPair && (residualLink || coordinatedResidualLink) && Boolean(service(item));
     });
     // Ties remain separate evidence, never a first-row-wins duplicate decision.
     const existing = candidates.length === 1 ? candidates[0] : undefined;
@@ -292,8 +313,8 @@ export function buildReconciliationSnapshot(items: Invoice[], matchDecisions: Ma
   const health = items.filter(item => item.Category === 0 && item.Status !== 4);
   const rawExpenses = health.filter(item => item.DocumentRole === "expense"
     || ((!item.DocumentRole || item.DocumentRole === "other") && ["receipt", "invoice", "bill"].includes(item.DocumentType)));
-  const expenses = canonicalExpenses(rawExpenses);
   const statements = health.filter(item => item.DocumentRole === "insurer-statement" || item.DocumentType === "claim");
+  const expenses = canonicalExpenses(rawExpenses, statements);
   const assignments = new Map<string, Invoice[]>();
   const assignmentMeta = new Map<string, MatchAssignment>();
   const unmatchedReasons = new Map<string, UnmatchedReimbursement["Reason"]>();
