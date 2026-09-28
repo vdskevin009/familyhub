@@ -4,7 +4,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { Codex } from "@openai/codex-sdk";
-import { initializeInvoices, invoiceSnapshot, collectInvoices, correctInvoice, updateInvoiceStatus, undoInvoiceDecision, invoiceAttachment, importBlueCrossMessages, setExpenseIgnored, setMatchDecision, setReimbursementWorkflowStatus } from "./invoices.js";
+import { initializeInvoices, invoiceSnapshot, collectInvoices, correctInvoice, updateInvoiceStatus, undoInvoiceDecision, invoiceAttachment, importBlueCrossMessages, setExpenseIgnored, setManualMatch, setMatchDecision, setReimbursementWorkflowStatus, setUnmatchedIgnored } from "./invoices.js";
 
 type WorkerTaskType = "general" | "meal-plan" | "research" | "financial-review" | "admin-classify";
 type WorkerTask = {
@@ -30,7 +30,7 @@ type ResearchWatch = {
 };
 type PersistedState = { watches: ResearchWatch[] };
 
-const version = "2.7.0";
+const version = "2.8.0";
 const host = process.env.FAMILYHUB_WORKER_HOST?.trim() || "127.0.0.1";
 const port = Number(process.env.FAMILYHUB_WORKER_PORT || "4713");
 const stateDir = process.env.FAMILYHUB_WORKER_DATA?.trim() || join(homedir(), ".familyhub-worker");
@@ -218,6 +218,16 @@ const server = createServer(async (request, response) => {
       if (request.method === "POST" && parts.length === 3 && parts[1] === "matches" && parts[2] === "decision") {
         const body = await readJson<{ reimbursementId?: unknown; expenseId?: unknown; decision?: unknown }>(request);
         await setMatchDecision(body.reimbursementId, body.expenseId, body.decision);
+        json(response, 200, { saved: true }, origin); return;
+      }
+      if (request.method === "POST" && parts.length === 3 && parts[1] === "matches" && parts[2] === "manual") {
+        const body = await readJson<{ reimbursementId?: unknown; expenseId?: unknown }>(request);
+        await setManualMatch(body.reimbursementId, body.expenseId);
+        json(response, 200, { saved: true }, origin); return;
+      }
+      if (request.method === "POST" && parts.length === 3 && parts[1] === "unmatched" && parts[2] === "ignore") {
+        const body = await readJson<{ reimbursementId?: unknown; ignored?: unknown }>(request);
+        await setUnmatchedIgnored(body.reimbursementId, body.ignored);
         json(response, 200, { saved: true }, origin); return;
       }
       if (request.method === "POST" && parts.length === 3 && parts[1] === "workflow" && parts[2] === "status") {
