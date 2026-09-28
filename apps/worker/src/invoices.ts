@@ -219,6 +219,7 @@ export async function invoiceSnapshot() {
   try { accounts = (await credentials()).accounts.map(({ email, label }) => ({ email, label })); } catch { /* Visible setup-required status. */ }
   const activeItems = activeReconciliationItems();
   const effectiveItems = activeItems.map(item => item.IgnoredAt ? { ...item, Status: 4, NeedsReview: false } : item);
+  const displayItems = state.items.map(item => item.IgnoredAt ? { ...item, Status: 4, NeedsReview: false } : item);
   const reconciliation = buildReconciliationSnapshot(effectiveItems, state.matchDecisions);
   const allReconciliation = buildReconciliationSnapshot(activeItems, state.matchDecisions);
   const ignoredExpenses = allReconciliation.cases.filter(entry => entry.DocumentIds.some(id => state.items.find(item => item.Id === id)?.IgnoredAt));
@@ -227,7 +228,7 @@ export async function invoiceSnapshot() {
     .map(decision => ({ DocumentId: decision.reimbursementId, Reason: decision.reason, IgnoredAt: decision.at }));
   const signatures = new Map(reviewTargets(effectiveItems, reconciliation).map(target => [target.key, target.signature]));
   const reviews = state.reviews.filter(item => signatures.get(item.key) === item.signature);
-  return { items: effectiveItems, reconciliations: reconciliation.cases.map(decorateWorkflowCase), ignoredExpenses: ignoredExpenses.map(decorateWorkflowCase), unmatchedReimbursements: reconciliation.unmatched, ignoredUnmatchedReimbursements, diagnostics: reconciliation.diagnostics,
+  return { items: displayItems, reconciliations: reconciliation.cases.map(decorateWorkflowCase), ignoredExpenses: ignoredExpenses.map(decorateWorkflowCase), unmatchedReimbursements: reconciliation.unmatched, ignoredUnmatchedReimbursements, diagnostics: reconciliation.diagnostics,
     coverage: { since: "2025-06-01", complete: accounts.length > 0 && accounts.every(account => {
       const progress = state.accounts[account.email.toLowerCase()];
       return progress?.invoiceHistoryVersion === invoiceHistoryVersion && !progress.invoiceHistoryWindow && !progress.window && !progress.error;
