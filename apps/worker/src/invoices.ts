@@ -121,10 +121,10 @@ function metadataClassification(senderValue: string, subjectValue: string, textV
   const subject = subjectValue.trim();
   const text = textValue.toLowerCase();
   if ((sender.includes("desjardins") || sender.includes("@dsf.ca"))
-    && /^(?:your claim has been received|your claim has been processed)$/i.test(subject)
+    && /^(?:your claim has been received|your claim has been processed|your health or dental care predetermination has been processed)$/i.test(subject)
     && !statementEvidence) {
     return { kind: "administrative", category: "other",
-      reason: "Desjardins claim-status notification without an attached or explicit reimbursement statement." };
+      reason: "Desjardins status notification without an attached or explicit reimbursement statement." };
   }
   if (/(?:security alert|new sign-in|passkey|password (?:was )?changed|recovery (?:phone|email).*(?:changed|updated)|connexion inhabituelle|alerte de sécurité)/i.test(subject)
     && /google|microsoft|wise|revolut|apple|bank|banque/i.test(sender + " " + text)) {
