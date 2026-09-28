@@ -1,5 +1,26 @@
 import { AgentReview, CleanupSuggestion, ReconciliationCase, ReimbursementItem, ReimbursementWorkflowStatus, ResearchWatch, UnmatchedReimbursement, WorkerConfig, WorkerTask, WorkerTaskType } from "./types";
 
+export const manualReconciliationWorkerVersion = "2.8.0";
+
+export function workerVersionAtLeast(version: string, minimum: string): boolean {
+  const parse = (value: string) => value.split(".").map(part => Number.parseInt(part, 10) || 0);
+  const current = parse(version);
+  const required = parse(minimum);
+  for (let index = 0; index < Math.max(current.length, required.length); index++) {
+    const left = current[index] ?? 0;
+    const right = required[index] ?? 0;
+    if (left !== right) return left > right;
+  }
+  return true;
+}
+
+async function requireManualReconciliationWorker(config: WorkerConfig): Promise<void> {
+  const health = await testWorker(config);
+  if (!workerVersionAtLeast(health.version, manualReconciliationWorkerVersion)) {
+    throw new Error(`Your PC worker is ${health.version || "an older version"}. Manual Match / Ignore requires worker ${manualReconciliationWorkerVersion} or later. Update and restart the FamilyHub worker on the PC, then refresh.`);
+  }
+}
+
 function endpoint(config: WorkerConfig, path: string): string {
   const base = config.Endpoint.trim().replace(/\/$/, "");
   if (!base) throw new Error("Configure the FamilyHub worker endpoint first.");
@@ -87,10 +108,12 @@ export function setExpenseIgnored(config: WorkerConfig, documentIds: string[], i
 export function setMatchDecision(config: WorkerConfig, reimbursementId: string, expenseId: string, decision: "confirmed" | "rejected"): Promise<{ saved: boolean }> {
   return request(config, "/invoices/matches/decision", { method: "POST", body: JSON.stringify({ reimbursementId, expenseId, decision }) });
 }
-export function setManualMatch(config: WorkerConfig, reimbursementId: string, expenseId: string): Promise<{ saved: boolean }> {
+export async function setManualMatch(config: WorkerConfig, reimbursementId: string, expenseId: string): Promise<{ saved: boolean }> {
+  await requireManualReconciliationWorker(config);
   return request(config, "/invoices/matches/manual", { method: "POST", body: JSON.stringify({ reimbursementId, expenseId }) });
 }
-export function setUnmatchedIgnored(config: WorkerConfig, reimbursementId: string, ignored: boolean): Promise<{ saved: boolean }> {
+export async function setUnmatchedIgnored(config: WorkerConfig, reimbursementId: string, ignored: boolean): Promise<{ saved: boolean }> {
+  await requireManualReconciliationWorker(config);
   return request(config, "/invoices/unmatched/ignore", { method: "POST", body: JSON.stringify({ reimbursementId, ignored }) });
 }
 export function setReimbursementWorkflowStatus(config: WorkerConfig, expenseId: string, status: ReimbursementWorkflowStatus | "automatic"): Promise<{ saved: boolean }> {
