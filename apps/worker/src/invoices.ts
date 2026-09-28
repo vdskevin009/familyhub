@@ -159,10 +159,12 @@ function normalizeStoredMetadata(): boolean {
     const nextStatus = rule.kind === "ignore" ? 4 : 0;
     const nextCategory = rule.category === "travel" ? 1 : 2;
     if (item.DocumentType === rule.kind && item.Status === nextStatus && !item.NeedsReview && item.ReimbursementEligibility === "no"
-      && item.AttentionLevel === (rule.attention || "none")) continue;
+      && item.DocumentRole === "other" && item.Insurer == null && item.AttentionLevel === (rule.attention || "none")) continue;
     item.DocumentType = rule.kind;
     item.Status = nextStatus;
     item.Category = nextCategory;
+    item.DocumentRole = "other";
+    item.Insurer = null;
     item.NeedsReview = false;
     item.ReimbursementEligibility = "no";
     item.ClassificationSource = "rules";
@@ -373,7 +375,7 @@ export async function classifyHistorical(mail: Mail, _email: string, _label?: st
     reimbursement: "unknown", reason: rule?.reason || (excluded ? "Promotional signals without transaction evidence."
       : "Historical document candidate indexed from explicit evidence; classification and insurance coverage need review."),
     amount: null, currency: "", category: rule?.category || (health ? "health" : "other"), member: "unknown",
-    documentRole: rule ? "other" : statement ? "insurer-statement" : expense ? "expense" : "other", insurer: statement ? insurer : null,
+    documentRole: rule ? "other" : statement ? "insurer-statement" : expense ? "expense" : "other", insurer: rule ? null : statement ? insurer : null,
     serviceDate: null, billedAmount: null, reimbursedAmount: null, attention: rule?.attention || "none", attentionReason: rule?.attention ? rule.reason : "" } };
 }
 
