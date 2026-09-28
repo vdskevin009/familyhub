@@ -32,6 +32,7 @@ export type InvoiceSnapshot = {
   reconciliations: ReconciliationCase[]; cleanupSuggestions: CleanupSuggestion[];
   importantMail: ReimbursementItem[];
   unmatchedReimbursements: UnmatchedReimbursement[];
+  ignoredUnmatchedReimbursements: UnmatchedReimbursement[];
   agentReviews?: AgentReview[];
   ignoredExpenses?: ReconciliationCase[];
   coverage?: { since: string; complete: boolean };
@@ -58,6 +59,7 @@ export async function fetchInvoices(config: WorkerConfig): Promise<InvoiceSnapsh
     cleanupSuggestions: Array.isArray(raw.cleanupSuggestions) ? raw.cleanupSuggestions : [],
     importantMail: Array.isArray(raw.importantMail) ? raw.importantMail : [],
     unmatchedReimbursements: Array.isArray(raw.unmatchedReimbursements) ? raw.unmatchedReimbursements : [],
+    ignoredUnmatchedReimbursements: Array.isArray(raw.ignoredUnmatchedReimbursements) ? raw.ignoredUnmatchedReimbursements : [],
     agentReviews: Array.isArray(raw.agentReviews) ? raw.agentReviews : [],
     ignoredExpenses: Array.isArray(raw.ignoredExpenses) ? raw.ignoredExpenses : [],
     coverage: raw.coverage,
@@ -84,6 +86,12 @@ export function setExpenseIgnored(config: WorkerConfig, documentIds: string[], i
 }
 export function setMatchDecision(config: WorkerConfig, reimbursementId: string, expenseId: string, decision: "confirmed" | "rejected"): Promise<{ saved: boolean }> {
   return request(config, "/invoices/matches/decision", { method: "POST", body: JSON.stringify({ reimbursementId, expenseId, decision }) });
+}
+export function setManualMatch(config: WorkerConfig, reimbursementId: string, expenseId: string): Promise<{ saved: boolean }> {
+  return request(config, "/invoices/matches/manual", { method: "POST", body: JSON.stringify({ reimbursementId, expenseId }) });
+}
+export function setUnmatchedIgnored(config: WorkerConfig, reimbursementId: string, ignored: boolean): Promise<{ saved: boolean }> {
+  return request(config, "/invoices/unmatched/ignore", { method: "POST", body: JSON.stringify({ reimbursementId, ignored }) });
 }
 export function setReimbursementWorkflowStatus(config: WorkerConfig, expenseId: string, status: ReimbursementWorkflowStatus | "automatic"): Promise<{ saved: boolean }> {
   return request(config, "/invoices/workflow/status", { method: "POST", body: JSON.stringify({ expenseId, status }) });
