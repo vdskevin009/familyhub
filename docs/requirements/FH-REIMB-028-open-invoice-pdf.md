@@ -28,4 +28,4 @@ This entry only documents the requested capability. No implementation is include
 - [ ] Mobile/PWA behavior is covered when implemented.
 
 ## Tracking
-GitHub issue to be linked after creation.
+- GitHub issue: #69 — Open stored invoice PDF directly from reimbursement cards.
