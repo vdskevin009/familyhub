@@ -2,11 +2,14 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   buildInvoiceHistoryCases,
+  excludeAssignedUnmatched,
   filterInvoiceHistoryCases,
   filterReimbursementWorkflowCases,
   mergeInvoiceItems,
   mergeReconciliationHistory,
   namedInsurerReimbursementAmount,
+  reimbursementInvoiceDocument,
+  reimbursementInvoiceUrl,
   reimbursementWorkflowStatus,
   reimbursementWorkflowSummary,
   unreconciledInvoiceCases
@@ -194,4 +197,45 @@ test("Nathan unknown insurer order shows Desjardins and Blue Cross amounts witho
   };
   assert.equal(namedInsurerReimbursementAmount(currentWorkerCase, "Desjardins", byId), 35.36);
   assert.equal(namedInsurerReimbursementAmount(currentWorkerCase, "Blue Cross", byId), 100.8);
+});
+
+
+test("already assigned insurer rows are excluded from stale Unmatched projections", () => {
+  const expense = invoice("expense-feb-19", "2026-02-19");
+  const insurer = invoice("desjardins-feb-19", "2026-02-19", {
+    DocumentRole: "insurer-statement", DocumentType: "claim", Insurer: "desjardins",
+    ReimbursedAmount: 72, DetectedAmount: 72
+  });
+  const matched = reconciliation(expense, {
+    MatchAssignments: [{
+      ExpenseDocumentId: expense.Id,
+      ReimbursementDocumentId: insurer.Id,
+      Insurer: "desjardins",
+      Confidence: 93,
+      Verification: "auto",
+      Evidence: ["same member", "same service date"]
+    }]
+  });
+  const unmatched = [
+    { DocumentId: insurer.Id, Reason: "no-expense-match" as const },
+    { DocumentId: "genuinely-unmatched", Reason: "no-expense-match" as const }
+  ];
+  assert.deepEqual(excludeAssignedUnmatched(unmatched, [matched]), [unmatched[1]]);
+});
+
+test("invoice PDF action resolves only when a linked PDF is actually archived", () => {
+  const archivedPdf = invoice("expense-with-pdf", "2026-09-20", {
+    DriveFileId: "drive-file-123",
+    Attachments: [{ Id: "a1", FileName: "invoice.pdf", MimeType: "application/pdf", Size: 1234 }]
+  });
+  const caseWithPdf = reconciliation(archivedPdf, { ExpenseDocumentId: archivedPdf.Id });
+  const byId = new Map([[archivedPdf.Id, archivedPdf]]);
+  assert.equal(reimbursementInvoiceDocument(caseWithPdf, byId)?.Id, archivedPdf.Id);
+  assert.equal(reimbursementInvoiceUrl(archivedPdf), "https://drive.google.com/file/d/drive-file-123/view");
+
+  const noPdf = invoice("expense-without-pdf", "2026-09-21", {
+    DriveFileId: "drive-file-image",
+    Attachments: [{ Id: "a2", FileName: "receipt.jpg", MimeType: "image/jpeg", Size: 100 }]
+  });
+  assert.equal(reimbursementInvoiceDocument(reconciliation(noPdf), new Map([[noPdf.Id, noPdf]])), null);
 });
