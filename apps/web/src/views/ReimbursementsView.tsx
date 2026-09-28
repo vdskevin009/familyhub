@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { AlertTriangle, CheckCircle2, CircleDollarSign, ExternalLink, RefreshCw } from "lucide-react";
 import { dateLabel } from "../domain";
 import { googleBridge } from "../google";
-import { buildInvoiceHistoryCases, filterInvoiceHistoryCases, filterReimbursementWorkflowCases, healthcareTitle, mergeInvoiceItems, mergeReconciliationHistory, namedInsurerReimbursementAmount, primaryReimbursementAmount, reimbursementCaseStatus, reimbursementWorkflowStatus, reimbursementWorkflowSummary, secondaryReimbursementAmount } from "../invoice-state";
+import { buildInvoiceHistoryCases, excludeAssignedUnmatched, filterInvoiceHistoryCases, filterReimbursementWorkflowCases, healthcareTitle, mergeInvoiceItems, mergeReconciliationHistory, namedInsurerReimbursementAmount, primaryReimbursementAmount, reimbursementCaseStatus, reimbursementInvoiceDocument, reimbursementInvoiceUrl, reimbursementWorkflowStatus, reimbursementWorkflowSummary, secondaryReimbursementAmount } from "../invoice-state";
 import type { InvoiceHistoryFilter, ReimbursementCaseStatus, ReimbursementPersonScope, WorkflowStatusFilter } from "../invoice-state";
 import type { HubState } from "../state";
 import type { MatchAssignment, ReconciliationCase, ReimbursementItem, ReimbursementWorkflowStatus, UnmatchedReimbursement } from "../types";
@@ -119,7 +119,7 @@ export default function ReimbursementsView({ hub }: Props) {
       WorkflowOrigin: item.WorkflowOrigin ?? "manual" as const
     }));
     const cases = buildInvoiceHistoryCases([...(hub.reimbursements.Reconciliations ?? []), ...ignoredCases], hub.reimbursements.Items);
-    const unmatched = (hub.reimbursements.UnmatchedReimbursements ?? [])
+    const unmatched = excludeAssignedUnmatched(hub.reimbursements.UnmatchedReimbursements ?? [], cases)
       .map(result => ({ result, item: byId.get(result.DocumentId) }))
       .filter((entry): entry is { result: UnmatchedReimbursement; item: ReimbursementItem } => Boolean(entry.item))
       .sort((a, b) => dateValue(b.item.ServiceDate || b.item.StatementDate || b.item.ReceivedAt)
@@ -144,8 +144,11 @@ export default function ReimbursementsView({ hub }: Props) {
     ignore: scopedCases.filter(item => reimbursementWorkflowStatus(item) === "ignore").length
   }), [scopedCases]);
 
+  const workflowScopedCases = useMemo(() => filterReimbursementWorkflowCases(model.cases, personScope, workflowFilter),
+    [model.cases, personScope, workflowFilter]);
+
   const finance = useMemo(() => {
-    const cad = scopedCases.filter(item => !item.PreviouslyFound && reimbursementWorkflowStatus(item) !== "ignore" && (item.Currency || "CAD") === "CAD");
+    const cad = workflowScopedCases.filter(item => !item.PreviouslyFound && reimbursementWorkflowStatus(item) !== "ignore" && (item.Currency || "CAD") === "CAD");
     return {
       totalPaid: cad.reduce((sum, item) => sum + (item.OriginalAmount ?? 0), 0),
       primary: cad.reduce((sum, item) => sum + (primaryReimbursementAmount(item) ?? 0), 0),
@@ -153,9 +156,10 @@ export default function ReimbursementsView({ hub }: Props) {
       desjardins: cad.reduce((sum, item) => sum + (namedInsurerReimbursementAmount(item, "Desjardins", invoiceById) ?? 0), 0),
       blueCross: cad.reduce((sum, item) => sum + (namedInsurerReimbursementAmount(item, "Blue Cross", invoiceById) ?? 0), 0),
       outstanding: cad.reduce((sum, item) => sum + (item.PotentialRemaining ?? 0), 0),
-      attention: scopedCases.filter(item => reimbursementWorkflowStatus(item) === "open" && reimbursementCaseStatus(item) === "needs-attention").length + scopedUnmatched.length
+      attention: workflowScopedCases.filter(item => reimbursementWorkflowStatus(item) === "open" && reimbursementCaseStatus(item) === "needs-attention").length
+        + (workflowFilter === "open" || workflowFilter === "all" ? scopedUnmatched.length : 0)
     };
-  }, [scopedCases, scopedUnmatched, invoiceById]);
+  }, [workflowScopedCases, workflowFilter, scopedUnmatched, invoiceById]);
 
   const filterCounts = useMemo(() => ({
     fully: scopedCases.filter(item => reimbursementCaseStatus(item) === "fully-reimbursed").length,
@@ -180,8 +184,6 @@ export default function ReimbursementsView({ hub }: Props) {
         ? workflowCounts.ignore
         : scopedCases.length;
 
-  const workflowScopedCases = useMemo(() => filterReimbursementWorkflowCases(model.cases, personScope, workflowFilter),
-    [model.cases, personScope, workflowFilter]);
   const filteredCases = useMemo(() => {
     if (reconciliationFilter === "unmatched") return [];
     const history = filterInvoiceHistoryCases(workflowScopedCases, filters);
@@ -246,7 +248,7 @@ export default function ReimbursementsView({ hub }: Props) {
       <article className="summary-primary"><small>Total expenses</small><strong>{money(finance.totalPaid)}</strong><span>{scopeLabel}</span></article>
       <article><small>{personScope === "Nathan" ? "Desjardins" : "Primary insurance"}</small><strong>{money(personScope === "Nathan" ? finance.desjardins : finance.primary)}</strong><span>reimbursed</span></article>
       <article><small>{personScope === "Nathan" ? "Blue Cross" : "Secondary insurance"}</small><strong>{money(personScope === "Nathan" ? finance.blueCross : finance.secondary)}</strong><span>reimbursed</span></article>
-      <article><small>Remaining balance</small><strong>{money(finance.outstanding)}</strong><span>all active statuses</span></article>
+      <article><small>Remaining balance</small><strong>{money(finance.outstanding)}</strong><span>{workflowLabel.toLowerCase()} workflow</span></article>
       <article className={finance.attention ? "summary-attention" : ""}><small>Needs attention</small><strong>{finance.attention}</strong><span>items</span></article>
     </section>
 
@@ -413,6 +415,15 @@ export default function ReimbursementsView({ hub }: Props) {
             {item.PreviouslyFound && <p className="privacy-note expense-warning">{item.Unreconciled
               ? "Indexed invoice without a reconciliation case. Check the source before relying on its amounts or reimbursement status."
               : "Previously found invoice; the latest PC result did not include it. Check the source before relying on its amounts or reimbursement status."}</p>}
+            {(() => {
+              const invoiceDocument = reimbursementInvoiceDocument(item, invoiceById);
+              const invoiceUrl = reimbursementInvoiceUrl(invoiceDocument);
+              return invoiceUrl ? <div className="expense-document-actions">
+                <a className="mini-button" href={invoiceUrl} target="_blank" rel="noreferrer">
+                  <ExternalLink size={14} /> View invoice
+                </a>
+              </div> : null;
+            })()}
             <div className="expense-note"><span>{item.Summary}</span><small>{matchAssignments.length ? `${matchAssignments.length} matched insurer record${matchAssignments.length === 1 ? "" : "s"}` : `Source confidence ${Math.round(item.Confidence)}%`}</small></div>
             {item.Status === "needs-attention" && item.DocumentIds[0] && reviews.get(`case:${item.DocumentIds[0]}`) &&
               <p className="privacy-note expense-warning">Second AI review: {reviews.get(`case:${item.DocumentIds[0]}`)!.explanation} · Suggestion only; check the source documents.</p>}
