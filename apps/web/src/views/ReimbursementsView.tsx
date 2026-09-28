@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { AlertTriangle, CheckCircle2, CircleDollarSign, ExternalLink, RefreshCw } from "lucide-react";
 import { dateLabel } from "../domain";
 import { googleBridge } from "../google";
-import { buildInvoiceHistoryCases, filterInvoiceHistoryCases, filterReimbursementWorkflowCases, healthcareTitle, mergeInvoiceItems, mergeReconciliationHistory, primaryReimbursementAmount, reimbursementCaseStatus, reimbursementWorkflowStatus, reimbursementWorkflowSummary, secondaryReimbursementAmount } from "../invoice-state";
+import { buildInvoiceHistoryCases, filterInvoiceHistoryCases, filterReimbursementWorkflowCases, healthcareTitle, mergeInvoiceItems, mergeReconciliationHistory, namedInsurerReimbursementAmount, primaryReimbursementAmount, reimbursementCaseStatus, reimbursementWorkflowStatus, reimbursementWorkflowSummary, secondaryReimbursementAmount } from "../invoice-state";
 import type { InvoiceHistoryFilter, ReimbursementCaseStatus, ReimbursementPersonScope, WorkflowStatusFilter } from "../invoice-state";
 import type { HubState } from "../state";
 import type { MatchAssignment, ReconciliationCase, ReimbursementItem, ReimbursementWorkflowStatus, UnmatchedReimbursement } from "../types";
@@ -129,7 +129,7 @@ export default function ReimbursementsView({ hub }: Props) {
   }, [hub.reimbursements.Items, hub.reimbursements.Reconciliations, hub.reimbursements.IgnoredExpenses, hub.reimbursements.UnmatchedReimbursements]);
 
   const reviews = new Map((hub.reimbursements.AgentReviews ?? []).map(review => [review.key, review]));
-  const invoiceById = new Map(hub.reimbursements.Items.map(item => [item.Id, item]));
+  const invoiceById = useMemo(() => new Map(hub.reimbursements.Items.map(item => [item.Id, item])), [hub.reimbursements.Items]);
   const scopedCases = useMemo(() => filterReimbursementWorkflowCases(model.cases, personScope, "all"), [model.cases, personScope]);
   const scopedUnmatched = useMemo(() => model.unmatched.filter(({ item }) => personScope === "all" || item.Member === personScope), [model.unmatched, personScope]);
 
@@ -150,10 +150,12 @@ export default function ReimbursementsView({ hub }: Props) {
       totalPaid: cad.reduce((sum, item) => sum + (item.OriginalAmount ?? 0), 0),
       primary: cad.reduce((sum, item) => sum + (primaryReimbursementAmount(item) ?? 0), 0),
       secondary: cad.reduce((sum, item) => sum + (secondaryReimbursementAmount(item) ?? 0), 0),
+      desjardins: cad.reduce((sum, item) => sum + (namedInsurerReimbursementAmount(item, "Desjardins", invoiceById) ?? 0), 0),
+      blueCross: cad.reduce((sum, item) => sum + (namedInsurerReimbursementAmount(item, "Blue Cross", invoiceById) ?? 0), 0),
       outstanding: cad.reduce((sum, item) => sum + (item.PotentialRemaining ?? 0), 0),
       attention: scopedCases.filter(item => reimbursementWorkflowStatus(item) === "open" && reimbursementCaseStatus(item) === "needs-attention").length + scopedUnmatched.length
     };
-  }, [scopedCases, scopedUnmatched]);
+  }, [scopedCases, scopedUnmatched, invoiceById]);
 
   const filterCounts = useMemo(() => ({
     fully: scopedCases.filter(item => reimbursementCaseStatus(item) === "fully-reimbursed").length,
@@ -242,8 +244,8 @@ export default function ReimbursementsView({ hub }: Props) {
 
     <section className="reimbursement-summary" aria-label={`${scopeLabel} reimbursement summary`}>
       <article className="summary-primary"><small>Total expenses</small><strong>{money(finance.totalPaid)}</strong><span>{scopeLabel}</span></article>
-      <article><small>Primary insurance</small><strong>{money(finance.primary)}</strong><span>reimbursed</span></article>
-      <article><small>Secondary insurance</small><strong>{money(finance.secondary)}</strong><span>reimbursed</span></article>
+      <article><small>{personScope === "Nathan" ? "Desjardins" : "Primary insurance"}</small><strong>{money(personScope === "Nathan" ? finance.desjardins : finance.primary)}</strong><span>reimbursed</span></article>
+      <article><small>{personScope === "Nathan" ? "Blue Cross" : "Secondary insurance"}</small><strong>{money(personScope === "Nathan" ? finance.blueCross : finance.secondary)}</strong><span>reimbursed</span></article>
       <article><small>Remaining balance</small><strong>{money(finance.outstanding)}</strong><span>all active statuses</span></article>
       <article className={finance.attention ? "summary-attention" : ""}><small>Needs attention</small><strong>{finance.attention}</strong><span>items</span></article>
     </section>
@@ -335,6 +337,14 @@ export default function ReimbursementsView({ hub }: Props) {
           const workflowSavingId = `workflow:${item.ExpenseDocumentId || item.ExpenseDocumentIds?.[0] || item.DocumentIds[0]}`;
           const workflowSaving = savingId === workflowSavingId;
           const workflowValue: ReimbursementWorkflowStatus | "automatic" = item.WorkflowOrigin === "manual" ? workflow : "automatic";
+          const insurerOrderUnknown = !item.PrimaryInsurer && !item.SecondaryInsurer
+            && (item.Member === "Nathan" || matchAssignments.some(match => match.Insurer === "desjardins" || match.Insurer === "blue-cross"));
+          const firstInsurerLabel = insurerOrderUnknown ? "Desjardins" : item.PrimaryInsurer || "Primary";
+          const secondInsurerLabel = insurerOrderUnknown ? "Blue Cross" : item.SecondaryInsurer || "Secondary";
+          const firstInsurerAmount = insurerOrderUnknown
+            ? namedInsurerReimbursementAmount(item, "Desjardins", invoiceById) : primaryReimbursementAmount(item);
+          const secondInsurerAmount = insurerOrderUnknown
+            ? namedInsurerReimbursementAmount(item, "Blue Cross", invoiceById) : secondaryReimbursementAmount(item);
           return <article className="expense-card" key={item.Id}>
             <div className="expense-heading">
               <div><strong>{healthcareTitle(item)}</strong><small>{item.Member === "unknown" ? "Person to confirm" : item.Member}{item.ServiceType && healthcareTitle(item) !== item.ServiceType ? ` · ${item.ServiceType}` : ""}{item.ServiceDate ? ` · ${dateLabel(item.ServiceDate)}` : invoiceById.get(item.DocumentIds[0])?.ReceivedAt ? ` · Received ${dateLabel(invoiceById.get(item.DocumentIds[0])!.ReceivedAt)}` : " · Date missing"}</small></div>
@@ -345,8 +355,8 @@ export default function ReimbursementsView({ hub }: Props) {
             </div>
             <div className="expense-amounts">
               <div><small>Expense</small><strong>{money(item.OriginalAmount, item.Currency)}</strong></div>
-              <div><small>{item.PrimaryInsurer || "Primary"}</small><strong>{money(primaryReimbursementAmount(item), item.Currency)}</strong></div>
-              <div><small>{item.SecondaryInsurer || "Secondary"}</small><strong>{money(secondaryReimbursementAmount(item), item.Currency)}</strong></div>
+              <div><small>{firstInsurerLabel}</small><strong>{money(firstInsurerAmount, item.Currency)}</strong></div>
+              <div><small>{secondInsurerLabel}</small><strong>{money(secondInsurerAmount, item.Currency)}</strong></div>
               <div className="remaining"><small>Remaining</small><strong>{money(item.PotentialRemaining, item.Currency)}</strong></div>
             </div>
             <div className="workflow-control">
@@ -399,7 +409,7 @@ export default function ReimbursementsView({ hub }: Props) {
                 })}
               </div>}
             </div>}
-            {!!item.UnallocatedReimbursedAmount && <p className="privacy-note expense-warning">Known payments: {money(item.UnallocatedReimbursedAmount, item.Currency)} · insurer order to confirm</p>}
+            {!!item.UnallocatedReimbursedAmount && <p className="privacy-note expense-warning">Insurer order to confirm · known payments are shown by insurer above.</p>}
             {item.PreviouslyFound && <p className="privacy-note expense-warning">{item.Unreconciled
               ? "Indexed invoice without a reconciliation case. Check the source before relying on its amounts or reimbursement status."
               : "Previously found invoice; the latest PC result did not include it. Check the source before relying on its amounts or reimbursement status."}</p>}
