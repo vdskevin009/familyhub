@@ -51,6 +51,7 @@ export default function ReimbursementsView({ hub }: Props) {
   const [personScope, setPersonScope] = useState<ReimbursementPersonScope>("all");
   const [workflowFilter, setWorkflowFilter] = useState<WorkflowStatusFilter>("open");
   const [reconciliationFilter, setReconciliationFilter] = useState<"all" | "matched" | "unmatched">("all");
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const paired = Boolean(hub.worker.Endpoint.trim() && hub.worker.ApiKey.trim());
 
   async function refresh() {
@@ -163,6 +164,20 @@ export default function ReimbursementsView({ hub }: Props) {
     unmatched: scopedUnmatched.length
   }), [scopedCases, scopedUnmatched]);
 
+  const activeFilterCount = filters.size
+    + (workflowFilter === "open" ? 0 : 1)
+    + (reconciliationFilter === "all" ? 0 : 1);
+  const workflowLabel = workflowFilter === "all"
+    ? "All"
+    : workflowFilter[0].toUpperCase() + workflowFilter.slice(1);
+  const workflowVisibleCount = workflowFilter === "open"
+    ? workflowCounts.open
+    : workflowFilter === "closed"
+      ? workflowCounts.closed
+      : workflowFilter === "ignore"
+        ? workflowCounts.ignore
+        : scopedCases.length;
+
   const workflowScopedCases = useMemo(() => filterReimbursementWorkflowCases(model.cases, personScope, workflowFilter),
     [model.cases, personScope, workflowFilter]);
   const filteredCases = useMemo(() => {
@@ -180,6 +195,7 @@ export default function ReimbursementsView({ hub }: Props) {
     setWorkflowFilter("open");
     setReconciliationFilter("all");
     setFilters(new Set<InvoiceHistoryFilter>());
+    setFiltersOpen(false);
   }
 
   function toggleFilter(filter: InvoiceHistoryFilter) {
@@ -232,51 +248,68 @@ export default function ReimbursementsView({ hub }: Props) {
       <article className={finance.attention ? "summary-attention" : ""}><small>Needs attention</small><strong>{finance.attention}</strong><span>items</span></article>
     </section>
 
-    <section className="reimbursement-filter-bar" aria-label="Filter reimbursement history">
+    <section className={`reimbursement-filter-bar ${filtersOpen ? "open" : ""}`} aria-label="Filter reimbursement history">
       <div className="reimbursement-filter-heading">
-        <div>
-          <strong>{scopeLabel}</strong>
-          <span>Newest first · Open is the default work queue</span>
+        <div className="reimbursement-filter-summary">
+          <span className={`workflow-status ${workflowFilter === "all" ? "all" : workflowFilter}`}>{workflowLabel}</span>
+          <div>
+            <strong>{workflowVisibleCount} {workflowVisibleCount === 1 ? "case" : "cases"}</strong>
+            <span>Newest first{activeFilterCount ? ` · ${activeFilterCount} extra filter${activeFilterCount === 1 ? "" : "s"}` : ""}</span>
+          </div>
         </div>
-        {(filters.size > 0 || workflowFilter !== "open" || reconciliationFilter !== "all") &&
-          <button type="button" className="filter-clear" onClick={() => {
+        <div className="reimbursement-filter-actions">
+          {activeFilterCount > 0 && <button type="button" className="filter-clear" onClick={() => {
             setFilters(new Set<InvoiceHistoryFilter>()); setWorkflowFilter("open"); setReconciliationFilter("all");
-          }}>Reset filters</button>}
-      </div>
-      <div className="reimbursement-filter-group">
-        <small>Workflow</small>
-        <div className="reimbursement-filter-chips">
-          <button type="button" className={`filter-chip ${workflowFilter === "open" ? "active" : ""}`} onClick={() => setWorkflowFilter("open")}>Open <span>{workflowCounts.open}</span></button>
-          <button type="button" className={`filter-chip ${workflowFilter === "closed" ? "active" : ""}`} onClick={() => setWorkflowFilter("closed")}>Closed <span>{workflowCounts.closed}</span></button>
-          <button type="button" className={`filter-chip ${workflowFilter === "ignore" ? "active" : ""}`} onClick={() => setWorkflowFilter("ignore")}>Ignore <span>{workflowCounts.ignore}</span></button>
-          <button type="button" className={`filter-chip ${workflowFilter === "all" ? "active" : ""}`} onClick={() => setWorkflowFilter("all")}>All <span>{scopedCases.length}</span></button>
-        </div>
-      </div>
-      <div className="reimbursement-filter-group">
-        <small>Reconciliation</small>
-        <div className="reimbursement-filter-chips">
-          <button type="button" className={`filter-chip ${reconciliationFilter === "all" ? "active" : ""}`} onClick={() => setReconciliationFilter("all")}>All</button>
-          <button type="button" className={`filter-chip ${reconciliationFilter === "matched" ? "active" : ""}`} onClick={() => setReconciliationFilter("matched")}>Matched <span>{filterCounts.matched}</span></button>
-          <button type="button" className={`filter-chip ${reconciliationFilter === "unmatched" ? "active" : ""}`} onClick={() => setReconciliationFilter("unmatched")}>Unmatched <span>{filterCounts.unmatched}</span></button>
-        </div>
-      </div>
-      <div className="reimbursement-filter-group">
-        <small>Reimbursement detail</small>
-        <div className="reimbursement-filter-chips">
-          <button type="button" className={`filter-chip ${filters.has("fully-reimbursed") ? "active" : ""}`} aria-pressed={filters.has("fully-reimbursed")} onClick={() => toggleFilter("fully-reimbursed")}>
-            Fully reimbursed <span>{filterCounts.fully}</span>
-          </button>
-          <button type="button" className={`filter-chip ${filters.has("not-fully-reimbursed") ? "active" : ""}`} aria-pressed={filters.has("not-fully-reimbursed")} onClick={() => toggleFilter("not-fully-reimbursed")}>
-            Not fully reimbursed <span>{filterCounts.outstanding}</span>
-          </button>
-          <button type="button" className={`filter-chip ${filters.has("primary") ? "active" : ""}`} aria-pressed={filters.has("primary")} onClick={() => toggleFilter("primary")}>
-            Primary <span>{filterCounts.primary}</span>
-          </button>
-          <button type="button" className={`filter-chip ${filters.has("secondary") ? "active" : ""}`} aria-pressed={filters.has("secondary")} onClick={() => toggleFilter("secondary")}>
-            Secondary <span>{filterCounts.secondary}</span>
+          }}>Reset</button>}
+          <button type="button" className="filter-toggle" aria-expanded={filtersOpen} aria-controls="reimbursement-filter-panel"
+            onClick={() => setFiltersOpen(open => !open)}>
+            Filters
+            {activeFilterCount > 0 && <span className="filter-toggle-count">{activeFilterCount}</span>}
+            <span className="filter-toggle-chevron" aria-hidden="true">{filtersOpen ? "▴" : "▾"}</span>
           </button>
         </div>
       </div>
+
+      {filtersOpen && <div className="reimbursement-filter-panel" id="reimbursement-filter-panel">
+        <div className="reimbursement-filter-group">
+          <small>Workflow</small>
+          <div className="reimbursement-filter-chips">
+            <button type="button" className={`filter-chip ${workflowFilter === "open" ? "active" : ""}`} onClick={() => setWorkflowFilter("open")}>Open <span>{workflowCounts.open}</span></button>
+            <button type="button" className={`filter-chip ${workflowFilter === "closed" ? "active" : ""}`} onClick={() => setWorkflowFilter("closed")}>Closed <span>{workflowCounts.closed}</span></button>
+            <button type="button" className={`filter-chip ${workflowFilter === "ignore" ? "active" : ""}`} onClick={() => setWorkflowFilter("ignore")}>Ignore <span>{workflowCounts.ignore}</span></button>
+            <button type="button" className={`filter-chip ${workflowFilter === "all" ? "active" : ""}`} onClick={() => setWorkflowFilter("all")}>All <span>{scopedCases.length}</span></button>
+          </div>
+        </div>
+        <div className="reimbursement-filter-group">
+          <small>Reconciliation</small>
+          <div className="reimbursement-filter-chips">
+            <button type="button" className={`filter-chip ${reconciliationFilter === "all" ? "active" : ""}`} onClick={() => setReconciliationFilter("all")}>All</button>
+            <button type="button" className={`filter-chip ${reconciliationFilter === "matched" ? "active" : ""}`} onClick={() => setReconciliationFilter("matched")}>Matched <span>{filterCounts.matched}</span></button>
+            <button type="button" className={`filter-chip ${reconciliationFilter === "unmatched" ? "active" : ""}`} onClick={() => setReconciliationFilter("unmatched")}>Unmatched <span>{filterCounts.unmatched}</span></button>
+          </div>
+        </div>
+        <div className="reimbursement-filter-group">
+          <small>Reimbursement detail</small>
+          <div className="reimbursement-filter-chips">
+            <button type="button" className={`filter-chip ${filters.has("fully-reimbursed") ? "active" : ""}`} aria-pressed={filters.has("fully-reimbursed")} onClick={() => toggleFilter("fully-reimbursed")}>
+              Fully reimbursed <span>{filterCounts.fully}</span>
+            </button>
+            <button type="button" className={`filter-chip ${filters.has("not-fully-reimbursed") ? "active" : ""}`} aria-pressed={filters.has("not-fully-reimbursed")} onClick={() => toggleFilter("not-fully-reimbursed")}>
+              Not fully reimbursed <span>{filterCounts.outstanding}</span>
+            </button>
+            <button type="button" className={`filter-chip ${filters.has("primary") ? "active" : ""}`} aria-pressed={filters.has("primary")} onClick={() => toggleFilter("primary")}>
+              Primary <span>{filterCounts.primary}</span>
+            </button>
+            <button type="button" className={`filter-chip ${filters.has("secondary") ? "active" : ""}`} aria-pressed={filters.has("secondary")} onClick={() => toggleFilter("secondary")}>
+              Secondary <span>{filterCounts.secondary}</span>
+            </button>
+          </div>
+        </div>
+        <div className="reimbursement-filter-panel-footer">
+          <span>Open / Closed / Ignore can also be changed directly on each reimbursement card.</span>
+          <button type="button" className="mini-button" onClick={() => setFiltersOpen(false)}>Done</button>
+        </div>
+      </div>}
     </section>
 
     <section className="reimbursement-history" aria-labelledby="reimbursement-history-title">
