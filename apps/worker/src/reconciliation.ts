@@ -394,7 +394,7 @@ export function buildReconciliationSnapshot(items: Invoice[], matchDecisions: Ma
     }).sort((a, b) => b.score - a.score);
     const best = ranked[0];
     const runnerUp = ranked[1];
-    if (ranked.some(item => item.score === ambiguousComplementaryScore)) {
+    if ((!best || best.score < 8) && ranked.some(item => item.score === ambiguousComplementaryScore)) {
       unmatchedReasons.set(statement.Id, "ambiguous-match"); continue;
     }
     if (!best || best.score < 8) { unmatchedReasons.set(statement.Id, statement.NeedsReview ? "needs-review" : "no-expense-match"); continue; }
