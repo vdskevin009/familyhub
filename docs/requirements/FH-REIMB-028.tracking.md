@@ -1,0 +1,1 @@
+Tracking will be handled in GitHub Issues. This file exists only as a documentation placeholder and should be removed once the issue link is written into the main requirement note.
