@@ -204,3 +204,124 @@ test('reimbursement workflow overrides persist, audit, ignore and reset to autom
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+
+test('manual unmatched matching and ignore/restore persist for Nathan same-day ambiguous reimbursements', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'familyhub-unmatched-manual-'));
+  const reservation = createServer(); reservation.listen(0, '127.0.0.1'); await once(reservation, 'listening');
+  const port = reservation.address().port; await new Promise(resolve => reservation.close(resolve));
+  await writeFile(join(dir, 'pairing-key.txt'), 'synthetic-unmatched-key');
+
+  const common = {
+    AccountLabel: 'Test', AccountEmail: 'test@example.test', ThreadId: 'thread', InternetMessageId: '<unmatched@example.test>',
+    Sender: 'Example', ReceivedAt: '2026-02-07T12:00:00Z', Category: 0, Status: 0, Currency: 'CAD',
+    Notes: '', Attachments: [], WorkerManaged: true, ReimbursementEligibility: 'possible',
+    ClassificationSource: 'rules', AmountSource: 'email-text', HasUnsubscribe: false,
+    AttentionLevel: 'none', AttentionReason: '', Fingerprint: 'unmatched-synthetic', Reasons: ['Synthetic']
+  };
+  const expense = (id, date, provider, invoiceNumber) => ({
+    ...common, Id: id, SourceMessageId: id + '-message', Subject: provider + ' receipt',
+    Provider: provider, Member: 'Nathan', DocumentRole: 'expense', DocumentType: 'receipt',
+    ServiceDate: date, BilledAmount: 100, DetectedAmount: 100, ReimbursedAmount: null,
+    Insurer: null, Confidence: 99, NeedsReview: false,
+    Healthcare: { InvoiceNumber: invoiceNumber, ServiceDate: date, ServiceType: 'Chiropractic', OriginalBilledAmount: 100, Provider: provider }
+  });
+  const statement = (id, date, amount) => ({
+    ...common, Id: id, SourceMessageId: id + '-message', Subject: 'Desjardins chiropractic claim',
+    Provider: 'Desjardins · Chiropractic', Member: 'Nathan', DocumentRole: 'insurer-statement', DocumentType: 'claim',
+    ServiceDate: date, BilledAmount: 100, DetectedAmount: amount, ReimbursedAmount: amount,
+    Insurer: 'desjardins', Confidence: 99, NeedsReview: false,
+    Healthcare: { ServiceDate: date, ServiceType: 'Chiropractic', SubmittedAmount: 100 }
+  });
+
+  const items = [
+    expense('feb-expense-a', '2026-02-06', 'North Shore Chiro A', 'FEB-A'),
+    expense('feb-expense-b', '2026-02-06', 'North Shore Chiro B', 'FEB-B'),
+    expense('dec-expense-a', '2025-12-12', 'North Shore Chiro A', 'DEC-A'),
+    expense('dec-expense-b', '2025-12-12', 'North Shore Chiro B', 'DEC-B'),
+    statement('feb-statement-1', '2026-02-06', 30),
+    statement('feb-statement-2', '2026-02-06', 20),
+    statement('feb-statement-3', '2026-02-06', 10),
+    statement('dec-statement-1', '2025-12-12', 35),
+    statement('dec-statement-2', '2025-12-12', 25),
+    statement('dec-statement-3', '2025-12-12', 15)
+  ];
+  await writeFile(join(dir, 'invoices.json'), JSON.stringify({
+    items, corrections: [], decisions: [], matchDecisions: [], unmatchedDecisions: [], workflowRecords: [], reviews: [], accounts: {}
+  }));
+
+  const headers = { 'x-familyhub-key': 'synthetic-unmatched-key', Origin: 'https://vdskevin009.github.io' };
+  const jsonHeaders = { ...headers, 'Content-Type': 'application/json' };
+  let child;
+  const start = async () => {
+    child = spawn(process.execPath, ['apps/worker/dist/index.js'], { env: { ...process.env, FAMILYHUB_WORKER_PORT: String(port), FAMILYHUB_WORKER_DATA: dir, FAMILYHUB_WORKER_HOST: '127.0.0.1' }, stdio: ['ignore', 'pipe', 'pipe'] });
+    for (let i = 0; i < 80; i++) {
+      try { if ((await fetch(`http://127.0.0.1:${port}/health`, { headers })).ok) return; } catch {}
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+    throw new Error('worker did not start');
+  };
+  const stop = async () => {
+    if (!child) return;
+    const done = once(child, 'exit'); child.kill(); await done; child = undefined;
+  };
+  const snapshot = async () => (await fetch(`http://127.0.0.1:${port}/invoices`, { headers })).json();
+
+  try {
+    await start();
+    let state = await snapshot();
+    assert.equal(state.unmatchedReimbursements.length, 6);
+    assert.equal(state.unmatchedReimbursements.filter(item => item.Reason === 'ambiguous-match').length, 6);
+    assert.equal(state.unmatchedReimbursements.filter(item => item.DocumentId.startsWith('feb-')).length, 3);
+    assert.equal(state.unmatchedReimbursements.filter(item => item.DocumentId.startsWith('dec-')).length, 3);
+
+    let response = await fetch(`http://127.0.0.1:${port}/invoices/matches/manual`, {
+      method: 'POST', headers: jsonHeaders,
+      body: JSON.stringify({ reimbursementId: 'feb-statement-1', expenseId: 'feb-expense-a' })
+    });
+    assert.equal(response.status, 200);
+    state = await snapshot();
+    assert.equal(state.unmatchedReimbursements.length, 5);
+    const matchedCase = state.reconciliations.find(item => item.ExpenseDocumentId === 'feb-expense-a');
+    assert.ok(matchedCase);
+    assert.equal(matchedCase.MatchAssignments.some(item => item.ReimbursementDocumentId === 'feb-statement-1' && item.Verification === 'confirmed-manually'), true);
+    assert.equal(matchedCase.ReimbursedAmount, 30);
+    assert.equal(matchedCase.PotentialRemaining, 70);
+
+    response = await fetch(`http://127.0.0.1:${port}/invoices/matches/manual`, {
+      method: 'POST', headers: jsonHeaders,
+      body: JSON.stringify({ reimbursementId: 'feb-statement-1', expenseId: 'feb-expense-b' })
+    });
+    assert.equal(response.status, 400, 'one reimbursement cannot be manually assigned twice');
+
+    response = await fetch(`http://127.0.0.1:${port}/invoices/unmatched/ignore`, {
+      method: 'POST', headers: jsonHeaders,
+      body: JSON.stringify({ reimbursementId: 'feb-statement-2', ignored: true })
+    });
+    assert.equal(response.status, 200);
+    state = await snapshot();
+    assert.equal(state.unmatchedReimbursements.some(item => item.DocumentId === 'feb-statement-2'), false);
+    assert.equal(state.ignoredUnmatchedReimbursements.length, 1);
+    assert.equal(state.ignoredUnmatchedReimbursements[0].DocumentId, 'feb-statement-2');
+    assert.ok(state.ignoredUnmatchedReimbursements[0].IgnoredAt);
+    assert.ok(state.items.some(item => item.Id === 'feb-statement-2'), 'ignored reimbursement source evidence remains in snapshot');
+
+    await stop(); await start();
+    state = await snapshot();
+    assert.equal(state.reconciliations.find(item => item.ExpenseDocumentId === 'feb-expense-a').MatchAssignments[0].Verification, 'confirmed-manually', 'manual assignment survives restart');
+    assert.equal(state.ignoredUnmatchedReimbursements[0].DocumentId, 'feb-statement-2', 'ignored unmatched decision survives restart');
+    assert.equal(state.unmatchedReimbursements.some(item => item.DocumentId === 'feb-statement-2'), false);
+
+    response = await fetch(`http://127.0.0.1:${port}/invoices/unmatched/ignore`, {
+      method: 'POST', headers: jsonHeaders,
+      body: JSON.stringify({ reimbursementId: 'feb-statement-2', ignored: false })
+    });
+    assert.equal(response.status, 200);
+    state = await snapshot();
+    assert.equal(state.ignoredUnmatchedReimbursements.length, 0);
+    assert.equal(state.unmatchedReimbursements.some(item => item.DocumentId === 'feb-statement-2'), true, 'restore returns reimbursement to active review');
+  } finally {
+    await stop();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
