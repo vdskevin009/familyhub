@@ -61,6 +61,7 @@ export default function TodayView({ hub, onNavigate, commandOpen, onCommandOpenC
           CleanupSuggestions: Array.isArray(snapshot.cleanupSuggestions) ? snapshot.cleanupSuggestions.filter(item => item && typeof item === "object") : [],
           ImportantMail: Array.isArray(snapshot.importantMail) ? snapshot.importantMail.filter(item => item && typeof item === "object") : [],
           UnmatchedReimbursements: Array.isArray(snapshot.unmatchedReimbursements) ? snapshot.unmatchedReimbursements.filter(item => item && typeof item === "object") : [],
+          IgnoredUnmatchedReimbursements: Array.isArray(snapshot.ignoredUnmatchedReimbursements) ? snapshot.ignoredUnmatchedReimbursements.filter(item => item && typeof item === "object") : [],
           LearningDecisions: Number(snapshot.learning?.decisions || 0)
         };
       });
