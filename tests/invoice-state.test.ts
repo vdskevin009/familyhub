@@ -6,6 +6,7 @@ import {
   filterReimbursementWorkflowCases,
   mergeInvoiceItems,
   mergeReconciliationHistory,
+  namedInsurerReimbursementAmount,
   reimbursementWorkflowStatus,
   reimbursementWorkflowSummary,
   unreconciledInvoiceCases
@@ -155,4 +156,42 @@ test("workflow summaries are person-scoped and exclude Closed/Ignore from recove
   assert.deepEqual(filterReimbursementWorkflowCases(cases, "Kevin", "all").map(item => item.DocumentIds[0]), ["kevin-open", "kevin-closed"]);
   assert.deepEqual(filterReimbursementWorkflowCases(cases, "all", "ignore").map(item => item.DocumentIds[0]), ["jasmine-ignore"]);
   assert.equal(reimbursementWorkflowStatus(reconciliation(invoice("legacy-closed", "2026-09-22"), { Status: "fully-reimbursed", Action: "complete" })), "closed");
+});
+
+
+test("Nathan unknown insurer order shows Desjardins and Blue Cross amounts without inventing primary or secondary", () => {
+  const expense = invoice("nathan-physio", "2026-05-29", { Member: "Nathan", BilledAmount: 145, DetectedAmount: 145 });
+  const desjardins = invoice("nathan-desjardins", "2026-05-29", {
+    Member: "Nathan", DocumentRole: "insurer-statement", DocumentType: "claim", Insurer: "desjardins",
+    BilledAmount: null, DetectedAmount: 35.36, ReimbursedAmount: 35.36
+  });
+  const blueCross = invoice("nathan-blue-cross", "2026-05-29", {
+    Member: "Nathan", DocumentRole: "insurer-statement", DocumentType: "claim", Insurer: "blue-cross",
+    BilledAmount: null, DetectedAmount: 100.8, ReimbursedAmount: 100.8
+  });
+  const byId = new Map([expense, desjardins, blueCross].map(item => [item.Id, item]));
+  const legacyWorkerCase = reconciliation(expense, {
+    PrimaryInsurer: null,
+    PrimaryReimbursedAmount: 0,
+    SecondaryInsurer: null,
+    SecondaryReimbursedAmount: 0,
+    ReimbursedAmount: 136.16,
+    PotentialRemaining: 8.84,
+    MatchAssignments: [
+      { ExpenseDocumentId: expense.Id, ReimbursementDocumentId: desjardins.Id, Insurer: "desjardins", Confidence: 95, Verification: "auto", Evidence: [] },
+      { ExpenseDocumentId: expense.Id, ReimbursementDocumentId: blueCross.Id, Insurer: "blue-cross", Confidence: 95, Verification: "auto", Evidence: [] }
+    ]
+  });
+  assert.equal(namedInsurerReimbursementAmount(legacyWorkerCase, "Desjardins", byId), 35.36);
+  assert.equal(namedInsurerReimbursementAmount(legacyWorkerCase, "Blue Cross", byId), 100.8);
+
+  const currentWorkerCase = {
+    ...legacyWorkerCase,
+    PrimaryReimbursedAmount: null,
+    SecondaryReimbursedAmount: null,
+    DesjardinsReimbursedAmount: 35.36,
+    BlueCrossReimbursedAmount: 100.8
+  };
+  assert.equal(namedInsurerReimbursementAmount(currentWorkerCase, "Desjardins", byId), 35.36);
+  assert.equal(namedInsurerReimbursementAmount(currentWorkerCase, "Blue Cross", byId), 100.8);
 });
