@@ -402,6 +402,8 @@ export function buildReconciliationSnapshot(items: Invoice[], matchDecisions: Ma
     };
     const desjardinsKnown = insurerKnown("desjardins");
     const blueCrossKnown = insurerKnown("blue-cross");
+    const directPrimary = order[0] ? evidence.InsurerPayments?.[order[0]] ?? null : null;
+    const directSecondary = order[1] ? evidence.InsurerPayments?.[order[1]] ?? null : null;
     const primaryKnown = order[0] === "desjardins" ? desjardinsKnown : order[0] === "blue-cross" ? blueCrossKnown : null;
     const secondaryKnown = order[1] === "desjardins" ? desjardinsKnown : order[1] === "blue-cross" ? blueCrossKnown : null;
     // A payment embedded in the provider receipt is the same insurer payment, not an extra reimbursement.
