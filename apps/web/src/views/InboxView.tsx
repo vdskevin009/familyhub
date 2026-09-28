@@ -65,7 +65,7 @@ export default function InboxView({ hub }: Props) {
         const snapshot = await fetchInvoices(hub.worker);
         if (cancelled) return;
         setCollection(snapshot); setWorkerError("");
-        hub.setReimbursements(previous => ({ ...previous, SchemaVersion: 2, Items: mergeInvoiceItems(previous.Items, snapshot.items), Reconciliations: mergeReconciliationHistory(previous.Reconciliations ?? [], snapshot.reconciliations, mergeInvoiceItems(previous.Items, snapshot.items)), CleanupSuggestions: snapshot.cleanupSuggestions, ImportantMail: snapshot.importantMail, LearningDecisions: Number(snapshot.learning?.decisions || 0), UnmatchedReimbursements: snapshot.unmatchedReimbursements }));
+        hub.setReimbursements(previous => ({ ...previous, SchemaVersion: 2, Items: mergeInvoiceItems(previous.Items, snapshot.items), Reconciliations: mergeReconciliationHistory(previous.Reconciliations ?? [], snapshot.reconciliations, mergeInvoiceItems(previous.Items, snapshot.items)), CleanupSuggestions: snapshot.cleanupSuggestions, ImportantMail: snapshot.importantMail, LearningDecisions: Number(snapshot.learning?.decisions || 0), UnmatchedReimbursements: snapshot.unmatchedReimbursements, IgnoredUnmatchedReimbursements: snapshot.ignoredUnmatchedReimbursements }));
       } catch (err) { if (!cancelled) setWorkerError(err instanceof Error ? err.message : "PC unavailable."); }
       finally { fetching = false; }
     };

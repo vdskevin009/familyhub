@@ -126,6 +126,7 @@ export type ReimbursementState = {
   ImportantMail?: ReimbursementItem[];
   LearningDecisions?: number;
   UnmatchedReimbursements?: UnmatchedReimbursement[];
+  IgnoredUnmatchedReimbursements?: UnmatchedReimbursement[];
   AgentReviews?: AgentReview[];
   IgnoredExpenses?: ReconciliationCase[];
   InvoiceCoverage?: { since: string; complete: boolean };
@@ -186,6 +187,7 @@ export type ReconciliationCase = {
 export type UnmatchedReimbursement = {
   DocumentId: string;
   Reason: "ambiguous-match" | "missing-insurer" | "needs-review" | "no-expense-match";
+  IgnoredAt?: string;
 };
 
 export type CleanupSuggestion = {
