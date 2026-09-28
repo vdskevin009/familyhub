@@ -130,12 +130,7 @@ export function excludeAssignedUnmatched<T extends { DocumentId: string }>(unmat
   return unmatched.filter(item => !assigned.has(item.DocumentId));
 }
 
-export function reimbursementInvoiceAttachmentIndex(item: ReimbursementItem): number {
-  return item.Attachments.findIndex(attachment => Boolean(attachment.Id) && attachment.Size <= 20_000_000
-    && (attachment.MimeType === "application/pdf" || /\.pdf$/i.test(attachment.FileName)));
-}
-
-/** Select only the expense's PDF, never an insurer statement attached to the same case. */
+/** Find an already archived PDF that belongs to the expense represented by a case. */
 export function reimbursementInvoiceDocument(item: ReconciliationCase,
   itemsById: ReadonlyMap<string, ReimbursementItem>): ReimbursementItem | null {
   const preferredIds = [
@@ -148,9 +143,10 @@ export function reimbursementInvoiceDocument(item: ReconciliationCase,
     .filter(id => !seen.has(id) && seen.add(id))
     .map(id => itemsById.get(id))
     .filter((entry): entry is ReimbursementItem => Boolean(entry));
-  const expenses = candidates.filter(entry => entry.DocumentRole === "expense" && reimbursementInvoiceAttachmentIndex(entry) >= 0);
-  return expenses.find(entry => Boolean(entry.DriveFileId))
-    ?? expenses.find(entry => entry.WorkerManaged && entry.SourceMessageId && entry.AccountEmail)
+  const hasPdf = (entry: ReimbursementItem) => entry.Attachments.some(attachment =>
+    attachment.MimeType === "application/pdf" || /\.pdf$/i.test(attachment.FileName));
+  return candidates.find(entry => entry.DocumentRole === "expense" && entry.DriveFileId && hasPdf(entry))
+    ?? candidates.find(entry => entry.DriveFileId && hasPdf(entry))
     ?? null;
 }
 

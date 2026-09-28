@@ -188,6 +188,33 @@ test('confirmed payment printed on a low-confidence receipt corroborates one tru
     FieldStates: { 'InsurerPayments.desjardins': 'unknown' } } };
   assert.equal(buildReconciliationSnapshot([unconfirmed, statement]).unmatched.length, 1);
 });
+test('final assignment graph never exposes an assigned insurer row in Unmatched', () => {
+  const source = expense({ Id: 'projection-expense', Healthcare: undefined, Confidence: 99, NeedsReview: false });
+  const claim = { ...documents(table([row()]))[1], Id: 'projection-claim' };
+  const at = '2026-09-04T00:00:00Z';
+  const auto = buildReconciliationSnapshot([source, claim]);
+  const review = buildReconciliationSnapshot([source, { ...claim, NeedsReview: true }]);
+  const confirmed = buildReconciliationSnapshot([source, claim], [
+    { reimbursementId: claim.Id, expenseId: source.Id, decision: 'confirmed', at }
+  ]);
+  const rejected = buildReconciliationSnapshot([source, claim], [
+    { reimbursementId: claim.Id, expenseId: source.Id, decision: 'rejected', at }
+  ]);
+  const ambiguous = buildReconciliationSnapshot([
+    source, { ...source, Id: 'second-expense', Provider: 'Another physiotherapy provider' }, claim
+  ]);
+  const noMatch = buildReconciliationSnapshot([{ ...source, ServiceDate: '2026-09-04' }, claim]);
+  assert.equal(auto.cases[0].MatchAssignments[0].Verification, 'auto');
+  assert.equal(review.cases[0].MatchAssignments[0].Verification, 'review-recommended');
+  assert.equal(confirmed.cases[0].MatchAssignments[0].Verification, 'confirmed-manually');
+  assert.deepEqual(rejected.unmatched, [{ DocumentId: claim.Id, Reason: 'no-expense-match' }]);
+  assert.deepEqual(ambiguous.unmatched, [{ DocumentId: claim.Id, Reason: 'ambiguous-match' }]);
+  assert.deepEqual(noMatch.unmatched, [{ DocumentId: claim.Id, Reason: 'no-expense-match' }]);
+  for (const snapshot of [auto, review, confirmed, rejected, ambiguous, noMatch]) {
+    const assigned = new Set(snapshot.cases.flatMap(item => (item.MatchAssignments ?? []).map(match => match.ReimbursementDocumentId)));
+    assert.ok(snapshot.unmatched.every(item => !assigned.has(item.DocumentId)));
+  }
+});
 test('provider residual and legacy insurer-derived gross expense collapse into one canonical case', () => {
   const receipt = expense({
     Id: 'coast-receipt', Member: 'Kevin', Provider: 'Coast Performance Rehabilitation',
