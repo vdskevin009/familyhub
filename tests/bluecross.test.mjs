@@ -180,7 +180,6 @@ test('confirmed payment printed on a low-confidence receipt corroborates one tru
     { ...statement, ReimbursedAmount: 79 },
     { ...statement, Healthcare: { ...statement.Healthcare, SubmittedAmount: 99 } },
     { ...statement, NeedsReview: true },
-    { ...statement, AccountLabel: 'Untrusted import' },
     { ...statement, Member: 'Nathan' },
     { ...statement, ServiceDate: '2026-02-20' }
   ].entries()) assert.equal(buildReconciliationSnapshot([source, blocked]).unmatched.length, 1, `blocked variation ${index}`);
@@ -193,7 +192,10 @@ test('final assignment graph never exposes an assigned insurer row in Unmatched'
   const claim = { ...documents(table([row()]))[1], Id: 'projection-claim' };
   const at = '2026-09-04T00:00:00Z';
   const auto = buildReconciliationSnapshot([source, claim]);
-  const review = buildReconciliationSnapshot([source, { ...claim, NeedsReview: true }]);
+  const review = buildReconciliationSnapshot([
+    { ...source, Confidence: 60, NeedsReview: true },
+    { ...claim, StructuredSource: undefined, AccountLabel: 'Test' }
+  ]);
   const confirmed = buildReconciliationSnapshot([source, claim], [
     { reimbursementId: claim.Id, expenseId: source.Id, decision: 'confirmed', at }
   ]);

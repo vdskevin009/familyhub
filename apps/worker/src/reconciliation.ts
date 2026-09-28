@@ -254,7 +254,6 @@ function matchScore(expense: Invoice, statement: Invoice): number {
     && (expenseService == null || statementService == null || expenseService === statementService)
     && (expense.Confidence >= 80 || confirmedAttachmentPayment) && statement.Confidence >= 90;
   if (corroboratesEmbeddedPayment) return 25;
-  if (expense.NeedsReview && expense.Confidence < 80) return -1;
 
   // Document-level review is separate from match identity. Review flags lower match confidence
   // below, but do not by themselves erase a singular evidence-supported association.
