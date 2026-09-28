@@ -371,6 +371,63 @@ export function buildReconciliationSnapshot(items: Invoice[], matchDecisions: Ma
     unmatchedReasons.delete(statement.Id);
   }
 
+  // Insurers can use different professional labels for the same coordinated-benefits claim
+  // (for example, "clinical counsellor" vs "social worker"). Do not make those services aliases
+  // globally. Allow the remaining insurer row only when exact cross-insurer arithmetic proves one
+  // unique expense: same known member/date/gross amount, one trusted payment from the other insurer,
+  // and the two insurer payments exactly complete that gross amount.
+  for (const statement of statements) {
+    if ([...assignments.values()].some(rows => rows.some(item => item.Id === statement.Id))) continue;
+    if (!statement.Insurer || statement.NeedsReview || statement.ReimbursedAmount == null
+      || !(statement.StructuredSource || statement.AccountLabel === "Local Desjardins import")) continue;
+    const statementClaimed = submitted(statement);
+    if (statementClaimed == null) continue;
+
+    const candidates = expenses.filter(expense => {
+      if ([expense.Id, ...expense.RelatedDocumentIds].some(id => rejectedPairs.has(pairKey(statement.Id, id)))) return false;
+      if (expense.Member === "unknown" || expense.Member !== statement.Member
+        || !expense.ServiceDate || expense.ServiceDate !== statement.ServiceDate) return false;
+      const h = healthcareEvidence(expense);
+      const gross = h.OriginalBilledAmount ?? expense.BilledAmount ?? expense.DetectedAmount;
+      if (gross == null || !sameMoney(statementClaimed, gross)) return false;
+
+      const sameGross = expenses.filter(other => {
+        if (other.Member === "unknown" || other.Member !== expense.Member || other.ServiceDate !== expense.ServiceDate) return false;
+        const oh = healthcareEvidence(other);
+        const otherGross = oh.OriginalBilledAmount ?? other.BilledAmount ?? other.DetectedAmount;
+        return sameMoney(otherGross, gross);
+      });
+      if (sameGross.length !== 1) return false;
+
+      const existing = assignments.get(expense.Id) ?? [];
+      if (existing.some(item => item.Insurer === statement.Insurer)) return false;
+      const coordinatedOther = existing.filter(item => item.Insurer && item.Insurer !== statement.Insurer
+        && !item.NeedsReview && item.ReimbursedAmount != null
+        && (item.StructuredSource || item.AccountLabel === "Local Desjardins import"));
+      if (coordinatedOther.length !== 1) return false;
+      const prior = coordinatedOther[0];
+      const priorClaimed = submitted(prior);
+      if (priorClaimed != null && !sameMoney(priorClaimed, gross)) return false;
+      return sameMoney(prior.ReimbursedAmount! + statement.ReimbursedAmount!, gross);
+    });
+
+    if (candidates.length !== 1) continue;
+    const expense = candidates[0];
+    const prior = (assignments.get(expense.Id) ?? []).find(item => item.Insurer && item.Insurer !== statement.Insurer)!;
+    const gross = healthcareEvidence(expense).OriginalBilledAmount ?? expense.BilledAmount ?? expense.DetectedAmount!;
+    assignments.set(expense.Id, [...(assignments.get(expense.Id) ?? []), statement]);
+    assignmentMeta.set(statement.Id, {
+      ExpenseDocumentId: expense.Id, ReimbursementDocumentId: statement.Id, Insurer: statement.Insurer,
+      Confidence: 95, Verification: "auto",
+      Evidence: [
+        ...matchEvidence(expense, statement),
+        `Exact coordinated payments complete expense: ${prior.ReimbursedAmount!.toFixed(2)} + ${statement.ReimbursedAmount.toFixed(2)} = ${gross.toFixed(2)} ${statement.Currency || expense.Currency || "CAD"}.`,
+        "Insurer service labels differ; FamilyHub did not create a global service alias."
+      ]
+    });
+    unmatchedReasons.delete(statement.Id);
+  }
+
   // Unmatched is a projection of the final assignment graph. An assigned insurer record can
   // therefore never remain in the review queue because of a stale, independently persisted flag.
   const assignedStatementIds = new Set([...assignments.values()].flat().map(item => item.Id));
