@@ -376,6 +376,17 @@ test('June history resumes failures and retains reversible expense ignore decisi
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
 
+test('startup removes legacy Desjardins status notifications from Claims without downgrading a genuine EOB', async () => {
+  const { spawnSync } = await import('node:child_process');
+  const dir = await mkdtemp(join(tmpdir(), 'familyhub-desjardins-status-'));
+  try {
+    const result = spawnSync(process.execPath, ['tests/fixtures/desjardins-status-normalization-runner.mjs'], {
+      cwd: process.cwd(), env: { ...process.env, FAMILYHUB_WORKER_DATA: dir }, encoding: 'utf8'
+    });
+    assert.equal(result.status, 0, result.stderr || result.stdout);
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
 test('historical intake retains medical receipts with unknown coverage and no invented amounts', async () => {
   const { classifyHistorical } = await import('../apps/worker/dist/invoices.js');
   const result = await classifyHistorical({ ...mail, subject: 'Your Receipt - Example Clinic', sender: 'Example Clinic',
@@ -386,6 +397,57 @@ test('historical intake retains medical receipts with unknown coverage and no in
   assert.equal(result.result.reimbursement, 'unknown');
   assert.equal(result.result.billedAmount, null);
   assert.equal(toInvoice(mail, 'test@example.test', 'Test', result.result, result.source).NeedsReview, true);
+});
+
+test('Desjardins claim-status notifications stay out of reimbursements while real EOB evidence remains a statement', async () => {
+  const { classifyHistorical } = await import('../apps/worker/dist/invoices.js');
+  const base = {
+    ...mail,
+    sender: 'Desjardins Insurance <eob@dsf.ca>',
+    attachmentText: '',
+    attachments: [],
+    labels: []
+  };
+  for (const source of [
+    {
+      subject: 'Your claim has been received',
+      text: 'Thank you for sending your claim online. Once processed, your explanation of benefits will be posted in Claims history.'
+    },
+    {
+      subject: 'Your claim has been processed',
+      text: 'The explanation of benefits for your claim has now been posted on the Claims history section of your secure site.'
+    }
+  ]) {
+    const classified = await classifyHistorical({ ...base, ...source }, 'test@example.test');
+    assert.equal(classified.result.kind, 'administrative');
+    assert.equal(classified.result.transaction, false);
+    assert.equal(classified.result.category, 'other');
+    assert.equal(classified.result.documentRole, 'other');
+    assert.equal(classified.result.insurer, null);
+    const item = toInvoice({ ...base, ...source }, 'test@example.test', 'Kevin', classified.result, classified.source);
+    const snapshot = buildReconciliationSnapshot([item]);
+    assert.equal(snapshot.cases.length, 0);
+    assert.equal(snapshot.unmatched.length, 0);
+  }
+
+  const actual = await classifyHistorical({
+    ...base,
+    subject: 'Your claim has been processed',
+    text: 'Explanation of benefits. Amount paid: CAD $75.00.'
+  }, 'test@example.test');
+  assert.equal(actual.result.kind, 'claim');
+  assert.equal(actual.result.category, 'health');
+  assert.equal(actual.result.documentRole, 'insurer-statement');
+  assert.equal(actual.result.insurer, 'desjardins');
+
+  const attached = await classifyHistorical({
+    ...base,
+    subject: 'Your claim has been processed',
+    text: 'Your claim was processed. See the attached document.',
+    attachments: [{ Id: 'attachment-eob', FileName: 'EOB-2025-06-04.pdf', MimeType: 'application/pdf', Size: 100 }]
+  }, 'test@example.test');
+  assert.equal(attached.result.documentRole, 'insurer-statement');
+  assert.equal(attached.result.insurer, 'desjardins');
 });
 
 test('Gmail retries only transient rate errors without exposing response contents', async () => {

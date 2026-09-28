@@ -109,10 +109,23 @@ function applyWorkflowChoice(entry: ReconciliationCase, status: ReimbursementWor
 }
 
 type MetadataRule = { kind: "ignore" | "administrative"; category: "travel" | "other"; reason: string; attention?: Classification["attention"] };
-function metadataClassification(senderValue: string, subjectValue: string, textValue = ""): MetadataRule | null {
+function hasInsurerStatementEvidence(textValue = "", attachmentNames: string[] = [], storedEvidence = false): boolean {
+  if (storedEvidence) return true;
+  const text = textValue.toLowerCase();
+  return attachmentNames.some(name =>
+    /(?:^|[-_. ])(?:eob|explanation[-_. ]of[-_. ]benefits|benefit[-_. ]statement|claim[-_. ]statement)(?:[-_. 0-9]|$)/i.test(name))
+    || /(?:amount|montant)\s+(?:paid|reimbursed|rembours[eé]|eligible|admissible|submitted|claimed)|(?:paid|reimbursed|rembours[eé])\s+(?:amount|montant)|(?:submitted|eligible|admissible)\s+(?:amount|montant)\s*[:=-]?\s*(?:cad\s*)?\$?\s*\d/i.test(text);
+}
+function metadataClassification(senderValue: string, subjectValue: string, textValue = "", statementEvidence = false): MetadataRule | null {
   const sender = senderValue.toLowerCase();
   const subject = subjectValue.trim();
   const text = textValue.toLowerCase();
+  if ((sender.includes("desjardins") || sender.includes("@dsf.ca"))
+    && /^(?:your claim has been received|your claim has been processed)$/i.test(subject)
+    && !statementEvidence) {
+    return { kind: "administrative", category: "other",
+      reason: "Desjardins claim-status notification without an attached or explicit reimbursement statement." };
+  }
   if (/(?:security alert|new sign-in|passkey|password (?:was )?changed|recovery (?:phone|email).*(?:changed|updated)|connexion inhabituelle|alerte de sécurité)/i.test(subject)
     && /google|microsoft|wise|revolut|apple|bank|banque/i.test(sender + " " + text)) {
     return { kind: "administrative", category: "other", attention: "critical", reason: "Security activity that may require prompt confirmation." };
@@ -136,15 +149,22 @@ function normalizeStoredMetadata(): boolean {
   for (const item of state.items) {
     if (!item.AttentionLevel) { item.AttentionLevel = "none"; item.AttentionReason = ""; changed = true; }
     if (item.CorrectedAt) continue;
-    const rule = metadataClassification(item.Sender, item.Subject);
+    const storedStatementEvidence = item.ReimbursedAmount != null || item.BilledAmount != null || item.DetectedAmount != null
+      || Boolean(item.ServiceDate || item.Healthcare?.ServiceDate || item.Healthcare?.StatementDate || item.Healthcare?.ClaimReference)
+      || item.Healthcare?.SubmittedAmount != null || item.Healthcare?.EligibleAmount != null
+      || Object.values(item.Healthcare?.InsurerPayments || {}).some(value => value != null);
+    const rule = metadataClassification(item.Sender, item.Subject, "",
+      hasInsurerStatementEvidence("", (item.Attachments || []).map(attachment => attachment.FileName), storedStatementEvidence));
     if (!rule) continue;
     const nextStatus = rule.kind === "ignore" ? 4 : 0;
     const nextCategory = rule.category === "travel" ? 1 : 2;
     if (item.DocumentType === rule.kind && item.Status === nextStatus && !item.NeedsReview && item.ReimbursementEligibility === "no"
-      && item.AttentionLevel === (rule.attention || "none")) continue;
+      && item.DocumentRole === "other" && item.Insurer == null && item.AttentionLevel === (rule.attention || "none")) continue;
     item.DocumentType = rule.kind;
     item.Status = nextStatus;
     item.Category = nextCategory;
+    item.DocumentRole = "other";
+    item.Insurer = null;
     item.NeedsReview = false;
     item.ReimbursementEligibility = "no";
     item.ClassificationSource = "rules";
@@ -273,7 +293,8 @@ export async function classify(mail: Mail, email: string, label = email, diagnos
       reimbursement: "unknown", amount: null, currency: "", category: "other", member: "unknown", documentRole: "other", insurer: null,
       serviceDate: null, billedAmount: null, reimbursedAmount: null, attention: "none", attentionReason: "", reason: confidence >= .9 ? "Décision répétée appliquée automatiquement." : "Décision précédente proposée; confirmez-la encore pour augmenter l'autonomie." } };
   }
-  const metadataRule = metadataClassification(mail.sender, mail.subject, mail.text);
+  const metadataRule = metadataClassification(mail.sender, mail.subject, mail.text,
+    hasInsurerStatementEvidence(`${mail.text}\n${mail.attachmentText || ""}`, mail.attachments.map(attachment => attachment.FileName)));
   if (metadataRule) return { source: "rules", result: { kind: metadataRule.kind, confidence: .99, transaction: false,
     reimbursement: "no", amount: null, currency: "", category: metadataRule.category, member: "unknown", documentRole: "other", insurer: null,
     serviceDate: null, billedAmount: null, reimbursedAmount: null, attention: metadataRule.attention || "none", attentionReason: metadataRule.attention ? metadataRule.reason : "", reason: metadataRule.reason } };
@@ -339,11 +360,14 @@ export async function classify(mail: Mail, email: string, label = email, diagnos
 /** Fast historical intake. Facts without explicit evidence remain unknown. */
 export async function classifyHistorical(mail: Mail, _email: string, _label?: string): Promise<{ result: Classification; source: Invoice["ClassificationSource"] }> {
   const proof = evidence(mail);
-  const rule = metadataClassification(mail.sender, mail.subject, mail.text);
+  const statementEvidence = hasInsurerStatementEvidence(`${mail.text}\n${mail.attachmentText || ""}`,
+    mail.attachments.map(attachment => attachment.FileName));
+  const rule = metadataClassification(mail.sender, mail.subject, mail.text, statementEvidence);
   const text = `${mail.sender} ${mail.subject} ${mail.text} ${mail.attachmentText || ""} ${mail.attachments.map(item => item.FileName).join(" ")}`;
   const health = /janeapp|qubecore|clinic|clinique|medical|médical|health|dental|dentist|dentaire|pharmac|prescription|massage|physiotherap|physical therapy|chiropr|ost[eé]opath|acupunct|kinesiol|kinési|rehab|r[eé]adaptation|psycholog|counsell|psychotherap|desjardins|blue\s*cross|croix\s*bleue/i.test(text);
   const insurer = /desjardins/i.test(text) ? "desjardins" : /blue\s*cross|croix\s*bleue/i.test(text) ? "blue-cross" : null;
-  const statement = Boolean(insurer && /explanation of benefits|claim statement|relev[eé] de prestations|statement of benefits/i.test(text));
+  const statement = Boolean(insurer && (statementEvidence
+    || /explanation of benefits|claim statement|relev[eé] de prestations|statement of benefits/i.test(text)));
   const expense = !statement && (proof.transaction || /\b(?:receipt|invoice|facture|reçu|recu|bill)\b/i.test(mail.subject));
   const excluded = rule?.kind === "ignore" || !health && proof.marketing;
   return { source: "rules", result: { kind: rule?.kind || (excluded ? "marketing" : statement ? "claim" : expense ? "invoice" : "other"),
@@ -351,7 +375,7 @@ export async function classifyHistorical(mail: Mail, _email: string, _label?: st
     reimbursement: "unknown", reason: rule?.reason || (excluded ? "Promotional signals without transaction evidence."
       : "Historical document candidate indexed from explicit evidence; classification and insurance coverage need review."),
     amount: null, currency: "", category: rule?.category || (health ? "health" : "other"), member: "unknown",
-    documentRole: rule ? "other" : statement ? "insurer-statement" : expense ? "expense" : "other", insurer: statement ? insurer : null,
+    documentRole: rule ? "other" : statement ? "insurer-statement" : expense ? "expense" : "other", insurer: rule ? null : statement ? insurer : null,
     serviceDate: null, billedAmount: null, reimbursedAmount: null, attention: rule?.attention || "none", attentionReason: rule?.attention ? rule.reason : "" } };
 }
 
