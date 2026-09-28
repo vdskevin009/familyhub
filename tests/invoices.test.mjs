@@ -5,10 +5,103 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { evidence, fingerprint, recordId, toInvoice, applyCorrection, repairHealthcareAmounts, validateClassification } from '../apps/worker/dist/invoice-model.js';
 import { buildReconciliationSnapshot, buildReconciliations } from '../apps/worker/dist/reconciliation.js';
+import { automaticWorkflowStatus } from '../apps/worker/dist/reimbursement-workflow.js';
 import { normalizeMail, withAttachmentText } from '../apps/worker/dist/gmail-client.js';
 
 const mail = { id: 'receipt-1', threadId: 'thread', internetMessageId: '<test@example.test>', subject: 'Your receipt', sender: 'Airline <billing@example.test>', receivedAt: '2026-09-20T12:00:00Z', text: 'Receipt #ABC123. Total paid CAD 150.00', labels: [], unsubscribe: false, bulk: false, attachments: [] };
 const classification = { kind: 'receipt', confidence: .96, transaction: true, reimbursement: 'unknown', reason: 'Payment confirmed', amount: 150, currency: 'CAD', category: 'travel', member: 'Kevin', documentRole: 'expense', insurer: null, serviceDate: '2026-09-19', billedAmount: 150, reimbursedAmount: null };
+
+function assertExclusive(snapshot) {
+  const assigned = new Set(snapshot.cases.flatMap(item => (item.MatchAssignments || []).map(match => match.ReimbursementDocumentId)));
+  for (const item of snapshot.unmatched) assert.equal(assigned.has(item.DocumentId), false,
+    'an active reimbursement assignment cannot also appear in Unmatched');
+}
+
+test('automatic Combined Benefits closure uses trusted named assignments without guessing their order', () => {
+  const base = {
+    Member: 'Nathan', PrimaryInsurer: null, SecondaryInsurer: null, Status: 'needs-attention', Action: 'review-amount',
+    PotentialRemaining: 24, HasUnresolvedReimbursementEvidence: false,
+    MatchAssignments: [
+      { Insurer: 'desjardins', Verification: 'auto' },
+      { Insurer: 'blue-cross', Verification: 'confirmed-manually' }
+    ]
+  };
+  assert.equal(automaticWorkflowStatus(base), 'closed');
+  assert.equal(automaticWorkflowStatus({ ...base, Member: 'Kevin', PrimaryInsurer: 'Desjardins', SecondaryInsurer: 'Blue Cross' }), 'closed');
+  assert.equal(automaticWorkflowStatus({ ...base, MatchAssignments: base.MatchAssignments.slice(0, 1) }), 'open');
+  assert.equal(automaticWorkflowStatus({ ...base, MatchAssignments: [base.MatchAssignments[0], { ...base.MatchAssignments[1], Verification: 'review-recommended' }] }), 'open');
+  assert.equal(automaticWorkflowStatus({ ...base, HasUnresolvedReimbursementEvidence: true }), 'open');
+});
+
+test('final Unmatched projection excludes every active assignment across auto, review, confirmation and rejection', () => {
+  const expense = { Id: 'synthetic-expense', Category: 0, Status: 0, DocumentRole: 'expense', DocumentType: 'invoice',
+    Member: 'Jasmine', Provider: 'Sample Physiotherapy', ServiceDate: '2026-04-06', BilledAmount: 200,
+    DetectedAmount: 200, ReimbursedAmount: null, Currency: 'CAD', Confidence: 60, NeedsReview: true,
+    Healthcare: { ServiceDate: '2026-04-06', ServiceType: 'Physiotherapy', OriginalBilledAmount: 200,
+      InsurerPayments: { 'blue-cross': 120 }, FieldStates: { 'InsurerPayments.blue-cross': 'confirmed' },
+      FieldSources: { 'InsurerPayments.blue-cross': 'attachment' } } };
+  const statement = { ...expense, Id: 'synthetic-statement', DocumentRole: 'insurer-statement', DocumentType: 'claim',
+    Provider: 'Blue Cross · Physiotherapy', Insurer: 'blue-cross', BilledAmount: 200, DetectedAmount: 120,
+    ReimbursedAmount: 120, Confidence: 99, NeedsReview: false,
+    Healthcare: { ServiceDate: '2026-04-06', ServiceType: 'Physiotherapy', SubmittedAmount: 200 } };
+  const auto = buildReconciliationSnapshot([expense, statement]);
+  assertExclusive(auto);
+  assert.equal(auto.unmatched.length, 0);
+  assert.equal(auto.cases[0].MatchAssignments[0].Verification, 'auto');
+
+  const review = buildReconciliationSnapshot([expense, { ...statement, NeedsReview: true }]);
+  assertExclusive(review);
+  assert.equal(review.unmatched.length, 0);
+  assert.equal(review.cases[0].MatchAssignments[0].Verification, 'review-recommended');
+
+  const decision = { reimbursementId: statement.Id, expenseId: expense.Id, at: '2026-04-07T00:00:00Z' };
+  const confirmed = buildReconciliationSnapshot([expense, statement], [{ ...decision, decision: 'confirmed' }]);
+  assertExclusive(confirmed);
+  assert.equal(confirmed.cases[0].MatchAssignments[0].Verification, 'confirmed-manually');
+  const rejected = buildReconciliationSnapshot([expense, statement], [{ ...decision, decision: 'rejected' }]);
+  assertExclusive(rejected);
+  assert.equal(rejected.cases[0].MatchAssignments.length, 0);
+  assert.deepEqual(rejected.unmatched, [{ DocumentId: statement.Id, Reason: 'no-expense-match' }]);
+
+  const ambiguous = buildReconciliationSnapshot([expense, { ...expense, Id: 'another-expense' }, statement]);
+  assertExclusive(ambiguous);
+  assert.deepEqual(ambiguous.unmatched, [{ DocumentId: statement.Id, Reason: 'ambiguous-match' }]);
+  const noMatch = buildReconciliationSnapshot([expense, { ...statement, ServiceDate: '2026-04-08', Healthcare: { ...statement.Healthcare, ServiceDate: '2026-04-08' } }]);
+  assertExclusive(noMatch);
+  assert.deepEqual(noMatch.unmatched, [{ DocumentId: statement.Id, Reason: 'no-expense-match' }]);
+});
+
+test('forwarded invoice copies form one expense; only the corroborated insurer payment is linked', () => {
+  const receipt = { Id: 'original-receipt', Category: 0, Status: 0, DocumentRole: 'expense', DocumentType: 'invoice',
+    Member: 'Kevin', Provider: 'Sample Massage Clinic', Subject: 'Synthetic massage invoice', AccountLabel: 'mailbox',
+    ServiceDate: '2026-04-09', BilledAmount: 180,
+    DetectedAmount: 180, ReimbursedAmount: null, Currency: 'CAD', Confidence: 60, NeedsReview: true,
+    Healthcare: { ServiceDate: '2026-04-09', ServiceType: 'Massage therapy', InvoiceNumber: 'SYNTHETIC-123',
+      OriginalBilledAmount: 180, PatientBalance: 60, InsurerPayments: { 'blue-cross': 120 },
+      FieldStates: { 'InsurerPayments.blue-cross': 'confirmed' }, FieldSources: { 'InsurerPayments.blue-cross': 'attachment' } } };
+  const forwarded = { ...receipt, Id: 'forwarded-receipt' };
+  const paid = { ...receipt, Id: 'paid-statement', DocumentRole: 'insurer-statement', DocumentType: 'claim',
+    Insurer: 'blue-cross', StructuredSource: 'blue-cross-portal', Provider: 'Blue Cross · Massage therapy', BilledAmount: 180,
+    ReimbursedAmount: 120, DetectedAmount: 120, Confidence: 99,
+    Healthcare: { ServiceDate: '2026-04-09', ServiceType: 'Massage therapy', SubmittedAmount: 180 } };
+  const zero = { ...paid, Id: 'separate-zero-processing', ReimbursedAmount: 0, DetectedAmount: 0, NeedsReview: true };
+  const snapshot = buildReconciliationSnapshot([receipt, forwarded, zero, paid]);
+  assertExclusive(snapshot);
+  assert.equal(snapshot.cases.length, 1);
+  assert.deepEqual(new Set(snapshot.cases[0].ExpenseDocumentIds), new Set([receipt.Id, forwarded.Id]));
+  assert.equal(snapshot.cases[0].OriginalAmount, 180);
+  assert.equal(snapshot.cases[0].ReimbursedAmount, 120);
+  assert.equal(snapshot.cases[0].PotentialRemaining, 60);
+  assert.deepEqual(snapshot.cases[0].MatchAssignments.map(x => x.ReimbursementDocumentId), [paid.Id]);
+  assert.deepEqual(snapshot.unmatched, [{ DocumentId: zero.Id, Reason: 'needs-review' }]);
+
+  const conflictingCopy = { ...forwarded, Healthcare: { ...forwarded.Healthcare,
+    InsurerPayments: { 'blue-cross': 100 } } };
+  const conflicted = buildReconciliationSnapshot([receipt, conflictingCopy, paid]);
+  assertExclusive(conflicted);
+  assert.equal(conflicted.cases.length, 1);
+  assert.deepEqual(conflicted.unmatched, [{ DocumentId: paid.Id, Reason: 'needs-review' }]);
+});
 
 test('WestJet-style sales language with a price and insurance words is marketing', () => {
   assert.equal(evidence({ ...mail, subject: 'WestJet offers', text: 'Save up to 40% off. Book now! $150 insurance benefits. Invoice help.', labels: ['CATEGORY_PROMOTIONS'], unsubscribe: true }).marketing, true);

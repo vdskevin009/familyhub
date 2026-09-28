@@ -33,6 +33,7 @@ export type ReconciliationCase = {
   MatchConfidence?: number;
   ReconciliationConfidence?: number;
   MatchAssignments?: MatchAssignment[];
+  HasUnresolvedReimbursementEvidence?: boolean;
   WorkflowStatus?: "open" | "closed" | "ignore";
   WorkflowOrigin?: "automatic" | "manual";
   WorkflowChangedAt?: string;
@@ -115,7 +116,7 @@ const providerKey = (value: string): string => value.toLowerCase().replace(/desj
 export function serviceKey(value: string): string | null {
   const key = value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
   const services: Array<[string, RegExp]> = [
-    ["physio", /\bphysio\b|physiotherap/], ["massage", /massage|massotherap/], ["chiro", /chiropr/],
+    ["physio", /\bphysio\b|physiotherap/], ["massage", /massage|massotherap|\brmt\b/], ["chiro", /chiropr/],
     ["scaling", /scaling|detartrage/], ["root-planing", /root planing|aplan[.\w ]*de racines/],
     ["recall-exam", /examen de rappel|examination and diagnosis.*previous patient/],
     ["polishing", /polishing|polissage/], ["bitewing", /bitewing|radio interproximale/],
@@ -164,6 +165,11 @@ function canonicalExpenses(expenses: Invoice[], statements: Invoice[] = []): Can
       const providerEvidence = healthcareEvidence(providerExpense);
       const providerResidual = providerEvidence.PatientBalance ?? providerEvidence.AmountNotCovered ?? null;
       const reportSubmitted = reportExpense ? submitted(reportExpense) : null;
+      const reportGross = reportExpense ? healthcareEvidence(reportExpense).OriginalBilledAmount ?? reportExpense.BilledAmount : null;
+      const uniqueReport = !reportExpense || expenses.filter(other => other.AccountLabel === "Local Desjardins import"
+        && other.DocumentRole === "expense" && other.Member === reportExpense.Member
+        && other.ServiceDate === reportExpense.ServiceDate && service(other) === service(reportExpense)
+        && sameMoney(healthcareEvidence(other).OriginalBilledAmount ?? other.BilledAmount, reportGross)).length === 1;
       // Legacy/report-derived expenses can carry the gross amount while the real provider receipt
       // carries only the post-insurance residual. Consolidate them only when one exact insurer row
       // proves the arithmetic for the same member/date/service: submitted - paid = residual.
@@ -179,22 +185,60 @@ function canonicalExpenses(expenses: Invoice[], statements: Invoice[] = []): Can
         : [];
       const coordinatedResidualLink = coordinatedResidualMatches.length === 1;
       return sameInvoice && providerMatch
-        || key === ckey && reportReceiptPair && (residualLink || coordinatedResidualLink) && Boolean(service(item));
+        || key === ckey && reportReceiptPair && uniqueReport && (residualLink || coordinatedResidualLink) && Boolean(service(item));
     });
     // Ties remain separate evidence, never a first-row-wins duplicate decision.
     const existing = candidates.length === 1 ? candidates[0] : undefined;
     if (!existing) { result.push({ ...item, Provider: provider, ServiceDate: h.ServiceDate || item.ServiceDate, Healthcare: h, RelatedDocumentIds: [item.Id] }); continue; }
     existing.RelatedDocumentIds.push(item.Id);
     const eh = healthcareEvidence(existing);
+    const preferredEvidence = existing.AccountLabel === "Local Desjardins import" ? h : eh;
     const original = eh.OriginalBilledAmount ?? h.OriginalBilledAmount ??
       (existing.BilledAmount != null && existing.BilledAmount > (h.AmountNotCovered ?? 0) ? existing.BilledAmount : item.BilledAmount);
     const residual = eh.PatientBalance ?? eh.AmountNotCovered ?? h.PatientBalance ?? h.AmountNotCovered ??
       (item.BilledAmount != null && original != null && item.BilledAmount < original ? item.BilledAmount : null);
     existing.Provider ||= provider;
+    existing.Confidence = Math.max(existing.Confidence, item.Confidence);
+    existing.NeedsReview = existing.NeedsReview || item.NeedsReview;
     existing.BilledAmount = original;
     existing.DetectedAmount = original ?? existing.DetectedAmount;
-    existing.Healthcare = { ...eh, ...h, Provider: existing.Provider, OriginalBilledAmount: original, PatientBalance: residual,
-      AmountNotCovered: residual, ProcessedInsurers: [...new Set([...(eh.ProcessedInsurers || []), ...(h.ProcessedInsurers || [])])] };
+    const insurerPayments = { ...eh.InsurerPayments, ...h.InsurerPayments };
+    const conflicts = [...(eh.Conflicts || []), ...(h.Conflicts || [])];
+    const fieldStates = { ...eh.FieldStates, ...h.FieldStates };
+    const fieldSources = { ...eh.FieldSources, ...h.FieldSources };
+    for (const field of ["ServiceType", "InvoiceNumber"] as const) {
+      if (preferredEvidence[field] != null) {
+        if (preferredEvidence.FieldStates?.[field]) fieldStates[field] = preferredEvidence.FieldStates[field];
+        if (preferredEvidence.FieldSources?.[field]) fieldSources[field] = preferredEvidence.FieldSources[field];
+      }
+    }
+    let paymentConflict = false;
+    for (const insurer of ["desjardins", "blue-cross"] as const) {
+      const left = eh.InsurerPayments?.[insurer];
+      const right = h.InsurerPayments?.[insurer];
+      if (left != null && right != null && !sameMoney(left, right)) {
+        insurerPayments[insurer] = null;
+        fieldStates[`InsurerPayments.${insurer}`] = "unknown";
+        delete fieldSources[`InsurerPayments.${insurer}`];
+        conflicts.push(`Conflicting ${insurer} payments in canonical expense sources.`);
+        paymentConflict = true;
+      } else if (left != null && right == null) {
+        insurerPayments[insurer] = left;
+        fieldStates[`InsurerPayments.${insurer}`] = eh.FieldStates?.[`InsurerPayments.${insurer}`] ?? "unknown";
+        if (eh.FieldSources?.[`InsurerPayments.${insurer}`]) fieldSources[`InsurerPayments.${insurer}`] = eh.FieldSources[`InsurerPayments.${insurer}`];
+      }
+    }
+    if (paymentConflict) {
+      existing.Confidence = Math.min(existing.Confidence, 79);
+      existing.NeedsReview = true;
+    }
+    existing.Healthcare = { ...eh, ...h, Provider: existing.Provider,
+      ServiceType: preferredEvidence.ServiceType || eh.ServiceType || h.ServiceType,
+      InvoiceNumber: preferredEvidence.InvoiceNumber || eh.InvoiceNumber || h.InvoiceNumber,
+      OriginalBilledAmount: original, PatientBalance: residual, AmountNotCovered: residual,
+      InsurerPayments: insurerPayments, FieldStates: fieldStates, FieldSources: fieldSources,
+      Conflicts: conflicts,
+      ProcessedInsurers: [...new Set([...(eh.ProcessedInsurers || []), ...(h.ProcessedInsurers || [])])] };
     existing.Notes = `${existing.Notes} Canonical case merged from related document ${item.Id}.`;
   }
   return result;
@@ -244,8 +288,11 @@ function matchScore(expense: Invoice, statement: Invoice): number {
     && expense.Member !== "unknown" && expense.Member === statement.Member
     && expense.ServiceDate != null && expense.ServiceDate === statement.ServiceDate
     && (expenseService == null || statementService == null || expenseService === statementService)
-    && expense.Confidence >= 80 && statement.Confidence >= 90;
-  if (corroboratesEmbeddedPayment) return 25;
+    && expenseEvidence.FieldStates?.[`InsurerPayments.${statement.Insurer}`] === "confirmed"
+    && !expenseEvidence.Conflicts?.length && statement.Confidence >= 90;
+  // Give corroboration the same weight as an exact structured submitted amount so a
+  // second equally supported expense remains a tie instead of being silently displaced.
+  if (corroboratesEmbeddedPayment) return 20;
 
   // Document-level review is separate from match identity. Review flags lower match confidence
   // below, but do not by themselves erase a singular evidence-supported association.
@@ -471,6 +518,12 @@ export function buildReconciliationSnapshot(items: Invoice[], matchDecisions: Ma
       return statement && statement.Member === member && dateDistance(statement.ServiceDate, expense.ServiceDate) <= 3
         && (!service(statement) || !service(expense) || service(statement) === service(expense));
     });
+    const ambiguousAssignment = unmatched.some(result => {
+      if (result.Reason !== "ambiguous-match") return false;
+      const statement = statements.find(item => item.Id === result.DocumentId);
+      return statement?.Member === member && statement.ServiceDate === expense.ServiceDate
+        && (!service(statement) || !service(expense) || service(statement) === service(expense));
+    });
     const explicitPrimaryProcessed = evidence.ProcessedInsurers?.includes(order[0]);
     const explicitSecondaryProcessed = evidence.ProcessedInsurers?.includes(order[1]);
     // Keep the source document review flag intact, but do not let it override a reimbursement
@@ -523,6 +576,7 @@ export function buildReconciliationSnapshot(items: Invoice[], matchDecisions: Ma
       Explanation: `Case ${expense.Id} uses ${[expense.Id, ...matched.map(item => item.Id)].length} linked evidence records. ${summary}`,
       ExtractionConfidence: expense.Confidence, MatchConfidence: matchConfidenceValue,
       MatchAssignments: matchAssignments,
+      HasUnresolvedReimbursementEvidence: ambiguousAssignment,
       ReconciliationConfidence: matched.length ? Math.min(expense.Confidence, ...matched.map(item => item.Confidence)) : expense.Confidence
     };
   });

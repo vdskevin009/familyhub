@@ -18,9 +18,6 @@ export type ReimbursementWorkflowRecord = {
   History: ReimbursementWorkflowHistoryEntry[];
 };
 
-const expectedInsurers = (member: ReconciliationCase["Member"]): Array<"desjardins" | "blue-cross"> =>
-  member === "Jasmine" ? ["blue-cross", "desjardins"] : member === "Kevin" ? ["desjardins", "blue-cross"] : [];
-
 function trustedAssignment(item: ReconciliationCase, insurer: "desjardins" | "blue-cross"): boolean {
   return (item.MatchAssignments ?? []).some(match =>
     match.Insurer === insurer && (match.Verification === "auto" || match.Verification === "confirmed-manually"));
@@ -36,7 +33,14 @@ function trustedAssignment(item: ReconciliationCase, insurer: "desjardins" | "bl
  */
 export function automaticWorkflowStatus(item: ReconciliationCase): Exclude<ReimbursementWorkflowStatus, "ignore"> {
   if (item.Status === "fully-reimbursed" || item.Action === "complete") return "closed";
-  const insurers = expectedInsurers(item.Member);
-  if (insurers.length === 2 && insurers.every(insurer => trustedAssignment(item, insurer))) return "closed";
+  const insurerKey = (name: ReconciliationCase["PrimaryInsurer"]): "desjardins" | "blue-cross" | null =>
+    name === "Desjardins" ? "desjardins" : name === "Blue Cross" ? "blue-cross" : null;
+  const configured = [insurerKey(item.PrimaryInsurer), insurerKey(item.SecondaryInsurer)];
+  // Known order is authoritative. When order is unknown, two distinct named insurer
+  // assignments establish that both stages took place without inventing their order.
+  if (configured[0] && configured[1] && configured[0] === configured[1]) return "open";
+  const insurers = configured.every(Boolean)
+    ? configured as Array<"desjardins" | "blue-cross"> : ["desjardins", "blue-cross"] as const;
+  if (!item.HasUnresolvedReimbursementEvidence && insurers.every(insurer => trustedAssignment(item, insurer))) return "closed";
   return "open";
 }
