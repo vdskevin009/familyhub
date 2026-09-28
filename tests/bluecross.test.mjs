@@ -61,6 +61,9 @@ test('coordinated submitted remainder is not the full expense; dependent insurer
   const result = buildReconciliationSnapshot([balance, desj, ...claims]).cases[0];
   assert.equal(result.OriginalAmount, 145); assert.equal(result.ReimbursedAmount, 136.16);
   assert.equal(result.PotentialRemaining, 8.84); assert.equal(result.PrimaryInsurer, null);
+  assert.equal(result.SecondaryInsurer, null);
+  assert.equal(result.PrimaryReimbursedAmount, null); assert.equal(result.SecondaryReimbursedAmount, null);
+  assert.equal(result.DesjardinsReimbursedAmount, 35.36); assert.equal(result.BlueCrossReimbursedAmount, 100.8);
   assert.equal(result.Status, 'needs-attention'); assert.equal(result.UnallocatedReimbursedAmount, 136.16);
 });
 test('social worker is not guessed equivalent to clinical counsellor; excess payments require review', () => {
