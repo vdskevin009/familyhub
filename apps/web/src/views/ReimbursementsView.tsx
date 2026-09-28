@@ -2,11 +2,11 @@ import { useEffect, useMemo, useState } from "react";
 import { AlertTriangle, CheckCircle2, CircleDollarSign, ExternalLink, RefreshCw } from "lucide-react";
 import { dateLabel } from "../domain";
 import { googleBridge } from "../google";
-import { buildInvoiceHistoryCases, excludeAssignedUnmatched, filterInvoiceHistoryCases, filterReimbursementWorkflowCases, healthcareTitle, mergeInvoiceItems, mergeReconciliationHistory, namedInsurerReimbursementAmount, primaryReimbursementAmount, reimbursementCaseStatus, reimbursementInvoiceDocument, reimbursementInvoiceUrl, reimbursementWorkflowStatus, reimbursementWorkflowSummary, secondaryReimbursementAmount } from "../invoice-state";
+import { buildInvoiceHistoryCases, excludeAssignedUnmatched, filterInvoiceHistoryCases, filterReimbursementWorkflowCases, healthcareTitle, mergeInvoiceItems, mergeReconciliationHistory, namedInsurerReimbursementAmount, primaryReimbursementAmount, reimbursementCaseStatus, reimbursementInvoiceAttachmentIndex, reimbursementInvoiceDocument, reimbursementInvoiceUrl, reimbursementWorkflowStatus, reimbursementWorkflowSummary, secondaryReimbursementAmount } from "../invoice-state";
 import type { InvoiceHistoryFilter, ReimbursementCaseStatus, ReimbursementPersonScope, WorkflowStatusFilter } from "../invoice-state";
 import type { HubState } from "../state";
 import type { MatchAssignment, ReconciliationCase, ReimbursementItem, ReimbursementWorkflowStatus, UnmatchedReimbursement } from "../types";
-import { fetchInvoices, setMatchDecision, setReimbursementWorkflowStatus } from "../worker";
+import { fetchInvoices, setMatchDecision, setReimbursementWorkflowStatus, viewWorkerInvoicePdf } from "../worker";
 
 type Props = { hub: HubState };
 const statusCopy: Record<ReimbursementCaseStatus, string> = {
@@ -109,6 +109,12 @@ export default function ReimbursementsView({ hub }: Props) {
         : `Workflow marked ${status}. This manual choice will survive refreshes and rescans.`);
     } catch (err) { setError(err instanceof Error ? err.message : "The workflow status could not be saved. Refresh and try again."); }
     finally { setSavingId(""); }
+  }
+
+  async function viewInvoice(item: ReimbursementItem, index: number) {
+    setError("");
+    try { await viewWorkerInvoicePdf(hub.worker, item, index); }
+    catch (err) { setError(err instanceof Error ? err.message : "The invoice PDF could not be opened."); }
   }
 
   const model = useMemo(() => {
@@ -418,10 +424,15 @@ export default function ReimbursementsView({ hub }: Props) {
             {(() => {
               const invoiceDocument = reimbursementInvoiceDocument(item, invoiceById);
               const invoiceUrl = reimbursementInvoiceUrl(invoiceDocument);
+              const attachmentIndex = invoiceDocument ? reimbursementInvoiceAttachmentIndex(invoiceDocument) : -1;
               return invoiceUrl ? <div className="expense-document-actions">
                 <a className="mini-button" href={invoiceUrl} target="_blank" rel="noreferrer">
                   <ExternalLink size={14} /> View invoice
                 </a>
+              </div> : invoiceDocument && attachmentIndex >= 0 && paired ? <div className="expense-document-actions">
+                <button type="button" className="mini-button" onClick={() => void viewInvoice(invoiceDocument, attachmentIndex)}>
+                  <ExternalLink size={14} /> View invoice
+                </button>
               </div> : null;
             })()}
             <div className="expense-note"><span>{item.Summary}</span><small>{matchAssignments.length ? `${matchAssignments.length} matched insurer record${matchAssignments.length === 1 ? "" : "s"}` : `Source confidence ${Math.round(item.Confidence)}%`}</small></div>

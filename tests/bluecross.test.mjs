@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { parseBlueCrossExport, blueCrossInvoices } from '../apps/worker/dist/bluecross.js';
 import { normalizeMail } from '../apps/worker/dist/gmail-client.js';
 import { buildReconciliationSnapshot, recoverMissingDesjardinsExpenses, serviceKey } from '../apps/worker/dist/reconciliation.js';
+import { automaticWorkflowStatus } from '../apps/worker/dist/reimbursement-workflow.js';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -65,6 +66,23 @@ test('coordinated submitted remainder is not the full expense; dependent insurer
   assert.equal(result.PrimaryReimbursedAmount, null); assert.equal(result.SecondaryReimbursedAmount, null);
   assert.equal(result.DesjardinsReimbursedAmount, 35.36); assert.equal(result.BlueCrossReimbursedAmount, 100.8);
   assert.equal(result.Status, 'needs-attention'); assert.equal(result.UnallocatedReimbursedAmount, 136.16);
+});
+test('two trusted insurer assignments close a dependent case without guessing insurer order', () => {
+  const claims = documents(table([row('Nathan Vanderstraeten', 'Physiotherapy Treatment', 100, 20)]));
+  const source = expense({ Member: 'Nathan', BilledAmount: 100, Healthcare: undefined, Confidence: 99, NeedsReview: false });
+  const desj = { ...claims[1], Id: 'dependent-desj', Member: 'Nathan', Insurer: 'desjardins',
+    StructuredSource: undefined, AccountLabel: 'Local Desjardins import', ReimbursedAmount: 60,
+    BilledAmount: null, Notes: 'Submitted 100.00; paid 60.00;' };
+  const matched = buildReconciliationSnapshot([source, desj, ...claims]);
+  assert.equal(matched.unmatched.length, 0);
+  const result = matched.cases[0];
+  assert.equal(result.PotentialRemaining, 20);
+  assert.equal(result.MatchAssignments.length, 2);
+  assert.equal(result.PrimaryInsurer, null);
+  assert.equal(result.SecondaryInsurer, null);
+  assert.equal(automaticWorkflowStatus(result), 'closed');
+  assert.equal(automaticWorkflowStatus({ ...result, MatchAssignments: result.MatchAssignments.slice(0, 1) }), 'open');
+  assert.equal(automaticWorkflowStatus({ ...result, Member: 'unknown' }), 'open');
 });
 test('social worker is not guessed equivalent to clinical counsellor; excess payments require review', () => {
   assert.equal(serviceKey('Social Worker'), 'social-worker');
@@ -139,6 +157,36 @@ test('exact complementary trusted payments match one expense despite conflicting
     { reimbursementId: blueCross.Id, expenseId: source.Id, decision: 'rejected', at: '2026-03-13T00:00:00Z' }
   ]);
   assert.deepEqual(rejected.unmatched, [{ DocumentId: blueCross.Id, Reason: 'no-expense-match' }]);
+});
+test('confirmed payment printed on a low-confidence receipt corroborates one trusted insurer row', () => {
+  const source = expense({ Id: 'attachment-receipt', Member: 'Kevin', Provider: 'Sample physiotherapy clinic',
+    ServiceDate: '2026-02-19', BilledAmount: 100, DetectedAmount: 100, Confidence: 60, NeedsReview: true,
+    Healthcare: { ServiceDate: '2026-02-19', ServiceType: 'Physiotherapy follow up',
+      OriginalBilledAmount: 100, InsurerPayments: { desjardins: 80 }, ProcessedInsurers: ['desjardins'],
+      FieldSources: { 'InsurerPayments.desjardins': 'attachment' },
+      FieldStates: { 'InsurerPayments.desjardins': 'confirmed' } } });
+  const statement = { ...source, Id: 'trusted-desj-row', DocumentRole: 'insurer-statement',
+    DocumentType: 'claim', AccountLabel: 'Local Desjardins import', Insurer: 'desjardins',
+    Provider: 'Desjardins · Physiothérapeute', BilledAmount: null, DetectedAmount: 80,
+    ReimbursedAmount: 80, Confidence: 99, NeedsReview: false,
+    Healthcare: { ServiceDate: source.ServiceDate, ServiceType: 'Physiothérapeute - visite subséquente', SubmittedAmount: 100 } };
+  const matched = buildReconciliationSnapshot([source, statement]);
+  assert.deepEqual(matched.unmatched, []);
+  assert.equal(matched.cases[0].MatchAssignments.length, 1);
+  assert.equal(matched.cases[0].ReimbursedAmount, 80, 'the receipt adjustment is not counted twice');
+  assert.equal(matched.cases[0].PotentialRemaining, 20);
+  assert.equal(matched.cases[0].Status, 'waiting-secondary');
+  for (const [index, blocked] of [
+    { ...statement, ReimbursedAmount: 79 },
+    { ...statement, Healthcare: { ...statement.Healthcare, SubmittedAmount: 99 } },
+    { ...statement, NeedsReview: true },
+    { ...statement, AccountLabel: 'Untrusted import' },
+    { ...statement, Member: 'Nathan' },
+    { ...statement, ServiceDate: '2026-02-20' }
+  ].entries()) assert.equal(buildReconciliationSnapshot([source, blocked]).unmatched.length, 1, `blocked variation ${index}`);
+  const unconfirmed = { ...source, Healthcare: { ...source.Healthcare,
+    FieldStates: { 'InsurerPayments.desjardins': 'unknown' } } };
+  assert.equal(buildReconciliationSnapshot([unconfirmed, statement]).unmatched.length, 1);
 });
 test('provider residual and legacy insurer-derived gross expense collapse into one canonical case', () => {
   const receipt = expense({

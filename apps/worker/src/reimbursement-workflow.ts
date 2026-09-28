@@ -18,8 +18,9 @@ export type ReimbursementWorkflowRecord = {
   History: ReimbursementWorkflowHistoryEntry[];
 };
 
+// This list checks whether both adjudications exist; its order never defines Primary/Secondary.
 const expectedInsurers = (member: ReconciliationCase["Member"]): Array<"desjardins" | "blue-cross"> =>
-  member === "Jasmine" ? ["blue-cross", "desjardins"] : member === "Kevin" ? ["desjardins", "blue-cross"] : [];
+  member === "unknown" ? [] : ["desjardins", "blue-cross"];
 
 function trustedAssignment(item: ReconciliationCase, insurer: "desjardins" | "blue-cross"): boolean {
   return (item.MatchAssignments ?? []).some(match =>

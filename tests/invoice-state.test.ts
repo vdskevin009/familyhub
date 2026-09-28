@@ -9,6 +9,7 @@ import {
   mergeReconciliationHistory,
   namedInsurerReimbursementAmount,
   reimbursementInvoiceDocument,
+  reimbursementInvoiceAttachmentIndex,
   reimbursementInvoiceUrl,
   reimbursementWorkflowStatus,
   reimbursementWorkflowSummary,
@@ -223,7 +224,7 @@ test("already assigned insurer rows are excluded from stale Unmatched projection
   assert.deepEqual(excludeAssignedUnmatched(unmatched, [matched]), [unmatched[1]]);
 });
 
-test("invoice PDF action resolves only when a linked PDF is actually archived", () => {
+test("invoice PDF action uses an archived file or the expense's indexed worker attachment", () => {
   const archivedPdf = invoice("expense-with-pdf", "2026-09-20", {
     DriveFileId: "drive-file-123",
     Attachments: [{ Id: "a1", FileName: "invoice.pdf", MimeType: "application/pdf", Size: 1234 }]
@@ -232,6 +233,19 @@ test("invoice PDF action resolves only when a linked PDF is actually archived", 
   const byId = new Map([[archivedPdf.Id, archivedPdf]]);
   assert.equal(reimbursementInvoiceDocument(caseWithPdf, byId)?.Id, archivedPdf.Id);
   assert.equal(reimbursementInvoiceUrl(archivedPdf), "https://drive.google.com/file/d/drive-file-123/view");
+
+  const workerPdf = invoice("worker-expense-pdf", "2026-09-20", {
+    Attachments: [{ Id: "source-pdf", FileName: "receipt.pdf", MimeType: "application/pdf", Size: 1234 }]
+  });
+  const insurerPdf = invoice("insurer-pdf", "2026-09-20", {
+    DocumentRole: "insurer-statement",
+    Attachments: [{ Id: "claim-pdf", FileName: "claim.pdf", MimeType: "application/pdf", Size: 1234 }]
+  });
+  const linked = reconciliation(workerPdf, { DocumentIds: [workerPdf.Id, insurerPdf.Id] });
+  assert.equal(reimbursementInvoiceDocument(linked, new Map([[workerPdf.Id, workerPdf], [insurerPdf.Id, insurerPdf]]))?.Id, workerPdf.Id);
+  assert.equal(reimbursementInvoiceAttachmentIndex(workerPdf), 0);
+  assert.equal(reimbursementInvoiceUrl(workerPdf), null);
+  assert.equal(reimbursementInvoiceDocument(reconciliation(insurerPdf), new Map([[insurerPdf.Id, insurerPdf]])), null);
 
   const noPdf = invoice("expense-without-pdf", "2026-09-21", {
     DriveFileId: "drive-file-image",

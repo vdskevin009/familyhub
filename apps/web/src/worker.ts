@@ -107,6 +107,35 @@ export async function downloadWorkerAttachment(config: WorkerConfig, item: Reimb
   window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
 
+/** Open an indexed invoice PDF through the authenticated worker attachment route. */
+export async function viewWorkerInvoicePdf(config: WorkerConfig, item: ReimbursementItem, index: number): Promise<void> {
+  const attachment = item.Attachments[index];
+  if (!attachment || !attachment.Id || attachment.Size > 20_000_000
+    || !(attachment.MimeType === "application/pdf" || /\.pdf$/i.test(attachment.FileName)))
+    throw new Error("An invoice PDF is not available for this expense.");
+  const tab = window.open("about:blank", "_blank");
+  if (!tab) throw new Error("Allow FamilyHub to open the invoice in a new tab.");
+  tab.opener = null;
+  try {
+    const response = await fetch(endpoint(config, `/invoices/${encodeURIComponent(item.Id)}/attachments/${encodeURIComponent(attachment.Id)}`), {
+      headers: headers(config), signal: AbortSignal.timeout(60_000)
+    });
+    if (!response.ok) {
+      const result = await response.json().catch(() => ({})) as { error?: string };
+      throw new Error(result.error || "The invoice PDF could not be opened.");
+    }
+    const bytes = await response.arrayBuffer();
+    const signature = new TextDecoder("ascii").decode(bytes.slice(0, 5));
+    if (signature !== "%PDF-") throw new Error("The source attachment is not a PDF.");
+    const url = URL.createObjectURL(new Blob([bytes], { type: "application/pdf" }));
+    tab.location.replace(url);
+    window.setTimeout(() => URL.revokeObjectURL(url), 300_000);
+  } catch (error) {
+    tab.close();
+    throw error;
+  }
+}
+
 export async function testWorker(config: WorkerConfig): Promise<{ status: string; codex: string; version: string }> {
   return request(config, "/health");
 }

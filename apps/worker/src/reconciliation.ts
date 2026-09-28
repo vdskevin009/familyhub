@@ -240,12 +240,21 @@ function matchScore(expense: Invoice, statement: Invoice): number {
   // corroborating that same member/date/service/payment is matched evidence, not a second payment.
   const embeddedPayment = statement.Insurer === "desjardins" || statement.Insurer === "blue-cross"
     ? expenseEvidence.InsurerPayments?.[statement.Insurer] ?? null : null;
+  const paymentField = statement.Insurer ? `InsurerPayments.${statement.Insurer}` : "";
+  // An attachment can explicitly prove one insurer payment even when unrelated receipt fields
+  // keep the document's overall extraction confidence low. Require the gross claim and a
+  // trusted, non-review insurer row before using that narrower evidence.
+  const confirmedAttachmentPayment = expenseEvidence.FieldStates?.[paymentField] === "confirmed"
+    && expenseEvidence.FieldSources?.[paymentField] === "attachment"
+    && !statement.NeedsReview && trustedInsurerSource(statement)
+    && sameMoney(expenseEvidence.OriginalBilledAmount ?? amount, statementEvidence.SubmittedAmount);
   const corroboratesEmbeddedPayment = embeddedPayment != null && paid != null && sameMoney(embeddedPayment, paid)
     && expense.Member !== "unknown" && expense.Member === statement.Member
     && expense.ServiceDate != null && expense.ServiceDate === statement.ServiceDate
     && (expenseService == null || statementService == null || expenseService === statementService)
-    && expense.Confidence >= 80 && statement.Confidence >= 90;
+    && (expense.Confidence >= 80 || confirmedAttachmentPayment) && statement.Confidence >= 90;
   if (corroboratesEmbeddedPayment) return 25;
+  if (expense.NeedsReview && expense.Confidence < 80) return -1;
 
   // Document-level review is separate from match identity. Review flags lower match confidence
   // below, but do not by themselves erase a singular evidence-supported association.
