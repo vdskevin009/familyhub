@@ -154,7 +154,7 @@ export function namedInsurerReimbursementAmount(item: ReconciliationCase, insure
     return reimbursement?.ReimbursedAmount ?? reimbursement?.DetectedAmount ?? null;
   });
   if (amounts.some(amount => amount == null)) return null;
-  return Math.round(amounts.reduce((sum, amount) => sum + Number(amount), 0) * 100) / 100;
+  return Math.round(amounts.reduce((sum, amount) => sum + (amount ?? 0), 0) * 100) / 100;
 }
 
 function invoiceHistoryDateValue(value: string | null | undefined): number {
