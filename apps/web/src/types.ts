@@ -71,7 +71,7 @@ export type ReimbursementAttachment = {
 };
 
 export type ReimbursementItem = {
-  Healthcare?: { InvoiceNumber?: string | null; Provider?: string | null; ServiceType?: string | null };
+  Healthcare?: { InvoiceNumber?: string | null; Provider?: string | null; ServiceType?: string | null; SubmittedAmount?: number | null };
   ClaimedService?: string;
   AnalysisVersion?: number;
   Id: string;
@@ -93,6 +93,7 @@ export type ReimbursementItem = {
   Attachments: ReimbursementAttachment[];
   DocumentType?: "receipt" | "invoice" | "claim" | "bill" | "administrative" | "other" | "marketing" | "ignore";
   WorkerManaged?: boolean;
+  StructuredSource?: string;
   NeedsReview?: boolean;
   ReimbursementEligibility?: "possible" | "unknown" | "no";
   ClassificationSource?: "rules" | "codex" | "manual" | "unavailable";
@@ -165,6 +166,8 @@ export type ReconciliationCase = {
   Member: "Kevin" | "Jasmine" | "Nathan" | "unknown"; Provider: string; ServiceDate: string | null;
   PreviouslyFound?: boolean;
   Unreconciled?: boolean;
+  InferredFromInsurer?: boolean;
+  OriginalInvoiceMissing?: boolean;
   UnallocatedReimbursedAmount?: number;
   OriginalAmount: number | null; ReimbursedAmount: number; PotentialRemaining: number | null; Currency: string;
   PrimaryInsurer?: "Desjardins" | "Blue Cross" | null; PrimaryReimbursedAmount?: number | null;
