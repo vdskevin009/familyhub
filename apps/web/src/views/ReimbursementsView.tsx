@@ -488,7 +488,7 @@ export default function ReimbursementsView({ hub }: Props) {
             ? namedInsurerReimbursementAmount(item, "Desjardins", invoiceById) : primaryReimbursementAmount(item);
           const secondInsurerAmount = insurerOrderUnknown
             ? namedInsurerReimbursementAmount(item, "Blue Cross", invoiceById) : secondaryReimbursementAmount(item);
-          const sameDayUnmatched = item.ServiceDate ? model.unmatched.filter(({ item: candidate }) =>
+          const sameDayUnmatched = !item.InferredFromInsurer && item.ServiceDate ? model.unmatched.filter(({ item: candidate }) =>
             candidate.Member === item.Member && candidate.ServiceDate?.slice(0, 10) === item.ServiceDate?.slice(0, 10)) : [];
           const invoicePdfOptions = reimbursementInvoicePdfOptions(item, invoiceById);
           const evidenceSources = reimbursementEvidenceSources(item, invoiceById);
