@@ -7,7 +7,7 @@ import { join } from 'node:path';
 const directory = await mkdtemp(join(tmpdir(), 'familyhub-bc-collector-'));
 process.env.FAMILYHUB_WORKER_DATA = directory;
 const { parsePortalPages, savePortalSnapshot } = await import('../apps/worker/dist/bluecross-collector.js');
-const { initializeInvoices, initializeBlueCrossStatus, syncBlueCrossPortal, planBlueCrossUpsert } = await import('../apps/worker/dist/invoices.js');
+const { initializeInvoices, initializeBlueCrossStatus, getBlueCrossStatus, syncBlueCrossPortal, planBlueCrossUpsert } = await import('../apps/worker/dist/invoices.js');
 const { buildReconciliationSnapshot } = await import('../apps/worker/dist/reconciliation.js');
 
 const row = (service = 'Physiotherapy Treatment', paid = 80) => ({ service, paid });
@@ -121,6 +121,11 @@ test('snapshots are immutable audit inputs with minimal source facts', async () 
   assert.equal(contents.includes('grdClaimsGrid'), false);
   await savePortalSnapshot(base);
   assert.equal(await readFile(path, 'utf8'), contents);
+});
+test('damaged optional sync status does not prevent the invoice worker from starting', async () => {
+  await writeFile(join(directory, 'bluecross', 'status.json'), '{');
+  await initializeBlueCrossStatus();
+  assert.equal(getBlueCrossStatus().state, 'error');
 });
 
 test.after(async () => { await rm(directory, { recursive: true, force: true }); });

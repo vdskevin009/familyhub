@@ -44,7 +44,10 @@ let blueCrossStatus: BlueCrossStatus = { state: "idle" };
 
 export async function initializeBlueCrossStatus(): Promise<void> {
   try { blueCrossStatus = JSON.parse(await readFile(blueCrossStatusPath, "utf8")) as BlueCrossStatus; }
-  catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
+  catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT")
+      blueCrossStatus = { state: "error", error: "Blue Cross sync status is unreadable; previous invoices were not changed." };
+  }
   if (blueCrossStatus.state === "syncing") await saveBlueCrossStatus({ state: "error", error: "The previous Blue Cross sync was interrupted." });
 }
 export function getBlueCrossStatus(): BlueCrossStatus { return { ...blueCrossStatus, state: blueCrossBusy ? "syncing" : blueCrossStatus.state }; }
