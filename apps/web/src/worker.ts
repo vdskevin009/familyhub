@@ -35,9 +35,9 @@ function headers(config: WorkerConfig): HeadersInit {
   };
 }
 
-async function request<T>(config: WorkerConfig, path: string, init: RequestInit = {}): Promise<T> {
+async function request<T>(config: WorkerConfig, path: string, init: RequestInit = {}, timeoutMs = 30_000): Promise<T> {
   const response = await fetch(endpoint(config, path), {
-    signal: AbortSignal.timeout(30_000),
+    signal: AbortSignal.timeout(timeoutMs),
     ...init,
     headers: { ...headers(config), ...(init.headers ?? {}) }
   });
@@ -46,6 +46,18 @@ async function request<T>(config: WorkerConfig, path: string, init: RequestInit 
     throw new Error(body.error || `Worker request failed (${response.status}).`);
   }
   return await response.json() as T;
+}
+
+export type BlueCrossSyncResult = { status: "success" | "login-required"; applied?: boolean; found?: number; new?: number;
+  changed?: number; unchanged?: number; ambiguous?: number; duplicates?: number; errors?: number; complete?: boolean;
+  loginRequired?: boolean; warnings?: string[]; matched?: number; unmatched?: number };
+export type BlueCrossSyncStatus = { lastAttempt?: string; lastSuccess?: string; found?: number;
+  state: "idle" | "syncing" | "login-required" | "error" | "up-to-date"; error?: string };
+export function fetchBlueCrossStatus(config: WorkerConfig): Promise<BlueCrossSyncStatus> {
+  return request(config, "/bluecross/status");
+}
+export function syncBlueCross(config: WorkerConfig, apply: boolean): Promise<BlueCrossSyncResult> {
+  return request(config, "/bluecross/sync", { method: "POST", body: JSON.stringify({ apply }) }, 6 * 60_000);
 }
 
 export type InvoiceSnapshot = {

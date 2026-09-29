@@ -7,7 +7,8 @@ import { credentials, accessToken, gmail, normalizeMail, withAttachmentText, typ
 import { applyCorrection, classificationSchema, evidence, fingerprint, recordId, repairHealthcareAmounts, toInvoice, validateClassification, type Classification, type Correction, type Invoice, type Mail } from "./invoice-model.js";
 import { buildCleanupSuggestions, buildReconciliationSnapshot, recoverMissingDesjardinsExpenses, type MatchDecision, type ReconciliationCase, type UnmatchedReimbursement } from "./reconciliation.js";
 import { automaticWorkflowStatus, type ReimbursementWorkflowRecord, type ReimbursementWorkflowStatus } from "./reimbursement-workflow.js";
-import { blueCrossInvoices } from "./bluecross.js";
+import { blueCrossInvoices, type BlueCrossRow } from "./bluecross.js";
+import { blueCrossPrivateDirectory, collectBlueCrossPortal, type PortalCollection } from "./bluecross-collector.js";
 import { reviewReconciliations, reviewTargets, codexReviewer, type AgentReview, type Reviewer } from "./agents.js";
 
 type Window = { after: number; before: number; page?: string };
@@ -36,6 +37,117 @@ function activeReconciliationItems(): Invoice[] {
 let state = empty();
 let busy = false;
 let mutation = Promise.resolve();
+let blueCrossBusy = false;
+const blueCrossStatusPath = join(blueCrossPrivateDirectory, "status.json");
+type BlueCrossStatus = { lastAttempt?: string; lastSuccess?: string; found?: number; state: "idle" | "syncing" | "login-required" | "error" | "up-to-date"; error?: string };
+let blueCrossStatus: BlueCrossStatus = { state: "idle" };
+
+export async function initializeBlueCrossStatus(): Promise<void> {
+  try { blueCrossStatus = JSON.parse(await readFile(blueCrossStatusPath, "utf8")) as BlueCrossStatus; }
+  catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT")
+      blueCrossStatus = { state: "error", error: "Blue Cross sync status is unreadable; previous invoices were not changed." };
+  }
+  if (blueCrossStatus.state === "syncing") await saveBlueCrossStatus({ state: "error", error: "The previous Blue Cross sync was interrupted." });
+}
+export function getBlueCrossStatus(): BlueCrossStatus { return { ...blueCrossStatus, state: blueCrossBusy ? "syncing" : blueCrossStatus.state }; }
+async function saveBlueCrossStatus(patch: Partial<BlueCrossStatus>): Promise<void> {
+  blueCrossStatus = { ...blueCrossStatus, ...patch };
+  await atomicJson(blueCrossStatusPath, blueCrossStatus);
+}
+
+function portalMail(collection: PortalCollection): Mail {
+  return { id: "portal", threadId: "portal", internetMessageId: "", subject: "Pacific Blue Cross claims history",
+    sender: "Pacific Blue Cross", receivedAt: collection.collectedAt, text: "", labels: [], unsubscribe: false,
+    bulk: false, attachments: [], blueCrossExport: { rows: collection.rows, pageClaimed: 0, pagePaid: 0,
+      totalClaimed: null, totalPaid: null, warning: collection.warnings.join(" ") } };
+}
+function portalKey(item: Invoice): string {
+  return JSON.stringify([item.Member, item.ServiceDate, item.ClaimedService, item.BilledAmount]);
+}
+export function planBlueCrossUpsert(existing: Invoice[], collection: PortalCollection) {
+  const imported = blueCrossInvoices(portalMail(collection), "", "Pacific Blue Cross portal").slice(1);
+  const current = existing.filter(item => item.StructuredSource === "blue-cross-portal" && item.DocumentRole === "insurer-statement");
+  const byId = new Map(current.map(item => [item.Id, item]));
+  const byKey = new Map<string, Invoice[]>();
+  for (const item of current) byKey.set(portalKey(item), [...(byKey.get(portalKey(item)) || []), item]);
+  const incomingIds = new Set(imported.map(item => item.Id));
+  const inputIds = new Set<string>();
+  const planned: Invoice[] = [];
+  let added = 0, changed = 0, unchanged = 0, ambiguous = 0, duplicates = 0;
+  for (const item of imported) {
+    if (inputIds.has(item.Id)) { duplicates++; ambiguous++; continue; }
+    inputIds.add(item.Id);
+    const exact = byId.get(item.Id);
+    if (exact) {
+      if (item.PortalClaimStatus === "pended" && exact.ReimbursedAmount != null) { ambiguous++; continue; }
+      if (exact.ReimbursedAmount === item.ReimbursedAmount && exact.BilledAmount === item.BilledAmount
+        && exact.StatementDate === item.StatementDate && exact.ClaimedService === item.ClaimedService) { unchanged++; continue; }
+      if (exact.CorrectedAt) { ambiguous++; continue; }
+      planned.push(item); changed++; continue;
+    }
+    const candidates = byKey.get(portalKey(item)) || [];
+    // If every old row with this business key is still present unchanged in this
+    // same portal snapshot, this is a separate processing row, not an update.
+    if (candidates.length && candidates.every(candidate => incomingIds.has(candidate.Id)
+      && !planned.some(entry => entry.Id === candidate.Id))) {
+      planned.push({ ...item, NeedsReview: true }); added++; continue;
+    }
+    if (candidates.length > 1 || candidates.length === 1 && planned.some(entry => entry.Id === candidates[0].Id)) {
+      ambiguous++; continue;
+    }
+    if (candidates.length === 1) {
+      const old = candidates[0];
+      if (item.PortalClaimStatus === "pended" && old.ReimbursedAmount != null) { ambiguous++; continue; }
+      if (old.ReimbursedAmount === item.ReimbursedAmount && old.StatementDate === item.StatementDate
+        && old.BilledAmount === item.BilledAmount) { unchanged++; continue; }
+      if (old.CorrectedAt) { ambiguous++; continue; }
+      planned.push({ ...item, Id: old.Id, Fingerprint: old.Fingerprint });
+      changed++;
+    } else { planned.push(item); added++; }
+  }
+  return { found: imported.length, new: added, changed, unchanged, ambiguous, duplicates, items: planned };
+}
+
+export async function syncBlueCrossPortal(apply = false, interactive = false, collector = collectBlueCrossPortal) {
+  if (blueCrossBusy || busy) throw new Error("A Blue Cross or invoice collection is already running.");
+  blueCrossBusy = true;
+  await saveBlueCrossStatus({ lastAttempt: new Date().toISOString(), state: "syncing", error: undefined });
+  try {
+    const result = await collector(interactive);
+    if (result.status === "login-required") {
+      await saveBlueCrossStatus({ state: "login-required" });
+      return { status: "login-required" as const, loginRequired: true };
+    }
+    const collection = result.collection!;
+    const plan = planBlueCrossUpsert(state.items, collection);
+    const errors = collection.warnings.length;
+    if (apply && (!collection.complete || plan.ambiguous)) throw new Error("Collection is incomplete or ambiguous; existing FamilyHub data was not modified.");
+    let backup: string | undefined;
+    if (apply) await edit(async () => {
+      backup = `invoices.pre-bluecross-portal-${Date.now()}-${randomUUID()}.json`;
+      await atomicJson(join(dataDirectory, backup), state);
+      mergeBlueCross(plan.items);
+    });
+    await saveBlueCrossStatus({ state: errors ? "error" : !apply && (plan.new || plan.changed || plan.ambiguous) ? "idle" : "up-to-date", lastSuccess: errors ? blueCrossStatus.lastSuccess : collection.collectedAt,
+      found: plan.found, error: collection.warnings.join(" ") || undefined });
+    const reconciliation = apply ? buildReconciliationSnapshot(activeReconciliationItems(), state.matchDecisions) : undefined;
+    return { status: "success" as const, applied: apply, found: plan.found, new: plan.new, changed: plan.changed,
+      unchanged: plan.unchanged, ambiguous: plan.ambiguous, duplicates: plan.duplicates, errors,
+      loginRequired: false, complete: collection.complete, warnings: collection.warnings,
+      matched: reconciliation?.cases.reduce((sum, entry) => sum + (entry.MatchAssignments?.length ?? 0), 0),
+      unmatched: reconciliation?.unmatched.length, snapshotPath: result.snapshotPath, backup };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "";
+    const safeMessage = /^Collection is incomplete or ambiguous/.test(message) ? message
+      : /spawn (?:EPERM|UNKNOWN)/i.test(message) ? "Windows blocked the local Blue Cross browser launch. Check that installed Google Chrome can open on this PC."
+      : /executable doesn't exist|browser.*not installed/i.test(message) ? "Google Chrome is unavailable on this Windows PC, or Playwright Chromium is unavailable on this platform. Install the browser before syncing."
+      : /timeout|net::|network/i.test(message) ? "Blue Cross portal navigation timed out or the network is unavailable."
+      : "Blue Cross portal collection failed. Check the PC worker log.";
+    await saveBlueCrossStatus({ state: "error", error: safeMessage });
+    throw new Error(safeMessage);
+  } finally { blueCrossBusy = false; }
+}
 
 function workflowExpenseId(entry: ReconciliationCase): string {
   return entry.ExpenseDocumentId || entry.ExpenseDocumentIds?.[0] || entry.DocumentIds[0];
@@ -202,15 +314,17 @@ function edit(action: () => void | Promise<void>): Promise<void> {
   mutation = next.catch(() => {});
   return next;
 }
-export async function initializeInvoices(): Promise<void> {
+export async function initializeInvoices(readOnly = false): Promise<void> {
   try {
     const saved = JSON.parse(await readFile(statePath, "utf8")) as Partial<State>;
     state = { ...empty(), ...saved, items: saved.items || [], corrections: saved.corrections || [], decisions: saved.decisions || [], matchDecisions: saved.matchDecisions || [],
       unmatchedDecisions: Array.isArray(saved.unmatchedDecisions) ? saved.unmatchedDecisions : [],
       workflowRecords: Array.isArray(saved.workflowRecords) ? saved.workflowRecords : [], reviews: saved.reviews || [], accounts: saved.accounts || {} };
-    const metadataChanged = normalizeStoredMetadata();
-    const workflowChanged = syncWorkflowRecords(buildReconciliationSnapshot(activeReconciliationItems(), state.matchDecisions).cases);
-    if (metadataChanged || workflowChanged) await atomicJson(statePath, state);
+    if (!readOnly) {
+      const metadataChanged = normalizeStoredMetadata();
+      const workflowChanged = syncWorkflowRecords(buildReconciliationSnapshot(activeReconciliationItems(), state.matchDecisions).cases);
+      if (metadataChanged || workflowChanged) await atomicJson(statePath, state);
+    }
   }
   catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw new Error("Invoice index is unreadable. Restore the index before collecting; it was not overwritten."); }
 }

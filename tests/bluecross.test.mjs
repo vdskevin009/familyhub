@@ -34,6 +34,18 @@ test('identical emailed parts have stable row identities and totals never become
   assert.match(first[0].ImportWarning, /Other pages are missing/);
   assert.equal(first[1].ReimbursedAmount, 80);
 });
+test('Pended claim remains a claim with unknown payment and is not an unmatched reimbursement', () => {
+  const html = table([row('Jasmine Wing', 'Physiotherapy Treatment - 30 Minutes', 100, 0)])
+    .replace('<td>$0.00</td><td>Sep 03, 2026</td>', '<td>Pended</td><td>Sep 03, 2026</td>');
+  const report = parseBlueCrossExport(html);
+  assert.equal(report.rows[0].paid, null);
+  assert.equal(report.pagePaid, 0);
+  const claim = blueCrossInvoices(mail(html), 'test@example.test', 'Test')[1];
+  assert.equal(claim.ReimbursedAmount, null);
+  assert.equal(claim.PortalClaimStatus, 'pended');
+  assert.equal(claim.NeedsReview, true);
+  assert.equal(buildReconciliationSnapshot([claim]).unmatched.length, 0);
+});
 test('reject incomplete, bad subtotal, invalid-date and inconsistent monetary rows', () => {
   for (const html of [table([row()]).replace('$100.00</div>', '$101.00</div>'), table([row()]).replace('Sep 03, 2026</td>', 'Feb 30, 2026</td>'), table([row()]).replace('$80.00</td>', '$180.00</td>'), table([row()]).replace('<td>Details</td>', '')]) assert.throws(() => parseBlueCrossExport(html));
 });
