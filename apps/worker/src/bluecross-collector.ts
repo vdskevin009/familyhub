@@ -1,20 +1,32 @@
 import { mkdir, open } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
-import { dataDirectory } from "./private-store.js";
+import type { Cookie } from "playwright";
+import { dataDirectory, loadPrivate, savePrivate } from "./private-store.js";
 import { parseBlueCrossExport, type BlueCrossRow } from "./bluecross.js";
 
 export const blueCrossPrivateDirectory = join(dataDirectory, "bluecross");
 export const blueCrossProfileDirectory = join(blueCrossPrivateDirectory, "browser-profile");
 export const blueCrossSnapshotDirectory = join(blueCrossPrivateDirectory, "snapshots");
+export const blueCrossAuthPath = join(blueCrossPrivateDirectory, "auth-state.dpapi");
 export const blueCrossCollectorVersion = 1;
 const memberUrl = "https://www.pac.bluecross.ca/Member";
+const sessionOrigin = "https://service.pac.bluecross.ca";
+const sessionKey = "pbcMemberProfileData";
 
 export type PortalCollection = {
   collectedAt: string; collectorVersion: number; pageCount: number;
   rows: BlueCrossRow[]; warnings: string[]; complete: boolean;
 };
 export type PortalPage = { html: string; hasNext: boolean };
+
+export function blueCrossAuthCookies<T extends { domain: string }>(cookies: T[]): T[] {
+  return cookies.filter(cookie => /(?:^|\.)pac\.bluecross\.ca$/i.test(cookie.domain.replace(/^\./, "")));
+}
+
+export function blueCrossSessionMarker(origin: string, value: unknown): string | null {
+  return origin === sessionOrigin && typeof value === "string" && value.length > 0 ? value : null;
+}
 
 /** Parse each page independently so its page subtotal is verified by the existing parser. */
 export function parsePortalPages(pages: PortalPage[], warning = ""): PortalCollection {
@@ -71,6 +83,16 @@ export async function collectBlueCrossPortal(interactive = false): Promise<{ sta
     headless: !interactive, acceptDownloads: false, serviceWorkers: "block"
   });
   try {
+    if (process.platform === "win32") {
+      try {
+        const saved = await loadPrivate<{ cookies: Cookie[]; session?: { origin: string; value: string } }>(blueCrossAuthPath);
+        await context.addCookies(blueCrossAuthCookies(saved.cookies));
+        const marker = blueCrossSessionMarker(saved.session?.origin ?? "", saved.session?.value);
+        if (marker) await context.addInitScript(({ origin, key, value }) => {
+          if (location.origin === origin && !sessionStorage.getItem(key)) sessionStorage.setItem(key, value);
+        }, { origin: sessionOrigin, key: sessionKey, value: marker });
+      } catch { /* A missing or expired session falls back to the normal login flow. */ }
+    }
     const page = context.pages()[0] ?? await context.newPage();
     await page.goto(memberUrl, { waitUntil: "domcontentloaded", timeout: 45_000 });
     const claims = page.locator("table[id*='grdClaimsGrid']");
@@ -86,6 +108,8 @@ export async function collectBlueCrossPortal(interactive = false): Promise<{ sta
       await link.waitFor({ state: "visible", timeout: 15_000 }).catch(() => {});
     }
     if (!await claims.isVisible().catch(() => false)) await openHistory();
+    if (!interactive && !await claims.isVisible().catch(() => false))
+      await claims.waitFor({ state: "visible", timeout: 30_000 }).catch(() => {});
     if (interactive) {
       const deadline = Date.now() + 600_000;
       while (!await claims.isVisible().catch(() => false) && Date.now() < deadline) {
@@ -95,6 +119,16 @@ export async function collectBlueCrossPortal(interactive = false): Promise<{ sta
       if (!await claims.isVisible().catch(() => false)) return { status: "login-required" };
     } else if (!await claims.isVisible().catch(() => false)) return { status: "login-required" };
     let warning = "";
+    if (process.platform === "win32") {
+      try {
+        const cookies = blueCrossAuthCookies(await context.cookies());
+        const current = await page.evaluate(key => ({ origin: location.origin, value: sessionStorage.getItem(key) }), sessionKey);
+        const marker = blueCrossSessionMarker(current.origin, current.value);
+        if (cookies.length && marker) await savePrivate(blueCrossAuthPath,
+          { cookies, session: { origin: sessionOrigin, value: marker } });
+        else warning = "Blue Cross session state was unavailable for repeat previews.";
+      } catch { warning = "Blue Cross session could not be saved for repeat previews."; }
+    }
     let filtersChanged = false;
     // The current portal uses Telerik combo boxes, not native selects. Force the widest
     // available window and all covered lives before trusting its grand total.

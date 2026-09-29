@@ -6,9 +6,22 @@ import { join } from 'node:path';
 
 const directory = await mkdtemp(join(tmpdir(), 'familyhub-bc-collector-'));
 process.env.FAMILYHUB_WORKER_DATA = directory;
-const { parsePortalPages, savePortalSnapshot } = await import('../apps/worker/dist/bluecross-collector.js');
+const { parsePortalPages, savePortalSnapshot, blueCrossAuthCookies, blueCrossSessionMarker } = await import('../apps/worker/dist/bluecross-collector.js');
 const { initializeInvoices, initializeBlueCrossStatus, getBlueCrossStatus, syncBlueCrossPortal, planBlueCrossUpsert } = await import('../apps/worker/dist/invoices.js');
 const { buildReconciliationSnapshot } = await import('../apps/worker/dist/reconciliation.js');
+
+test('private session state excludes cookies from unrelated domains', () => {
+  const cookies = [
+    { domain: 'service.pac.bluecross.ca', name: 'synthetic-session' },
+    { domain: '.pac.bluecross.ca', name: 'synthetic-parent' },
+    { domain: 'pac.bluecross.ca.example.org', name: 'unrelated' },
+    { domain: 'other.example.org', name: 'unrelated' }
+  ];
+  assert.deepEqual(blueCrossAuthCookies(cookies).map(cookie => cookie.name), ['synthetic-session', 'synthetic-parent']);
+  assert.equal(blueCrossSessionMarker('https://service.pac.bluecross.ca', 'synthetic-profile'), 'synthetic-profile');
+  assert.equal(blueCrossSessionMarker('https://other.example.org', 'synthetic-profile'), null);
+  assert.equal(blueCrossSessionMarker('https://service.pac.bluecross.ca', ''), null);
+});
 
 const row = (service = 'Physiotherapy Treatment', paid = 80) => ({ service, paid });
 function table(rows, grandPaid = rows.reduce((sum, item) => sum + item.paid, 0), grandClaimed = rows.length * 100) {
