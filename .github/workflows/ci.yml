@@ -31,6 +31,9 @@ jobs:
       - name: Build React PWA and local worker
         run: npm run build
 
+      - name: Verify PWA installability metadata
+        run: npm run test:pwa
+
       - name: Verify invoice collection and worker authorization
         run: npm run test:invoices
 
