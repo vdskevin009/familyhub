@@ -1,6 +1,6 @@
 import { ChangeEvent, FormEvent, useMemo, useState } from "react";
 import {
-  Archive, Bot, Check, CloudDownload, CloudUpload, KeyRound, Play, Plus,
+  Archive, Bot, Check, CloudDownload, CloudUpload, Download, KeyRound, Play, Plus,
   RefreshCw, Search, Server, ShieldCheck, Trash2, Wifi, WifiOff
 } from "lucide-react";
 import type { HubState } from "../state";
@@ -11,7 +11,7 @@ import type {
 import { downloadJson, readJsonFile, uid } from "../storage";
 import { runResearchWatch, syncResearchWatch, testWorker } from "../worker";
 
-type Props = { hub: HubState };
+type Props = { hub: HubState; installAvailable?: boolean; installed?: boolean; onInstall?: () => void };
 
 type Backup = {
   schemaVersion: 2;
@@ -25,7 +25,7 @@ type Backup = {
   admin: AdminSettings;
 };
 
-export default function MoreView({ hub }: Props) {
+export default function MoreView({ hub, installAvailable = false, installed = false, onInstall }: Props) {
   const [endpoint, setEndpoint] = useState(hub.worker.Endpoint);
   const [apiKey, setApiKey] = useState(hub.worker.ApiKey);
   const [workerStatus, setWorkerStatus] = useState<"idle" | "testing" | "online" | "offline">("idle");
@@ -39,6 +39,7 @@ export default function MoreView({ hub }: Props) {
   const [error, setError] = useState("");
 
   const workerReady = Boolean(hub.worker.Endpoint.trim() && hub.worker.ApiKey.trim());
+  const isIos = /iPad|iPhone|iPod/.test(navigator.userAgent);
   const watches = useMemo(() => [...hub.research.Watches].sort((a, b) =>
     (b.LastResultAt ?? "").localeCompare(a.LastResultAt ?? "") || a.Query.localeCompare(b.Query)
   ), [hub.research.Watches]);
@@ -194,6 +195,24 @@ export default function MoreView({ hub }: Props) {
       </section>
       {error && <div className="banner error">{error}</div>}
       {message && <div className="banner success"><Check size={17} />{message}</div>}
+      <section className="surface pwa-install-surface" aria-label="Install FamilyHub">
+        <div>
+          <span className="eyebrow">Phone app</span>
+          <h2>{installed ? "FamilyHub is installed" : "Install FamilyHub"}</h2>
+          <p className="muted">{installed
+            ? "FamilyHub is running as an installed app on this device."
+            : installAvailable
+              ? "Install the PWA for a full-screen app experience and quick access from your home screen."
+              : isIos
+                ? "In Safari, tap Share and choose Add to Home Screen."
+                : "If the install button is not offered yet, open the browser menu and choose Install app or Add to Home screen."}</p>
+        </div>
+        {installed
+          ? <span className="inline-status success"><Check size={15} />Installed</span>
+          : installAvailable
+            ? <button type="button" className="button" onClick={onInstall}><Download size={16} /> Install app</button>
+            : <span className="pwa-install-hint">Browser install option</span>}
+      </section>
       <section className="two-column">
         <div className="surface">
           <div className="section-heading inline">
