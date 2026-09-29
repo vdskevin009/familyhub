@@ -27,9 +27,19 @@ const seed = { items: [expense, old], corrections: [], decisions: [],
   unmatchedDecisions: [{ reimbursementId: old.Id, decision: 'ignored', at: '2026-09-11T00:00:00Z', reason: 'no-expense-match' }],
   workflowRecords: [{ ExpenseDocumentId: expense.Id, ManualStatus: 'closed', AutomaticStatus: 'open', ChangedAt: '2026-09-11T00:00:00Z', History: [] }],
   reviews: [], accounts: {} };
+const legacy = structuredClone(seed);
+delete legacy.items[0].AttentionLevel;
+await writeFile(join(directory, 'invoices.json'), JSON.stringify(legacy));
+const legacyBytes = await readFile(join(directory, 'invoices.json'), 'utf8');
+await initializeInvoices(true);
+const remainedUnchanged = await readFile(join(directory, 'invoices.json'), 'utf8') === legacyBytes;
 await writeFile(join(directory, 'invoices.json'), JSON.stringify(seed));
 await initializeInvoices();
 await initializeBlueCrossStatus();
+
+test('CLI read-only initialization leaves an older invoice index byte-for-byte unchanged', () => {
+  assert.equal(remainedUnchanged, true);
+});
 
 test('one row, multiple pages, and page totals use existing parser', () => {
   assert.equal(base.rows.length, 1);

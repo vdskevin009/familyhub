@@ -6,7 +6,8 @@ if (args.some(arg => !["--dry-run", "--apply", "--login"].includes(arg)) || args
   console.error("Usage: npm run collect:bluecross -- [--dry-run | --apply] [--login]");
   process.exitCode = 2;
 } else {
-  await initializeInvoices();
+  // Collection must snapshot the portal before any possible ledger mutation.
+  await initializeInvoices(true);
   await initializeBlueCrossStatus();
   try {
     const result = await syncBlueCrossPortal(args.includes("--apply"), args.includes("--login"));

@@ -296,15 +296,17 @@ function edit(action: () => void | Promise<void>): Promise<void> {
   mutation = next.catch(() => {});
   return next;
 }
-export async function initializeInvoices(): Promise<void> {
+export async function initializeInvoices(readOnly = false): Promise<void> {
   try {
     const saved = JSON.parse(await readFile(statePath, "utf8")) as Partial<State>;
     state = { ...empty(), ...saved, items: saved.items || [], corrections: saved.corrections || [], decisions: saved.decisions || [], matchDecisions: saved.matchDecisions || [],
       unmatchedDecisions: Array.isArray(saved.unmatchedDecisions) ? saved.unmatchedDecisions : [],
       workflowRecords: Array.isArray(saved.workflowRecords) ? saved.workflowRecords : [], reviews: saved.reviews || [], accounts: saved.accounts || {} };
-    const metadataChanged = normalizeStoredMetadata();
-    const workflowChanged = syncWorkflowRecords(buildReconciliationSnapshot(activeReconciliationItems(), state.matchDecisions).cases);
-    if (metadataChanged || workflowChanged) await atomicJson(statePath, state);
+    if (!readOnly) {
+      const metadataChanged = normalizeStoredMetadata();
+      const workflowChanged = syncWorkflowRecords(buildReconciliationSnapshot(activeReconciliationItems(), state.matchDecisions).cases);
+      if (metadataChanged || workflowChanged) await atomicJson(statePath, state);
+    }
   }
   catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw new Error("Invoice index is unreadable. Restore the index before collecting; it was not overwritten."); }
 }
