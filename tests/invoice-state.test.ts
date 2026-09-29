@@ -5,12 +5,15 @@ import {
   excludeAssignedUnmatched,
   filterInvoiceHistoryCases,
   filterReimbursementWorkflowCases,
+  insurerEvidenceExpenseCases,
   mergeInvoiceItems,
   mergeReconciliationHistory,
   namedInsurerReimbursementAmount,
   reimbursementInvoiceDocument,
   reimbursementInvoicePdfOptions,
   reimbursementInvoiceUrl,
+  reimbursementActionLabel,
+  reimbursementEvidenceSources,
   reimbursementWorkflowStatus,
   reimbursementWorkflowSummary,
   unreconciledInvoiceCases
@@ -420,4 +423,97 @@ test("reconciliation context stays within the same member and thirty-day service
   ];
   const byId = new Map([current, nearby, far, otherMember].map(item => [item.Id, item]));
   assert.deepEqual(reconciliationContextCases(current, cases, byId).map(item => item.Id), ["case:triage-context-near"]);
+});
+
+
+test("trusted insurer reimbursement evidence becomes a visible expense without an emailed invoice", () => {
+  const blueCross = invoice("bc-only-full", "2026-09-28", {
+    DocumentRole: "insurer-statement",
+    DocumentType: "claim",
+    Insurer: "blue-cross",
+    StructuredSource: "blue-cross-portal",
+    Provider: "Blue Cross · Physiotherapy",
+    ClaimedService: "Physiotherapy",
+    BilledAmount: 150,
+    ReimbursedAmount: 150,
+    DetectedAmount: 150,
+    NeedsReview: false
+  });
+  const [projected] = insurerEvidenceExpenseCases([], [{ DocumentId: blueCross.Id, Reason: "no-expense-match" }], [blueCross]);
+
+  assert.ok(projected);
+  assert.equal(projected.InferredFromInsurer, true);
+  assert.equal(projected.OriginalInvoiceMissing, true);
+  assert.equal(projected.OriginalAmount, 150);
+  assert.equal(projected.ReimbursedAmount, 150);
+  assert.equal(projected.PotentialRemaining, 0);
+  assert.equal(reimbursementWorkflowStatus(projected), "closed");
+  assert.equal(reimbursementActionLabel(projected), "No reimbursement action needed");
+  assert.deepEqual(reimbursementEvidenceSources(projected, new Map([[blueCross.Id, blueCross]])), ["Blue Cross"]);
+});
+
+test("partial insurer-only expense stays open and asks for the other-insurer check", () => {
+  const blueCross = invoice("bc-only-partial", "2026-09-28", {
+    DocumentRole: "insurer-statement",
+    DocumentType: "claim",
+    Insurer: "blue-cross",
+    StructuredSource: "blue-cross-portal",
+    Provider: "Blue Cross · Massage therapy",
+    ClaimedService: "Massage therapy",
+    BilledAmount: 150,
+    ReimbursedAmount: 100,
+    DetectedAmount: 100,
+    NeedsReview: false
+  });
+  const [projected] = insurerEvidenceExpenseCases([], [{ DocumentId: blueCross.Id, Reason: "no-expense-match" }], [blueCross]);
+
+  assert.ok(projected);
+  assert.equal(projected.PotentialRemaining, 50);
+  assert.equal(reimbursementWorkflowStatus(projected), "open");
+  assert.equal(reimbursementActionLabel(projected), "Check other insurer reimbursement");
+});
+
+test("insurer-only projection remains conservative for ambiguous or incomplete source rows", () => {
+  const review = invoice("bc-review", "2026-09-28", {
+    DocumentRole: "insurer-statement", DocumentType: "claim", Insurer: "blue-cross",
+    StructuredSource: "blue-cross-portal", BilledAmount: 150, ReimbursedAmount: 100, NeedsReview: true
+  });
+  const missingOriginal = invoice("bc-no-original", "2026-09-28", {
+    DocumentRole: "insurer-statement", DocumentType: "claim", Insurer: "blue-cross",
+    StructuredSource: "blue-cross-portal", BilledAmount: null, ReimbursedAmount: 100, NeedsReview: false
+  });
+  const unknownMember = invoice("bc-unknown-member", "2026-09-28", {
+    Member: "unknown", DocumentRole: "insurer-statement", DocumentType: "claim", Insurer: "blue-cross",
+    StructuredSource: "blue-cross-portal", BilledAmount: 150, ReimbursedAmount: 100, NeedsReview: false
+  });
+  const unmatched = [review, missingOriginal, unknownMember].map(item => ({ DocumentId: item.Id, Reason: "no-expense-match" as const }));
+  assert.deepEqual(insurerEvidenceExpenseCases([], unmatched, [review, missingOriginal, unknownMember]), []);
+});
+
+test("email and insurer evidence appear as separate sources on the same expense", () => {
+  const expense = invoice("expense-with-email-source", "2026-09-26", {
+    DocumentRole: "expense",
+    DocumentType: "invoice",
+    BilledAmount: 150
+  });
+  const blueCross = invoice("linked-blue-cross", "2026-09-26", {
+    DocumentRole: "insurer-statement",
+    DocumentType: "claim",
+    Insurer: "blue-cross",
+    StructuredSource: "blue-cross-portal",
+    BilledAmount: 150,
+    ReimbursedAmount: 100,
+    DetectedAmount: 100
+  });
+  const item = reconciliation(expense, {
+    MatchAssignments: [{
+      ExpenseDocumentId: expense.Id,
+      ReimbursementDocumentId: blueCross.Id,
+      Insurer: "blue-cross",
+      Confidence: 95,
+      Verification: "auto",
+      Evidence: ["same person", "same date"]
+    }]
+  });
+  assert.deepEqual(reimbursementEvidenceSources(item, new Map([[expense.Id, expense], [blueCross.Id, blueCross]])), ["Email", "Blue Cross"]);
 });
