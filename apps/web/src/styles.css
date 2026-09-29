@@ -77,6 +77,12 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
   position: sticky; top: 0; z-index: 30;
 }
 .app-header strong { font-size: 1.05rem; }
+.header-install-button {
+  min-height: 36px; padding: 0 12px; border-radius: 12px; border: 1px solid #cbd9d2;
+  background: white; color: var(--green); display: inline-flex; align-items: center; gap: 7px;
+  font: inherit; font-size: .76rem; font-weight: 800; cursor: pointer; box-shadow: 0 5px 16px rgba(29,55,46,.06);
+}
+.header-install-button:hover { border-color: var(--green); transform: translateY(-1px); }
 .app-kicker { font-size: .72rem; text-transform: uppercase; letter-spacing: .11em; color: #7f8d87; font-weight: 750; margin-bottom: 2px; }
 .app-main { max-width: 1460px; margin: 0 auto; padding: 34px clamp(24px, 4vw, 58px) 80px; }
 .bottom-nav { display: none; }
@@ -119,6 +125,16 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 .section-heading.inline { align-items: center; }
 .section-heading p { margin: .4rem 0 0; }
 .row-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.pwa-install-surface {
+  display: flex; align-items: center; justify-content: space-between; gap: 20px;
+}
+.pwa-install-surface h2 { margin-bottom: 5px; }
+.pwa-install-surface p { margin-bottom: 0; max-width: 760px; }
+.pwa-install-surface > .button, .pwa-install-surface > .inline-status, .pwa-install-hint { flex: 0 0 auto; }
+.pwa-install-hint {
+  border-radius: 999px; padding: 7px 10px; background: #edf1ee; color: #62736c;
+  font-size: .72rem; font-weight: 780;
+}
 
 .insight-grid {
   display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 14px;
@@ -495,6 +511,9 @@ label small { font-weight: 500; }
     position: sticky;
   }
   .app-kicker { display: none; }
+  .header-install-button { min-height: 34px; padding-inline: 10px; }
+  .pwa-install-surface { align-items: flex-start; flex-direction: column; gap: 12px; }
+  .pwa-install-surface > .button { width: 100%; justify-content: center; }
   .app-main { padding: 16px 14px calc(96px + env(safe-area-inset-bottom)); }
   .bottom-nav {
     position: fixed; display: grid; grid-template-columns: repeat(5,1fr); inset: auto 10px max(8px, env(safe-area-inset-bottom)) 10px;
