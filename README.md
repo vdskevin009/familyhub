@@ -93,6 +93,24 @@ FAMILYHUB_ALLOWED_ORIGINS
 
 Saved research watches are persisted under `~/.familyhub-worker/`. Automatic watch checks only run while the worker process is running.
 
+## Manual Pacific Blue Cross portal collection
+
+Issue #92 / FH-REIMB-032 adds a read-only collector to the local PC worker. It uses the existing Blue Cross import and reimbursement reconciliation. It has **no nightly schedule**. On the PC running the worker:
+
+```sh
+npm install
+npx playwright install chromium
+npm run collect:bluecross -- --dry-run --login
+npm run collect:bluecross -- --dry-run
+npm run collect:bluecross -- --apply
+```
+
+The first command with `--login` opens a visible browser. Sign in yourself, then open **View more claims / Claims History** if needed. The collector waits for the claims table; it never enters credentials or submits a claim. Subsequent runs reuse the private browser profile. An expired session returns `login-required`; repeat the visible `--login` flow on the PC. A phone can request a preview or apply from Claims through the paired worker, but the first login must be completed on the PC.
+
+The profile is under `<FAMILYHUB_WORKER_DATA>/bluecross/browser-profile` (by default `~/.familyhub-worker/bluecross/browser-profile`). Immutable, minimal-fact snapshots are under `<FAMILYHUB_WORKER_DATA>/bluecross/snapshots`. Both paths are outside Git. A snapshot is written before every successful or partial portal collection is considered for apply. A partial, malformed or ambiguous collection cannot be applied. Preview writes only its private audit snapshot and sync status; it does not change `invoices.json`.
+
+Before enabling any future scheduling, manually confirm an accurate first preview, an immediate repeat, explicit apply, and repeated apply against the real local worker. Check Claims and **À réconcilier**, and confirm previous manual decisions remain intact. Portal layout and authentication require live validation; tests use only fictitious records.
+
 ## Gmail and Google Drive
 
 FamilyHub ships with its public Google OAuth web client ID. Keep the Gmail API enabled and the GitHub Pages origin allowed in the Google consent/client configuration.

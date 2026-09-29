@@ -6,7 +6,8 @@ import { buildInvoiceHistoryCases, excludeAssignedUnmatched, filterInvoiceHistor
 import type { InvoiceHistoryFilter, ReimbursementCaseStatus, ReimbursementInvoicePdfOption, ReimbursementPersonScope, WorkflowStatusFilter } from "../invoice-state";
 import type { HubState } from "../state";
 import type { MatchAssignment, ReconciliationCase, ReimbursementItem, ReimbursementWorkflowStatus, UnmatchedReimbursement } from "../types";
-import { fetchInvoices, manualReconciliationWorkerVersion, setManualMatch, setMatchDecision, setReimbursementWorkflowStatus, setUnmatchedIgnored, testWorker, viewWorkerAttachment, workerVersionAtLeast } from "../worker";
+import { fetchInvoices, fetchBlueCrossStatus, syncBlueCross, manualReconciliationWorkerVersion, setManualMatch, setMatchDecision, setReimbursementWorkflowStatus, setUnmatchedIgnored, testWorker, viewWorkerAttachment, workerVersionAtLeast } from "../worker";
+import type { BlueCrossSyncStatus, BlueCrossSyncResult } from "../worker";
 import ReconciliationQueue from "./ReconciliationQueue";
 
 type Props = { hub: HubState };
@@ -55,6 +56,9 @@ export default function ReimbursementsView({ hub }: Props) {
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [workerVersion, setWorkerVersion] = useState("");
   const [screen, setScreen] = useState<"claims" | "reconcile">("claims");
+  const [blueCrossStatus, setBlueCrossStatus] = useState<BlueCrossSyncStatus | null>(null);
+  const [blueCrossResult, setBlueCrossResult] = useState<BlueCrossSyncResult | null>(null);
+  const [blueCrossBusy, setBlueCrossBusy] = useState(false);
   const paired = Boolean(hub.worker.Endpoint.trim() && hub.worker.ApiKey.trim());
   const manualActionsAvailable = !workerVersion || workerVersionAtLeast(workerVersion, manualReconciliationWorkerVersion);
 
@@ -88,7 +92,20 @@ export default function ReimbursementsView({ hub }: Props) {
     if (!paired) { setWorkerVersion(""); return; }
     void refresh();
     void testWorker(hub.worker).then(health => setWorkerVersion(health.version || "")).catch(() => setWorkerVersion(""));
+    void fetchBlueCrossStatus(hub.worker).then(setBlueCrossStatus).catch(() => setBlueCrossStatus(null));
   }, [paired, hub.worker.Endpoint, hub.worker.ApiKey]);
+
+  async function runBlueCrossSync(apply: boolean) {
+    if (!paired || blueCrossBusy) return;
+    setBlueCrossBusy(true); setError(""); setBlueCrossResult(null);
+    try {
+      const result = await syncBlueCross(hub.worker, apply);
+      setBlueCrossResult(result);
+      setBlueCrossStatus(await fetchBlueCrossStatus(hub.worker));
+      if (result.status === "success" && apply) await refresh();
+    } catch (err) { setError(err instanceof Error ? err.message : "Blue Cross sync failed."); }
+    finally { setBlueCrossBusy(false); }
+  }
 
   async function decideMatch(assignment: MatchAssignment, decision: "confirmed" | "rejected") {
     if (!paired || savingId) return;
@@ -286,6 +303,19 @@ export default function ReimbursementsView({ hub }: Props) {
           <RefreshCw size={16} className={busy ? "spin" : ""} />{busy ? "Refreshing…" : "Refresh"}
         </button>
       </div>
+    </section>
+
+    <section className="bluecross-sync" aria-label="Blue Cross portal sync">
+      <button type="button" className="button secondary compact-button" disabled={!paired || blueCrossBusy || !!workerVersion && !workerVersionAtLeast(workerVersion, "2.9.0")}
+        onClick={() => void runBlueCrossSync(false)}>{blueCrossBusy ? "Synchronisation Blue Cross…" : "Mettre à jour Blue Cross"}</button>
+      {blueCrossResult?.status === "success" && blueCrossResult.complete && !blueCrossResult.applied && !blueCrossResult.ambiguous &&
+        <button type="button" className="button secondary compact-button" disabled={blueCrossBusy} onClick={() => void runBlueCrossSync(true)}>Appliquer Blue Cross</button>}
+      <small role="status">{blueCrossResult?.status === "login-required" || blueCrossStatus?.state === "login-required" ? "Connexion Blue Cross requise sur le PC (commande --login)."
+        : blueCrossResult?.status === "success" ? `${blueCrossResult.new ?? 0} nouveaux · ${blueCrossResult.changed ?? 0} mis à jour · ${blueCrossResult.unchanged ?? 0} inchangés${blueCrossResult.complete ? "" : " · collecte incomplète"}${blueCrossResult.applied ? ` · ${blueCrossResult.unmatched ?? 0} à réconcilier` : " · aperçu seulement"}`
+        : blueCrossStatus?.state === "error" ? `Erreur Blue Cross : ${blueCrossStatus.error || "échec de la synchronisation"}`
+        : blueCrossStatus?.lastSuccess ? `${blueCrossStatus.state === "up-to-date" ? "À jour" : "Aperçu disponible"} · ${blueCrossStatus.found ?? 0} lignes · dernière collecte ${new Date(blueCrossStatus.lastSuccess).toLocaleString()}`
+        : "Synchronisation manuelle · aucun historique Blue Cross synchronisé"}</small>
+      {blueCrossStatus?.lastAttempt && <small>Dernière tentative : {new Date(blueCrossStatus.lastAttempt).toLocaleString()}</small>}
     </section>
 
     {error && <div className="banner error" role="status"><AlertTriangle size={17} />{error} — Previously synced results remain below.</div>}

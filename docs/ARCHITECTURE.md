@@ -91,6 +91,10 @@ The worker prompt explicitly forbids pretending that purchases, messages, seller
 
 For phone access, the worker needs a **private HTTPS route** from the phone to the computer. Do not expose the localhost service directly to the public internet. The pairing key is defense in depth, not a complete network perimeter.
 
+### Manual Blue Cross collector
+
+The local worker's Playwright collector uses a private persistent Chromium profile for user-managed Pacific Blue Cross login. It reads Claims History pages, validates each page through the existing `bluecross.ts` parser, writes an immutable minimal-fact snapshot, then previews or explicitly upserts into the existing `invoices.json` ledger. Existing reconciliation, unmatched projection and manual decisions remain authoritative. The authenticated worker exposes `POST /bluecross/sync` (`{ "apply": false | true }`) and `GET /bluecross/status`. Only summary counts and status reach the PWA; browser storage, credentials and private paths do not. No automatic collection task is registered.
+
 ### 4. Browser-local state
 
 Existing storage keys remain isolated by feature so earlier data can survive the migration:

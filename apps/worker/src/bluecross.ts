@@ -3,7 +3,7 @@ import { toInvoice, type Invoice, type Mail } from "./invoice-model.js";
 
 export type BlueCrossRow = {
   member: Invoice["Member"]; serviceDate: string; service: string;
-  claimed: number; paid: number; statementDate: string; identity: string; needsReview: boolean;
+  claimed: number; paid: number; statementDate: string; identity: string; needsReview: boolean; sourceClaimId?: string;
 };
 export type BlueCrossExport = {
   rows: BlueCrossRow[]; pageClaimed: number; pagePaid: number;
@@ -62,8 +62,10 @@ export function parseBlueCrossExport(body: string): BlueCrossExport | undefined 
       if (!claimed || paid > claimed) throw new Error("Blue Cross claim amounts require review; nothing was imported.");
       const signature = JSON.stringify([cells[1], serviceDate, cells[2], cents(claimed), cents(paid), statementDate]);
       const occurrence = (occurrences.get(signature) || 0) + 1; occurrences.set(signature, occurrence);
+      const sourceClaimId = raw.match(/\bdata-(?:claim|line|service)-id=["']([A-Za-z0-9_-]{1,100})["']/i)?.[1];
       rows.push({ member, serviceDate, service: cells[2], claimed, paid, statementDate,
-        identity: hash(`blue-cross-row:${signature}:${occurrence}`), needsReview: member === "unknown" });
+        identity: sourceClaimId ? hash(`blue-cross-claim:${sourceClaimId}`) : hash(`blue-cross-row:${signature}:${occurrence}`),
+        sourceClaimId, needsReview: member === "unknown" });
     } else {
       const values = cells.map(cell => cell.match(/\$[\d,]+\.\d{2}/g) || []).filter(values => values.length);
       if (values.length === 2 && values[0].length === 2 && values[1].length === 2 && /Page.*Total.*Grand Total/i.test(cells.join(" "))) {
@@ -109,6 +111,7 @@ export function blueCrossInvoices(mail: Mail, email: string, label: string): Inv
     NeedsReview: row.needsReview, ClaimedService: row.service, StatementDate: row.statementDate,
     Reasons: [row.needsReview ? "Multiple processing rows for this service or unknown member: review before matching." : "Exact structured Blue Cross claim row."],
     Notes: `Claimed ${row.claimed.toFixed(2)}; paid ${row.paid.toFixed(2)}; statement ${row.statementDate}. Claim amount is not proof of an invoice payment.`,
-    AmountSource: "email-text" as const, Fingerprint: row.identity, StructuredSource: "blue-cross-portal" as const
+    AmountSource: "email-text" as const, Fingerprint: row.identity, StructuredSource: "blue-cross-portal" as const,
+    PortalClaimId: row.sourceClaimId
   }))];
 }

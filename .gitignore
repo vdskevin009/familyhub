@@ -10,6 +10,8 @@ node_modules/
 *.tsbuildinfo
 **/dist/
 .private/
+.familyhub/
+.pnpm-store/
 *.dpapi
 client_secret*.json
 *-credentials.json
