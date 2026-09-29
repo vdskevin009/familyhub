@@ -6,7 +6,7 @@ import { buildInvoiceHistoryCases, excludeAssignedUnmatched, filterInvoiceHistor
 import type { InvoiceHistoryFilter, ReimbursementCaseStatus, ReimbursementInvoicePdfOption, ReimbursementPersonScope, WorkflowStatusFilter } from "../invoice-state";
 import type { HubState } from "../state";
 import type { MatchAssignment, ReconciliationCase, ReimbursementItem, ReimbursementWorkflowStatus, UnmatchedReimbursement } from "../types";
-import { fetchInvoices, manualReconciliationWorkerVersion, setManualMatch, setMatchDecision, setReimbursementWorkflowStatus, setUnmatchedIgnored, testWorker, viewWorkerAttachment, workerVersionAtLeast } from "../worker";
+import { fetchInvoices, manualReconciliationWorkerVersion, setManualMatch, setMatchDecision, setReimbursementWorkflowStatus, setUnmatchedIgnored, testWorker, viewWorkerAttachment, workerVersionAtLeast } from "../worker";\nimport ReconciliationQueue from "./ReconciliationQueue";
 
 type Props = { hub: HubState };
 const statusCopy: Record<ReimbursementCaseStatus, string> = {
@@ -52,7 +52,7 @@ export default function ReimbursementsView({ hub }: Props) {
   const [workflowFilter, setWorkflowFilter] = useState<WorkflowStatusFilter>("open");
   const [reconciliationFilter, setReconciliationFilter] = useState<"all" | "matched" | "unmatched" | "ignored-unmatched">("all");
   const [filtersOpen, setFiltersOpen] = useState(false);
-  const [workerVersion, setWorkerVersion] = useState("");
+  const [workerVersion, setWorkerVersion] = useState("");\n  const [screen, setScreen] = useState<"claims" | "reconcile">("claims");
   const paired = Boolean(hub.worker.Endpoint.trim() && hub.worker.ApiKey.trim());
   const manualActionsAvailable = !workerVersion || workerVersionAtLeast(workerVersion, manualReconciliationWorkerVersion);
 
@@ -287,6 +287,16 @@ export default function ReimbursementsView({ hub }: Props) {
       : "Historical collection since June 1, 2025 is not yet confirmed complete. Run the PC collection to resume it."} Insurance coverage is not confirmed by a receipt.</p>
     {model.warnings.map(warning => <div className="banner" role="status" key={warning}><AlertTriangle size={17} />{warning}</div>)}
 
+    <section className="reimbursement-mode-tabs" aria-label="Claims workspace">
+      <button type="button" className={screen === "claims" ? "active" : ""} aria-pressed={screen === "claims"} onClick={() => setScreen("claims")}>
+        Claims
+      </button>
+      <button type="button" className={screen === "reconcile" ? "active" : ""} aria-pressed={screen === "reconcile"} onClick={() => setScreen("reconcile")}>
+        À réconcilier <span>{model.unmatched.length}</span>
+      </button>
+    </section>
+
+    {screen === "claims" ? <>
     <section className="reimbursement-family-scopes" aria-label="Reimbursements by family member">
       {(["all", "Kevin", "Jasmine", "Nathan"] as ReimbursementPersonScope[]).map(scope => {
         const summary = scopeSummaries.get(scope)!;
@@ -561,5 +571,19 @@ export default function ReimbursementsView({ hub }: Props) {
         </div>
       </article>)}
     </section>}
+    </> : <ReconciliationQueue
+      items={hub.reimbursements.Items}
+      cases={model.cases}
+      unmatched={scopedUnmatched}
+      ignoredUnmatched={scopedIgnoredUnmatched}
+      personScope={personScope}
+      paired={paired}
+      manualActionsAvailable={manualActionsAvailable}
+      busy={busy}
+      savingId={savingId}
+      onPersonScopeChange={selectScope}
+      onMatch={matchUnmatched}
+      onIgnore={changeUnmatchedIgnored}
+    />}
   </div>;
 }
