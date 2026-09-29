@@ -79,6 +79,7 @@ export function planBlueCrossUpsert(existing: Invoice[], collection: PortalColle
     inputIds.add(item.Id);
     const exact = byId.get(item.Id);
     if (exact) {
+      if (item.PortalClaimStatus === "pended" && exact.ReimbursedAmount != null) { ambiguous++; continue; }
       if (exact.ReimbursedAmount === item.ReimbursedAmount && exact.BilledAmount === item.BilledAmount
         && exact.StatementDate === item.StatementDate && exact.ClaimedService === item.ClaimedService) { unchanged++; continue; }
       if (exact.CorrectedAt) { ambiguous++; continue; }
@@ -90,6 +91,7 @@ export function planBlueCrossUpsert(existing: Invoice[], collection: PortalColle
     }
     if (candidates.length === 1) {
       const old = candidates[0];
+      if (item.PortalClaimStatus === "pended" && old.ReimbursedAmount != null) { ambiguous++; continue; }
       if (old.ReimbursedAmount === item.ReimbursedAmount && old.StatementDate === item.StatementDate
         && old.BilledAmount === item.BilledAmount) { unchanged++; continue; }
       if (old.CorrectedAt) { ambiguous++; continue; }

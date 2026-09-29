@@ -112,6 +112,8 @@ The first command with `--login` opens a visible browser. Sign in yourself withi
 
 The profile is under `<FAMILYHUB_WORKER_DATA>/bluecross/browser-profile` (by default `~/.familyhub-worker/bluecross/browser-profile`). Immutable, minimal-fact snapshots are under `<FAMILYHUB_WORKER_DATA>/bluecross/snapshots`. Both paths are outside Git. A snapshot is written before every successful or partial portal collection is considered for apply. A partial, malformed or ambiguous collection cannot be applied. Preview writes only its private audit snapshot and sync status; it does not change `invoices.json`.
 
+A portal row marked **Pended** remains a claim with an unknown payment. It is excluded from reimbursement matching. If it contradicts an already recorded payment for the same claim, apply stops for manual review and preserves the known record.
+
 Before enabling any future scheduling, manually confirm an accurate first preview, an immediate repeat, explicit apply, and repeated apply against the real local worker. Check Claims and **À réconcilier**, and confirm previous manual decisions remain intact. Portal layout and authentication require live validation; tests use only fictitious records.
 
 ## Gmail and Google Drive

@@ -106,10 +106,18 @@ export async function collectBlueCrossPortal(interactive = false): Promise<{ sta
       const label = (await option.textContent())?.trim() || "";
       const input = combo.locator("input.rcbInput");
       if (await input.inputValue() === label) return true;
+      if (suffix === "ddlFilterShowClaimsWithin" && label === "24 Months") {
+        try {
+          await input.press("End");
+          await input.press("Enter");
+          if (await input.inputValue() === label) { filtersChanged = true; return true; }
+        } catch { /* Fall back to the portal's visible menu. */ }
+      }
       try {
         await combo.locator("a[id$='_Arrow']").click();
         await option.click();
       } catch { return false; }
+      if (await input.inputValue() !== label) return false;
       filtersChanged = true;
       return true;
     };

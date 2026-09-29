@@ -366,7 +366,8 @@ export function buildReconciliationSnapshot(items: Invoice[], matchDecisions: Ma
   const health = items.filter(item => item.Category === 0 && item.Status !== 4);
   const rawExpenses = health.filter(item => item.DocumentRole === "expense"
     || ((!item.DocumentRole || item.DocumentRole === "other") && ["receipt", "invoice", "bill"].includes(item.DocumentType)));
-  const statements = health.filter(item => item.DocumentRole === "insurer-statement" || item.DocumentType === "claim");
+  const statements = health.filter(item => (item.DocumentRole === "insurer-statement" || item.DocumentType === "claim")
+    && item.PortalClaimStatus !== "pended");
   const expenses = canonicalExpenses(rawExpenses, statements);
   const assignments = new Map<string, Invoice[]>();
   const assignmentMeta = new Map<string, MatchAssignment>();

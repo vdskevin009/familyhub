@@ -45,6 +45,7 @@ export type Invoice = {
   IgnoredAt?: string;
   HistoricalCandidate?: boolean;
   ImportWarning?: string; ClaimedService?: string; StatementDate?: string; StructuredSource?: "blue-cross-portal"; PortalClaimId?: string;
+  PortalClaimStatus?: "pended";
 };
 export type Correction = { account: string; fingerprint: string; kind: Kind; at: string; confirmations?: number; sender?: string; subject?: string };
 

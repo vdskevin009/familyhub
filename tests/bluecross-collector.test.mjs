@@ -67,6 +67,15 @@ test('known, new, changed, duplicate, and ambiguous rows are distinguished', () 
   assert.equal(stable.rows[0].identity, stableChanged.rows[0].identity);
   assert.equal(planBlueCrossUpsert(planBlueCrossUpsert([], stable).items, stableChanged).changed, 1);
 });
+test('a pending claim can gain a known payment but cannot erase a previously known payment', () => {
+  const pending = parsePortalPages([{ html: table([row('Physiotherapy Treatment', 0)])
+    .replace('<td>$0.00</td><td>Sep 10, 2026</td>', '<td>Pended</td><td>Sep 10, 2026</td>'), hasNext: false }]);
+  assert.equal(pending.complete, true);
+  const pendingItem = planBlueCrossUpsert([], pending).items[0];
+  assert.equal(pendingItem.ReimbursedAmount, null);
+  assert.equal(planBlueCrossUpsert([pendingItem], base).changed, 1);
+  assert.equal(planBlueCrossUpsert([initial], pending).ambiguous, 1);
+});
 test('malformed row, partial collection, and network failure are non-applicable', async () => {
   const malformed = parsePortalPages([{ html: table([row()]).replace('$80.00</td>', '$bad</td>'), hasNext: false }]);
   assert.equal(malformed.complete, false);
