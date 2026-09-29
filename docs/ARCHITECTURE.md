@@ -21,7 +21,7 @@ The PWA is the user-facing product. It owns navigation, local persistence, deter
 
 Primary areas:
 
-- **Claims** — default healthcare expense-to-insurer reconciliation and unmatched review.
+- **Claims** — default healthcare expense-to-insurer reconciliation, with a dedicated mobile-first **À réconcilier** triage view for genuinely unmatched insurer records.
 - **Invoices** — indexed expense document sources, without depending on reimbursement status.
 - **DJ / BC** — separate Desjardins and Blue Cross insurer source-record libraries.
 - **Other** — Today/Assistant, Important Mail, Plan, Money and settings/tools remain available.
