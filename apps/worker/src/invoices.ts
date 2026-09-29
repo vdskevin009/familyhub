@@ -9,6 +9,8 @@ import { buildCleanupSuggestions, buildReconciliationSnapshot, recoverMissingDes
 import { automaticWorkflowStatus, type ReimbursementWorkflowRecord, type ReimbursementWorkflowStatus } from "./reimbursement-workflow.js";
 import { blueCrossInvoices, type BlueCrossRow } from "./bluecross.js";
 import { blueCrossPrivateDirectory, collectBlueCrossPortal, type PortalCollection } from "./bluecross-collector.js";
+import { desjardinsInvoices, planDesjardinsUpsert } from "./desjardins.js";
+import { collectDesjardinsPortal, desjardinsPrivateDirectory, loadDesjardinsSnapshot } from "./desjardins-collector.js";
 import { reviewReconciliations, reviewTargets, codexReviewer, type AgentReview, type Reviewer } from "./agents.js";
 
 type Window = { after: number; before: number; page?: string };
@@ -38,9 +40,28 @@ let state = empty();
 let busy = false;
 let mutation = Promise.resolve();
 let blueCrossBusy = false;
+let desjardinsBusy = false;
 const blueCrossStatusPath = join(blueCrossPrivateDirectory, "status.json");
 type BlueCrossStatus = { lastAttempt?: string; lastSuccess?: string; found?: number; state: "idle" | "syncing" | "login-required" | "error" | "up-to-date"; error?: string };
 let blueCrossStatus: BlueCrossStatus = { state: "idle" };
+const desjardinsStatusPath = join(desjardinsPrivateDirectory, "status.json");
+type DesjardinsStatus = BlueCrossStatus & { previewSnapshot?: string; previewAt?: string; applicable?: boolean };
+let desjardinsStatus: DesjardinsStatus = { state: "idle" };
+export async function initializeDesjardinsStatus(): Promise<void> {
+  try { desjardinsStatus = JSON.parse(await readFile(desjardinsStatusPath, "utf8")) as DesjardinsStatus; }
+  catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT")
+      desjardinsStatus = { state: "error", error: "Desjardins sync status is unreadable; previous invoices were not changed." };
+  }
+  if (desjardinsStatus.state === "syncing") await saveDesjardinsStatus({ state: "error", error: "The previous Desjardins sync was interrupted." });
+}
+export function getDesjardinsStatus(): DesjardinsStatus {
+  return { ...desjardinsStatus, state: desjardinsBusy ? "syncing" : desjardinsStatus.state };
+}
+async function saveDesjardinsStatus(patch: Partial<DesjardinsStatus>): Promise<void> {
+  desjardinsStatus = { ...desjardinsStatus, ...patch };
+  await atomicJson(desjardinsStatusPath, desjardinsStatus);
+}
 
 export async function initializeBlueCrossStatus(): Promise<void> {
   try { blueCrossStatus = JSON.parse(await readFile(blueCrossStatusPath, "utf8")) as BlueCrossStatus; }
@@ -147,6 +168,61 @@ export async function syncBlueCrossPortal(apply = false, interactive = false, co
     await saveBlueCrossStatus({ state: "error", error: safeMessage });
     throw new Error(safeMessage);
   } finally { blueCrossBusy = false; }
+}
+
+export async function syncDesjardinsPortal(apply = false, interactive = false, collector = collectDesjardinsPortal) {
+  if (desjardinsBusy || blueCrossBusy || busy) throw new Error("An insurer or invoice collection is already running.");
+  desjardinsBusy = true;
+  try {
+    if (apply) await initializeDesjardinsStatus();
+    await saveDesjardinsStatus({ lastAttempt: new Date().toISOString(), state: "syncing", error: undefined, applicable: false });
+    // Apply consumes the most recent immutable preview. Desjardins often requires a new MFA
+    // challenge for a fresh browser process; never rerun a live collection behind "Apply".
+    const result = apply
+      ? { status: "success" as const, collection: await loadDesjardinsSnapshot(desjardinsStatus.previewSnapshot, desjardinsStatus.previewAt), snapshotPath: desjardinsStatus.previewSnapshot }
+      : await collector(interactive);
+    if (result.status === "login-required") {
+      await saveDesjardinsStatus({ state: "login-required" });
+      return { status: "login-required" as const, loginRequired: true };
+    }
+    const collection = result.collection!;
+    const plan = planDesjardinsUpsert(state.items, collection);
+    const errors = collection.warnings.length;
+    if (apply && (!collection.complete || plan.ambiguous))
+      throw new Error("Collection is incomplete or ambiguous; existing FamilyHub data was not modified.");
+    let backup: string | undefined;
+    if (apply && plan.items.length) await edit(async () => {
+      backup = `invoices.pre-desjardins-portal-${Date.now()}-${randomUUID()}.json`;
+      await atomicJson(join(dataDirectory, backup), state);
+      for (const item of plan.items) {
+        const index = state.items.findIndex(current => current.Id === item.Id);
+        if (index < 0) state.items.push(item);
+        else state.items[index] = item;
+      }
+    });
+    await saveDesjardinsStatus({ state: errors || plan.ambiguous ? "error" : !apply && (plan.new || plan.changed) ? "idle" : "up-to-date",
+      lastSuccess: errors || plan.ambiguous ? desjardinsStatus.lastSuccess : collection.collectedAt,
+      found: plan.found, error: errors ? `${errors} claim-detail warnings; inspect the private snapshot before applying.`
+        : plan.ambiguous ? `${plan.ambiguous} Desjardins claim rows require review; no data was applied.` : undefined,
+      previewSnapshot: apply ? undefined : result.snapshotPath,
+      previewAt: apply ? undefined : collection.collectedAt,
+      applicable: !apply && collection.complete && plan.ambiguous === 0 });
+    const reconciliation = apply ? buildReconciliationSnapshot(activeReconciliationItems(), state.matchDecisions) : undefined;
+    return { status: "success" as const, applied: apply, found: plan.found, new: plan.new, changed: plan.changed,
+      unchanged: plan.unchanged, ambiguous: plan.ambiguous, duplicates: plan.duplicates, errors,
+      loginRequired: false, complete: collection.complete, warnings: collection.warnings.slice(0, 12),
+      matched: reconciliation?.cases.reduce((sum, entry) => sum + (entry.MatchAssignments?.length ?? 0), 0),
+      unmatched: reconciliation?.unmatched.length, snapshotPath: result.snapshotPath, backup };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "";
+    const safeMessage = /^Collection is incomplete or ambiguous|^No recent Desjardins preview/.test(message) ? message
+      : /spawn (?:EPERM|UNKNOWN)/i.test(message) ? "Windows blocked the Desjardins browser launch. Check installed Microsoft Edge on this PC."
+      : /executable doesn't exist|browser.*not installed/i.test(message) ? "Microsoft Edge or Playwright Chromium is unavailable. Install the browser before syncing."
+      : /timeout|net::|network/i.test(message) ? "Desjardins portal navigation timed out or the network is unavailable."
+      : "Desjardins portal collection failed. Check the PC worker log.";
+    await saveDesjardinsStatus({ state: "error", error: safeMessage });
+    throw new Error(safeMessage);
+  } finally { desjardinsBusy = false; }
 }
 
 function workflowExpenseId(entry: ReconciliationCase): string {

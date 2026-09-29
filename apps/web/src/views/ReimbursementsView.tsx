@@ -6,8 +6,8 @@ import { buildInvoiceHistoryCases, excludeAssignedUnmatched, filterInvoiceHistor
 import type { InvoiceHistoryFilter, ReimbursementCaseStatus, ReimbursementInvoicePdfOption, ReimbursementPersonScope, WorkflowStatusFilter } from "../invoice-state";
 import type { HubState } from "../state";
 import type { MatchAssignment, ReconciliationCase, ReimbursementItem, ReimbursementWorkflowStatus, UnmatchedReimbursement } from "../types";
-import { fetchInvoices, fetchBlueCrossStatus, syncBlueCross, manualReconciliationWorkerVersion, setManualMatch, setMatchDecision, setReimbursementWorkflowStatus, setUnmatchedIgnored, testWorker, viewWorkerAttachment, workerVersionAtLeast } from "../worker";
-import type { BlueCrossSyncStatus, BlueCrossSyncResult } from "../worker";
+import { fetchInvoices, fetchBlueCrossStatus, syncBlueCross, fetchDesjardinsStatus, syncDesjardins, manualReconciliationWorkerVersion, setManualMatch, setMatchDecision, setReimbursementWorkflowStatus, setUnmatchedIgnored, testWorker, viewWorkerAttachment, workerVersionAtLeast } from "../worker";
+import type { BlueCrossSyncStatus, BlueCrossSyncResult, DesjardinsSyncStatus, DesjardinsSyncResult } from "../worker";
 import ReconciliationQueue from "./ReconciliationQueue";
 
 type Props = { hub: HubState };
@@ -59,6 +59,9 @@ export default function ReimbursementsView({ hub }: Props) {
   const [blueCrossStatus, setBlueCrossStatus] = useState<BlueCrossSyncStatus | null>(null);
   const [blueCrossResult, setBlueCrossResult] = useState<BlueCrossSyncResult | null>(null);
   const [blueCrossBusy, setBlueCrossBusy] = useState(false);
+  const [desjardinsStatus, setDesjardinsStatus] = useState<DesjardinsSyncStatus | null>(null);
+  const [desjardinsResult, setDesjardinsResult] = useState<DesjardinsSyncResult | null>(null);
+  const [desjardinsBusy, setDesjardinsBusy] = useState(false);
   const paired = Boolean(hub.worker.Endpoint.trim() && hub.worker.ApiKey.trim());
   const manualActionsAvailable = !workerVersion || workerVersionAtLeast(workerVersion, manualReconciliationWorkerVersion);
 
@@ -93,6 +96,7 @@ export default function ReimbursementsView({ hub }: Props) {
     void refresh();
     void testWorker(hub.worker).then(health => setWorkerVersion(health.version || "")).catch(() => setWorkerVersion(""));
     void fetchBlueCrossStatus(hub.worker).then(setBlueCrossStatus).catch(() => setBlueCrossStatus(null));
+    void fetchDesjardinsStatus(hub.worker).then(setDesjardinsStatus).catch(() => setDesjardinsStatus(null));
   }, [paired, hub.worker.Endpoint, hub.worker.ApiKey]);
 
   async function runBlueCrossSync(apply: boolean) {
@@ -105,6 +109,18 @@ export default function ReimbursementsView({ hub }: Props) {
       if (result.status === "success" && apply) await refresh();
     } catch (err) { setError(err instanceof Error ? err.message : "Blue Cross sync failed."); }
     finally { setBlueCrossBusy(false); }
+  }
+
+  async function runDesjardinsSync(apply: boolean) {
+    if (!paired || desjardinsBusy) return;
+    setDesjardinsBusy(true); setError(""); setDesjardinsResult(null);
+    try {
+      const result = await syncDesjardins(hub.worker, apply);
+      setDesjardinsResult(result);
+      setDesjardinsStatus(await fetchDesjardinsStatus(hub.worker));
+      if (result.status === "success" && apply) await refresh();
+    } catch (err) { setError(err instanceof Error ? err.message : "Desjardins sync failed."); }
+    finally { setDesjardinsBusy(false); }
   }
 
   async function decideMatch(assignment: MatchAssignment, decision: "confirmed" | "rejected") {
@@ -316,6 +332,19 @@ export default function ReimbursementsView({ hub }: Props) {
         : blueCrossStatus?.lastSuccess ? `${blueCrossStatus.state === "up-to-date" ? "À jour" : "Aperçu disponible"} · ${blueCrossStatus.found ?? 0} lignes · dernière collecte ${new Date(blueCrossStatus.lastSuccess).toLocaleString()}`
         : "Synchronisation manuelle · aucun historique Blue Cross synchronisé"}</small>
       {blueCrossStatus?.lastAttempt && <small>Dernière tentative : {new Date(blueCrossStatus.lastAttempt).toLocaleString()}</small>}
+    </section>
+
+    <section className="bluecross-sync" aria-label="Desjardins portal sync">
+      <button type="button" className="button secondary compact-button" disabled={!paired || desjardinsBusy || !!workerVersion && !workerVersionAtLeast(workerVersion, "2.10.0")}
+        onClick={() => void runDesjardinsSync(false)}>{desjardinsBusy ? "Synchronisation Desjardins…" : "Mettre à jour Desjardins"}</button>
+      {desjardinsStatus?.applicable && desjardinsStatus.previewAt && Date.now() - Date.parse(desjardinsStatus.previewAt) < 24 * 60 * 60_000 &&
+        <button type="button" className="button secondary compact-button" disabled={desjardinsBusy} onClick={() => void runDesjardinsSync(true)}>Appliquer Desjardins</button>}
+      <small role="status">{desjardinsResult?.status === "login-required" || desjardinsStatus?.state === "login-required" ? "Connexion Desjardins requise sur le PC (commande --login)."
+        : desjardinsResult?.status === "success" ? `${desjardinsResult.new ?? 0} nouveaux · ${desjardinsResult.changed ?? 0} mis à jour · ${desjardinsResult.unchanged ?? 0} inchangés${desjardinsResult.ambiguous ? ` · ${desjardinsResult.ambiguous} à vérifier` : ""}${desjardinsResult.complete ? "" : " · collecte incomplète"}${desjardinsResult.applied ? ` · ${desjardinsResult.unmatched ?? 0} à réconcilier` : " · aperçu seulement"}`
+        : desjardinsStatus?.state === "error" ? `Erreur Desjardins : ${desjardinsStatus.error || "échec de la synchronisation"}`
+        : desjardinsStatus?.lastSuccess ? `${desjardinsStatus.state === "up-to-date" ? "À jour" : "Aperçu disponible"} · ${desjardinsStatus.found ?? 0} lignes · dernière collecte ${new Date(desjardinsStatus.lastSuccess).toLocaleString()}`
+        : "Synchronisation manuelle · aucun historique Desjardins synchronisé"}</small>
+      {desjardinsStatus?.lastAttempt && <small>Dernière tentative : {new Date(desjardinsStatus.lastAttempt).toLocaleString()}</small>}
     </section>
 
     {error && <div className="banner error" role="status"><AlertTriangle size={17} />{error} — Previously synced results remain below.</div>}

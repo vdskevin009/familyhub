@@ -60,6 +60,15 @@ export function syncBlueCross(config: WorkerConfig, apply: boolean): Promise<Blu
   return request(config, "/bluecross/sync", { method: "POST", body: JSON.stringify({ apply }) }, 6 * 60_000);
 }
 
+export type DesjardinsSyncResult = BlueCrossSyncResult;
+export type DesjardinsSyncStatus = BlueCrossSyncStatus & { previewAt?: string; applicable?: boolean };
+export function fetchDesjardinsStatus(config: WorkerConfig): Promise<DesjardinsSyncStatus> {
+  return request(config, "/desjardins/status");
+}
+export function syncDesjardins(config: WorkerConfig, apply: boolean): Promise<DesjardinsSyncResult> {
+  return request(config, "/desjardins/sync", { method: "POST", body: JSON.stringify({ apply }) }, 6 * 60_000);
+}
+
 export type InvoiceSnapshot = {
   items: ReimbursementItem[]; busy: boolean; setupRequired: boolean;
   reconciliations: ReconciliationCase[]; cleanupSuggestions: CleanupSuggestion[];

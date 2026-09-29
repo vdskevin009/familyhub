@@ -8,7 +8,8 @@
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "start": "node dist/index.js",
-    "collect:bluecross": "node dist/bluecross-cli.js"
+    "collect:bluecross": "node dist/bluecross-cli.js",
+    "collect:desjardins": "node dist/desjardins-cli.js"
   },
   "dependencies": {
     "@openai/codex-sdk": "0.155.1",
