@@ -22,6 +22,10 @@ import {
   type ReimbursementItem
 } from "../apps/web/src/types.ts";
 import { manualReconciliationWorkerVersion, workerVersionAtLeast } from "../apps/web/src/worker.ts";
+import {
+  reconciliationContextCases,
+  reconciliationTriageAssessment
+} from "../apps/web/src/reconciliation-triage.ts";
 
 function invoice(id: string, serviceDate: string, overrides: Partial<ReimbursementItem> = {}): ReimbursementItem {
   return {
@@ -298,4 +302,122 @@ test("worker version guard requires manual reconciliation endpoints", () => {
   assert.equal(workerVersionAtLeast("2.8.0", manualReconciliationWorkerVersion), true);
   assert.equal(workerVersionAtLeast("2.8.1", manualReconciliationWorkerVersion), true);
   assert.equal(workerVersionAtLeast("3.0.0", manualReconciliationWorkerVersion), true);
+});
+
+
+test("reconciliation triage ranks one evidence-supported expense as the strong candidate", () => {
+  const primary = invoice("triage-primary", "2026-09-12", {
+    Provider: "Harbour Physiotherapy",
+    Healthcare: { Provider: "Harbour Physiotherapy", ServiceType: "Physiotherapy" },
+    BilledAmount: 120,
+    DetectedAmount: 120
+  });
+  const nearby = invoice("triage-nearby", "2026-09-17", {
+    Provider: "Other Clinic",
+    Healthcare: { Provider: "Other Clinic", ServiceType: "Massage" },
+    BilledAmount: 100,
+    DetectedAmount: 100
+  });
+  const reimbursement = invoice("triage-reimbursement", "2026-09-12", {
+    DocumentRole: "insurer-statement",
+    DocumentType: "claim",
+    Insurer: "desjardins",
+    Provider: "Harbour Physiotherapy",
+    Healthcare: { Provider: "Harbour Physiotherapy", ServiceType: "Physiotherapy" },
+    ClaimedService: "Physiotherapy",
+    BilledAmount: 120,
+    ReimbursedAmount: 96,
+    DetectedAmount: 96
+  });
+  const cases = [
+    reconciliation(primary, { ExpenseDocumentId: primary.Id, Provider: "Harbour Physiotherapy", ServiceType: "Physiotherapy", OriginalAmount: 120 }),
+    reconciliation(nearby, { ExpenseDocumentId: nearby.Id, Provider: "Other Clinic", ServiceType: "Massage", OriginalAmount: 100 })
+  ];
+  const byId = new Map([primary, nearby, reimbursement].map(item => [item.Id, item]));
+  const assessment = reconciliationTriageAssessment(reimbursement, cases, byId);
+
+  assert.equal(assessment.Kind, "strong");
+  assert.equal(assessment.Candidates[0].Case.Id, "case:triage-primary");
+  assert.ok(assessment.Candidates[0].Reasons.includes("Same family member"));
+  assert.ok(assessment.Candidates[0].Reasons.includes("Exact service date"));
+  assert.ok(assessment.Candidates[0].Reasons.includes("Submitted amount matches expense"));
+});
+
+test("reconciliation triage keeps tied same-day expenses ambiguous instead of choosing", () => {
+  const first = invoice("triage-ambiguous-a", "2026-02-06", {
+    Provider: "North Shore Chiropractic",
+    Healthcare: { Provider: "North Shore Chiropractic", ServiceType: "Chiropractic" },
+    BilledAmount: 80
+  });
+  const second = invoice("triage-ambiguous-b", "2026-02-06", {
+    Provider: "North Shore Chiropractic",
+    Healthcare: { Provider: "North Shore Chiropractic", ServiceType: "Chiropractic" },
+    BilledAmount: 80
+  });
+  const reimbursement = invoice("triage-ambiguous-r", "2026-02-06", {
+    DocumentRole: "insurer-statement",
+    DocumentType: "claim",
+    Insurer: "blue-cross",
+    Provider: "North Shore Chiropractic",
+    Healthcare: { Provider: "North Shore Chiropractic", ServiceType: "Chiropractic" },
+    BilledAmount: 80,
+    ReimbursedAmount: 64,
+    DetectedAmount: 64
+  });
+  const cases = [
+    reconciliation(first, { ExpenseDocumentId: first.Id, Provider: first.Provider, ServiceType: "Chiropractic", OriginalAmount: 80 }),
+    reconciliation(second, { ExpenseDocumentId: second.Id, Provider: second.Provider, ServiceType: "Chiropractic", OriginalAmount: 80 })
+  ];
+  const byId = new Map([first, second, reimbursement].map(item => [item.Id, item]));
+  const assessment = reconciliationTriageAssessment(reimbursement, cases, byId);
+
+  assert.equal(assessment.Kind, "ambiguous");
+  assert.equal(assessment.Candidates.length, 2);
+  assert.equal(assessment.Candidates[0].Score, assessment.Candidates[1].Score);
+});
+
+test("reconciliation triage returns no candidate when person/date/evidence do not support one", () => {
+  const expense = invoice("triage-none", "2026-01-01", {
+    Member: "Kevin",
+    Provider: "Example Dental",
+    Healthcare: { Provider: "Example Dental", ServiceType: "Dental" },
+    BilledAmount: 300
+  });
+  const reimbursement = invoice("triage-none-r", "2026-09-29", {
+    Member: "Jasmine",
+    DocumentRole: "insurer-statement",
+    DocumentType: "claim",
+    Insurer: "blue-cross",
+    Provider: "Different Provider",
+    Healthcare: { Provider: "Different Provider", ServiceType: "Vision" },
+    BilledAmount: 90,
+    ReimbursedAmount: 70,
+    DetectedAmount: 70
+  });
+  const assessment = reconciliationTriageAssessment(
+    reimbursement,
+    [reconciliation(expense, { ExpenseDocumentId: expense.Id, Member: "Kevin", Provider: expense.Provider, ServiceType: "Dental", OriginalAmount: 300 })],
+    new Map([expense, reimbursement].map(item => [item.Id, item]))
+  );
+  assert.equal(assessment.Kind, "none");
+  assert.deepEqual(assessment.Candidates, []);
+});
+
+test("reconciliation context stays within the same member and thirty-day service window", () => {
+  const current = invoice("triage-context-r", "2026-09-15", {
+    Member: "Jasmine",
+    DocumentRole: "insurer-statement",
+    DocumentType: "claim",
+    Insurer: "blue-cross"
+  });
+  const nearby = invoice("triage-context-near", "2026-09-01", { Member: "Jasmine" });
+  const far = invoice("triage-context-far", "2026-07-01", { Member: "Jasmine" });
+  const otherMember = invoice("triage-context-kevin", "2026-09-15", { Member: "Kevin" });
+  const cases = [
+    reconciliation(nearby, { ExpenseDocumentId: nearby.Id, Member: "Jasmine" }),
+    reconciliation(far, { ExpenseDocumentId: far.Id, Member: "Jasmine" }),
+    reconciliation(otherMember, { ExpenseDocumentId: otherMember.Id, Member: "Kevin" })
+  ];
+  const byId = new Map([current, nearby, far, otherMember].map(item => [item.Id, item]));
+  assert.deepEqual(reconciliationContextCases(current, cases, byId).map(item => item.Id), ["case:triage-context-near"]);
 });
