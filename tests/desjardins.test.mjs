@@ -51,7 +51,8 @@ test('conflicting service, repeated ID, unknown member and unknown payment stay 
   assert.equal(planDesjardinsUpsert([old], collection([row({ identity: 'other', service: 'Massage' })])).ambiguous, 1);
   const repeated = planDesjardinsUpsert([], collection([row(), row()]));
   assert.equal(repeated.duplicates, 1);
-  assert.equal(repeated.ambiguous, 1);
+  assert.equal(repeated.ambiguous, 2);
+  assert.equal(planDesjardinsUpsert([], collection([row(), row({ identity: 'distinct-claim', sourceClaimId: 'claim-2' })])).ambiguous, 2);
   assert.equal(planDesjardinsUpsert([], collection([row({ member: 'unknown' })])).ambiguous, 1);
   assert.equal(planDesjardinsUpsert([], collection([row({ paid: null })])).ambiguous, 1);
 });
@@ -81,4 +82,18 @@ test('detail/list mismatch, missing lines and repeated pages block a complete pr
   assert.equal(parseDesjardinsPages([page]).complete, true);
   assert.equal(parseDesjardinsPages([page, page]).complete, false);
   assert.equal(parseDesjardinsPages([{ ...page, details: [] }]).complete, false);
+});
+
+test('health and dental grid variants keep the claimed and reimbursed columns aligned', () => {
+  const group = span => ({ cells: ['Kevin, Numéro de réclamation: 987654321'], colspans: [span] });
+  const eight = [group(8), { cells: ['Service A', '2024‑02‑03', '2024‑02‑03', '25,00', '25,00', '80%', '5,00', '20,00'], colspans: Array(8).fill(1) }];
+  const ten = [group(10), { cells: ['Service B', '2024‑02‑03', '2024‑02‑03', '50,00', '50,00', '80%', '10,00', '40,00', '5,00', 'CODE'], colspans: Array(10).fill(1) }];
+  const eleven = [group(11), { cells: ['Tooth', 'Service C', '2024‑02‑03', '2024‑02‑03', '75,00', '75,00', '80%', '15,00', '60,00', '5,00', 'CODE'], colspans: Array(11).fill(1) }];
+  for (const [rows, paid, submitted, service] of [[eight, 20, 25, 'Service A'], [ten, 40, 50, 'Service B'], [eleven, 60, 75, 'Service C']]) {
+    const parsed = parseDesjardinsDetail({ ...history, paid: `${paid},00 $` }, rows);
+    assert.deepEqual(parsed.warnings, []);
+    assert.equal(parsed.rows[0].paid, paid);
+    assert.equal(parsed.rows[0].submitted, submitted);
+    assert.equal(parsed.rows[0].service, service);
+  }
 });

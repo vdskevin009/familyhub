@@ -28,13 +28,17 @@ const money = (value: string): number | null => {
 };
 const cents = (value: number) => Math.round(value * 100);
 const member = (value: string): DesjardinsRow["member"] => {
-  const words = clean(value).split(" ");
-  // The portal uses surname-first claim headings. Only known household names map to a member.
-  return memberName(value) !== "unknown" ? memberName(value)
-    : words.length > 1 ? memberName(`${words.slice(1).join(" ")} ${words[0]}`) : "unknown";
+  const normalized = clean(value).replace(/[,;:]+/g, " ").replace(/\s+/g, " ").trim();
+  const words = normalized.split(" ");
+  // The portal uses surname-first headings and sometimes includes extra given names.
+  // Every candidate must still pass the existing exact household-name recognizer.
+  const candidates = [normalized];
+  if (words.length > 1) candidates.push(`${words.slice(1).join(" ")} ${words[0]}`, `${words[1]} ${words[0]}`);
+  const recognized = new Set(candidates.map(memberName).filter(result => result !== "unknown"));
+  return recognized.size === 1 ? [...recognized][0] : "unknown";
 };
 
-/** Pure parser for the portal's nine-column service grid. A malformed row blocks apply. */
+/** Pure parser for the portal's variable-width service grid. A malformed row blocks apply. */
 export function parseDesjardinsDetail(history: PortalHistoryRow, detail: PortalTableRow[]): { rows: DesjardinsRow[]; warnings: string[] } {
   const warnings: string[] = [];
   const statementDate = date(history.date);
@@ -55,13 +59,14 @@ export function parseDesjardinsDetail(history: PortalHistoryRow, detail: PortalT
       if (!claimId || claimMember === "unknown") warnings.push("Claim identity or member was not recognized.");
       continue;
     }
-    if (cells.length === 9 && date(cells[1])) {
+    const firstDate = [1, 2].find(index => date(cells[index] ?? "") && date(cells[index + 1] ?? ""));
+    if (cells.length >= 8 && cells.length <= 11 && firstDate !== undefined) {
       line++;
-      const serviceDate = date(cells[1]);
-      const endDate = date(cells[2]);
-      const submitted = money(cells[3]);
-      const paid = money(cells[7]);
-      const service = cells[0];
+      const serviceDate = date(cells[firstDate]);
+      const endDate = date(cells[firstDate + 1]);
+      const submitted = money(cells[firstDate + 2]);
+      const paid = money(cells[firstDate + 6]);
+      const service = cells[firstDate - 1];
       if (!claimId || claimMember === "unknown" || !serviceDate || !endDate || !service
         || submitted == null || paid == null || paid > submitted || endDate < serviceDate) {
         warnings.push("A claim service line is incomplete or inconsistent.");

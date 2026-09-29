@@ -66,12 +66,21 @@ export function planDesjardinsUpsert(existing: Invoice[], collection: Desjardins
   const byId = new Map(previous.map(item => [item.Id, item]));
   const incomingIds = new Set(imported.map(item => item.Id));
   const seen = new Set<string>();
+  const usedLegacyIds = new Set<string>();
+  const importedKeys = new Map<string, number>();
+  for (const item of imported) {
+    const key = claimKey(item.Member, item.ServiceDate, item.ClaimedService ?? "", item.BilledAmount, item.ReimbursedAmount);
+    importedKeys.set(key, (importedKeys.get(key) || 0) + 1);
+  }
   const planned: Invoice[] = [];
   let added = 0, changed = 0, unchanged = 0, ambiguous = 0, duplicates = 0;
   for (const item of imported) {
     if (seen.has(item.Id)) { duplicates++; ambiguous++; continue; }
     seen.add(item.Id);
     if (item.Member === "unknown" || item.ServiceDate == null || item.ReimbursedAmount == null) {
+      ambiguous++; continue;
+    }
+    if ((importedKeys.get(claimKey(item.Member, item.ServiceDate, item.ClaimedService ?? "", item.BilledAmount, item.ReimbursedAmount)) || 0) > 1) {
       ambiguous++; continue;
     }
     const sameId = byId.get(item.Id);
@@ -94,7 +103,9 @@ export function planDesjardinsUpsert(existing: Invoice[], collection: Desjardins
     const exact = previous.filter(old => claimKey(old.Member, old.ServiceDate, previousService(old),
       old.BilledAmount ?? submittedInNotes(old.Notes), old.ReimbursedAmount)
       === claimKey(item.Member, item.ServiceDate, item.ClaimedService ?? "", item.BilledAmount, item.ReimbursedAmount));
-    if (exact.length === 1 && !incomingIds.has(exact[0].Id)) { unchanged++; continue; }
+    if (exact.length === 1 && !incomingIds.has(exact[0].Id) && !usedLegacyIds.has(exact[0].Id)) {
+      usedLegacyIds.add(exact[0].Id); unchanged++; continue;
+    }
     if (exact.length > 0) { ambiguous++; continue; }
     const near = previous.filter(old => nearKey(old.Member, old.ServiceDate,
       old.BilledAmount ?? submittedInNotes(old.Notes), old.ReimbursedAmount)

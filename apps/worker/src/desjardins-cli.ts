@@ -44,7 +44,7 @@ if (args.some(arg => !["--dry-run", "--apply", "--login"].includes(arg))
     } else {
       console.log(`Desjardins sync ${result.applied ? "apply" : "preview"}`);
       console.log(`Rows found: ${result.found}\nAlready known: ${result.unchanged}\nNew: ${result.new}\nChanged: ${result.changed}\nAmbiguous: ${result.ambiguous}\nDuplicates: ${result.duplicates}\nErrors: ${result.errors}`);
-      if (result.warnings.length) console.log(`Warnings: ${result.warnings.join(" ")}`);
+      if (result.warnings.length) console.log(`First warnings: ${result.warnings.join(" ")}${result.errors > result.warnings.length ? ` (and ${result.errors - result.warnings.length} more in the private snapshot)` : ""}`);
       console.log(`Browser profile: ${desjardinsProfileDirectory}\nSnapshots: ${desjardinsSnapshotDirectory}`);
       if (!result.applied) console.log("No FamilyHub invoice data was modified. Explicit apply uses this private preview for up to 24 hours.");
       if (!result.complete || result.ambiguous) process.exitCode = 1;

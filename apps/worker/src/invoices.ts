@@ -202,14 +202,14 @@ export async function syncDesjardinsPortal(apply = false, interactive = false, c
     });
     await saveDesjardinsStatus({ state: errors ? "error" : !apply && (plan.new || plan.changed || plan.ambiguous) ? "idle" : "up-to-date",
       lastSuccess: errors ? desjardinsStatus.lastSuccess : collection.collectedAt,
-      found: plan.found, error: collection.warnings.join(" ") || undefined,
+      found: plan.found, error: errors ? `${errors} claim-detail warnings; inspect the private snapshot before applying.` : undefined,
       previewSnapshot: apply ? undefined : result.snapshotPath,
       previewAt: apply ? undefined : collection.collectedAt,
       applicable: !apply && collection.complete && plan.ambiguous === 0 });
     const reconciliation = apply ? buildReconciliationSnapshot(activeReconciliationItems(), state.matchDecisions) : undefined;
     return { status: "success" as const, applied: apply, found: plan.found, new: plan.new, changed: plan.changed,
       unchanged: plan.unchanged, ambiguous: plan.ambiguous, duplicates: plan.duplicates, errors,
-      loginRequired: false, complete: collection.complete, warnings: collection.warnings,
+      loginRequired: false, complete: collection.complete, warnings: collection.warnings.slice(0, 12),
       matched: reconciliation?.cases.reduce((sum, entry) => sum + (entry.MatchAssignments?.length ?? 0), 0),
       unmatched: reconciliation?.unmatched.length, snapshotPath: result.snapshotPath, backup };
   } catch (error) {
