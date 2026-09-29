@@ -126,8 +126,14 @@ export async function syncBlueCrossPortal(apply = false, interactive = false, co
       matched: reconciliation?.cases.reduce((sum, entry) => sum + (entry.MatchAssignments?.length ?? 0), 0),
       unmatched: reconciliation?.unmatched.length, snapshotPath: result.snapshotPath, backup };
   } catch (error) {
-    await saveBlueCrossStatus({ state: "error", error: error instanceof Error ? error.message : "Blue Cross sync failed." });
-    throw error;
+    const message = error instanceof Error ? error.message : "";
+    const safeMessage = /^Collection is incomplete or ambiguous/.test(message) ? message
+      : /spawn EPERM/i.test(message) ? "Windows blocked the local Blue Cross browser launch (spawn EPERM)."
+      : /executable doesn't exist|browser.*not installed/i.test(message) ? "Playwright Chromium is unavailable. Install it on the PC before syncing."
+      : /timeout|net::|network/i.test(message) ? "Blue Cross portal navigation timed out or the network is unavailable."
+      : "Blue Cross portal collection failed. Check the PC worker log.";
+    await saveBlueCrossStatus({ state: "error", error: safeMessage });
+    throw new Error(safeMessage);
   } finally { blueCrossBusy = false; }
 }
 

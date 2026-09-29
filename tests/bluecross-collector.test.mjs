@@ -73,7 +73,7 @@ test('malformed row, partial collection, and network failure are non-applicable'
   const partial = parsePortalPages([{ html: table([row()], 140), hasNext: true }], 'Network timeout');
   assert.equal(partial.complete, false);
   await assert.rejects(syncBlueCrossPortal(true, false, async () => ({ status: 'success', collection: partial, snapshotPath: 'test' })), /incomplete/);
-  await assert.rejects(syncBlueCrossPortal(false, false, async () => { throw new Error('Network timeout'); }), /Network timeout/);
+  await assert.rejects(syncBlueCrossPortal(false, false, async () => { throw new Error('Network timeout'); }), /network is unavailable/);
   const saved = JSON.parse(await readFile(join(directory, 'invoices.json'), 'utf8'));
   assert.equal(saved.items.length, seed.items.length);
 });
