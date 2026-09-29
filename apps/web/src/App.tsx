@@ -1,7 +1,5 @@
 import { useMemo, useState } from "react";
-import {
-  CalendarDays, CircleDollarSign, HeartHandshake, Home, Mail, MoreHorizontal, Search, Sparkles
-} from "lucide-react";
+import { CalendarDays, CircleDollarSign, FileText, HeartHandshake, Home, Mail, MoreHorizontal, ShieldCheck } from "lucide-react";
 import { viewFromQuery } from "./domain";
 import { useFamilyHubState } from "./state";
 import type { AppView } from "./types";
@@ -11,14 +9,21 @@ import ReimbursementsView from "./views/ReimbursementsView";
 import PlanView from "./views/PlanView";
 import MoneyView from "./views/MoneyView";
 import MoreView from "./views/MoreView";
+import DocumentLibraryView from "./views/DocumentLibraryView";
 
-const nav: Array<{ id: AppView; label: string; mobileLabel?: string; icon: typeof Home }> = [
-  { id: "today", label: "Today", icon: Home },
-  { id: "inbox", label: "Important mail", mobileLabel: "Mail", icon: Mail },
-  { id: "reimbursements", label: "Reimbursements", mobileLabel: "Claims", icon: HeartHandshake },
-  { id: "plan", label: "Plan", icon: CalendarDays },
-  { id: "money", label: "Money", icon: CircleDollarSign },
-  { id: "more", label: "More", icon: MoreHorizontal }
+const nav: Array<{ id: AppView; label: string; icon: typeof Home }> = [
+  { id: "reimbursements", label: "Claims", icon: HeartHandshake },
+  { id: "invoices", label: "Invoices", icon: FileText },
+  { id: "desjardins", label: "DJ", icon: ShieldCheck },
+  { id: "blue-cross", label: "BC", icon: ShieldCheck },
+  { id: "other", label: "Other", icon: MoreHorizontal }
+];
+const otherViews: Array<{ id: AppView; label: string; description: string; icon: typeof Home }> = [
+  { id: "today", label: "Today & Assistant", description: "Household overview and Ask", icon: Home },
+  { id: "inbox", label: "Important mail", description: "Messages and document review", icon: Mail },
+  { id: "plan", label: "Plan", description: "Meals, groceries and tasks", icon: CalendarDays },
+  { id: "money", label: "Money", description: "Spending and planning", icon: CircleDollarSign },
+  { id: "more", label: "Settings & tools", description: "Worker connection, backup and research", icon: MoreHorizontal }
 ];
 
 export default function App() {
@@ -33,7 +38,7 @@ export default function App() {
   const navigate = (next: AppView) => {
     setView(next);
     const url = new URL(location.href);
-    if (next === "today") url.searchParams.delete("view");
+    if (next === "reimbursements") url.searchParams.delete("view");
     else url.searchParams.set("view", next);
     history.replaceState({}, "", url);
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -47,16 +52,13 @@ export default function App() {
           {nav.map(item => {
             const Icon = item.icon;
             return (
-              <button key={item.id} className={view === item.id ? "nav-item active" : "nav-item"} onClick={() => navigate(item.id)}>
+              <button key={item.id} className={view === item.id || item.id === "other" && otherViews.some(other => other.id === view) ? "nav-item active" : "nav-item"} onClick={() => navigate(item.id)} aria-current={view === item.id ? "page" : undefined}>
                 <Icon size={21} strokeWidth={2} />
                 <span>{item.label}</span>
               </button>
             );
           })}
         </nav>
-        <button className="nav-item assistant-shortcut" onClick={() => { navigate("today"); setCommandOpen(true); }}>
-          <Sparkles size={21} /><span>Ask</span>
-        </button>
       </aside>
 
       <div className="app-stage">
@@ -65,15 +67,16 @@ export default function App() {
             <div className="app-kicker">{todayLabel}</div>
             <strong>FamilyHub</strong>
           </div>
-          <button className="icon-button" aria-label="Search and ask FamilyHub" onClick={() => { navigate("today"); setCommandOpen(true); }}>
-            <Search size={20} />
-          </button>
         </header>
 
         <main className="app-main">
           {view === "today" && <TodayView hub={state} onNavigate={navigate} commandOpen={commandOpen} onCommandOpenChange={setCommandOpen} />}
           {view === "inbox" && <InboxView hub={state} />}
           {view === "reimbursements" && <ReimbursementsView hub={state} />}
+          {view === "invoices" && <DocumentLibraryView hub={state} kind="invoices" />}
+          {view === "desjardins" && <DocumentLibraryView hub={state} kind="desjardins" />}
+          {view === "blue-cross" && <DocumentLibraryView hub={state} kind="blue-cross" />}
+          {view === "other" && <section className="view-stack"><div className="section-heading"><div><h1>Other</h1><p>Your household tools are still here whenever you need them.</p></div></div><div className="other-grid">{otherViews.map(item => { const Icon = item.icon; return <button key={item.id} className="other-link" onClick={() => navigate(item.id)}><Icon size={22} /><span><strong>{item.label}</strong><small>{item.description}</small></span></button>; })}</div></section>}
           {view === "plan" && <PlanView hub={state} />}
           {view === "money" && <MoneyView hub={state} />}
           {view === "more" && <MoreView hub={state} />}
@@ -84,9 +87,9 @@ export default function App() {
         {nav.map(item => {
           const Icon = item.icon;
           return (
-            <button key={item.id} className={view === item.id ? "active" : ""} onClick={() => navigate(item.id)}>
+            <button key={item.id} className={view === item.id || item.id === "other" && otherViews.some(other => other.id === view) ? "active" : ""} onClick={() => navigate(item.id)} aria-current={view === item.id ? "page" : undefined}>
               <Icon size={21} strokeWidth={2} />
-              <span>{item.mobileLabel || item.label}</span>
+              <span>{item.label}</span>
             </button>
           );
         })}

@@ -1,4 +1,4 @@
-export type AppView = "today" | "inbox" | "reimbursements" | "plan" | "money" | "more";
+export type AppView = "today" | "inbox" | "reimbursements" | "invoices" | "desjardins" | "blue-cross" | "other" | "plan" | "money" | "more";
 
 export enum EntryKind { Task = 0, Grocery = 1, Meal = 2, Appointment = 3, Reminder = 4 }
 export enum Repeat { Never = 0, Daily = 1, Weekly = 2, Monthly = 3 }

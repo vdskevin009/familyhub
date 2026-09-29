@@ -12,11 +12,14 @@ Every feature should do at least one of three things:
 2. prevent something important from being missed,
 3. reduce avoidable spending.
 
-The default experience is **Today**, not a collection of dashboards. FamilyHub should proactively surface a small number of useful actions and keep the rest one tap away.
+The current default experience is **Claims**. Invoices and insurer source records are one tap away; the household tools remain under **Other**.
 
 ## Current experience
 
-- **Today / Assistant** — prioritized household insights, quick actions, and an optional local AI assistant.
+- **Claims** — the default healthcare reconciliation experience with its existing alerts and actions.
+- **Invoices** — every indexed invoice/receipt source, independently of reimbursement status.
+- **DJ / BC** — separate Desjardins and Blue Cross source-record libraries, including imported Blue Cross rows.
+- **Other → Today / Assistant** — prioritized household insights, quick actions, and an optional local AI assistant.
 - **Important Mail** — review time-sensitive and administrative results prepared by the paired PC agent; promotions/newsletters are filtered and uncertain classifications remain reviewable.
 - **Reimbursements** — a separate healthcare reconciliation screen with paid, primary-insurer, secondary-insurer and outstanding totals; match-specific confidence/evidence; persistent manual confirm/reject decisions; and an unmatched queue reserved for reimbursements with no usable singular expense association.
 - **Daily PC collection** — optional offline Gmail authorization, a Windows daily task, Codex classification, bounded PDF/text attachment reading, phone retrieval, attachment downloads and remembered corrections. Low-confidence items go to **À vérifier**. See [setup and limitations](docs/DAILY-INVOICES.md).
@@ -75,7 +78,7 @@ On first launch it creates a random pairing key and prints:
 - the pairing key,
 - the local path where the key is stored.
 
-In FamilyHub open **More → Local AI**, enter the reachable worker endpoint and pairing key, then use **Test connection**.
+In FamilyHub open **Other → Settings & tools → Local AI**, enter the reachable worker endpoint and pairing key, then use **Test connection**.
 
 The worker defaults to localhost only. Do not bind it directly to a public interface. To use it from a phone, expose it only through a private HTTPS route you control (for example an existing private VPN/remote-network setup) and keep the pairing key enabled. The worker never needs to be reachable by GitHub Pages itself outside the browser session.
 
