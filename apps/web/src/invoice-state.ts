@@ -1,4 +1,4 @@
-import { ReconciliationCase, ReimbursementCategory, ReimbursementItem, ReimbursementStatus, ReimbursementWorkflowStatus } from "./types";
+import { ReconciliationCase, ReimbursementCategory, ReimbursementItem, ReimbursementStatus, ReimbursementWorkflowStatus, UnmatchedReimbursement } from "./types";
 
 /** A patient is shown separately; an unknown clinic uses the documented service title. */
 export function healthcareTitle(item: { Provider?: string | null; ServiceType?: string | null }): string {
@@ -94,6 +94,111 @@ export function unreconciledInvoiceCases(cases: ReconciliationCase[], items: Rei
       Confidence: item.Confidence, PreviouslyFound: true, Unreconciled: true
     };
   });
+}
+
+export type ReimbursementEvidenceSource = "Email" | "Blue Cross" | "Desjardins";
+
+function insurerDisplayName(insurer: ReimbursementItem["Insurer"]): "Blue Cross" | "Desjardins" | null {
+  if (insurer === "blue-cross") return "Blue Cross";
+  if (insurer === "desjardins") return "Desjardins";
+  return null;
+}
+
+function trustedInsurerExpenseEvidence(item: ReimbursementItem): { original: number; paid: number } | null {
+  if (item.DocumentRole !== "insurer-statement" || !item.Insurer || item.NeedsReview
+    || item.Status === ReimbursementStatus.Ignored || item.Member === "unknown" || !item.ServiceDate) return null;
+  const structured = Boolean(item.StructuredSource || item.AccountLabel === "Local Desjardins import" || item.Healthcare?.SubmittedAmount != null);
+  const original = item.Healthcare?.SubmittedAmount ?? item.BilledAmount ?? null;
+  const paid = item.ReimbursedAmount ?? null;
+  if (!structured || original == null || paid == null || original <= 0 || paid < 0 || paid > original + .01) return null;
+  return { original, paid };
+}
+
+/**
+ * Presentation-only expense projection for a trusted insurer row that already proves the
+ * original/submitted service amount. This does not create a worker match or mutate source data.
+ */
+export function insurerEvidenceExpenseCases(cases: ReconciliationCase[], unmatched: UnmatchedReimbursement[],
+  items: ReimbursementItem[]): ReconciliationCase[] {
+  const byId = new Map(items.map(item => [item.Id, item]));
+  const covered = new Set(cases.flatMap(item => item.DocumentIds));
+  const projected: ReconciliationCase[] = [];
+  for (const result of unmatched) {
+    if (covered.has(result.DocumentId)) continue;
+    const source = byId.get(result.DocumentId);
+    if (!source) continue;
+    const evidence = trustedInsurerExpenseEvidence(source);
+    const insurer = insurerDisplayName(source.Insurer);
+    if (!evidence || !insurer) continue;
+    const remaining = Math.round(Math.max(0, evidence.original - evidence.paid) * 100) / 100;
+    const closed = remaining <= .005;
+    const provider = source.Healthcare?.Provider
+      || source.ClaimedService
+      || source.Provider.replace(/^(?:Blue Cross|Desjardins)\s*·\s*/i, "")
+      || "Provider to confirm";
+    projected.push({
+      Id: `insurer-evidence:${source.Id}`,
+      DocumentIds: [source.Id],
+      Member: source.Member || "unknown",
+      Provider: provider,
+      ServiceType: source.Healthcare?.ServiceType || source.ClaimedService || null,
+      ServiceDate: source.ServiceDate || null,
+      OriginalAmount: evidence.original,
+      ReimbursedAmount: evidence.paid,
+      PotentialRemaining: remaining,
+      Currency: source.Currency || "CAD",
+      PrimaryInsurer: null,
+      PrimaryReimbursedAmount: null,
+      SecondaryInsurer: null,
+      SecondaryReimbursedAmount: null,
+      DesjardinsReimbursedAmount: source.Insurer === "desjardins" ? evidence.paid : null,
+      BlueCrossReimbursedAmount: source.Insurer === "blue-cross" ? evidence.paid : null,
+      NextInsurer: null,
+      Action: closed ? "complete" : "verify-balance",
+      Status: closed ? "fully-reimbursed" : "needs-attention",
+      Summary: `Expense established from ${insurer} reimbursement evidence; original invoice not found.`,
+      Confidence: source.Confidence,
+      WorkflowStatus: closed ? "closed" : "open",
+      WorkflowOrigin: "automatic",
+      AutomaticWorkflowStatus: closed ? "closed" : "open",
+      InferredFromInsurer: true,
+      OriginalInvoiceMissing: true
+    });
+  }
+  return projected;
+}
+
+export function reimbursementEvidenceSources(item: ReconciliationCase,
+  itemsById: ReadonlyMap<string, ReimbursementItem>): ReimbursementEvidenceSource[] {
+  const documents = reimbursementCaseDocuments(item, itemsById);
+  const sources = new Set<ReimbursementEvidenceSource>();
+  if (documents.some(document => isExpenseDocument(document)
+    && !document.StructuredSource
+    && document.AccountEmail?.trim()
+    && document.SourceMessageId?.trim()
+    && document.AccountLabel !== "Local Desjardins import")) sources.add("Email");
+
+  const hasInsurer = (key: "desjardins" | "blue-cross", label: "Desjardins" | "Blue Cross") =>
+    (key === "desjardins" ? item.DesjardinsReimbursedAmount != null : item.BlueCrossReimbursedAmount != null)
+    || item.PrimaryInsurer === label || item.SecondaryInsurer === label
+    || (item.MatchAssignments ?? []).some(match => match.Insurer === key)
+    || documents.some(document => document.DocumentRole === "insurer-statement" && document.Insurer === key);
+  if (hasInsurer("blue-cross", "Blue Cross")) sources.add("Blue Cross");
+  if (hasInsurer("desjardins", "Desjardins")) sources.add("Desjardins");
+  return ["Email", "Blue Cross", "Desjardins"].filter(source => sources.has(source as ReimbursementEvidenceSource)) as ReimbursementEvidenceSource[];
+}
+
+export function reimbursementActionLabel(item: ReconciliationCase): string {
+  const workflow = reimbursementWorkflowStatus(item);
+  if (workflow === "ignore") return "Ignored — no active reimbursement review";
+  if (workflow === "closed") return "No reimbursement action needed";
+  if (item.InferredFromInsurer && (item.PotentialRemaining ?? 0) > .005) return "Check other insurer reimbursement";
+  if (item.Action === "submit-primary") return item.NextInsurer ? `Submit to ${item.NextInsurer}` : "Submit to primary insurer";
+  if (item.Action === "submit-secondary") return item.NextInsurer ? `Check ${item.NextInsurer} reimbursement` : "Check secondary reimbursement";
+  if (item.Status === "waiting-secondary") return "Check secondary reimbursement";
+  if (item.Status === "waiting-primary") return "Check primary reimbursement";
+  if (item.Status === "patient-balance") return "Review remaining patient balance";
+  return "Review reimbursement details";
 }
 
 export type InvoiceHistoryFilter = "fully-reimbursed" | "not-fully-reimbursed" | "primary" | "secondary";
