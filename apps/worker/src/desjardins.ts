@@ -68,9 +68,12 @@ export function planDesjardinsUpsert(existing: Invoice[], collection: Desjardins
   const seen = new Set<string>();
   const usedLegacyIds = new Set<string>();
   const importedKeys = new Map<string, number>();
+  const importedNearKeys = new Map<string, number>();
   for (const item of imported) {
     const key = claimKey(item.Member, item.ServiceDate, item.ClaimedService ?? "", item.BilledAmount, item.ReimbursedAmount);
     importedKeys.set(key, (importedKeys.get(key) || 0) + 1);
+    const near = nearKey(item.Member, item.ServiceDate, item.BilledAmount, item.ReimbursedAmount);
+    importedNearKeys.set(near, (importedNearKeys.get(near) || 0) + 1);
   }
   const planned: Invoice[] = [];
   let added = 0, changed = 0, unchanged = 0, ambiguous = 0, duplicates = 0;
@@ -110,6 +113,20 @@ export function planDesjardinsUpsert(existing: Invoice[], collection: Desjardins
     const near = previous.filter(old => nearKey(old.Member, old.ServiceDate,
       old.BilledAmount ?? submittedInNotes(old.Notes), old.ReimbursedAmount)
       === nearKey(item.Member, item.ServiceDate, item.BilledAmount, item.ReimbursedAmount));
+    if (near.length === 1) {
+      const old = near[0];
+      const oldService = serviceKey(previousService(old));
+      const portalService = serviceKey(item.ClaimedService ?? "");
+      // The historical report sometimes abbreviates a long service label.
+      // This is a one-row evidence match, never a global service alias.
+      if (old.StructuredSource !== "desjardins-portal" && !old.CorrectedAt && !old.IgnoredAt && !old.LastDecisionId
+        && !incomingIds.has(old.Id) && !usedLegacyIds.has(old.Id)
+        && importedNearKeys.get(nearKey(item.Member, item.ServiceDate, item.BilledAmount, item.ReimbursedAmount)) === 1
+        && oldService.length >= 20 && portalService.startsWith(`${oldService} `)
+        && portalService.slice(oldService.length + 1).length <= 20) {
+        usedLegacyIds.add(old.Id); unchanged++; continue;
+      }
+    }
     if (near.length > 0) { ambiguous++; continue; }
     planned.push(item); added++;
   }

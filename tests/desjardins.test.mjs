@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { desjardinsIdentity, desjardinsInvoices, planDesjardinsUpsert } from '../apps/worker/dist/desjardins.js';
-import { parseDesjardinsDetail, parseDesjardinsPages } from '../apps/worker/dist/desjardins-collector.js';
+import { confirmDesjardinsRepeat, desjardinsAuthCookies, desjardinsNameCandidates, parseDesjardinsDetail, parseDesjardinsPages } from '../apps/worker/dist/desjardins-collector.js';
 
 const row = (patch = {}) => ({ member: 'Kevin', serviceDate: '2026-09-10', service: 'Physiotherapy',
   submitted: 100, paid: 80, statementDate: '2026-09-12', identity: desjardinsIdentity('claim-1', null, 1),
@@ -28,6 +28,21 @@ test('a known historical Excel statement is counted once and never overwritten',
   assert.deepEqual([plan.found, plan.new, plan.unchanged, plan.changed, plan.ambiguous], [1, 0, 1, 0, 0]);
   assert.deepEqual(plan.items, []);
   assert.equal(legacy.Id, 'excel-claim');
+});
+
+test('a unique long legacy label abbreviation can be counted without changing its source', () => {
+  const service = 'Physiotherapy long visit';
+  const old = { ...desjardinsInvoices(collection([row({ service })]))[0], Id: 'legacy-row',
+    StructuredSource: undefined, BilledAmount: null, Notes: 'Submitted 100.00; historical report' };
+  const incoming = row({ service: `${service} follow-up` });
+  const plan = planDesjardinsUpsert([old], collection([incoming]));
+  assert.deepEqual([plan.new, plan.unchanged, plan.ambiguous], [0, 1, 0]);
+  assert.deepEqual(plan.items, []);
+  assert.equal(old.Id, 'legacy-row');
+  assert.equal(planDesjardinsUpsert([{ ...old, CorrectedAt: '2026-01-01' }], collection([incoming])).ambiguous, 1);
+  assert.equal(planDesjardinsUpsert([old], collection([incoming, row({ identity: 'second', service: `${service} another` })])).ambiguous, 2);
+  const generic = { ...old, ClaimedService: 'Massage' };
+  assert.equal(planDesjardinsUpsert([generic], collection([row({ service: 'Massage follow-up' })])).ambiguous, 1);
 });
 
 test('new portal rows are additive and an identical second run is idempotent', () => {
@@ -76,6 +91,14 @@ test('French processed-claim detail parses a service line without treating the p
   assert.notEqual(desjardinsIdentity('123456789', null, 1), desjardinsIdentity('123456789', null, 2));
 });
 
+test('candidate generation keeps plausible three-word orders without inventing a surname', () => {
+  const candidates = desjardinsNameCandidates('SMITH JANE MIDDLE', word => word === 'SMITH');
+  assert.ok(candidates.includes('JANE SMITH'));
+  assert.ok(candidates.includes('JANE MIDDLE'));
+  assert.ok(candidates.includes('SMITH MIDDLE'));
+  assert.ok(!desjardinsNameCandidates('OTHER JANE MIDDLE', word => word === 'SMITH').includes('JANE'));
+});
+
 test('detail/list mismatch, missing lines and repeated pages block a complete preview', () => {
   assert.match(parseDesjardinsDetail({ ...history, paid: '59,00 $' }, detail).warnings.join(' '), /does not match/);
   const page = { histories: [history], details: [detail], hasNext: false };
@@ -84,16 +107,34 @@ test('detail/list mismatch, missing lines and repeated pages block a complete pr
   assert.equal(parseDesjardinsPages([{ ...page, details: [] }]).complete, false);
 });
 
+test('two autonomous passes in one login must agree before apply', () => {
+  const page = { histories: [history], details: [detail], hasNext: false };
+  const first = parseDesjardinsPages([page]);
+  const second = parseDesjardinsPages([page]);
+  assert.equal(confirmDesjardinsRepeat(first, second).complete, true);
+  assert.equal(confirmDesjardinsRepeat(first, { ...second, rows: [] }).complete, false);
+  assert.equal(confirmDesjardinsRepeat({ ...first, warnings: ['Missing row'], complete: false }, second).complete, false);
+});
+
+test('private auth storage excludes cookies for unrelated sites', () => {
+  const cookies = [{ domain: '.agea-gbim.dsf-dfs.com' }, { domain: 'www.agea-gbim.dsf-dfs.com' },
+    { domain: 'id.desjardins.com' }, { domain: '.dsf-dfs.com' }, { domain: 'unrelated.example' }];
+  assert.deepEqual(desjardinsAuthCookies(cookies), cookies.slice(0, 4));
+});
+
 test('health and dental grid variants keep the claimed and reimbursed columns aligned', () => {
   const group = span => ({ cells: ['Kevin, Numéro de réclamation: 987654321'], colspans: [span] });
+  const seven = [group(7), { cells: ['Service Z', '2024‑02‑03', '2024‑02‑03', '30,00', '80%', '6,00', '24,00'], colspans: Array(7).fill(1) }];
   const eight = [group(8), { cells: ['Service A', '2024‑02‑03', '2024‑02‑03', '25,00', '25,00', '80%', '5,00', '20,00'], colspans: Array(8).fill(1) }];
   const ten = [group(10), { cells: ['Service B', '2024‑02‑03', '2024‑02‑03', '50,00', '50,00', '80%', '10,00', '40,00', '5,00', 'CODE'], colspans: Array(10).fill(1) }];
-  const eleven = [group(11), { cells: ['Tooth', 'Service C', '2024‑02‑03', '2024‑02‑03', '75,00', '75,00', '80%', '15,00', '60,00', '5,00', 'CODE'], colspans: Array(11).fill(1) }];
-  for (const [rows, paid, submitted, service] of [[eight, 20, 25, 'Service A'], [ten, 40, 50, 'Service B'], [eleven, 60, 75, 'Service C']]) {
+  const eleven = [group(11), { cells: ['Service C', '12345', '2024‑02‑03', '2024‑02‑03', '75,00', '75,00', '80%', '15,00', '60,00', '5,00', 'CODE'], colspans: Array(11).fill(1) }];
+  for (const [rows, paid, submitted, service] of [[seven, 24, 30, 'Service Z'], [eight, 20, 25, 'Service A'], [ten, 40, 50, 'Service B'], [eleven, 60, 75, 'Service C']]) {
     const parsed = parseDesjardinsDetail({ ...history, paid: `${paid},00 $` }, rows);
     assert.deepEqual(parsed.warnings, []);
     assert.equal(parsed.rows[0].paid, paid);
     assert.equal(parsed.rows[0].submitted, submitted);
     assert.equal(parsed.rows[0].service, service);
   }
+  const unclear = [group(11), { cells: ['Service A', 'Service B', '2024‑02‑03', '2024‑02‑03', '75,00', '75,00', '80%', '15,00', '60,00', '5,00', 'CODE'], colspans: Array(11).fill(1) }];
+  assert.match(parseDesjardinsDetail({ ...history, paid: '60,00 $' }, unclear).warnings.join(' '), /incomplete or inconsistent/);
 });

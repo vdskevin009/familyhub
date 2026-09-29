@@ -1,19 +1,23 @@
 import { createHash, randomUUID } from "node:crypto";
 import { mkdir, open, readFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
-import type { Page } from "playwright";
+import type { Cookie, Page } from "playwright";
 import { calendarDate, memberName } from "./healthcare-evidence.js";
-import { dataDirectory } from "./private-store.js";
+import { dataDirectory, loadPrivate, savePrivate } from "./private-store.js";
 import { desjardinsIdentity, type DesjardinsCollection, type DesjardinsRow } from "./desjardins.js";
 
 export const desjardinsPrivateDirectory = join(dataDirectory, "desjardins");
 export const desjardinsProfileDirectory = join(desjardinsPrivateDirectory, "browser-profile");
 export const desjardinsSnapshotDirectory = join(desjardinsPrivateDirectory, "snapshots");
+export const desjardinsAuthPath = join(desjardinsPrivateDirectory, "auth-state.dpapi");
 export const desjardinsCollectorVersion = 1;
 const origin = "https://www.agea-gbim.dsf-dfs.com";
 const loginUrl = `${origin}/AGEA-GBIM/Athntfctn/Authentification_Authentication.aspx?bhcp=1&cltr=fr-CA`;
 const historyUrl = `${origin}/AGEA-GBIM/Rclmtn/RclmtnTrt/HistoriqueReclamation_ClaimHistory.aspx`;
 const historyTable = "table.tableau-donnees";
+
+export const desjardinsAuthCookies = <T extends { domain: string }>(cookies: T[]): T[] => cookies.filter(cookie =>
+  /(?:^|\.)(?:desjardins\.com|dsf-dfs\.com)$/i.test(cookie.domain.replace(/^\./, "")));
 
 export type PortalTableRow = { cells: string[]; colspans: number[] };
 export type PortalHistoryRow = { date: string; method: string; paid: string; category: string; hasDetail: boolean };
@@ -27,16 +31,33 @@ const money = (value: string): number | null => {
   return Number.isFinite(result) && result >= 0 && result < 1e9 ? result : null;
 };
 const cents = (value: number) => Math.round(value * 100);
-const member = (value: string): DesjardinsRow["member"] => {
+export const desjardinsNameCandidates = (value: string, knownSurname: (word: string) => boolean): string[] => {
   const normalized = clean(value).replace(/[,;:]+/g, " ").replace(/\s+/g, " ").trim();
   const words = normalized.split(" ");
   // The portal uses surname-first headings and sometimes includes extra given names.
   // Every candidate must still pass the existing exact household-name recognizer.
   const candidates = [normalized];
   if (words.length > 1) candidates.push(`${words.slice(1).join(" ")} ${words[0]}`, `${words[1]} ${words[0]}`);
+  if (words.length === 3) {
+    // The middle token can be a second given name while the outer pair is an
+    // exact known two-token beneficiary (in either portal ordering).
+    candidates.push(`${words[0]} ${words[2]}`, `${words[2]} ${words[0]}`);
+    // A known household surname can surround two given names in either order.
+    // Never drop an unrecognized surname to make a beneficiary appear to match.
+    if (knownSurname(words[0])) candidates.push(words[1], `${words[1]} ${words[2]}`);
+    if (knownSurname(words[2])) candidates.push(words[0], `${words[0]} ${words[1]}`, `${words[0]} ${words[2]}`);
+  }
+  return [...new Set(candidates)];
+};
+const member = (value: string): DesjardinsRow["member"] => {
+  const candidates = desjardinsNameCandidates(value, word => memberName(`Kevin ${word}`) === "Kevin");
   const recognized = new Set(candidates.map(memberName).filter(result => result !== "unknown"));
   return recognized.size === 1 ? [...recognized][0] : "unknown";
 };
+const memberPattern = (value: string): string => clean(value).replace(/[,;:]+/g, " ").split(/\s+/)
+  .map(word => memberName(word) !== "unknown" ? "given"
+    : memberName(`Kevin ${word}`) === "Kevin" ? "household-surname"
+      : memberName(`Jasmine ${word}`) === "Jasmine" ? "known-middle" : "other").join("/");
 
 /** Pure parser for the portal's variable-width service grid. A malformed row blocks apply. */
 export function parseDesjardinsDetail(history: PortalHistoryRow, detail: PortalTableRow[]): { rows: DesjardinsRow[]; warnings: string[] } {
@@ -56,17 +77,22 @@ export function parseDesjardinsDetail(history: PortalHistoryRow, detail: PortalT
       claimId = match?.[1] || "";
       claimMember = member(name);
       line = 0;
-      if (!claimId || claimMember === "unknown") warnings.push("Claim identity or member was not recognized.");
+      if (!claimId || claimMember === "unknown")
+        warnings.push(`Claim identity or member was not recognized (name shape: ${memberPattern(name)}).`);
       continue;
     }
     const firstDate = [1, 2].find(index => date(cells[index] ?? "") && date(cells[index + 1] ?? ""));
-    if (cells.length >= 8 && cells.length <= 11 && firstDate !== undefined) {
+    if (cells.length >= 7 && cells.length <= 11 && firstDate !== undefined) {
       line++;
       const serviceDate = date(cells[firstDate]);
       const endDate = date(cells[firstDate + 1]);
       const submitted = money(cells[firstDate + 2]);
-      const paid = money(cells[firstDate + 6]);
-      const service = cells[firstDate - 1];
+      // The older seven-column health grid omits one intermediate benefit column.
+      const paid = money(cells[firstDate + (cells.length === 7 ? 5 : 6)]);
+      // Dental rows can place a procedure/tooth code between the description and dates.
+      // A numeric code is not a service label; retain the descriptive cell only.
+      const labels = cells.slice(0, firstDate).filter(label => /\p{L}/u.test(label) && !/^\d+$/.test(label));
+      const service = labels.length === 1 ? labels[0] : "";
       if (!claimId || claimMember === "unknown" || !serviceDate || !endDate || !service
         || submitted == null || paid == null || paid > submitted || endDate < serviceDate) {
         warnings.push("A claim service line is incomplete or inconsistent.");
@@ -110,6 +136,17 @@ export function parseDesjardinsPages(pages: Array<{ histories: PortalHistoryRow[
     pageCount: pages.length, rows, warnings, complete: warnings.length === 0 };
 }
 
+/** Both passes must describe the same complete history before either can be applied. */
+export function confirmDesjardinsRepeat(first: DesjardinsCollection, second: DesjardinsCollection): DesjardinsCollection {
+  const warnings = [
+    ...first.warnings.map(warning => `Pass 1: ${warning}`),
+    ...second.warnings.map(warning => `Pass 2: ${warning}`)
+  ];
+  if (first.pageCount !== second.pageCount || JSON.stringify(first.rows) !== JSON.stringify(second.rows))
+    warnings.push("Consecutive Desjardins previews differ; collection must be reviewed.");
+  return { ...second, warnings, complete: warnings.length === 0 };
+}
+
 async function tableRows(page: Page): Promise<PortalTableRow[]> {
   return page.locator(`${historyTable} tbody tr`).evaluateAll(rows => rows.map(row => ({
     cells: Array.from(row.querySelectorAll(":scope > td")).map(cell => cell.textContent?.replace(/\s+/g, " ").trim() || ""),
@@ -137,7 +174,7 @@ async function nextControl(page: Page, number: number) {
 }
 
 /** Visible login and MFA are always performed by the operator. The collector only reads history. */
-export async function collectDesjardinsPortal(interactive = false): Promise<{
+export async function collectDesjardinsPortal(interactive = false, passes = 1): Promise<{
   status: "success" | "login-required"; collection?: DesjardinsCollection; snapshotPath?: string;
 }> {
   await mkdir(desjardinsProfileDirectory, { recursive: true, mode: 0o700 });
@@ -147,6 +184,18 @@ export async function collectDesjardinsPortal(interactive = false): Promise<{
     headless: !interactive, acceptDownloads: false, serviceWorkers: "block"
   });
   try {
+    if (process.platform === "win32") {
+      try {
+        const saved = await loadPrivate<{ cookies: Cookie[]; session?: { origin: string; values: Record<string, string> } }>(desjardinsAuthPath);
+        await context.addCookies(desjardinsAuthCookies(saved.cookies));
+        if (saved.session?.origin === origin && saved.session.values && typeof saved.session.values === "object")
+          await context.addInitScript(({ expectedOrigin, values }) => {
+            if (location.origin !== expectedOrigin) return;
+            for (const [key, value] of Object.entries(values))
+              if (typeof value === "string" && !sessionStorage.getItem(key)) sessionStorage.setItem(key, value);
+          }, { expectedOrigin: origin, values: saved.session.values });
+      } catch { /* Missing or expired browser state falls back to the visible login. */ }
+    }
     const page = context.pages()[0] ?? await context.newPage();
     await page.goto(interactive ? loginUrl : historyUrl, { waitUntil: "domcontentloaded", timeout: 45_000 });
     const table = page.locator(historyTable);
@@ -157,8 +206,33 @@ export async function collectDesjardinsPortal(interactive = false): Promise<{
     if (!await table.isVisible().catch(() => false)) return { status: "login-required" };
     if (!page.url().startsWith(origin) || !/HistoriqueReclamation_ClaimHistory\.aspx/i.test(page.url()))
       return { status: "login-required" };
+    let authWarning = "";
+    if (process.platform === "win32") {
+      try {
+        const cookies = desjardinsAuthCookies(await context.cookies());
+        const session = await page.evaluate(() => ({ origin: location.origin,
+          values: Object.fromEntries(Array.from({ length: sessionStorage.length }, (_, index) => {
+            const key = sessionStorage.key(index)!;
+            return [key, sessionStorage.getItem(key) || ""];
+          })) }));
+        if (cookies.length && session.origin === origin && Object.keys(session.values).length <= 100
+          && JSON.stringify(session.values).length <= 100_000)
+          await savePrivate(desjardinsAuthPath, { cookies, session });
+        else authWarning = "Desjardins session cookies were unavailable for repeat previews.";
+      } catch { authWarning = "Desjardins session could not be saved for repeat previews."; }
+    }
 
-    const warnings: string[] = [];
+    if (passes !== 1 && passes !== 2) throw new Error("Desjardins supports one or two manual preview passes.");
+    let firstCollection: DesjardinsCollection | undefined;
+    let collection: DesjardinsCollection | undefined;
+    for (let pass = 0; pass < passes; pass++) {
+    if (pass) {
+      await page.goto(historyUrl, { waitUntil: "domcontentloaded", timeout: 45_000 });
+      await table.waitFor({ state: "visible", timeout: 30_000 });
+      if (!page.url().startsWith(origin) || !/HistoriqueReclamation_ClaimHistory\.aspx/i.test(page.url()))
+        throw new Error("Desjardins session expired between preview passes.");
+    }
+    const warnings: string[] = authWarning ? [authWarning] : [];
     const patient = page.locator("select[id$='cbPour']");
     const category = page.locator("select[id$='cbCategorie']");
     const pageSize = page.locator("select[id$='cbNbResltRechr']");
@@ -208,7 +282,11 @@ export async function collectDesjardinsPortal(interactive = false): Promise<{
       } catch { warnings.push("Claims pagination failed."); break; }
     }
     if (pages.length === 100 && pages.at(-1)?.hasNext) warnings.push("Claims pagination exceeded 100 pages.");
-    const collection = parseDesjardinsPages(pages, warnings);
+    const current = parseDesjardinsPages(pages, warnings);
+    if (firstCollection) collection = confirmDesjardinsRepeat(firstCollection, current);
+    else { firstCollection = current; collection = current; }
+    }
+    if (!collection) throw new Error("No Desjardins preview was collected.");
     await mkdir(desjardinsSnapshotDirectory, { recursive: true, mode: 0o700 });
     const snapshotPath = join(desjardinsSnapshotDirectory, `${collection.collectedAt.replace(/[:.]/g, "-")}-${randomUUID()}.json`);
     const file = await open(snapshotPath, "wx", 0o600);

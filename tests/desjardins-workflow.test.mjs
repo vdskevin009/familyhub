@@ -36,6 +36,10 @@ test('real invoice workflow previews without edits, then applies once from a pri
     const manualBytes = await readFile(join(dir, 'invoices.json'));
     const repeatPreview = await syncDesjardinsPortal(false, false, async () => ({ status: 'success', collection, snapshotPath: path }));
     assert.deepEqual([repeatPreview.new, repeatPreview.unchanged], [0, 1]);
+    const login = await syncDesjardinsPortal(false, false, async () => ({ status: 'login-required' }));
+    assert.equal(login.status, 'login-required');
+    assert.equal(getDesjardinsStatus().applicable, false);
+    await syncDesjardinsPortal(false, false, async () => ({ status: 'success', collection, snapshotPath: path }));
     const repeat = await syncDesjardinsPortal(true);
     assert.deepEqual([repeat.new, repeat.changed, repeat.unchanged], [0, 0, 1]);
     assert.deepEqual(await readFile(join(dir, 'invoices.json')), manualBytes);

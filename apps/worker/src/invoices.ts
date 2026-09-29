@@ -175,7 +175,7 @@ export async function syncDesjardinsPortal(apply = false, interactive = false, c
   desjardinsBusy = true;
   try {
     if (apply) await initializeDesjardinsStatus();
-    await saveDesjardinsStatus({ lastAttempt: new Date().toISOString(), state: "syncing", error: undefined });
+    await saveDesjardinsStatus({ lastAttempt: new Date().toISOString(), state: "syncing", error: undefined, applicable: false });
     // Apply consumes the most recent immutable preview. Desjardins often requires a new MFA
     // challenge for a fresh browser process; never rerun a live collection behind "Apply".
     const result = apply
@@ -200,9 +200,10 @@ export async function syncDesjardinsPortal(apply = false, interactive = false, c
         else state.items[index] = item;
       }
     });
-    await saveDesjardinsStatus({ state: errors ? "error" : !apply && (plan.new || plan.changed || plan.ambiguous) ? "idle" : "up-to-date",
-      lastSuccess: errors ? desjardinsStatus.lastSuccess : collection.collectedAt,
-      found: plan.found, error: errors ? `${errors} claim-detail warnings; inspect the private snapshot before applying.` : undefined,
+    await saveDesjardinsStatus({ state: errors || plan.ambiguous ? "error" : !apply && (plan.new || plan.changed) ? "idle" : "up-to-date",
+      lastSuccess: errors || plan.ambiguous ? desjardinsStatus.lastSuccess : collection.collectedAt,
+      found: plan.found, error: errors ? `${errors} claim-detail warnings; inspect the private snapshot before applying.`
+        : plan.ambiguous ? `${plan.ambiguous} Desjardins claim rows require review; no data was applied.` : undefined,
       previewSnapshot: apply ? undefined : result.snapshotPath,
       previewAt: apply ? undefined : collection.collectedAt,
       applicable: !apply && collection.complete && plan.ambiguous === 0 });

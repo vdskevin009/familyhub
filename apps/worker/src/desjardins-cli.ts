@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { initializeInvoices, initializeDesjardinsStatus, syncDesjardinsPortal } from "./invoices.js";
-import { desjardinsProfileDirectory, desjardinsSnapshotDirectory } from "./desjardins-collector.js";
+import { collectDesjardinsPortal, desjardinsProfileDirectory, desjardinsSnapshotDirectory } from "./desjardins-collector.js";
 import { dataDirectory } from "./private-store.js";
 
 async function applyThroughWorker(): Promise<Awaited<ReturnType<typeof syncDesjardinsPortal>>> {
@@ -27,9 +27,9 @@ async function applyThroughWorker(): Promise<Awaited<ReturnType<typeof syncDesja
 }
 
 const args = process.argv.slice(2);
-if (args.some(arg => !["--dry-run", "--apply", "--login"].includes(arg))
-  || args.includes("--apply") && (args.includes("--dry-run") || args.includes("--login"))) {
-  console.error("Usage: npm run collect:desjardins -- [--dry-run | --apply] [--login]");
+if (args.some(arg => !["--dry-run", "--apply", "--login", "--repeat"].includes(arg))
+  || args.includes("--apply") && (args.includes("--dry-run") || args.includes("--login") || args.includes("--repeat"))) {
+  console.error("Usage: npm run collect:desjardins -- [--dry-run | --apply] [--login] [--repeat]");
   process.exitCode = 2;
 } else {
   try {
@@ -37,13 +37,16 @@ if (args.some(arg => !["--dry-run", "--apply", "--login"].includes(arg))
       await initializeInvoices(true);
       await initializeDesjardinsStatus();
     }
-    const result = args.includes("--apply") ? await applyThroughWorker() : await syncDesjardinsPortal(false, args.includes("--login"));
+    const result = args.includes("--apply") ? await applyThroughWorker()
+      : await syncDesjardinsPortal(false, args.includes("--login"),
+        interactive => collectDesjardinsPortal(interactive, args.includes("--repeat") ? 2 : 1));
     if (result.status === "login-required") {
       console.log("Desjardins login required. Run again with --login on the PC and complete the visible MFA flow.");
       process.exitCode = 2;
     } else {
       console.log(`Desjardins sync ${result.applied ? "apply" : "preview"}`);
       console.log(`Rows found: ${result.found}\nAlready known: ${result.unchanged}\nNew: ${result.new}\nChanged: ${result.changed}\nAmbiguous: ${result.ambiguous}\nDuplicates: ${result.duplicates}\nErrors: ${result.errors}`);
+      if (args.includes("--repeat")) console.log(result.complete ? "Two consecutive portal passes agreed." : "Two-pass verification did not pass.");
       if (result.warnings.length) console.log(`First warnings: ${result.warnings.join(" ")}${result.errors > result.warnings.length ? ` (and ${result.errors - result.warnings.length} more in the private snapshot)` : ""}`);
       console.log(`Browser profile: ${desjardinsProfileDirectory}\nSnapshots: ${desjardinsSnapshotDirectory}`);
       if (!result.applied) console.log("No FamilyHub invoice data was modified. Explicit apply uses this private preview for up to 24 hours.");
