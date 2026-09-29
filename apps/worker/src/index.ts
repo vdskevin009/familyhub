@@ -4,7 +4,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { Codex } from "@openai/codex-sdk";
-import { initializeInvoices, initializeBlueCrossStatus, getBlueCrossStatus, syncBlueCrossPortal, invoiceSnapshot, collectInvoices, correctInvoice, updateInvoiceStatus, undoInvoiceDecision, invoiceAttachment, importBlueCrossMessages, setExpenseIgnored, setManualMatch, setMatchDecision, setReimbursementWorkflowStatus, setUnmatchedIgnored } from "./invoices.js";
+import { initializeInvoices, initializeBlueCrossStatus, getBlueCrossStatus, syncBlueCrossPortal, initializeDesjardinsStatus, getDesjardinsStatus, syncDesjardinsPortal, invoiceSnapshot, collectInvoices, correctInvoice, updateInvoiceStatus, undoInvoiceDecision, invoiceAttachment, importBlueCrossMessages, setExpenseIgnored, setManualMatch, setMatchDecision, setReimbursementWorkflowStatus, setUnmatchedIgnored } from "./invoices.js";
 
 type WorkerTaskType = "general" | "meal-plan" | "research" | "financial-review" | "admin-classify";
 type WorkerTask = {
@@ -30,7 +30,7 @@ type ResearchWatch = {
 };
 type PersistedState = { watches: ResearchWatch[] };
 
-const version = "2.9.0";
+const version = "2.10.0";
 const host = process.env.FAMILYHUB_WORKER_HOST?.trim() || "127.0.0.1";
 const port = Number(process.env.FAMILYHUB_WORKER_PORT || "4713");
 const stateDir = process.env.FAMILYHUB_WORKER_DATA?.trim() || join(homedir(), ".familyhub-worker");
@@ -209,6 +209,17 @@ const server = createServer(async (request, response) => {
 
   const parts = pathParts(request.url);
   try {
+    if (parts[0] === "desjardins" && parts[1] === "status" && parts.length === 2 && request.method === "GET") {
+      const { previewSnapshot: _previewSnapshot, ...status } = getDesjardinsStatus();
+      json(response, 200, status, origin); return;
+    }
+    if (parts[0] === "desjardins" && parts[1] === "sync" && parts.length === 2 && request.method === "POST") {
+      const body = await readJson<{ apply?: unknown }>(request);
+      if (typeof body.apply !== "boolean") throw new Error("Provide a boolean apply flag.");
+      const result = await syncDesjardinsPortal(body.apply);
+      const { snapshotPath: _snapshotPath, backup: _backup, ...publicResult } = result;
+      json(response, 200, publicResult, origin); return;
+    }
     if (parts[0] === "bluecross" && parts[1] === "status" && parts.length === 2 && request.method === "GET") {
       json(response, 200, getBlueCrossStatus(), origin); return;
     }
@@ -357,6 +368,7 @@ const server = createServer(async (request, response) => {
 await ensureState();
 await initializeInvoices();
 await initializeBlueCrossStatus();
+await initializeDesjardinsStatus();
 server.listen(port, host, () => {
   console.log("");
   console.log("FamilyHub local worker");

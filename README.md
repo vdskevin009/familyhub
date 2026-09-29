@@ -116,6 +116,20 @@ A portal row marked **Pended** remains a claim with an unknown payment. It is ex
 
 Before enabling any future scheduling, manually confirm an accurate first preview, an immediate repeat, explicit apply, and repeated apply against the real local worker. Check Claims and **À réconcilier**, and confirm previous manual decisions remain intact. Portal layout and authentication require live validation; tests use only fictitious records.
 
+## Manual Desjardins portal collection
+
+Issue #36 / FH-REIMB-033 adds a separate, read-only collector for **Historique → Réclamations traitées** in the Desjardins group-insurance portal. It has **no nightly schedule**. On the PC running the worker, set `FAMILYHUB_WORKER_DATA` to the installed worker's existing private data directory and run:
+
+```sh
+npm install
+npm run collect:desjardins -- --dry-run --login
+npm run collect:desjardins -- --apply
+```
+
+On Windows, the visible login uses installed Microsoft Edge because Chrome may fail to launch on this PC. Complete login, profile selection, MFA and dossier selection yourself; then open **Historique → Réclamations traitées**. The collector reads all-patient/all-category results, opens claim details and checks service-line reimbursements against each list payment. It cannot submit claims. If the session expires, rerun `--dry-run --login`.
+
+The browser profile and immutable fact snapshots live under `<FAMILYHUB_WORKER_DATA>/desjardins/`, outside Git. A dry-run writes only its private snapshot and status, never `invoices.json`. The explicit `--apply` command asks the running localhost worker to use the latest complete, unambiguous preview (up to 24 hours old), makes a ledger backup and preserves existing sources and manual decisions. It does not launch another browser or MFA challenge. Existing Excel/report rows are counted as known only on an exact member, service date, service description, submitted amount and paid amount; near matches block apply for review. The paired Claims view shows Desjardins status and manual preview/apply actions. Do not enable scheduling until repeated real previews, apply, second apply and phone checks pass.
+
 ## Gmail and Google Drive
 
 FamilyHub ships with its public Google OAuth web client ID. Keep the Gmail API enabled and the GitHub Pages origin allowed in the Google consent/client configuration.
