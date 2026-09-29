@@ -1,5 +1,5 @@
-import { useMemo, useState } from "react";
-import { CalendarDays, CircleDollarSign, FileText, HeartHandshake, Home, Mail, MoreHorizontal, ShieldCheck } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { CalendarDays, CircleDollarSign, Download, FileText, HeartHandshake, Home, Mail, MoreHorizontal, ShieldCheck } from "lucide-react";
 import { viewFromQuery } from "./domain";
 import { useFamilyHubState } from "./state";
 import type { AppView } from "./types";
@@ -10,6 +10,16 @@ import PlanView from "./views/PlanView";
 import MoneyView from "./views/MoneyView";
 import MoreView from "./views/MoreView";
 import DocumentLibraryView from "./views/DocumentLibraryView";
+
+type BeforeInstallPromptEvent = Event & {
+  prompt: () => Promise<void>;
+  userChoice: Promise<{ outcome: "accepted" | "dismissed"; platform: string }>;
+};
+
+function runningStandalone(): boolean {
+  return window.matchMedia?.("(display-mode: standalone)").matches
+    || Boolean((navigator as Navigator & { standalone?: boolean }).standalone);
+}
 
 const nav: Array<{ id: AppView; label: string; icon: typeof Home }> = [
   { id: "reimbursements", label: "Claims", icon: HeartHandshake },
@@ -30,10 +40,40 @@ export default function App() {
   const state = useFamilyHubState();
   const [view, setView] = useState<AppView>(viewFromQuery());
   const [commandOpen, setCommandOpen] = useState(false);
+  const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
+  const [installed, setInstalled] = useState(() => runningStandalone());
 
   const todayLabel = useMemo(() => new Intl.DateTimeFormat(undefined, {
     weekday: "long", month: "long", day: "numeric"
   }).format(new Date()), []);
+
+  useEffect(() => {
+    const onPrompt = (event: Event) => {
+      const promptEvent = event as BeforeInstallPromptEvent;
+      promptEvent.preventDefault();
+      setInstallPrompt(promptEvent);
+    };
+    const onInstalled = () => {
+      setInstalled(true);
+      setInstallPrompt(null);
+    };
+    window.addEventListener("beforeinstallprompt", onPrompt);
+    window.addEventListener("appinstalled", onInstalled);
+    return () => {
+      window.removeEventListener("beforeinstallprompt", onPrompt);
+      window.removeEventListener("appinstalled", onInstalled);
+    };
+  }, []);
+
+  async function installApp() {
+    if (!installPrompt) return;
+    await installPrompt.prompt();
+    const choice = await installPrompt.userChoice;
+    if (choice.outcome === "accepted") {
+      setInstalled(true);
+      setInstallPrompt(null);
+    }
+  }
 
   const navigate = (next: AppView) => {
     setView(next);
@@ -67,6 +107,9 @@ export default function App() {
             <div className="app-kicker">{todayLabel}</div>
             <strong>FamilyHub</strong>
           </div>
+          {!installed && installPrompt && <button type="button" className="header-install-button" onClick={() => void installApp()}>
+            <Download size={15} /> Install app
+          </button>}
         </header>
 
         <main className="app-main">
@@ -79,7 +122,7 @@ export default function App() {
           {view === "other" && <section className="view-stack"><div className="section-heading"><div><h1>Other</h1><p>Your household tools are still here whenever you need them.</p></div></div><div className="other-grid">{otherViews.map(item => { const Icon = item.icon; return <button key={item.id} className="other-link" onClick={() => navigate(item.id)}><Icon size={22} /><span><strong>{item.label}</strong><small>{item.description}</small></span></button>; })}</div></section>}
           {view === "plan" && <PlanView hub={state} />}
           {view === "money" && <MoneyView hub={state} />}
-          {view === "more" && <MoreView hub={state} />}
+          {view === "more" && <MoreView hub={state} installAvailable={Boolean(installPrompt)} installed={installed} onInstall={() => void installApp()} />}
         </main>
       </div>
 
