@@ -106,8 +106,10 @@ export async function collectBlueCrossPortal(interactive = false): Promise<{ sta
       const label = (await option.textContent())?.trim() || "";
       const input = combo.locator("input.rcbInput");
       if (await input.inputValue() === label) return true;
-      await combo.locator("a[id$='_Arrow']").click();
-      await option.click();
+      try {
+        await combo.locator("a[id$='_Arrow']").click();
+        await option.click();
+      } catch { return false; }
       filtersChanged = true;
       return true;
     };
@@ -130,9 +132,13 @@ export async function collectBlueCrossPortal(interactive = false): Promise<{ sta
       }
     }
     if (filtersChanged) {
-      await page.getByRole("button", { name: /^Apply$/i }).click();
-      await page.waitForLoadState("networkidle", { timeout: 30_000 });
-      await claims.waitFor({ state: "visible", timeout: 30_000 });
+      const previous = await claims.evaluate(element => element.outerHTML);
+      const refreshed = await page.getByRole("button", { name: /^Apply$/i }).click()
+        .then(() => page.waitForFunction(
+          oldTable => document.querySelector("table[id*='grdClaimsGrid']")?.outerHTML !== oldTable,
+          previous, { timeout: 30_000 }
+        )).then(() => true).catch(() => false);
+      if (!refreshed) warning += `${warning ? " " : ""}Claims did not visibly refresh after changing the history filters.`;
     }
     const pages: PortalPage[] = [];
     for (let index = 0; index < 100; index++) {
