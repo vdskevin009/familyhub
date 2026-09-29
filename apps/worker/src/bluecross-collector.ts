@@ -87,14 +87,35 @@ export async function collectBlueCrossPortal(interactive = false): Promise<{ sta
     }
     if (!await claims.isVisible().catch(() => false)) await openHistory();
     if (interactive) {
-      const deadline = Date.now() + 300_000;
+      const deadline = Date.now() + 600_000;
       while (!await claims.isVisible().catch(() => false) && Date.now() < deadline) {
         await openHistory().catch(() => {});
         if (!await claims.isVisible().catch(() => false)) await page.waitForTimeout(2000);
       }
       if (!await claims.isVisible().catch(() => false)) return { status: "login-required" };
     } else if (!await claims.isVisible().catch(() => false)) return { status: "login-required" };
-    // Only change read-only history filters when the portal exposes a clearly named native select.
+    let warning = "";
+    let filtersChanged = false;
+    // The current portal uses Telerik combo boxes, not native selects. Force the widest
+    // available window and all covered lives before trusting its grand total.
+    const setPortalCombo = async (suffix: string, desired: RegExp): Promise<boolean> => {
+      const combo = page.locator(`div[id$='${suffix}']`);
+      if (await combo.count() !== 1) return false;
+      const option = combo.locator("li.rcbItem").filter({ hasText: desired }).first();
+      if (!await option.count()) return false;
+      const label = (await option.textContent())?.trim() || "";
+      const input = combo.locator("input.rcbInput");
+      if (await input.inputValue() === label) return true;
+      await combo.locator("a[id$='_Arrow']").click();
+      await option.click();
+      filtersChanged = true;
+      return true;
+    };
+    if (!await setPortalCombo("ddlFilterCoveredLife", /^All Covered Lives$/i))
+      warning = "All covered lives could not be selected.";
+    if (!await setPortalCombo("ddlFilterShowClaimsWithin", /^24 Months$/i))
+      warning += `${warning ? " " : ""}The widest claims history range could not be selected.`;
+    // Retain support for a native-select version of the same read-only filters.
     for (const filter of await page.locator("select").all()) {
       const details = await filter.evaluate(element => ({
         label: [element.getAttribute("aria-label"), ...(Array.from((element as HTMLSelectElement).labels || []).map(label => label.textContent))].join(" "),
@@ -103,16 +124,23 @@ export async function collectBlueCrossPortal(interactive = false): Promise<{ sta
       if (!/date|range|period|claim type|individual|member/i.test(details.label)) continue;
       const widest = details.options.find(option => /^all(?: claims| dates| members)?$/i.test(option.label))
         ?? details.options.find(option => /^(?:last )?(?:24 months|2 years)$/i.test(option.label));
-      if (widest) await filter.selectOption(widest.value);
+      if (widest && await filter.inputValue() !== widest.value) {
+        await filter.selectOption(widest.value);
+        filtersChanged = true;
+      }
+    }
+    if (filtersChanged) {
+      await page.getByRole("button", { name: /^Apply$/i }).click();
+      await page.waitForLoadState("networkidle", { timeout: 30_000 });
+      await claims.waitFor({ state: "visible", timeout: 30_000 });
     }
     const pages: PortalPage[] = [];
-    let warning = "";
     for (let index = 0; index < 100; index++) {
       try {
         await claims.waitFor({ state: "visible", timeout: 30_000 });
         const html = await claims.evaluate(element => element.outerHTML);
-        const next = page.getByRole("link", { name: /^(next|next page|suivant|>)$/i }).first();
-        const nextButton = page.getByRole("button", { name: /^(next|next page|suivant|>)$/i }).first();
+        const next = page.getByRole("link", { name: /^(next|next page|suivant)\s*»?$/i }).first();
+        const nextButton = page.locator("input.btn-next[id*='grdClaimsPageButton']").first();
         const numeric = claims.locator("tfoot a").filter({ hasText: new RegExp(`^${index + 2}$`) }).first();
         const control = await next.count() ? next : await nextButton.count() ? nextButton : numeric;
         const hasNext = await control.count() > 0 && await control.isVisible() && await control.isEnabled()
@@ -122,11 +150,12 @@ export async function collectBlueCrossPortal(interactive = false): Promise<{ sta
         await control.click();
         await page.waitForFunction(previous => document.querySelector("table[id*='grdClaimsGrid']")?.outerHTML !== previous, html, { timeout: 30_000 });
       } catch {
-        warning = "Claims navigation failed; later pages were not collected.";
+        warning += `${warning ? " " : ""}Claims navigation failed; later pages were not collected.`;
         break;
       }
     }
-    if (pages.length === 100 && pages.at(-1)?.hasNext) warning = "Claims pagination exceeded 100 pages.";
+    if (pages.length === 100 && pages.at(-1)?.hasNext)
+      warning += `${warning ? " " : ""}Claims pagination exceeded 100 pages.`;
     const collection = parsePortalPages(pages, warning);
     const snapshotPath = await savePortalSnapshot(collection);
     return { status: "success", collection, snapshotPath };
