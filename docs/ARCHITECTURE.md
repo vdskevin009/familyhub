@@ -21,12 +21,10 @@ The PWA is the user-facing product. It owns navigation, local persistence, deter
 
 Primary areas:
 
-- **Today** — prioritizes a few actions/insights.
-- **Important Mail** — Gmail triage and document review, kept separate from reimbursement tracking.
-- **Reimbursements** — healthcare expense-to-insurer reconciliation and unmatched review.
-- **Plan** — meals, groceries, recipes and household tasks.
-- **Money** — spending imports, subscriptions and mortgage scenarios.
-- **More** — worker pairing, Drive archive settings, research watches and backup/restore.
+- **Claims** — default healthcare expense-to-insurer reconciliation and unmatched review.
+- **Invoices** — indexed expense document sources, without depending on reimbursement status.
+- **DJ / BC** — separate Desjardins and Blue Cross insurer source-record libraries.
+- **Other** — Today/Assistant, Important Mail, Plan, Money and settings/tools remain available.
 
 The app is deployable under `/familyhub/` and must remain installable as a PWA.
 

@@ -29,9 +29,17 @@ Rules:
 |---|---|---|---|
 | FH-001 | FamilyHub must be mobile-first and behave like an app/PWA rather than a dashboard-heavy website. | Verified | React/Vite PWA is the active web target. |
 | FH-002 | Every feature should primarily save time, prevent missed obligations, or reduce avoidable spending. | Accepted | Product-level decision. |
-| FH-003 | The default experience should surface a small set of useful actions in **Today / Assistant**, with secondary information one tap away. | Implemented | Today/Assistant exists as the primary experience. |
+| FH-003 | The default experience should surface a small set of useful actions in **Today / Assistant**, with secondary information one tap away. | Superseded | Superseded by FH-NAV-001 at Kevin's explicit request to focus the current product on claims; Today/Assistant remains available under Other. |
 | FH-004 | The UI must never claim that an external action succeeded unless it actually happened. | Accepted | Applies to purchases, claims, cancellations, unsubscribes, messages, bank connections and other external actions. |
 | FH-005 | FamilyHub should remain local-first/privacy-conscious and must not commit real family records, credentials, account exports or financial identifiers. | Verified | Current architecture keeps sensitive state local and explicitly excludes secrets from backup/repo. |
+
+## Claims-first navigation and source libraries
+
+| ID | Requirement | Status | Implementation notes |
+|---|---|---|---|
+| FH-NAV-001 | Claims is the default page and retains its current alerts, reconciliation, actions and detail. The primary navigation is Claims, Invoices, DJ, BC and Other. Other gives access to Today/Assistant, Important mail, Plan, Money, settings and the remaining existing tools without removing their behavior. | Implemented | Issue #83; `App.tsx` and `viewFromQuery` set Claims as the root and keep existing query links to secondary pages. Phone visual acceptance pending. |
+| FH-DOCS-001 | Invoices lists all indexed expense invoice/receipt/bill source documents regardless of reimbursement or claim status. An insurer statement must never become an invoice. Show source-owned PDFs only where an actual PDF exists, with clear missing-file and offline states. | Implemented | Issue #83; read-only `DocumentLibraryView` uses the existing `/invoices` snapshot, source role/type and attachment metadata. No Gmail collection, repair or worker change. Phone PDF opening remains pending. |
+| FH-DOCS-002 | DJ and BC are separate browsable libraries for Desjardins and Blue Cross insurer source records, including imported BC rows. Present actual recorded amounts and source dates without inferring insurer order, payment or match state. Provide search and person/year/status filters in a mobile-friendly card layout. | Implemented | Issue #83; insurer role and insurer identity select source records, while match labels use actual assignment/unmatched IDs. Unknown amounts stay unrecorded. Phone visual acceptance pending. |
 
 ## Important Mail
 
@@ -129,6 +137,7 @@ Rules:
 
 - Issue #40: paired-phone visual acceptance remains separate from tests, private-source replay and installed-worker acceptance. Low-confidence or contradictory records remain reviewable.
 - Issues #70/#72/#73/#74: read-only replay and synthetic tests do not verify the installed worker after restart, actual collection/re-ingestion, or the paired PWA. Keep those acceptance gates open.
+- Issue #83: the new source libraries need paired-phone visual/PDF acceptance after deployment. Their indexed record list does not claim complete insurer portal coverage beyond imported sources.
 
 ## Decision log
 

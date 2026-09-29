@@ -320,7 +320,8 @@ export function buildAssistantContext(
 
 export const viewFromQuery = (): AppView => {
   const value = new URLSearchParams(location.search).get("view");
-  return value === "inbox" || value === "reimbursements" || value === "plan" || value === "money" || value === "more" ? value : "today";
+  return value === "today" || value === "inbox" || value === "invoices" || value === "desjardins" || value === "blue-cross"
+    || value === "other" || value === "plan" || value === "money" || value === "more" ? value : "reimbursements";
 };
 
 export const emptyMortgage = (): MortgageScenario => ({
