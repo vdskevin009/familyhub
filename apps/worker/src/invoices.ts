@@ -131,8 +131,8 @@ export async function syncBlueCrossPortal(apply = false, interactive = false, co
   } catch (error) {
     const message = error instanceof Error ? error.message : "";
     const safeMessage = /^Collection is incomplete or ambiguous/.test(message) ? message
-      : /spawn EPERM/i.test(message) ? "Windows blocked the local Blue Cross browser launch (spawn EPERM)."
-      : /executable doesn't exist|browser.*not installed/i.test(message) ? "Playwright Chromium is unavailable. Install it on the PC before syncing."
+      : /spawn (?:EPERM|UNKNOWN)/i.test(message) ? "Windows blocked the local Blue Cross browser launch. Check that installed Google Chrome can open on this PC."
+      : /executable doesn't exist|browser.*not installed/i.test(message) ? "Google Chrome is unavailable on this Windows PC, or Playwright Chromium is unavailable on this platform. Install the browser before syncing."
       : /timeout|net::|network/i.test(message) ? "Blue Cross portal navigation timed out or the network is unavailable."
       : "Blue Cross portal collection failed. Check the PC worker log.";
     await saveBlueCrossStatus({ state: "error", error: safeMessage });

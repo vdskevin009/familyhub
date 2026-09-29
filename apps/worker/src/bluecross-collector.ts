@@ -65,6 +65,9 @@ export async function collectBlueCrossPortal(interactive = false): Promise<{ sta
   await mkdir(blueCrossProfileDirectory, { recursive: true, mode: 0o700 });
   const { chromium } = await import("playwright");
   const context = await chromium.launchPersistentContext(blueCrossProfileDirectory, {
+    // The bundled Chromium can be blocked by Windows Application Control even when installed.
+    // Use the operator's installed Chrome on Windows for both visible login and later previews.
+    channel: process.platform === "win32" ? "chrome" : undefined,
     headless: !interactive, acceptDownloads: false, serviceWorkers: "block"
   });
   try {

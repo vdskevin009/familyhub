@@ -99,11 +99,12 @@ Issue #92 / FH-REIMB-032 adds a read-only collector to the local PC worker. It u
 
 ```sh
 npm install
-npx playwright install chromium
 npm run collect:bluecross -- --dry-run --login
 npm run collect:bluecross -- --dry-run
 npm run collect:bluecross -- --apply
 ```
+
+On Windows, the collector uses the PC's installed Google Chrome through Playwright; Chrome must be installed and launchable for this user. On other platforms, install Playwright Chromium first with `npx playwright install chromium`.
 
 Set `FAMILYHUB_WORKER_DATA` to the **same** private data directory used by the installed worker before these commands. `--apply` requires that updated worker to be running on localhost; the CLI sends the explicit apply request to it so a separate process cannot overwrite its live in-memory invoice state.
 
