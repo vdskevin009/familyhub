@@ -118,8 +118,8 @@ export async function collectBlueCrossPortal(interactive = false): Promise<{ sta
         if (!hasNext) break;
         await control.click();
         await page.waitForFunction(previous => document.querySelector("table[id*='grdClaimsGrid']")?.outerHTML !== previous, html, { timeout: 30_000 });
-      } catch (error) {
-        warning = `Claims navigation failed: ${error instanceof Error ? error.message : "network error"}`;
+      } catch {
+        warning = "Claims navigation failed; later pages were not collected.";
         break;
       }
     }
