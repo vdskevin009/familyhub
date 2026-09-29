@@ -130,6 +130,8 @@ On Windows, the visible login uses installed Microsoft Edge because Chrome may f
 
 The browser profile and immutable fact snapshots live under `<FAMILYHUB_WORKER_DATA>/desjardins/`, outside Git. A dry-run writes only its private snapshot and status, never `invoices.json`. The explicit `--apply` command asks the running localhost worker to use the latest complete, unambiguous preview (up to 24 hours old), makes a ledger backup and preserves existing sources and manual decisions. It does not launch another browser or MFA challenge. Existing Excel/report rows are counted as known on exact member, service date, service description, submitted amount and paid amount. A unique historical row with the same member/date/amounts and a long service label that is an exact prefix of the portal label can also be counted as known; this never changes the historical row or creates a global service alias. Other near matches block apply for review. The paired Claims view shows Desjardins status and manual preview/apply actions. Do not enable scheduling until repeated real previews, apply, second apply and phone checks pass.
 
+If a portal beneficiary uses a different legal name, an operator-confirmed **exact-name** mapping can be held in `<FAMILYHUB_WORKER_DATA>/desjardins/member-aliases.dpapi`. The mapping is encrypted for the Windows user and keyed by a normalized name fingerprint; no raw name or family-specific alias is committed. An unconfirmed name, invalid mapping or conflict with the normal name recognizer blocks apply.
+
 ## Gmail and Google Drive
 
 FamilyHub ships with its public Google OAuth web client ID. Keep the Gmail API enabled and the GitHub Pages origin allowed in the Google consent/client configuration.

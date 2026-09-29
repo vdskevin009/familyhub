@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { desjardinsIdentity, desjardinsInvoices, planDesjardinsUpsert } from '../apps/worker/dist/desjardins.js';
-import { confirmDesjardinsRepeat, desjardinsAuthCookies, desjardinsNameCandidates, parseDesjardinsDetail, parseDesjardinsPages } from '../apps/worker/dist/desjardins-collector.js';
+import { confirmDesjardinsRepeat, desjardinsAliasFingerprint, desjardinsAuthCookies, desjardinsNameCandidates, parseDesjardinsDetail, parseDesjardinsPages } from '../apps/worker/dist/desjardins-collector.js';
 
 const row = (patch = {}) => ({ member: 'Kevin', serviceDate: '2026-09-10', service: 'Physiotherapy',
   submitted: 100, paid: 80, statementDate: '2026-09-12', identity: desjardinsIdentity('claim-1', null, 1),
@@ -97,6 +97,18 @@ test('candidate generation keeps plausible three-word orders without inventing a
   assert.ok(candidates.includes('JANE MIDDLE'));
   assert.ok(candidates.includes('SMITH MIDDLE'));
   assert.ok(!desjardinsNameCandidates('OTHER JANE MIDDLE', word => word === 'SMITH').includes('JANE'));
+});
+
+test('only a privately confirmed exact beneficiary alias can resolve an unfamiliar portal name', () => {
+  const unfamiliar = detail.map(entry => ({ ...entry, cells: [...entry.cells] }));
+  unfamiliar[0].cells[0] = 'PSEUDONYM EXTRA JAS, Numéro de réclamation: 123456789';
+  assert.match(parseDesjardinsDetail(history, unfamiliar).warnings.join(' '), /not recognized/);
+  const aliases = { [desjardinsAliasFingerprint('PSEUDONYM EXTRA JAS')]: 'Jasmine' };
+  const confirmed = parseDesjardinsDetail(history, unfamiliar, aliases);
+  assert.deepEqual(confirmed.warnings, []);
+  assert.equal(confirmed.rows[0].member, 'Jasmine');
+  assert.match(parseDesjardinsDetail(history, detail,
+    { [desjardinsAliasFingerprint('Kevin')]: 'Jasmine' }).warnings.join(' '), /not recognized/);
 });
 
 test('detail/list mismatch, missing lines and repeated pages block a complete preview', () => {

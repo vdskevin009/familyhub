@@ -10,6 +10,7 @@ export const desjardinsPrivateDirectory = join(dataDirectory, "desjardins");
 export const desjardinsProfileDirectory = join(desjardinsPrivateDirectory, "browser-profile");
 export const desjardinsSnapshotDirectory = join(desjardinsPrivateDirectory, "snapshots");
 export const desjardinsAuthPath = join(desjardinsPrivateDirectory, "auth-state.dpapi");
+export const desjardinsMemberAliasesPath = join(desjardinsPrivateDirectory, "member-aliases.dpapi");
 export const desjardinsCollectorVersion = 1;
 const origin = "https://www.agea-gbim.dsf-dfs.com";
 const loginUrl = `${origin}/AGEA-GBIM/Athntfctn/Authentification_Authentication.aspx?bhcp=1&cltr=fr-CA`;
@@ -31,6 +32,23 @@ const money = (value: string): number | null => {
   return Number.isFinite(result) && result >= 0 && result < 1e9 ? result : null;
 };
 const cents = (value: number) => Math.round(value * 100);
+export const desjardinsAliasFingerprint = (value: string): string => createHash("sha256")
+  .update(clean(value).replace(/[,;:]+/g, " ").replace(/\s+/g, " ").trim().toUpperCase()).digest("hex");
+type MemberAliases = Readonly<Record<string, DesjardinsRow["member"]>>;
+
+async function loadMemberAliases(): Promise<MemberAliases> {
+  let saved: { version: number; entries: Record<string, string> };
+  try { saved = await loadPrivate(desjardinsMemberAliasesPath); }
+  catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return {};
+    throw new Error("Confirmed Desjardins member aliases could not be read.");
+  }
+  if (saved?.version !== 1 || !saved.entries || typeof saved.entries !== "object" || Array.isArray(saved.entries)
+    || Object.keys(saved.entries).length > 100 || Object.entries(saved.entries).some(([fingerprint, member]) =>
+      !/^[0-9a-f]{64}$/.test(fingerprint) || typeof member !== "string" || member === "unknown" || memberName(member) !== member))
+    throw new Error("Confirmed Desjardins member aliases are invalid.");
+  return saved.entries as MemberAliases;
+}
 export const desjardinsNameCandidates = (value: string, knownSurname: (word: string) => boolean): string[] => {
   const normalized = clean(value).replace(/[,;:]+/g, " ").replace(/\s+/g, " ").trim();
   const words = normalized.split(" ");
@@ -49,10 +67,13 @@ export const desjardinsNameCandidates = (value: string, knownSurname: (word: str
   }
   return [...new Set(candidates)];
 };
-const member = (value: string): DesjardinsRow["member"] => {
+const member = (value: string, aliases: MemberAliases): DesjardinsRow["member"] => {
   const candidates = desjardinsNameCandidates(value, word => memberName(`Kevin ${word}`) === "Kevin");
   const recognized = new Set(candidates.map(memberName).filter(result => result !== "unknown"));
-  return recognized.size === 1 ? [...recognized][0] : "unknown";
+  if (recognized.size > 1) return "unknown";
+  const confirmed = aliases[desjardinsAliasFingerprint(value)];
+  const inferred = recognized.size === 1 ? [...recognized][0] : "unknown";
+  return confirmed && inferred !== "unknown" && confirmed !== inferred ? "unknown" : confirmed || inferred;
 };
 const memberPattern = (value: string): string => clean(value).replace(/[,;:]+/g, " ").split(/\s+/)
   .map(word => memberName(word) !== "unknown" ? "given"
@@ -60,7 +81,7 @@ const memberPattern = (value: string): string => clean(value).replace(/[,;:]+/g,
       : memberName(`Jasmine ${word}`) === "Jasmine" ? "known-middle" : "other").join("/");
 
 /** Pure parser for the portal's variable-width service grid. A malformed row blocks apply. */
-export function parseDesjardinsDetail(history: PortalHistoryRow, detail: PortalTableRow[]): { rows: DesjardinsRow[]; warnings: string[] } {
+export function parseDesjardinsDetail(history: PortalHistoryRow, detail: PortalTableRow[], aliases: MemberAliases = {}): { rows: DesjardinsRow[]; warnings: string[] } {
   const warnings: string[] = [];
   const statementDate = date(history.date);
   const historyPaid = money(history.paid);
@@ -75,7 +96,7 @@ export function parseDesjardinsDetail(history: PortalHistoryRow, detail: PortalT
       const match = cells[0].match(/numéro de réclamation\s*:\s*([A-Za-z0-9-]+)/i);
       const name = cells[0].split(/,\s*numéro de réclamation/i)[0];
       claimId = match?.[1] || "";
-      claimMember = member(name);
+      claimMember = member(name, aliases);
       line = 0;
       if (!claimId || claimMember === "unknown")
         warnings.push(`Claim identity or member was not recognized (name shape: ${memberPattern(name)}).`);
@@ -109,7 +130,7 @@ export function parseDesjardinsDetail(history: PortalHistoryRow, detail: PortalT
 }
 
 export function parseDesjardinsPages(pages: Array<{ histories: PortalHistoryRow[]; details: PortalTableRow[][]; hasNext: boolean }>,
-  extraWarnings: string[] = []): DesjardinsCollection {
+  extraWarnings: string[] = [], aliases: MemberAliases = {}): DesjardinsCollection {
   const warnings = [...extraWarnings];
   const rows: DesjardinsRow[] = [];
   const pageSignatures = new Set<string>();
@@ -120,7 +141,7 @@ export function parseDesjardinsPages(pages: Array<{ histories: PortalHistoryRow[
     if (!page.histories.length || page.histories.length !== page.details.length)
       warnings.push(`Claims page ${pageIndex + 1} was incomplete.`);
     for (const [rowIndex, history] of page.histories.entries()) {
-      const parsed = parseDesjardinsDetail(history, page.details[rowIndex] ?? []);
+      const parsed = parseDesjardinsDetail(history, page.details[rowIndex] ?? [], aliases);
       rows.push(...parsed.rows);
       warnings.push(...parsed.warnings.map(warning => `Page ${pageIndex + 1}, claim ${rowIndex + 1}: ${warning}`));
     }
@@ -201,6 +222,7 @@ export async function collectDesjardinsPortal(interactive = false, passes = 1): 
     headless: !interactive, acceptDownloads: false, serviceWorkers: "block"
   });
   try {
+    const aliases = await loadMemberAliases();
     if (process.platform === "win32") {
       try {
         const saved = await loadPrivate<{ cookies: Cookie[]; session?: { origin: string; values: Record<string, string> } }>(desjardinsAuthPath);
@@ -287,7 +309,7 @@ export async function collectDesjardinsPortal(interactive = false, passes = 1): 
     if (pages.length === 100 && pages.at(-1)?.hasNext) warnings.push("Claims pagination exceeded 100 pages.");
     const endAuthWarning = await saveDesjardinsAuth(context, page);
     if (endAuthWarning && !warnings.includes(endAuthWarning)) warnings.push(endAuthWarning);
-    const current = parseDesjardinsPages(pages, warnings);
+    const current = parseDesjardinsPages(pages, warnings, aliases);
     if (firstCollection) collection = confirmDesjardinsRepeat(firstCollection, current);
     else { firstCollection = current; collection = current; }
     }
