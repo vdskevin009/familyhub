@@ -271,22 +271,26 @@ export default function ReimbursementsView({ hub }: Props) {
 
   return <div className="view-stack reimbursement-app-view">
     <section className="reimbursement-toolbar">
-      <div>
-        <span className="eyebrow">Benefits</span>
-        <h1>Reimbursements</h1>
-        <p>{lastSuccess ? `Updated ${new Date(lastSuccess).toLocaleString()}` : "Saved results are available even when the PC is offline."}</p>
+      <div className="reimbursement-toolbar-main">
+        <h1 className="reimbursement-tool-title">Reimbursements</h1>
+        <span>{lastSuccess ? `Updated ${new Date(lastSuccess).toLocaleString()}` : "Saved results available"}</span>
       </div>
-      <button className="button secondary compact-button" disabled={!paired || busy} onClick={() => void refresh()}>
-        <RefreshCw size={16} className={busy ? "spin" : ""} />{busy ? "Refreshing…" : "Refresh"}
-      </button>
+      <div className="reimbursement-toolbar-actions">
+        <details className="reimbursement-data-status">
+          <summary>Data</summary>
+          <p>{hub.reimbursements.InvoiceCoverage?.complete
+            ? "Potential invoice search completed since June 1, 2025 for connected accounts. Scanned images and unreadable attachments may still need review."
+            : "Historical collection since June 1, 2025 is not yet confirmed complete. Run the PC collection to resume it."} Insurance coverage is not confirmed by a receipt.</p>
+        </details>
+        <button className="button secondary compact-button" aria-label="Refresh reimbursements" disabled={!paired || busy} onClick={() => void refresh()}>
+          <RefreshCw size={16} className={busy ? "spin" : ""} />{busy ? "Refreshing…" : "Refresh"}
+        </button>
+      </div>
     </section>
 
     {error && <div className="banner error" role="status"><AlertTriangle size={17} />{error} — Previously synced results remain below.</div>}
     {workerVersion && !manualActionsAvailable && <div className="banner error" role="status"><AlertTriangle size={17} />PC worker {workerVersion} is outdated for manual reimbursement matching. Update/restart the FamilyHub worker to {manualReconciliationWorkerVersion} or later, then refresh this page.</div>}
     {savedMessage && <div className="banner" role="status">{savedMessage}</div>}
-    <p className="privacy-note">{hub.reimbursements.InvoiceCoverage?.complete
-      ? "Potential invoice search completed since June 1, 2025 for connected accounts. Scanned images and unreadable attachments may still need review."
-      : "Historical collection since June 1, 2025 is not yet confirmed complete. Run the PC collection to resume it."} Insurance coverage is not confirmed by a receipt.</p>
     {model.warnings.map(warning => <div className="banner" role="status" key={warning}><AlertTriangle size={17} />{warning}</div>)}
 
     <section className="reimbursement-mode-tabs" aria-label="Claims workspace">
@@ -313,13 +317,19 @@ export default function ReimbursementsView({ hub }: Props) {
       })}
     </section>
 
-    <section className="reimbursement-summary" aria-label={`${scopeLabel} reimbursement summary`}>
-      <article className="summary-primary"><small>Total expenses</small><strong>{money(finance.totalPaid)}</strong><span>{scopeLabel}</span></article>
-      <article><small>{personScope === "Nathan" ? "Desjardins" : "Primary insurance"}</small><strong>{money(personScope === "Nathan" ? finance.desjardins : finance.primary)}</strong><span>reimbursed</span></article>
-      <article><small>{personScope === "Nathan" ? "Blue Cross" : "Secondary insurance"}</small><strong>{money(personScope === "Nathan" ? finance.blueCross : finance.secondary)}</strong><span>reimbursed</span></article>
-      <article><small>Remaining balance</small><strong>{money(finance.outstanding)}</strong><span>{workflowLabel.toLowerCase()} workflow</span></article>
-      <article className={finance.attention ? "summary-attention" : ""}><small>Needs attention</small><strong>{finance.attention}</strong><span>items</span></article>
-    </section>
+    <details className="reimbursement-totals">
+      <summary>
+        <span>Totals · {scopeLabel}</span>
+        <strong>{money(finance.outstanding)} remaining{finance.attention ? ` · ${finance.attention} attention` : ""}</strong>
+      </summary>
+      <section className="reimbursement-summary" aria-label={`${scopeLabel} reimbursement summary`}>
+        <article className="summary-primary"><small>Total expenses</small><strong>{money(finance.totalPaid)}</strong><span>{scopeLabel}</span></article>
+        <article><small>{personScope === "Nathan" ? "Desjardins" : "Primary insurance"}</small><strong>{money(personScope === "Nathan" ? finance.desjardins : finance.primary)}</strong><span>reimbursed</span></article>
+        <article><small>{personScope === "Nathan" ? "Blue Cross" : "Secondary insurance"}</small><strong>{money(personScope === "Nathan" ? finance.blueCross : finance.secondary)}</strong><span>reimbursed</span></article>
+        <article><small>Remaining balance</small><strong>{money(finance.outstanding)}</strong><span>{workflowLabel.toLowerCase()} workflow</span></article>
+        <article className={finance.attention ? "summary-attention" : ""}><small>Needs attention</small><strong>{finance.attention}</strong><span>items</span></article>
+      </section>
+    </details>
 
     <section className={`reimbursement-filter-bar ${filtersOpen ? "open" : ""}`} aria-label="Filter reimbursement history">
       <div className="reimbursement-filter-heading">
