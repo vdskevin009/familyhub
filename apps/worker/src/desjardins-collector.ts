@@ -173,6 +173,23 @@ async function nextControl(page: Page, number: number) {
   return null;
 }
 
+async function saveDesjardinsAuth(context: import("playwright").BrowserContext, page: Page): Promise<string> {
+  if (process.platform !== "win32") return "";
+  try {
+    const cookies = desjardinsAuthCookies(await context.cookies());
+    const session = await page.evaluate(() => ({ origin: location.origin,
+      values: Object.fromEntries(Array.from({ length: sessionStorage.length }, (_, index) => {
+        const key = sessionStorage.key(index)!;
+        return [key, sessionStorage.getItem(key) || ""];
+      })) }));
+    if (!cookies.length || session.origin !== origin || Object.keys(session.values).length > 100
+      || JSON.stringify(session.values).length > 100_000)
+      return "Desjardins session cookies were unavailable for repeat previews.";
+    await savePrivate(desjardinsAuthPath, { cookies, session });
+    return "";
+  } catch { return "Desjardins session could not be saved for repeat previews."; }
+}
+
 /** Visible login and MFA are always performed by the operator. The collector only reads history. */
 export async function collectDesjardinsPortal(interactive = false, passes = 1): Promise<{
   status: "success" | "login-required"; collection?: DesjardinsCollection; snapshotPath?: string;
@@ -206,21 +223,7 @@ export async function collectDesjardinsPortal(interactive = false, passes = 1): 
     if (!await table.isVisible().catch(() => false)) return { status: "login-required" };
     if (!page.url().startsWith(origin) || !/HistoriqueReclamation_ClaimHistory\.aspx/i.test(page.url()))
       return { status: "login-required" };
-    let authWarning = "";
-    if (process.platform === "win32") {
-      try {
-        const cookies = desjardinsAuthCookies(await context.cookies());
-        const session = await page.evaluate(() => ({ origin: location.origin,
-          values: Object.fromEntries(Array.from({ length: sessionStorage.length }, (_, index) => {
-            const key = sessionStorage.key(index)!;
-            return [key, sessionStorage.getItem(key) || ""];
-          })) }));
-        if (cookies.length && session.origin === origin && Object.keys(session.values).length <= 100
-          && JSON.stringify(session.values).length <= 100_000)
-          await savePrivate(desjardinsAuthPath, { cookies, session });
-        else authWarning = "Desjardins session cookies were unavailable for repeat previews.";
-      } catch { authWarning = "Desjardins session could not be saved for repeat previews."; }
-    }
+    const authWarning = await saveDesjardinsAuth(context, page);
 
     if (passes !== 1 && passes !== 2) throw new Error("Desjardins supports one or two manual preview passes.");
     let firstCollection: DesjardinsCollection | undefined;
@@ -282,6 +285,8 @@ export async function collectDesjardinsPortal(interactive = false, passes = 1): 
       } catch { warnings.push("Claims pagination failed."); break; }
     }
     if (pages.length === 100 && pages.at(-1)?.hasNext) warnings.push("Claims pagination exceeded 100 pages.");
+    const endAuthWarning = await saveDesjardinsAuth(context, page);
+    if (endAuthWarning && !warnings.includes(endAuthWarning)) warnings.push(endAuthWarning);
     const current = parseDesjardinsPages(pages, warnings);
     if (firstCollection) collection = confirmDesjardinsRepeat(firstCollection, current);
     else { firstCollection = current; collection = current; }
