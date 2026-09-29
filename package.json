@@ -2,7 +2,10 @@
   "name": "familyhub",
   "private": true,
   "version": "2.0.0",
-  "workspaces": ["apps/web", "apps/worker"],
+  "workspaces": [
+    "apps/web",
+    "apps/worker"
+  ],
   "scripts": {
     "test:invoices": "npm run build:worker && node --test tests/invoices.test.mjs tests/worker-invoices.test.mjs tests/private-store.test.mjs tests/bluecross.test.mjs tests/agents.test.mjs && tsx --test tests/invoice-state.test.ts tests/healthcare-dates.test.ts tests/document-library.test.ts",
     "dev:web": "npm --workspace @familyhub/web run dev",
@@ -11,6 +14,7 @@
     "build:web": "npm --workspace @familyhub/web run build",
     "build:worker": "npm --workspace @familyhub/worker run build",
     "build": "npm run build:web && npm run build:worker",
-    "typecheck": "npm --workspace @familyhub/web run typecheck && npm --workspace @familyhub/worker run typecheck"
+    "typecheck": "npm --workspace @familyhub/web run typecheck && npm --workspace @familyhub/worker run typecheck",
+    "test:pwa": "node --test tests/pwa-install.test.mjs"
   }
 }
