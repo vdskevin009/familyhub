@@ -105,6 +105,8 @@ npm run collect:bluecross -- --dry-run
 npm run collect:bluecross -- --apply
 ```
 
+Set `FAMILYHUB_WORKER_DATA` to the **same** private data directory used by the installed worker before these commands. `--apply` requires that updated worker to be running on localhost; the CLI sends the explicit apply request to it so a separate process cannot overwrite its live in-memory invoice state.
+
 The first command with `--login` opens a visible browser. Sign in yourself, then open **View more claims / Claims History** if needed. The collector waits for the claims table; it never enters credentials or submits a claim. Subsequent runs reuse the private browser profile. An expired session returns `login-required`; repeat the visible `--login` flow on the PC. A phone can request a preview or apply from Claims through the paired worker, but the first login must be completed on the PC.
 
 The profile is under `<FAMILYHUB_WORKER_DATA>/bluecross/browser-profile` (by default `~/.familyhub-worker/bluecross/browser-profile`). Immutable, minimal-fact snapshots are under `<FAMILYHUB_WORKER_DATA>/bluecross/snapshots`. Both paths are outside Git. A snapshot is written before every successful or partial portal collection is considered for apply. A partial, malformed or ambiguous collection cannot be applied. Preview writes only its private audit snapshot and sync status; it does not change `invoices.json`.
