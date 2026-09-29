@@ -6,7 +6,8 @@ import { buildInvoiceHistoryCases, excludeAssignedUnmatched, filterInvoiceHistor
 import type { InvoiceHistoryFilter, ReimbursementCaseStatus, ReimbursementInvoicePdfOption, ReimbursementPersonScope, WorkflowStatusFilter } from "../invoice-state";
 import type { HubState } from "../state";
 import type { MatchAssignment, ReconciliationCase, ReimbursementItem, ReimbursementWorkflowStatus, UnmatchedReimbursement } from "../types";
-import { fetchInvoices, manualReconciliationWorkerVersion, setManualMatch, setMatchDecision, setReimbursementWorkflowStatus, setUnmatchedIgnored, testWorker, viewWorkerAttachment, workerVersionAtLeast } from "../worker";\nimport ReconciliationQueue from "./ReconciliationQueue";
+import { fetchInvoices, manualReconciliationWorkerVersion, setManualMatch, setMatchDecision, setReimbursementWorkflowStatus, setUnmatchedIgnored, testWorker, viewWorkerAttachment, workerVersionAtLeast } from "../worker";
+import ReconciliationQueue from "./ReconciliationQueue";
 
 type Props = { hub: HubState };
 const statusCopy: Record<ReimbursementCaseStatus, string> = {
@@ -52,7 +53,8 @@ export default function ReimbursementsView({ hub }: Props) {
   const [workflowFilter, setWorkflowFilter] = useState<WorkflowStatusFilter>("open");
   const [reconciliationFilter, setReconciliationFilter] = useState<"all" | "matched" | "unmatched" | "ignored-unmatched">("all");
   const [filtersOpen, setFiltersOpen] = useState(false);
-  const [workerVersion, setWorkerVersion] = useState("");\n  const [screen, setScreen] = useState<"claims" | "reconcile">("claims");
+  const [workerVersion, setWorkerVersion] = useState("");
+  const [screen, setScreen] = useState<"claims" | "reconcile">("claims");
   const paired = Boolean(hub.worker.Endpoint.trim() && hub.worker.ApiKey.trim());
   const manualActionsAvailable = !workerVersion || workerVersionAtLeast(workerVersion, manualReconciliationWorkerVersion);
 
