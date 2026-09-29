@@ -122,7 +122,7 @@ export function setReimbursementWorkflowStatus(config: WorkerConfig, expenseId: 
 export function undoInvoiceDecision(config: WorkerConfig, decisionId: string): Promise<ReimbursementItem> {
   return request(config, "/invoices/decisions/undo", { method: "POST", body: JSON.stringify({ decisionId }) });
 }
-export async function downloadWorkerAttachment(config: WorkerConfig, item: ReimbursementItem, index: number): Promise<void> {
+async function workerAttachmentBlob(config: WorkerConfig, item: ReimbursementItem, index: number): Promise<{ blob: Blob; fileName: string }> {
   const attachment = item.Attachments[index];
   if (!attachment) throw new Error("Attachment not found.");
   const response = await fetch(endpoint(config, `/invoices/${encodeURIComponent(item.Id)}/attachments/${encodeURIComponent(attachment.Id)}`), {
@@ -130,12 +130,60 @@ export async function downloadWorkerAttachment(config: WorkerConfig, item: Reimb
   });
   if (!response.ok) {
     const result = await response.json().catch(() => ({})) as { error?: string };
-    throw new Error(result.error || "Attachment download failed.");
+    throw new Error(result.error || "Attachment retrieval failed.");
   }
-  const url = URL.createObjectURL(await response.blob());
-  const anchor = document.createElement("a"); anchor.href = url; anchor.download = attachment.FileName;
-  document.body.appendChild(anchor); anchor.click(); anchor.remove();
+  const bytes = await response.arrayBuffer();
+  return {
+    blob: new Blob([bytes], { type: attachment.MimeType || "application/octet-stream" }),
+    fileName: attachment.FileName
+  };
+}
+
+function downloadBlob(blob: Blob, fileName: string): void {
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = fileName;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
   window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+}
+
+/**
+ * Open a private worker attachment from a direct user gesture.
+ * The blank viewer is created before the authenticated fetch so mobile popup blockers
+ * do not treat the final PDF navigation as an unsolicited async popup.
+ * If the browser blocks the viewer, fall back to a normal download.
+ */
+export async function viewWorkerAttachment(config: WorkerConfig, item: ReimbursementItem, index: number): Promise<void> {
+  const attachment = item.Attachments[index];
+  if (!attachment) throw new Error("Attachment not found.");
+  const viewer = window.open("", "_blank");
+  if (viewer) {
+    try {
+      viewer.document.title = "Loading invoice…";
+      viewer.document.body.textContent = "Loading invoice…";
+    } catch { /* Navigation below is still sufficient. */ }
+  }
+  try {
+    const { blob, fileName } = await workerAttachmentBlob(config, item, index);
+    if (!viewer) {
+      downloadBlob(blob, fileName);
+      return;
+    }
+    const url = URL.createObjectURL(blob);
+    viewer.location.replace(url);
+    window.setTimeout(() => URL.revokeObjectURL(url), 5 * 60_000);
+  } catch (error) {
+    if (viewer) viewer.close();
+    throw error;
+  }
+}
+
+export async function downloadWorkerAttachment(config: WorkerConfig, item: ReimbursementItem, index: number): Promise<void> {
+  const { blob, fileName } = await workerAttachmentBlob(config, item, index);
+  downloadBlob(blob, fileName);
 }
 
 export async function testWorker(config: WorkerConfig): Promise<{ status: string; codex: string; version: string }> {

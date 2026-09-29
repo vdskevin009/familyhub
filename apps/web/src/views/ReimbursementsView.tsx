@@ -2,11 +2,11 @@ import { useEffect, useMemo, useState } from "react";
 import { AlertTriangle, CheckCircle2, CircleDollarSign, ExternalLink, RefreshCw } from "lucide-react";
 import { dateLabel } from "../domain";
 import { googleBridge } from "../google";
-import { buildInvoiceHistoryCases, excludeAssignedUnmatched, filterInvoiceHistoryCases, filterReimbursementWorkflowCases, healthcareTitle, mergeInvoiceItems, mergeReconciliationHistory, namedInsurerReimbursementAmount, primaryReimbursementAmount, reimbursementCaseStatus, reimbursementInvoiceDocument, reimbursementInvoiceUrl, reimbursementWorkflowStatus, reimbursementWorkflowSummary, secondaryReimbursementAmount } from "../invoice-state";
-import type { InvoiceHistoryFilter, ReimbursementCaseStatus, ReimbursementPersonScope, WorkflowStatusFilter } from "../invoice-state";
+import { buildInvoiceHistoryCases, excludeAssignedUnmatched, filterInvoiceHistoryCases, filterReimbursementWorkflowCases, healthcareTitle, mergeInvoiceItems, mergeReconciliationHistory, namedInsurerReimbursementAmount, primaryReimbursementAmount, reimbursementCaseStatus, reimbursementInvoicePdfOptions, reimbursementWorkflowStatus, reimbursementWorkflowSummary, secondaryReimbursementAmount } from "../invoice-state";
+import type { InvoiceHistoryFilter, ReimbursementCaseStatus, ReimbursementInvoicePdfOption, ReimbursementPersonScope, WorkflowStatusFilter } from "../invoice-state";
 import type { HubState } from "../state";
 import type { MatchAssignment, ReconciliationCase, ReimbursementItem, ReimbursementWorkflowStatus, UnmatchedReimbursement } from "../types";
-import { fetchInvoices, manualReconciliationWorkerVersion, setManualMatch, setMatchDecision, setReimbursementWorkflowStatus, setUnmatchedIgnored, testWorker, workerVersionAtLeast } from "../worker";
+import { fetchInvoices, manualReconciliationWorkerVersion, setManualMatch, setMatchDecision, setReimbursementWorkflowStatus, setUnmatchedIgnored, testWorker, viewWorkerAttachment, workerVersionAtLeast } from "../worker";
 
 type Props = { hub: HubState };
 const statusCopy: Record<ReimbursementCaseStatus, string> = {
@@ -128,6 +128,19 @@ export default function ReimbursementsView({ hub }: Props) {
         : "Ignored reimbursement restored to matching and review.");
     } catch (err) { setError(err instanceof Error ? err.message : "The unmatched reimbursement decision could not be saved."); }
     finally { setSavingId(""); }
+  }
+
+  async function openInvoicePdf(option: ReimbursementInvoicePdfOption) {
+    if (option.Source !== "worker" || savingId) return;
+    const source = invoiceById.get(option.ItemId);
+    if (!source) { setError("Invoice source is no longer available. Refresh and try again."); return; }
+    const key = `pdf:${option.ItemId}:${option.AttachmentIndex}`;
+    setSavingId(key); setError(""); setSavedMessage("");
+    try {
+      await viewWorkerAttachment(hub.worker, source, option.AttachmentIndex);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "The invoice PDF could not be opened. Try again while the PC worker is online.");
+    } finally { setSavingId(""); }
   }
 
   async function changeWorkflow(item: ReconciliationCase, status: ReimbursementWorkflowStatus | "automatic") {
@@ -394,6 +407,7 @@ export default function ReimbursementsView({ hub }: Props) {
             ? namedInsurerReimbursementAmount(item, "Blue Cross", invoiceById) : secondaryReimbursementAmount(item);
           const sameDayUnmatched = item.ServiceDate ? model.unmatched.filter(({ item: candidate }) =>
             candidate.Member === item.Member && candidate.ServiceDate?.slice(0, 10) === item.ServiceDate?.slice(0, 10)) : [];
+          const invoicePdfOptions = reimbursementInvoicePdfOptions(item, invoiceById);
           return <article className="expense-card" key={item.Id}>
             <div className="expense-heading">
               <div><strong>{healthcareTitle(item)}</strong><small>{item.Member === "unknown" ? "Person to confirm" : item.Member}{item.ServiceType && healthcareTitle(item) !== item.ServiceType ? ` · ${item.ServiceType}` : ""}{item.ServiceDate ? ` · ${dateLabel(item.ServiceDate)}` : invoiceById.get(item.DocumentIds[0])?.ReceivedAt ? ` · Received ${dateLabel(invoiceById.get(item.DocumentIds[0])!.ReceivedAt)}` : " · Date missing"}</small></div>
@@ -488,15 +502,29 @@ export default function ReimbursementsView({ hub }: Props) {
             {item.PreviouslyFound && <p className="privacy-note expense-warning">{item.Unreconciled
               ? "Indexed invoice without a reconciliation case. Check the source before relying on its amounts or reimbursement status."
               : "Previously found invoice; the latest PC result did not include it. Check the source before relying on its amounts or reimbursement status."}</p>}
-            {(() => {
-              const invoiceDocument = reimbursementInvoiceDocument(item, invoiceById);
-              const invoiceUrl = reimbursementInvoiceUrl(invoiceDocument);
-              return invoiceUrl ? <div className="expense-document-actions">
-                <a className="mini-button" href={invoiceUrl} target="_blank" rel="noreferrer">
-                  <ExternalLink size={14} /> View invoice
-                </a>
-              </div> : null;
-            })()}
+            {invoicePdfOptions.length === 1 && <div className="expense-document-actions">
+              {invoicePdfOptions[0].Source === "drive" && invoicePdfOptions[0].Url
+                ? <a className="mini-button" href={invoicePdfOptions[0].Url} target="_blank" rel="noreferrer">
+                    <ExternalLink size={14} /> View invoice
+                  </a>
+                : <button type="button" className="mini-button" disabled={!paired || !!savingId || busy}
+                    onClick={() => void openInvoicePdf(invoicePdfOptions[0])}>
+                    <ExternalLink size={14} />{savingId === `pdf:${invoicePdfOptions[0].ItemId}:${invoicePdfOptions[0].AttachmentIndex}` ? " Opening…" : " View invoice"}
+                  </button>}
+            </div>}
+            {invoicePdfOptions.length > 1 && <details className="expense-document-actions invoice-pdf-picker">
+              <summary className="mini-button"><ExternalLink size={14} /> View invoice <span>{invoicePdfOptions.length}</span></summary>
+              <div className="invoice-pdf-options">
+                {invoicePdfOptions.map((option, index) => option.Source === "drive" && option.Url
+                  ? <a className="invoice-pdf-option" href={option.Url} target="_blank" rel="noreferrer" key={`${option.ItemId}:${option.AttachmentIndex}`}>
+                      <span>{option.FileName || `Invoice PDF ${index + 1}`}</span><ExternalLink size={14} />
+                    </a>
+                  : <button type="button" className="invoice-pdf-option" disabled={!paired || !!savingId || busy}
+                      onClick={() => void openInvoicePdf(option)} key={`${option.ItemId}:${option.AttachmentIndex}`}>
+                      <span>{option.FileName || `Invoice PDF ${index + 1}`}</span><ExternalLink size={14} />
+                    </button>)}
+              </div>
+            </details>}
             <div className="expense-note"><span>{item.Summary}</span><small>{matchAssignments.length ? `${matchAssignments.length} matched insurer record${matchAssignments.length === 1 ? "" : "s"}` : `Source confidence ${Math.round(item.Confidence)}%`}</small></div>
             {item.Status === "needs-attention" && item.DocumentIds[0] && reviews.get(`case:${item.DocumentIds[0]}`) &&
               <p className="privacy-note expense-warning">Second AI review: {reviews.get(`case:${item.DocumentIds[0]}`)!.explanation} · Suggestion only; check the source documents.</p>}

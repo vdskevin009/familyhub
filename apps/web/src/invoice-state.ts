@@ -130,24 +130,84 @@ export function excludeAssignedUnmatched<T extends { DocumentId: string }>(unmat
   return unmatched.filter(item => !assigned.has(item.DocumentId));
 }
 
-/** Find an already archived PDF that belongs to the expense represented by a case. */
-export function reimbursementInvoiceDocument(item: ReconciliationCase,
-  itemsById: ReadonlyMap<string, ReimbursementItem>): ReimbursementItem | null {
+export type ReimbursementInvoicePdfOption = {
+  ItemId: string;
+  AttachmentIndex: number;
+  FileName: string;
+  Source: "drive" | "worker";
+  Url?: string;
+};
+
+function reimbursementPdfAttachmentIndexes(item: ReimbursementItem): number[] {
+  return item.Attachments
+    .map((attachment, index) => ({ attachment, index }))
+    .filter(({ attachment }) => attachment.MimeType === "application/pdf" || /\.pdf$/i.test(attachment.FileName))
+    .map(({ index }) => index);
+}
+
+function reimbursementCaseDocuments(item: ReconciliationCase,
+  itemsById: ReadonlyMap<string, ReimbursementItem>): ReimbursementItem[] {
   const preferredIds = [
     ...(item.ExpenseDocumentIds ?? []),
     ...(item.ExpenseDocumentId ? [item.ExpenseDocumentId] : []),
     ...item.DocumentIds
   ];
   const seen = new Set<string>();
-  const candidates = preferredIds
+  return preferredIds
     .filter(id => !seen.has(id) && seen.add(id))
     .map(id => itemsById.get(id))
     .filter((entry): entry is ReimbursementItem => Boolean(entry));
-  const hasPdf = (entry: ReimbursementItem) => entry.Attachments.some(attachment =>
-    attachment.MimeType === "application/pdf" || /\.pdf$/i.test(attachment.FileName));
-  return candidates.find(entry => entry.DocumentRole === "expense" && entry.DriveFileId && hasPdf(entry))
-    ?? candidates.find(entry => entry.DriveFileId && hasPdf(entry))
-    ?? null;
+}
+
+function isExpenseDocument(item: ReimbursementItem): boolean {
+  return item.DocumentRole === "expense"
+    || (!item.DocumentRole || item.DocumentRole === "other")
+      && ["receipt", "invoice", "bill"].includes(item.DocumentType || "");
+}
+
+/**
+ * Resolve invoice PDFs without assuming where the file is stored.
+ * Prefer actual expense source documents and a durable Drive reference when one exists.
+ * Worker PDFs remain private and are fetched through the authenticated attachment endpoint.
+ */
+export function reimbursementInvoicePdfOptions(item: ReconciliationCase,
+  itemsById: ReadonlyMap<string, ReimbursementItem>): ReimbursementInvoicePdfOption[] {
+  const candidates = reimbursementCaseDocuments(item, itemsById);
+  const expenseCandidates = candidates.filter(isExpenseDocument);
+  const sources = expenseCandidates.length ? expenseCandidates : candidates.filter(entry => entry.DriveFileId);
+  const options: ReimbursementInvoicePdfOption[] = [];
+
+  for (const source of sources) {
+    const pdfIndexes = reimbursementPdfAttachmentIndexes(source);
+    if (!pdfIndexes.length) continue;
+    if (source.DriveFileId) {
+      options.push({
+        ItemId: source.Id,
+        AttachmentIndex: pdfIndexes[0],
+        FileName: source.Attachments[pdfIndexes[0]].FileName,
+        Source: "drive",
+        Url: reimbursementInvoiceUrl(source) ?? undefined
+      });
+      continue;
+    }
+    if (!source.WorkerManaged) continue;
+    for (const attachmentIndex of pdfIndexes) {
+      options.push({
+        ItemId: source.Id,
+        AttachmentIndex: attachmentIndex,
+        FileName: source.Attachments[attachmentIndex].FileName,
+        Source: "worker"
+      });
+    }
+  }
+  return options;
+}
+
+/** Find an already archived PDF that belongs to the expense represented by a case. */
+export function reimbursementInvoiceDocument(item: ReconciliationCase,
+  itemsById: ReadonlyMap<string, ReimbursementItem>): ReimbursementItem | null {
+  const option = reimbursementInvoicePdfOptions(item, itemsById).find(entry => entry.Source === "drive");
+  return option ? itemsById.get(option.ItemId) ?? null : null;
 }
 
 export function reimbursementInvoiceUrl(item: ReimbursementItem | null | undefined): string | null {

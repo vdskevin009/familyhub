@@ -1,6 +1,6 @@
 # FH-REIMB-028 — Open invoice PDF directly from reimbursements
 
-**Status:** In progress
+**Status:** Implemented — live phone/PWA acceptance pending
 
 ## User need
 When a reimbursement expense already has an invoice PDF available to FamilyHub, the user should be able to open it directly without manually searching for the source document.
@@ -17,15 +17,16 @@ The reimbursement card/detail must expose a direct action to open or view the as
 - Keep the experience mobile-first and usable from the installed FamilyHub PWA.
 
 ## Scope boundary
-The merged web phase opens an already archived PDF reference when one is available. The worker already indexes PDF attachments and exposes authenticated attachment retrieval; opening an unarchived worker attachment from a reimbursement card still needs separate product acceptance. This worker correction phase does not change the document contract.
+FamilyHub now prefers an already archived/durable PDF reference when available and otherwise reuses the worker’s existing authenticated attachment retrieval for worker-managed expense PDFs. No public document URL, new storage provider, Gmail rescan, or document migration is introduced. Multiple plausible PDFs are presented as a compact choice rather than guessed. Live phone/PWA validation with a real private worker PDF remains the final acceptance gate.
 
 ## Acceptance criteria
-- [ ] A reimbursement with an available invoice PDF exposes an obvious open/view action.
-- [ ] The action resolves to the correct invoice for that expense.
-- [ ] The user can reach the PDF without manually searching the underlying storage/source.
-- [ ] Expenses without an available PDF do not show a misleading working action.
-- [ ] Existing reimbursement matching/status/workflow behavior does not regress.
-- [ ] Mobile/PWA behavior is covered when implemented.
+- [x] A reimbursement with an available invoice PDF exposes an obvious open/view action in the implemented code path.
+- [x] The action resolves only from the expense source documents and prefers a durable Drive reference when present.
+- [x] Worker-managed PDFs can be reached through the existing authenticated attachment endpoint without manually searching Gmail.
+- [x] Expenses without an available PDF do not show a misleading working action.
+- [x] Existing reimbursement matching/status/workflow behavior remains unchanged by the PDF resolver.
+- [x] Multiple PDFs produce a compact chooser rather than an arbitrary selection.
+- [ ] Validate a real private worker PDF from the installed phone PWA before marking the requirement Verified.
 
 ## Tracking
 - GitHub issue: #69 — Open stored invoice PDF directly from reimbursement cards.
