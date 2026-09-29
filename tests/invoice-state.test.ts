@@ -9,6 +9,7 @@ import {
   mergeReconciliationHistory,
   namedInsurerReimbursementAmount,
   reimbursementInvoiceDocument,
+  reimbursementInvoicePdfOptions,
   reimbursementInvoiceUrl,
   reimbursementWorkflowStatus,
   reimbursementWorkflowSummary,
@@ -241,6 +242,55 @@ test("invoice PDF action resolves only when a linked PDF is actually archived", 
   assert.equal(reimbursementInvoiceDocument(reconciliation(noPdf), new Map([[noPdf.Id, noPdf]])), null);
 });
 
+
+test("invoice PDF options prefer Drive, support private worker PDFs and stay absent without a PDF", () => {
+  const drivePdf = invoice("drive-pdf", "2026-09-20", {
+    DriveFileId: "drive-123",
+    Attachments: [{ Id: "drive-a", FileName: "clinic-invoice.pdf", MimeType: "application/pdf", Size: 1200 }]
+  });
+  const driveCase = reconciliation(drivePdf, { ExpenseDocumentId: drivePdf.Id });
+  assert.deepEqual(reimbursementInvoicePdfOptions(driveCase, new Map([[drivePdf.Id, drivePdf]])), [{
+    ItemId: drivePdf.Id,
+    AttachmentIndex: 0,
+    FileName: "clinic-invoice.pdf",
+    Source: "drive",
+    Url: "https://drive.google.com/file/d/drive-123/view"
+  }]);
+
+  const workerPdf = invoice("worker-pdf", "2026-09-21", {
+    DriveFileId: undefined,
+    WorkerManaged: true,
+    Attachments: [{ Id: "worker-a", FileName: "receipt.pdf", MimeType: "application/pdf", Size: 900 }]
+  });
+  const workerCase = reconciliation(workerPdf, { ExpenseDocumentId: workerPdf.Id });
+  assert.deepEqual(reimbursementInvoicePdfOptions(workerCase, new Map([[workerPdf.Id, workerPdf]])), [{
+    ItemId: workerPdf.Id,
+    AttachmentIndex: 0,
+    FileName: "receipt.pdf",
+    Source: "worker"
+  }]);
+
+  const noPdf = invoice("no-pdf-option", "2026-09-22", {
+    WorkerManaged: true,
+    Attachments: [{ Id: "image-a", FileName: "receipt.jpg", MimeType: "image/jpeg", Size: 800 }]
+  });
+  assert.deepEqual(reimbursementInvoicePdfOptions(reconciliation(noPdf), new Map([[noPdf.Id, noPdf]])), []);
+
+  const multiple = invoice("multi-pdf", "2026-09-23", {
+    WorkerManaged: true,
+    Attachments: [
+      { Id: "m1", FileName: "invoice-front.pdf", MimeType: "application/pdf", Size: 500 },
+      { Id: "m2", FileName: "invoice-detail.PDF", MimeType: "application/octet-stream", Size: 600 },
+      { Id: "m3", FileName: "logo.png", MimeType: "image/png", Size: 100 }
+    ]
+  });
+  const options = reimbursementInvoicePdfOptions(reconciliation(multiple, { ExpenseDocumentId: multiple.Id }), new Map([[multiple.Id, multiple]]));
+  assert.deepEqual(options.map(option => [option.FileName, option.AttachmentIndex, option.Source]), [
+    ["invoice-front.pdf", 0, "worker"],
+    ["invoice-detail.PDF", 1, "worker"]
+  ]);
+  assert.equal(multiple.Attachments.length, 3, "resolving PDF actions must not mutate reimbursement evidence");
+});
 
 test("worker version guard requires manual reconciliation endpoints", () => {
   assert.equal(manualReconciliationWorkerVersion, "2.8.0");
