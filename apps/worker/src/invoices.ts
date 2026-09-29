@@ -71,6 +71,7 @@ export function planBlueCrossUpsert(existing: Invoice[], collection: PortalColle
   const byId = new Map(current.map(item => [item.Id, item]));
   const byKey = new Map<string, Invoice[]>();
   for (const item of current) byKey.set(portalKey(item), [...(byKey.get(portalKey(item)) || []), item]);
+  const incomingIds = new Set(imported.map(item => item.Id));
   const inputIds = new Set<string>();
   const planned: Invoice[] = [];
   let added = 0, changed = 0, unchanged = 0, ambiguous = 0, duplicates = 0;
@@ -86,6 +87,12 @@ export function planBlueCrossUpsert(existing: Invoice[], collection: PortalColle
       planned.push(item); changed++; continue;
     }
     const candidates = byKey.get(portalKey(item)) || [];
+    // If every old row with this business key is still present unchanged in this
+    // same portal snapshot, this is a separate processing row, not an update.
+    if (candidates.length && candidates.every(candidate => incomingIds.has(candidate.Id)
+      && !planned.some(entry => entry.Id === candidate.Id))) {
+      planned.push({ ...item, NeedsReview: true }); added++; continue;
+    }
     if (candidates.length > 1 || candidates.length === 1 && planned.some(entry => entry.Id === candidates[0].Id)) {
       ambiguous++; continue;
     }

@@ -89,6 +89,21 @@ test('a pending claim can gain a known payment but cannot erase a previously kno
   assert.equal(planBlueCrossUpsert([pendingItem], base).changed, 1);
   assert.equal(planBlueCrossUpsert([initial], pending).ambiguous, 1);
 });
+test('simultaneously listed paid and Pended processing rows remain separate and reviewable', () => {
+  const both = parsePortalPages([{ html: table([row(), row('Physiotherapy Treatment', 0)])
+    .replace('<td>$0.00</td><td>Sep 10, 2026</td>', '<td>Pended</td><td>Sep 28, 2026</td>'), hasNext: false }]);
+  assert.equal(both.complete, true);
+  const first = planBlueCrossUpsert([initial], both);
+  assert.equal(first.unchanged, 1);
+  assert.equal(first.new, 1);
+  assert.equal(first.ambiguous, 0);
+  assert.equal(first.items[0].PortalClaimStatus, 'pended');
+  assert.equal(first.items[0].NeedsReview, true);
+  const repeat = planBlueCrossUpsert([initial, ...first.items], both);
+  assert.equal(repeat.unchanged, 2);
+  assert.equal(repeat.new, 0);
+  assert.equal(repeat.changed, 0);
+});
 test('malformed row, partial collection, and network failure are non-applicable', async () => {
   const malformed = parsePortalPages([{ html: table([row()]).replace('$80.00</td>', '$bad</td>'), hasNext: false }]);
   assert.equal(malformed.complete, false);
