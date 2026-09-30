@@ -32,7 +32,7 @@ type Props = {
   pending?: MutationProgress; reviewExplanation?: string; operationError?: string; operationMessage?: string;
   changeWorkflow: (item: ReconciliationCase, status: ReimbursementWorkflowStatus | "automatic") => Promise<void>;
   decideMatch: (assignment: MatchAssignment, decision: "confirmed" | "rejected") => Promise<void>;
-  matchUnmatched: (item: ReconciliationCase, reimbursementId: string) => Promise<boolean>;
+  matchUnmatched: (item: ReconciliationCase, reimbursementId: string, confirmedServiceDate?: string) => Promise<boolean>;
   changeUnmatchedIgnored: (reimbursementId: string, ignored: boolean) => Promise<boolean>;
   openInvoicePdf: (option: ReimbursementInvoicePdfOption) => Promise<void>;
   prepareClaim?: (expenseId: string) => void;

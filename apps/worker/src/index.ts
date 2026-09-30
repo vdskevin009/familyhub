@@ -32,7 +32,7 @@ type ResearchWatch = {
 };
 type PersistedState = { watches: ResearchWatch[] };
 
-const version = "2.12.0";
+const version = "2.13.0";
 const host = process.env.FAMILYHUB_WORKER_HOST?.trim() || "127.0.0.1";
 const port = Number(process.env.FAMILYHUB_WORKER_PORT || "4713");
 const stateDir = process.env.FAMILYHUB_WORKER_DATA?.trim() || join(homedir(), ".familyhub-worker");
@@ -267,8 +267,8 @@ const server = createServer(async (request, response) => {
         json(response, 200, { saved: true }, origin); return;
       }
       if (request.method === "POST" && parts.length === 3 && parts[1] === "matches" && parts[2] === "manual") {
-        const body = await readJson<{ reimbursementId?: unknown; expenseId?: unknown }>(request);
-        await setManualMatch(body.reimbursementId, body.expenseId);
+        const body = await readJson<{ reimbursementId?: unknown; expenseId?: unknown; confirmedServiceDate?: unknown }>(request);
+        await setManualMatch(body.reimbursementId, body.expenseId, body.confirmedServiceDate);
         json(response, 200, { saved: true }, origin); return;
       }
       if (request.method === "POST" && parts.length === 3 && parts[1] === "unmatched" && parts[2] === "ignore") {
