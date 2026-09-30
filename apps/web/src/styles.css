@@ -1495,3 +1495,30 @@ label small { font-weight: 500; }
   .reimbursement-totals > summary { min-height: 38px; padding: 7px 9px; }
   .reimbursement-totals > summary strong { font-size: .7rem; }
 }
+
+
+/* Claims bulk workflow actions */
+.claims-bulk-actions {
+  display: flex; align-items: center; gap: 9px; flex-wrap: wrap;
+  padding: 9px 11px; border: 1px solid var(--line); border-radius: 14px;
+  background: rgba(255,255,255,.78);
+}
+.claims-select-all {
+  display: inline-flex; grid-template-columns: none; align-items: center; gap: 7px;
+  cursor: pointer; color: var(--green); font-size: .74rem; font-weight: 800;
+}
+.claims-select-all input, .claim-select-control input {
+  width: 18px; height: 18px; min-height: 0; margin: 0; accent-color: var(--green);
+}
+.claims-selected-count { color: var(--muted); font-size: .72rem; font-weight: 750; }
+.claims-bulk-actions .mini-button { margin-left: auto; }
+.expense-card.bulk-selected { border-color: #8eb3a2; box-shadow: 0 0 0 2px rgba(38,92,77,.08); }
+.claim-select-control {
+  display: inline-flex; grid-template-columns: none; align-items: center; flex: 0 0 auto;
+  padding-top: 2px; cursor: pointer;
+}
+@media (max-width: 520px) {
+  .claims-bulk-actions { position: sticky; top: 121px; z-index: 20; padding: 8px 9px; }
+  .claims-bulk-actions .mini-button { margin-left: 0; flex: 1 1 auto; }
+  .claims-selected-count { margin-left: auto; }
+}
