@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { documentDate, libraryItems, pdfAttachmentIndexes } from "../apps/web/src/document-library.ts";
 import type { ReimbursementItem, ReconciliationCase } from "../apps/web/src/types.ts";
-import { nearbyInvoiceLink, nearbySourceRecords } from "../apps/web/src/nearby-sources.ts";
+import { nearbyInvoiceLink, nearbyReimbursementLink, nearbySourceRecords } from "../apps/web/src/nearby-sources.ts";
 
 const base = {
   Id: "source", DocumentRole: "expense", DocumentType: "invoice", Insurer: null,
@@ -41,6 +41,30 @@ test("source libraries keep invoices separate from insurer statements", () => {
   assert.deepEqual(libraryItems(records, "invoices").map(item => item.Id), ["expense"]);
   assert.deepEqual(libraryItems(records, "blue-cross").map(item => item.Id), ["bc"]);
   assert.deepEqual(libraryItems(records, "desjardins").map(item => item.Id), ["dj"]);
+});
+
+test("insurer tabs link an unmatched payment to the current expense and explain unsafe choices", () => {
+  const target = { Id: "case", ExpenseDocumentId: "invoice", ExpenseDocumentIds: ["invoice"], DocumentIds: ["invoice"],
+    Member: "Kevin", ServiceDate: base.ServiceDate, WorkflowStatus: "open", ServiceType: "RMT follow-up" } as ReconciliationCase;
+  for (const insurer of ["blue-cross", "desjardins"] as const) {
+    const payment = { ...base, Id: insurer, Member: "Kevin", DocumentRole: "insurer-statement", DocumentType: "claim", Insurer: insurer,
+      ClaimedService: "Registered massage", ReimbursedAmount: 80 } as ReimbursementItem;
+    const check = (patch: Partial<ReconciliationCase> = {}, ids = new Set([payment.Id]), ignored = new Set<string>()) =>
+      nearbyReimbursementLink(target, payment, [{ ...target, ...patch }], ids, ignored);
+    assert.equal(check().target?.ExpenseDocumentId, "invoice");
+    assert.equal(check().reimbursement?.Id, payment.Id);
+    assert.ok(check({}, new Set()).reason);
+    assert.ok(check({}, undefined, new Set([payment.Id])).reason);
+    assert.match(check({ ServiceDate: "2026-09-18" }).reason!, /same service date/);
+    assert.match(check({ Member: "Nathan" }).reason!, /same confirmed family member/);
+    assert.ok(check({ PreviouslyFound: true }).reason);
+    assert.ok(check({ WorkflowStatus: "ignore" }).reason);
+    assert.ok(nearbyReimbursementLink({ ...target, InferredFromInsurer: true }, payment, [target], new Set([payment.Id]), new Set()).reason);
+    assert.match(check({ MatchAssignments: [{ ReimbursementDocumentId: payment.Id, Insurer: insurer } as never] }).reason!, /Already linked to this claim/);
+    const other = { ...target, Id: "other", ExpenseDocumentId: "other-invoice", ExpenseDocumentIds: ["other-invoice"], MatchAssignments: [{ ReimbursementDocumentId: payment.Id, Insurer: insurer } as never] };
+    assert.match(nearbyReimbursementLink(target, payment, [target, other], new Set([payment.Id]), new Set()).reason!, /Linked to another claim/);
+    assert.ok(check({ MatchAssignments: [{ ReimbursementDocumentId: "other-payment", Insurer: insurer } as never] }).reason);
+  }
 });
 
 test("nearby missing-source review uses inclusive calendar dates and the same member/source library", () => {

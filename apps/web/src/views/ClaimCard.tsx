@@ -117,7 +117,7 @@ export default function ClaimCard({ item, invoiceById, unmatched, paired, manual
         {item.OriginalInvoiceMissing && <p className="privacy-note">The original invoice has not been found. These amounts come from insurer evidence, not an inferred receipt.</p>}
         <NearbySources claim={item} kind={reviewSource || defaultSource} onKindChange={setReviewSource}
           items={[...invoiceById.values()]} cases={allCases} ignoredIds={ignoredSourceIds}
-          unmatchedIds={unmatchedSourceIds} onLinkInvoice={matchUnmatched} manualActionsAvailable={manualActionsAvailable && !busy}
+          unmatchedIds={unmatchedSourceIds} onLink={matchUnmatched} manualActionsAvailable={manualActionsAvailable && !busy}
           paired={paired} savingId={savingId} openPdf={openInvoicePdf} />
             {!!item.WorkflowHistory?.length && <details className="workflow-history">
               <summary>Status history</summary>
