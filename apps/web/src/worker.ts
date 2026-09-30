@@ -2,6 +2,18 @@ import { AgentReview, CleanupSuggestion, ReconciliationCase, ReimbursementItem, 
 
 export const manualReconciliationWorkerVersion = "2.8.0";
 export const bulkDocumentWorkerVersion = "2.11.0";
+export type ClaimPreparation = {
+  expenseId: string; insurer: "blue-cross" | "desjardins"; portalUrl: string; blocked: boolean; submitAllowed: false;
+  fields: { patient: string | null; provider: string | null; practitioner: string | null; serviceDate: string | null; originalAmount: number | null; service: string | null; invoiceNumber: string | null };
+  missing: string[]; conflicts: string[];
+  attachments: { documentId: string; attachmentId: string; name: string }[];
+  sourceEmails: { account: string; messageId: string }[];
+  duplicate: { status: string; scope: string; checkedAt: string; records: { id: string; reference: string | null; service: string | null; status: string }[] };
+};
+export type ClaimStep = { status: string; revision: string; submitAllowed: false; fields: { key: string; label: string; type: string; kind: string | null; suggested: string | null; options: { value: string; label: string }[] }[] };
+export function claimAction<T>(config: WorkerConfig, action: "preview" | "open" | "inspect" | "fill", body: object): Promise<T> {
+  return request(config, `/claim-preparation/${action}`, { method: "POST", body: JSON.stringify(body) }, 90_000);
+}
 
 export function workerVersionAtLeast(version: string, minimum: string): boolean {
   const parse = (value: string) => value.split(".").map(part => Number.parseInt(part, 10) || 0);
@@ -37,11 +49,16 @@ function headers(config: WorkerConfig): HeadersInit {
 }
 
 async function request<T>(config: WorkerConfig, path: string, init: RequestInit = {}, timeoutMs = 30_000): Promise<T> {
-  const response = await fetch(endpoint(config, path), {
+  const url = endpoint(config, path);
+  const requestHeaders = { ...headers(config), ...(init.headers ?? {}) };
+  let response: Response;
+  try { response = await fetch(url, {
     signal: AbortSignal.timeout(timeoutMs),
     ...init,
-    headers: { ...headers(config), ...(init.headers ?? {}) }
-  });
+    headers: requestHeaders
+  }); } catch {
+    throw new Error("Cannot reach your FamilyHub PC. Check that the PC worker and HTTPS connection are running, then verify the endpoint in Other → Settings & tools → Local AI. Temporary tunnel addresses change after a restart. Saved results are still available; refresh before retrying an unconfirmed change.");
+  }
   if (!response.ok) {
     const body = await response.json().catch(() => ({})) as { error?: string };
     throw new Error(body.error || `Worker request failed (${response.status}).`);

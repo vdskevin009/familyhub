@@ -4,6 +4,8 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { Codex } from "@openai/codex-sdk";
+import { importConnectorMessage, claimPreparation } from "./invoices.js";
+import { openClaimBrowser, inspectClaimStep, fillClaimStep, claimSessionExpense } from "./claim-browser.js";
 import { initializeInvoices, initializeBlueCrossStatus, getBlueCrossStatus, syncBlueCrossPortal, initializeDesjardinsStatus, getDesjardinsStatus, syncDesjardinsPortal, invoiceSnapshot, collectInvoices, correctInvoice, updateInvoiceStatus, undoInvoiceDecision, invoiceAttachment, importBlueCrossMessages, setDocumentsIgnored, setExpenseIgnored, setManualMatch, setMatchDecision, setReimbursementWorkflowStatus, setUnmatchedIgnored } from "./invoices.js";
 
 type WorkerTaskType = "general" | "meal-plan" | "research" | "financial-review" | "admin-classify";
@@ -30,7 +32,7 @@ type ResearchWatch = {
 };
 type PersistedState = { watches: ResearchWatch[] };
 
-const version = "2.11.0";
+const version = "2.12.0";
 const host = process.env.FAMILYHUB_WORKER_HOST?.trim() || "127.0.0.1";
 const port = Number(process.env.FAMILYHUB_WORKER_PORT || "4713");
 const stateDir = process.env.FAMILYHUB_WORKER_DATA?.trim() || join(homedir(), ".familyhub-worker");
@@ -209,6 +211,19 @@ const server = createServer(async (request, response) => {
 
   const parts = pathParts(request.url);
   try {
+    if (parts[0] === "claim-preparation" && request.method === "POST" && parts.length === 2) {
+      const body = await readJson<{ expenseId?: unknown; insurer?: unknown; historyReviewed?: unknown; sessionId?: unknown; revision?: unknown; values?: unknown; attachment?: unknown }>(request);
+      if (parts[1] === "preview") { json(response, 200, claimPreparation(body.expenseId, body.insurer), origin); return; }
+      if (parts[1] === "open") { json(response, 200, await openClaimBrowser(claimPreparation(body.expenseId, body.insurer), body.historyReviewed), origin); return; }
+      if (parts[1] === "inspect") { json(response, 200, await inspectClaimStep(body.sessionId), origin); return; }
+      if (parts[1] === "fill") {
+        const previous = claimSessionExpense(body.sessionId);
+        const fresh = claimPreparation(previous.expenseId, previous.insurer);
+        if (fresh.blocked || JSON.stringify(fresh.fields) !== JSON.stringify(previous.fields)) throw new Error("The invoice or duplicate evidence changed. Prepare the claim again.");
+        json(response, 200, await fillClaimStep(body.sessionId, body.revision, body.values, body.attachment, invoiceAttachment), origin); return;
+      }
+      throw new Error("Unknown preparation action. Submission is not supported.");
+    }
     if (parts[0] === "desjardins" && parts[1] === "status" && parts.length === 2 && request.method === "GET") {
       const { previewSnapshot: _previewSnapshot, ...status } = getDesjardinsStatus();
       json(response, 200, status, origin); return;
@@ -232,6 +247,10 @@ const server = createServer(async (request, response) => {
       json(response, 200, publicResult, origin); return;
     }
     if (parts[0] === "invoices") {
+      if (request.method === "POST" && parts.length === 2 && parts[1] === "import-connector") {
+        const body = await readJson<{ message?: unknown; apply?: unknown }>(request, 28_000_000);
+        json(response, 200, await importConnectorMessage(body.message, body.apply), origin); return;
+      }
       if (request.method === "POST" && parts.length === 3 && parts[1] === "documents" && parts[2] === "ignore") {
         const body = await readJson<{ documentIds?: unknown; ignored?: unknown }>(request);
         await setDocumentsIgnored(body.documentIds, body.ignored);

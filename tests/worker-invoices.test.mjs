@@ -25,6 +25,9 @@ test('invoice endpoints require pairing/origin checks and report unconfigured Gm
     }
     assert.ok(ready, logs);
     assert.equal((await call('/invoices')).status, 401);
+    assert.equal((await call('/claim-preparation/preview', { method:'POST' })).status, 401);
+    assert.equal((await call('/invoices/import-connector', { method:'POST' })).status, 401);
+    assert.equal((await call('/claim-preparation/submit', { method:'POST', headers, body:'{}' })).status, 400);
     assert.equal((await call('/invoices', { headers: { ...headers, Origin: 'https://evil.example' } })).status, 403);
     const response = await call('/invoices', { headers });
     assert.equal(response.headers.get('cache-control'), 'no-store');

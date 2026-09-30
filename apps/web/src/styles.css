@@ -594,3 +594,20 @@ label { font-size: 12px; color: var(--muted); }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
 }
+
+/* Keep the recovery amount visible without expanding the Claims header. */
+.family-scope-card { flex-direction: column; gap: 3px; min-height: 52px; }
+.scope-person { display: flex; align-items: baseline; gap: 5px; }
+.scope-recovery { font-size: 12px; font-weight: 750; font-variant-numeric: tabular-nums; }
+.source-notices { font-size: 12px; color: var(--muted); }
+.source-notices summary { cursor: pointer; min-height: 32px; padding-block: 7px; }
+.source-notices p { margin: 8px 0; line-height: 1.5; }
+.prepare-claim { display: grid; gap: 16px; }
+.prepare-claim label { display: grid; gap: 6px; font-size: 13px; }
+.prepare-claim select, .prepare-claim input:not([type=checkbox]) { width: 100%; min-height: 44px; }
+.prepare-claim .prepare-check { grid-template-columns: auto 1fr; align-items: start; }
+.claim-preparation-facts { display: grid; gap: 10px; margin: 0; }
+.claim-preparation-facts > div { display: grid; grid-template-columns: minmax(100px, 1fr) minmax(0, 2fr); gap: 12px; }
+.claim-preparation-facts dt { color: var(--muted); font-size: 12px; }
+.claim-preparation-facts dd { margin: 0; overflow-wrap: anywhere; }
+.claim-footer { flex-wrap: wrap; }

@@ -162,3 +162,13 @@ test("an explicit insurer adjustment plus final total after GST proves the gross
   assert.equal(item.Healthcare.FieldStates.OriginalBilledAmount, "reconstructed");
   assert.equal(buildReconciliationSnapshot([item]).cases[0].PotentialRemaining, 60);
 });
+
+test("receipt column separators do not manufacture insurer payments or a gross expense", () => {
+  const source = { ...mail(), text: "Invoice #EXAMPLE-16\nAmount not covered: $10.00\nPacific Blue Cross PROVIDERnet #TEST - $10.00\n--\nSubtotal $10.00",
+    attachmentText: "July 16, 2026 - 1:15pm, Subsequent Physiotherapy Session (30\nminutes)\nExample Practitioner, License #TEST\nInvoice #EXAMPLE-16\nAmount not covered: $10.00\nPacific Blue Cross PROVIDERnet #TEST\n$10.00\nSubtotal $10.00" };
+  const item = receipt(source);
+  assert.equal(item.Healthcare.InsurerPayments?.["blue-cross"], undefined);
+  assert.equal(item.BilledAmount, null);
+  assert.equal(item.Healthcare.PatientBalance, 10);
+  assert.equal(item.Healthcare.ServiceType, "Subsequent Physiotherapy Session (30 minutes)");
+});

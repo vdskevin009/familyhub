@@ -19,6 +19,7 @@ export type Classification = {
 };
 export type Attachment = {
   Id: string; FileName: string; MimeType: string; Size: number;
+  LocalSha256?: string;
   AnalysisStatus?: "text-extracted" | "unsupported" | "too-large" | "failed";
   ExtractedCharacters?: number;
 };
@@ -75,14 +76,14 @@ export const classificationSchema = {
     healthcare: healthcareSchema,
     kind: { type: "string", enum: kinds }, confidence: { type: "number", minimum: 0, maximum: 1 },
     transaction: { type: "boolean" }, reimbursement: { type: "string", enum: ["possible", "unknown", "no"] },
-    reason: { type: "string" }, amount: { type: ["number", "null"] }, currency: { type: "string" },
+    reason: { type: "string" }, amount: { type: ["number", "null"], exclusiveMinimum: 0, exclusiveMaximum: 1e9 }, currency: { type: "string", pattern: "^(?:[A-Z]{3})?$" },
     category: { type: "string", enum: ["health", "travel", "other"] },
     member: { type: "string", enum: ["Kevin", "Jasmine", "Nathan", "unknown"] },
     documentRole: { type: "string", enum: ["expense", "insurer-statement", "other"] },
     insurer: { type: ["string", "null"], enum: ["desjardins", "blue-cross", null] },
-    serviceDate: { type: ["string", "null"] },
-    billedAmount: { type: ["number", "null"] },
-    reimbursedAmount: { type: ["number", "null"] },
+    serviceDate: { type: ["string", "null"], pattern: "^\\d{4}-\\d{2}-\\d{2}$" },
+    billedAmount: { type: ["number", "null"], exclusiveMinimum: 0, exclusiveMaximum: 1e9 },
+    reimbursedAmount: { type: ["number", "null"], minimum: 0, exclusiveMaximum: 1e9 },
     attention: { type: "string", enum: ["critical", "action", "important", "none"] },
     attentionReason: { type: "string" }
   }
