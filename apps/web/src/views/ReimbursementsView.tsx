@@ -49,6 +49,8 @@ export default function ReimbursementsView({ hub }: Props) {
   const [savingId, setSavingId] = useState("");
   const [savedMessage, setSavedMessage] = useState("");
   const [expandedMatchId, setExpandedMatchId] = useState("");
+  const [selectedClaimIds, setSelectedClaimIds] = useState<Set<string>>(() => new Set());
+  const [bulkIgnoring, setBulkIgnoring] = useState(false);
   const [filters, setFilters] = useState<Set<InvoiceHistoryFilter>>(() => new Set());
   const [personScope, setPersonScope] = useState<ReimbursementPersonScope>("all");
   const [workflowFilter, setWorkflowFilter] = useState<WorkflowStatusFilter>("open");
@@ -178,6 +180,30 @@ export default function ReimbursementsView({ hub }: Props) {
     } finally { setSavingId(""); }
   }
 
+  function workflowExpenseId(item: ReconciliationCase): string | null {
+    return item.ExpenseDocumentId || item.ExpenseDocumentIds?.[0] || item.DocumentIds[0] || null;
+  }
+
+  async function ignoreSelectedClaims(items: ReconciliationCase[]) {
+    if (!paired || bulkIgnoring || savingId) return;
+    const targets = items
+      .map(item => ({ item, expenseId: item.InferredFromInsurer ? null : workflowExpenseId(item) }))
+      .filter((entry): entry is { item: ReconciliationCase; expenseId: string } => Boolean(entry.expenseId)
+        && reimbursementWorkflowStatus(entry.item) !== "ignore"
+        && selectedClaimIds.has(entry.item.Id));
+    if (!targets.length) return;
+    setBulkIgnoring(true); setError(""); setSavedMessage("");
+    try {
+      for (const target of targets) await setReimbursementWorkflowStatus(hub.worker, target.expenseId, "ignore");
+      setSelectedClaimIds(new Set());
+      await refresh();
+      setSavedMessage(`${targets.length} claim${targets.length === 1 ? "" : "s"} ignored. The source evidence is preserved and each claim can be restored from the Ignore filter.`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "The selected claims could not all be ignored. Refresh to see the saved state and try again.");
+      await refresh();
+    } finally { setBulkIgnoring(false); }
+  }
+
   async function changeWorkflow(item: ReconciliationCase, status: ReimbursementWorkflowStatus | "automatic") {
     if (!paired || savingId) return;
     const expenseId = item.ExpenseDocumentId || item.ExpenseDocumentIds?.[0] || item.DocumentIds[0];
@@ -284,6 +310,17 @@ export default function ReimbursementsView({ hub }: Props) {
     const source = sourceFilter === "email" ? "Email" : sourceFilter === "blue-cross" ? "Blue Cross" : "Desjardins";
     return history.filter(item => reimbursementEvidenceSources(item, invoiceById).includes(source));
   }, [filters, invoiceById, sourceFilter, workflowScopedCases]);
+
+  const selectableVisibleCases = useMemo(() => filteredCases.filter(item =>
+    !item.InferredFromInsurer && reimbursementWorkflowStatus(item) !== "ignore" && Boolean(workflowExpenseId(item))),
+    [filteredCases]);
+  const selectedVisibleCount = selectableVisibleCases.filter(item => selectedClaimIds.has(item.Id)).length;
+  const allVisibleSelected = selectableVisibleCases.length > 0 && selectedVisibleCount === selectableVisibleCases.length;
+
+  useEffect(() => {
+    const visible = new Set(selectableVisibleCases.map(item => item.Id));
+    setSelectedClaimIds(previous => new Set([...previous].filter(id => visible.has(id))));
+  }, [selectableVisibleCases.map(item => item.Id).join("|")]);
 
   const scopeLabel = personScope === "all" ? "All family" : personScope;
 
@@ -462,6 +499,20 @@ export default function ReimbursementsView({ hub }: Props) {
         <h2 id="reimbursement-history-title">{workflowFilter === "all" ? "All" : workflowFilter[0].toUpperCase() + workflowFilter.slice(1)} invoices · {scopeLabel}</h2>
         <span>{filteredCases.length}</span>
       </div>
+      {selectableVisibleCases.length > 0 && <div className="claims-bulk-actions" role="toolbar" aria-label="Bulk claim actions">
+        <label className="claims-select-all">
+          <input type="checkbox" checked={allVisibleSelected}
+            onChange={() => setSelectedClaimIds(allVisibleSelected ? new Set() : new Set(selectableVisibleCases.map(item => item.Id)))} />
+          <span>{allVisibleSelected ? "Clear visible" : "Select all visible"}</span>
+        </label>
+        {selectedVisibleCount > 0 && <>
+          <span className="claims-selected-count">{selectedVisibleCount} selected</span>
+          <button type="button" className="mini-button danger" disabled={!paired || bulkIgnoring || !!savingId || busy}
+            onClick={() => void ignoreSelectedClaims(selectableVisibleCases)}>
+            {bulkIgnoring ? "Ignoring…" : `Ignore selected (${selectedVisibleCount})`}
+          </button>
+        </>}
+      </div>}
 
       {!model.cases.length && <div className="empty-state reimbursement-empty"><CircleDollarSign size={30} /><strong>No healthcare expenses yet</strong><span>Run the PC collection after importing invoices and insurer statements.</span></div>}
       {!!model.cases.length && !filteredCases.length && <div className="empty-state reimbursement-empty"><strong>No invoices match these filters</strong><span>Change the workflow, person or source filters to continue the review.</span></div>}
@@ -493,8 +544,17 @@ export default function ReimbursementsView({ hub }: Props) {
           const invoicePdfOptions = reimbursementInvoicePdfOptions(item, invoiceById);
           const evidenceSources = reimbursementEvidenceSources(item, invoiceById);
           const actionLabel = reimbursementActionLabel(item);
-          return <article className={`expense-card ${item.InferredFromInsurer ? "insurer-inferred" : ""}`} key={item.Id}>
+          const selectable = !item.InferredFromInsurer && workflow !== "ignore" && Boolean(workflowExpenseId(item));
+          const selected = selectedClaimIds.has(item.Id);
+          return <article className={`expense-card ${item.InferredFromInsurer ? "insurer-inferred" : ""} ${selected ? "bulk-selected" : ""}`} key={item.Id}>
             <div className="expense-heading">
+              {selectable && <label className="claim-select-control" aria-label="Select claim for bulk action">
+                <input type="checkbox" checked={selected} onChange={() => setSelectedClaimIds(previous => {
+                  const next = new Set(previous);
+                  if (next.has(item.Id)) next.delete(item.Id); else next.add(item.Id);
+                  return next;
+                })} />
+              </label>}
               <div><strong>{healthcareTitle(item)}</strong><small>{item.Member === "unknown" ? "Person to confirm" : item.Member}{item.ServiceType && healthcareTitle(item) !== item.ServiceType ? ` · ${item.ServiceType}` : ""}{item.ServiceDate ? ` · ${dateLabel(item.ServiceDate)}` : invoiceById.get(item.DocumentIds[0])?.ReceivedAt ? ` · Received ${dateLabel(invoiceById.get(item.DocumentIds[0])!.ReceivedAt)}` : " · Date missing"}</small></div>
               <div className="expense-status-stack">
                 <span className={`workflow-status ${workflow}`}>{workflow === "open" ? "Open" : workflow === "closed" ? "Closed" : "Ignore"}</span>
