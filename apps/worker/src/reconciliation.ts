@@ -174,8 +174,11 @@ function canonicalExpenses(expenses: Invoice[], statements: Invoice[] = []): Can
       // carries only the post-insurance residual. Consolidate them only when one exact insurer row
       // proves the arithmetic for the same member/date/service: submitted - paid = residual.
       const coordinatedResidualMatches = reportExpense && providerResidual != null && reportSubmitted != null
-        ? statements.filter(statement => statement.AccountLabel === "Local Desjardins import"
-          && statement.DocumentRole === "insurer-statement" && statement.Insurer === "desjardins"
+        ? statements.filter(statement => (statement.AccountLabel === "Local Desjardins import" && statement.Insurer === "desjardins"
+          || statement.StructuredSource === "blue-cross-portal" && statement.Insurer === "blue-cross"
+            && statement.Confidence >= 90 && !statement.NeedsReview && !providerEvidence.Conflicts?.length
+            && Boolean(service(statement)) && service(statement) === service(providerExpense))
+          && statement.DocumentRole === "insurer-statement"
           && statement.Member === reportExpense.Member
           && dateDistance(statement.ServiceDate, reportExpense.ServiceDate) === 0
           && (!service(statement) || !service(reportExpense) || service(statement) === service(reportExpense))
