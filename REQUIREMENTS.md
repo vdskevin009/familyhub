@@ -157,6 +157,8 @@ Rules:
 
 ### Remaining acceptance for #110
 
+- Multi-PDF connector messages require separate explicit invoice-attachment selection. Each invoice keeps the original source email and an attachment-specific stable identity; other patients, amounts and treatment handouts are excluded from its classification evidence.
+
 - Full build/regressions, idempotent actual intake and preservation of manual decisions, original-PDF API opening, paired phone refresh, and both insurer forms through final review remain independent checks. Do not equate a synthetic form test with live insurer acceptance.
 - Source search traversal cannot establish recognition of every invoice or insurance eligibility. Report failed/unreadable source files and unclassified candidates separately.
 
