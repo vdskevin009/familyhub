@@ -1,6 +1,7 @@
 import { AgentReview, CleanupSuggestion, ReconciliationCase, ReimbursementItem, ReimbursementWorkflowStatus, ResearchWatch, UnmatchedReimbursement, WorkerConfig, WorkerTask, WorkerTaskType } from "./types";
 
 export const manualReconciliationWorkerVersion = "2.8.0";
+export const bulkDocumentWorkerVersion = "2.11.0";
 
 export function workerVersionAtLeast(version: string, minimum: string): boolean {
   const parse = (value: string) => value.split(".").map(part => Number.parseInt(part, 10) || 0);
@@ -125,6 +126,13 @@ export function saveInvoiceStatus(config: WorkerConfig, id: string, status: numb
 }
 export function setExpenseIgnored(config: WorkerConfig, documentIds: string[], ignored: boolean): Promise<{ saved: boolean }> {
   return request(config, "/invoices/expenses/ignore", { method: "POST", body: JSON.stringify({ documentIds, ignored }) });
+}
+export async function setDocumentsIgnored(config: WorkerConfig, documentIds: string[], ignored: boolean): Promise<{ saved: boolean }> {
+  const health = await testWorker(config);
+  if (!workerVersionAtLeast(health.version, bulkDocumentWorkerVersion)) {
+    throw new Error(`Your PC worker is ${health.version || "an older version"}. Bulk document status changes require worker ${bulkDocumentWorkerVersion} or later. Update and restart the FamilyHub worker on the PC, then refresh.`);
+  }
+  return request(config, "/invoices/documents/ignore", { method: "POST", body: JSON.stringify({ documentIds, ignored }) });
 }
 export function setMatchDecision(config: WorkerConfig, reimbursementId: string, expenseId: string, decision: "confirmed" | "rejected"): Promise<{ saved: boolean }> {
   return request(config, "/invoices/matches/decision", { method: "POST", body: JSON.stringify({ reimbursementId, expenseId, decision }) });

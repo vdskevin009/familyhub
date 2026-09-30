@@ -4,7 +4,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { Codex } from "@openai/codex-sdk";
-import { initializeInvoices, initializeBlueCrossStatus, getBlueCrossStatus, syncBlueCrossPortal, initializeDesjardinsStatus, getDesjardinsStatus, syncDesjardinsPortal, invoiceSnapshot, collectInvoices, correctInvoice, updateInvoiceStatus, undoInvoiceDecision, invoiceAttachment, importBlueCrossMessages, setExpenseIgnored, setManualMatch, setMatchDecision, setReimbursementWorkflowStatus, setUnmatchedIgnored } from "./invoices.js";
+import { initializeInvoices, initializeBlueCrossStatus, getBlueCrossStatus, syncBlueCrossPortal, initializeDesjardinsStatus, getDesjardinsStatus, syncDesjardinsPortal, invoiceSnapshot, collectInvoices, correctInvoice, updateInvoiceStatus, undoInvoiceDecision, invoiceAttachment, importBlueCrossMessages, setDocumentsIgnored, setExpenseIgnored, setManualMatch, setMatchDecision, setReimbursementWorkflowStatus, setUnmatchedIgnored } from "./invoices.js";
 
 type WorkerTaskType = "general" | "meal-plan" | "research" | "financial-review" | "admin-classify";
 type WorkerTask = {
@@ -30,7 +30,7 @@ type ResearchWatch = {
 };
 type PersistedState = { watches: ResearchWatch[] };
 
-const version = "2.10.0";
+const version = "2.11.0";
 const host = process.env.FAMILYHUB_WORKER_HOST?.trim() || "127.0.0.1";
 const port = Number(process.env.FAMILYHUB_WORKER_PORT || "4713");
 const stateDir = process.env.FAMILYHUB_WORKER_DATA?.trim() || join(homedir(), ".familyhub-worker");
@@ -232,6 +232,11 @@ const server = createServer(async (request, response) => {
       json(response, 200, publicResult, origin); return;
     }
     if (parts[0] === "invoices") {
+      if (request.method === "POST" && parts.length === 3 && parts[1] === "documents" && parts[2] === "ignore") {
+        const body = await readJson<{ documentIds?: unknown; ignored?: unknown }>(request);
+        await setDocumentsIgnored(body.documentIds, body.ignored);
+        json(response, 200, { saved: true }, origin); return;
+      }
       if (request.method === "POST" && parts.length === 3 && parts[1] === "expenses" && parts[2] === "ignore") {
         const body = await readJson<{ documentIds?: unknown; ignored?: unknown }>(request);
         await setExpenseIgnored(body.documentIds, body.ignored);
