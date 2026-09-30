@@ -473,6 +473,38 @@ test("partial insurer-only expense stays open and asks for the other-insurer che
   assert.equal(reimbursementActionLabel(projected), "Check other insurer reimbursement");
 });
 
+test("ignored insurer-only expense remains visible in Claims and restores to automatic workflow", () => {
+  const blueCross = invoice("bc-only-ignored", "2026-09-28", {
+    DocumentRole: "insurer-statement",
+    DocumentType: "claim",
+    Insurer: "blue-cross",
+    StructuredSource: "blue-cross-portal",
+    Provider: "Blue Cross · Massage therapy",
+    ClaimedService: "Massage therapy",
+    BilledAmount: 150,
+    ReimbursedAmount: 100,
+    DetectedAmount: 100,
+    NeedsReview: false
+  });
+  const ignoredAt = "2026-09-29T18:00:00.000Z";
+  const [ignored] = insurerEvidenceExpenseCases([], [{
+    DocumentId: blueCross.Id, Reason: "manual-source-ignore", IgnoredAt: ignoredAt
+  }], [blueCross]);
+
+  assert.ok(ignored);
+  assert.equal(reimbursementWorkflowStatus(ignored), "ignore");
+  assert.equal(ignored.WorkflowOrigin, "manual");
+  assert.equal(ignored.WorkflowChangedAt, ignoredAt);
+  assert.equal(ignored.AutomaticWorkflowStatus, "open");
+  assert.equal(reimbursementActionLabel(ignored), "Ignored — no active reimbursement review");
+
+  const [restored] = insurerEvidenceExpenseCases([], [{
+    DocumentId: blueCross.Id, Reason: "no-expense-match"
+  }], [blueCross]);
+  assert.equal(reimbursementWorkflowStatus(restored), "open");
+  assert.equal(restored.WorkflowOrigin, "automatic");
+});
+
 test("insurer-only projection remains conservative for ambiguous or incomplete source rows", () => {
   const review = invoice("bc-review", "2026-09-28", {
     DocumentRole: "insurer-statement", DocumentType: "claim", Insurer: "blue-cross",
