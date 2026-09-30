@@ -158,10 +158,28 @@ test("missing invoice popup offers explicit linking only for a current unmatched
   const claim = { ...expense, Id: "insurer-evidence:payment-to-link", DocumentIds: [payment.Id], InferredFromInsurer: true, OriginalInvoiceMissing: true };
   const render = (unmatchedIds: Set<string>, paired = true) => renderToString(createElement(NearbySources, {
     claim, kind: "invoices", onKindChange() {}, items: [invoice, payment], cases: [expense], ignoredIds: new Set(),
-    paired, savingId: "", manualActionsAvailable: true, unmatchedIds, openPdf: async () => {}, onLinkInvoice: async () => true
+    paired, savingId: "", manualActionsAvailable: true, unmatchedIds, openPdf: async () => {}, onLink: async () => true
   }));
   assert.match(render(new Set([payment.Id])), />Link this invoice</);
   assert.match(render(new Set([payment.Id]), false), /class="mini-button primary" disabled=""/);
-  assert.doesNotMatch(render(new Set()), />Link this invoice</);
+  assert.match(render(new Set()), /class="mini-button" disabled="">Link this invoice/);
   assert.match(render(new Set()), /no longer unmatched/);
+});
+
+test("nearby insurer tabs expose reimbursement linking on an invoice-backed claim", () => {
+  const expense = { ...fixture.state.Reconciliations[0], MatchAssignments: [], DocumentIds: [fixture.state.Reconciliations[0].ExpenseDocumentId] };
+  const invoice = fixture.state.Items.find(item => item.Id === expense.ExpenseDocumentId)!;
+  for (const kind of ["blue-cross", "desjardins"] as const) {
+    const payment = { ...invoice, Id: "payment", Insurer: kind, DocumentRole: "insurer-statement", DocumentType: "claim", ReimbursedAmount: 40 };
+    const render = (unmatchedIds: Set<string>, paired = true) => renderToString(createElement(NearbySources, {
+      claim: expense, kind, onKindChange() {}, items: [invoice, payment], cases: [expense], ignoredIds: new Set(),
+      paired, savingId: "", manualActionsAvailable: true, unmatchedIds, openPdf: async () => {}, onLink: async () => true
+    }));
+    const html = render(new Set([payment.Id]));
+    assert.match(html, /class="mini-button primary">Link this reimbursement/);
+    assert.ok(html.indexOf("Link this reimbursement") < html.indexOf("No current expense link recorded"), "primary action appears above link history");
+    assert.match(render(new Set([payment.Id]), false), /class="mini-button primary" disabled=""/);
+    assert.match(render(new Set()), /disabled="">Link this reimbursement/);
+    assert.match(render(new Set()), /no longer unmatched/);
+  }
 });
