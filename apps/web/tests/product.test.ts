@@ -5,6 +5,7 @@ import { renderToString } from "react-dom/server";
 import { readFileSync } from "node:fs";
 import ClaimCard from "../src/views/ClaimCard";
 import ReconciliationQueue from "../src/views/ReconciliationQueue";
+import NearbySources from "../src/views/NearbySources";
 import { MutationQueue, requireSaved, type MutationProgress } from "../src/ui/mutation-queue";
 import type { ReconciliationCase, ReimbursementItem } from "../src/types";
 
@@ -111,6 +112,21 @@ test("PWA insurer-only claims cannot fabricate manual Open or Closed workflow op
 test("PWA selection checkboxes are opt-in and pending status is explicit", () => {
   const html = card(fixture.state.Reconciliations[0], { selecting: true, pending: { key: "a", label: "Closed", phase: "saving" } });
   assert.match(html, /type="checkbox"/); assert.match(html, /Saving…/); assert.match(html, /disabled=""/);
+});
+
+test("missing-source review shows linked claim details, unknown money and original document actions without mutation controls", () => {
+  const claim = fixture.state.Reconciliations[0];
+  const source = { ...fixture.state.Items[0], BilledAmount: null, Healthcare: { ...fixture.state.Items[0].Healthcare, OriginalBilledAmount: null } };
+  const other = { ...claim, Id: "another-claim", WorkflowOrigin: "manual" as const, WorkflowStatus: "closed" as const };
+  const html = renderToString(createElement(NearbySources, { claim, kind: "invoices", onKindChange() {}, items: [source], cases: [other],
+    ignoredIds: new Set([source.Id]), paired: true, savingId: "", openPdf: async () => {} }));
+  assert.match(html, /10 days before or after/);
+  assert.match(html, /Linked to another claim/);
+  assert.match(html, /Manual decision/);
+  assert.match(html, /Not recorded/);
+  assert.match(html, /Ignored source/);
+  assert.match(html, /View PDF/);
+  assert.doesNotMatch(html, />Match|>Close claim|>Ignore<|>Submit/);
 });
 
 test("PWA matching offers only worker expenses and disables nearby-date assignments", () => {

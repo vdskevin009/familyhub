@@ -7,6 +7,8 @@ import type { MatchAssignment, ReconciliationCase, ReimbursementItem, Reimbursem
 import { manualMatchExpenseId } from "../reconciliation-triage";
 import type { MutationProgress } from "../ui/mutation-queue";
 import { Notice, Sheet } from "../ui/primitives";
+import NearbySources from "./NearbySources";
+import type { DocumentLibraryKind } from "../document-library";
 
 export function money(value: number | null | undefined, code = "CAD"): string {
   if (value == null || !Number.isFinite(value)) return "—";
@@ -34,11 +36,14 @@ type Props = {
   changeUnmatchedIgnored: (reimbursementId: string, ignored: boolean) => Promise<boolean>;
   openInvoicePdf: (option: ReimbursementInvoicePdfOption) => Promise<void>;
   prepareClaim?: (expenseId: string) => void;
+  allCases?: ReconciliationCase[];
+  ignoredSourceIds?: ReadonlySet<string>;
 };
 
 export default function ClaimCard({ item, invoiceById, unmatched, paired, manualActionsAvailable, busy, savingId,
-  selecting, selected, toggleSelected, pending, reviewExplanation, operationError, operationMessage, changeWorkflow, decideMatch, matchUnmatched, changeUnmatchedIgnored, openInvoicePdf, prepareClaim }: Props) {
+  selecting, selected, toggleSelected, pending, reviewExplanation, operationError, operationMessage, changeWorkflow, decideMatch, matchUnmatched, changeUnmatchedIgnored, openInvoicePdf, prepareClaim, allCases = [], ignoredSourceIds = new Set<string>() }: Props) {
   const [detailsOpen, setDetailsOpen] = useState(false);
+  const [reviewSource, setReviewSource] = useState<DocumentLibraryKind | null>(null);
   const status = reimbursementCaseStatus(item);
   const workflow = reimbursementWorkflowStatus(item);
   const workflowValue = item.WorkflowOrigin === "manual" ? workflow : "automatic";
@@ -48,6 +53,8 @@ export default function ClaimCard({ item, invoiceById, unmatched, paired, manual
   const manuallyConfirmed = matchAssignments.length > 0 && matchAssignments.every(match => match.Verification === "confirmed-manually");
   const reviewRecommended = matchAssignments.some(match => match.Verification === "review-recommended");
   const evidenceSources = reimbursementEvidenceSources(item, invoiceById);
+  const defaultSource: DocumentLibraryKind = item.OriginalInvoiceMissing ? "invoices" : !evidenceSources.includes("Desjardins") ? "desjardins" : !evidenceSources.includes("Blue Cross") ? "blue-cross" : "invoices";
+  function reviewNearby(source: DocumentLibraryKind) { setReviewSource(source); setDetailsOpen(true); }
   const sameDayUnmatched = manualMatchExpenseId(item) && item.ServiceDate ? unmatched.filter(({ item: candidate }) =>
     candidate.Member === item.Member && candidate.ServiceDate?.slice(0, 10) === item.ServiceDate?.slice(0, 10)) : [];
   const invoicePdfOptions = reimbursementInvoicePdfOptions(item, invoiceById);
@@ -85,8 +92,10 @@ export default function ClaimCard({ item, invoiceById, unmatched, paired, manual
       <span>{item.PreviouslyFound ? "Verify saved source" : actionLabel}</span>
     </div>
     <div className="claim-evidence" aria-label="Evidence sources">
-      {evidenceSources.map(source => <span className="source-badge" key={source}>{source}</span>)}
-      {item.OriginalInvoiceMissing && <button type="button" className="evidence-note" onClick={() => setDetailsOpen(true)}>Invoice missing</button>}
+      {evidenceSources.map(source => <button type="button" className="source-badge" key={source} onClick={() => reviewNearby(source === "Email" ? "invoices" : source === "Desjardins" ? "desjardins" : "blue-cross")} aria-label={`Review nearby ${source === "Email" ? "invoice" : source} records`}>{source}</button>)}
+      {item.OriginalInvoiceMissing && <button type="button" className="evidence-note" onClick={() => reviewNearby("invoices")}>Invoice missing</button>}
+      {!evidenceSources.includes("Desjardins") && <button type="button" className="evidence-note" onClick={() => reviewNearby("desjardins")}>DJ missing</button>}
+      {!evidenceSources.includes("Blue Cross") && <button type="button" className="evidence-note" onClick={() => reviewNearby("blue-cross")}>BC missing</button>}
       {matchAssignments.length > 0 && <button type="button" className={`confidence-link ${reviewRecommended ? "warning" : ""}`} onClick={() => setDetailsOpen(true)} aria-label={`Review insurer links, ${matchConfidence}% confidence`}><Link2 size={13} />{matchConfidence}%{manuallyConfirmed ? " · Confirmed" : reviewRecommended ? " · Review" : ""}</button>}
     </div>
     {sameDayUnmatched.length > 0 && <button type="button" className="candidate-shortcut" onClick={() => setDetailsOpen(true)}><Link2 size={15} /><span>{sameDayUnmatched.length} same-day reimbursement{sameDayUnmatched.length > 1 ? "s" : ""} to review</span><ChevronRight size={16} /></button>}
@@ -105,6 +114,9 @@ export default function ClaimCard({ item, invoiceById, unmatched, paired, manual
         <div className="detail-workflow"><span className={`workflow-status ${workflow}`}>{workflow}</span><span>{item.WorkflowOrigin === "manual" ? "Manual choice" : "Automatic workflow"}{item.WorkflowChangedAt ? ` · ${new Date(item.WorkflowChangedAt).toLocaleString()}` : ""}</span></div>
         <div className="expense-amounts"><div><small>Expense</small><strong>{money(item.OriginalAmount, item.Currency)}</strong></div><div><small>Desjardins</small><strong>{money(namedInsurerReimbursementAmount(item, "Desjardins", invoiceById), item.Currency)}</strong></div><div><small>Blue Cross</small><strong>{money(namedInsurerReimbursementAmount(item, "Blue Cross", invoiceById), item.Currency)}</strong></div><div className="remaining"><small>Remaining</small><strong>{money(item.PotentialRemaining, item.Currency)}</strong></div></div>
         {item.OriginalInvoiceMissing && <p className="privacy-note">The original invoice has not been found. These amounts come from insurer evidence, not an inferred receipt.</p>}
+        <NearbySources claim={item} kind={reviewSource || defaultSource} onKindChange={setReviewSource}
+          items={[...invoiceById.values()]} cases={allCases} ignoredIds={ignoredSourceIds}
+          paired={paired} savingId={savingId} openPdf={openInvoicePdf} />
             {!!item.WorkflowHistory?.length && <details className="workflow-history">
               <summary>Status history</summary>
               <div>{[...item.WorkflowHistory].slice(-6).reverse().map((entry, index) =>

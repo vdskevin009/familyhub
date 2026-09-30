@@ -230,3 +230,7 @@ After implementing:
 
 FH-REIMB-021: Manual matching must select a current worker expense identity. Presentation-only insurer summaries, unreconciled display rows and retained historical cases remain visible as evidence but must not be offered as writable targets. Suggested and searched matches enforce the worker's same-known-member and exact-service-date constraints. Implemented in apps/web/src/reconciliation-triage.ts and ReconciliationQueue.tsx; automated and phone acceptance tracked in #115.
 
+
+### FH-REIMB-036 — Nearby missing-source review
+
+Implemented in `apps/web/src/nearby-sources.ts` and `views/NearbySources.tsx`; tracked in issue #117. Opening Invoice missing, DJ missing or BC missing must display the corresponding library's records for the same known family member within an inclusive ten-calendar-day service-date window on either side. Show provider/service, service date/offset, original or submitted amount, insurer reimbursement, reference, PDF/email access when available, review/ignored status and current links to other claims (including their date, amount and manual workflow status). Include already matched and ignored sources; do not filter them out based on match confidence or financial similarity. Missing dates/member and saved-source coverage limitations remain explicit. This is read-only comparison, not authorization to match, reassign or close a claim; retain existing workflow and matching controls. Automated/deployed verification and actual-phone acceptance remain distinct gates.
