@@ -157,6 +157,8 @@ Rules:
 
 ### Remaining acceptance for #110
 
+- Explicit invoice tables containing several service dates remain one source document with an unresolved service date and a blocking review warning. Their total must not be prefilled as one visit or included as a known recovery amount before the services are reviewed separately.
+
 - Recoverable totals exclude cases with unresolved ambiguous insurer links, including insurer-only projections, while retaining the cases and their source amounts for review. They must not sum competing interpretations of one payment as separate recovery opportunities.
 - A provider residual can consolidate with one existing report expense when a unique trusted Blue Cross row proves the same person, date, service and exact submitted-minus-paid arithmetic. Conflicting receipt evidence, low-confidence/review-required portal rows, mismatched services and ties do not qualify; no insurer order is inferred.
 

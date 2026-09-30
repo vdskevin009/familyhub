@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 const dir=await mkdtemp(join(tmpdir(),'familyhub-connector-'));
 process.env.FAMILYHUB_WORKER_DATA=dir;
-const {prepareConnectorMessage,readConnectorFile}=await import('../apps/worker/dist/connector-intake.js');
+const {prepareConnectorMessage,readConnectorFile,invoiceServiceDates}=await import('../apps/worker/dist/connector-intake.js');
 const {initializeInvoices,importConnectorMessage}=await import('../apps/worker/dist/invoices.js');
 const mail={id:'abcdef012345',threadId:'abcdef012345',internetMessageId:'<example@test.invalid>',subject:'Healthcare invoice',sender:'Sample Clinic',receivedAt:'2025-06-15T07:00:00Z',text:'Invoice #1234. Invoice total $100.00. Service date: 2025-06-15.',labels:['INBOX'],unsubscribe:false,bulk:false,attachments:[]};
 const message={account:'second@example.test',label:'Second mailbox',since:'2025-06-15T00:00:00-07:00',through:'2026-10-01T00:00:00-07:00',mail,files:[]};
@@ -16,6 +16,13 @@ test('connector intake enforces exact inclusive local-date boundary and source c
  await assert.rejects(()=>prepareConnectorMessage({...message,mail:{...mail,labels:['SENT']}}),/Excluded/);
  await assert.rejects(()=>prepareConnectorMessage({...message,mail:{...mail,id:'../../private'}}),/identity/);
  await assert.rejects(()=>readConnectorFile('../pairing-key.txt'),/reference/);
+});
+
+test('explicit service tables retain distinct dates without confusing ordinary receipt/payment dates',()=>{
+ assert.deepEqual(invoiceServiceDates('DATE DESCRIPTIONS/SERVICE TOTAL Jan 19, 2026 $185 Feb 2, 2026 $185'),['2026-01-19','2026-02-02']);
+ assert.deepEqual(invoiceServiceDates('DATE DESCRIPTIONS/SERVICE TOTAL January 19, 2026 $185 Jan 19, 2026 $185'),['2026-01-19']);
+ assert.deepEqual(invoiceServiceDates('Receipt Jan 19, 2026. Paid Feb 2, 2026.'),[]);
+ assert.deepEqual(invoiceServiceDates('DATE DESCRIPTIONS/SERVICE TOTAL Feb 30, 2026 $185'),[]);
 });
 test('dry run, repeat import and restart preserve existing records and manual decisions',async()=>{
  const initial={items:[],corrections:[{account:'first@example.test',fingerprint:'manual',kind:'receipt',at:'2026-01-01'}],decisions:[{id:'saved-decision'}],matchDecisions:[],unmatchedDecisions:[],workflowRecords:[],reviews:[],accounts:{'first@example.test':{through:123}}};

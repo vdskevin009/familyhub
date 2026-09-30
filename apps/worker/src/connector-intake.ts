@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { PDFParse } from "pdf-parse";
 import { dataDirectory } from "./private-store.js";
 import type { Mail } from "./invoice-model.js";
+import { calendarDate } from "./healthcare-evidence.js";
 
 // Connector credentials never enter the worker. Original documents are stored under
 // content hashes, not caller-supplied paths, and served through the paired API.
@@ -12,6 +13,13 @@ export type ConnectorMessage = { account: string; label: string; since: string; 
   mail: Mail; files: ConnectorAttachment[]; invoiceAttachmentId?: string };
 const cache = join(dataDirectory, "connector-documents");
 const digest = (bytes: Buffer) => createHash("sha256").update(bytes).digest("hex");
+/** Explicit dated-service tables cannot be represented as one service date. */
+export function invoiceServiceDates(text: string): string[] {
+  if (!/\bDATE\s+DESCRIPTIONS?\s*\/\s*SERVICE\b/i.test(text)) return [];
+  const months = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
+  return [...new Set([...text.matchAll(/\b(Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+(\d{1,2}),?\s+(\d{4})\b/gi)]
+    .map(m => calendarDate(`${m[3]}-${String(months.indexOf(m[1].slice(0, 3).toLowerCase()) + 1).padStart(2, "0")}-${m[2].padStart(2, "0")}`)).filter((d): d is string => d != null))];
+}
 export async function prepareConnectorMessage(input: unknown): Promise<{ account: string; label: string; invoiceAttachmentId?: string; mail: Mail; files: { hash: string; bytes: Buffer }[] }> {
   if (!input || typeof input !== "object") throw new Error("Provide a connector message.");
   const value = input as ConnectorMessage;
