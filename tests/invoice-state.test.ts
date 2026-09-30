@@ -489,7 +489,7 @@ test("ignored insurer-only expense remains visible in Claims and restores to aut
   const ignoredAt = "2026-09-29T18:00:00.000Z";
   const [ignored] = insurerEvidenceExpenseCases([], [{
     DocumentId: blueCross.Id, Reason: "manual-source-ignore", IgnoredAt: ignoredAt
-  } as any], [blueCross]);
+  }], [blueCross]);
 
   assert.ok(ignored);
   assert.equal(reimbursementWorkflowStatus(ignored), "ignore");
