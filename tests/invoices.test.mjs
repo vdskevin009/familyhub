@@ -425,10 +425,12 @@ test('trusted Blue Cross arithmetic consolidates a residual receipt with one rep
     assert.equal(result.cases[0].OriginalAmount, 200); assert.equal(result.cases[0].PotentialRemaining, 0);
     assert.equal(result.cases[0].DocumentIds.length, 4);
   }
-  for (const patch of [{ Member: 'Kevin' }, { ReimbursedAmount: 159 }, { NeedsReview: true }, { Confidence: 79 }, { Healthcare: { ...bc.Healthcare, ServiceType: 'Massage therapy' } }]) {
+  for (const patch of [{ Member: 'Kevin' }, { Currency: 'EUR' }, { ReimbursedAmount: 159 }, { NeedsReview: true }, { Confidence: 79 }, { Healthcare: { ...bc.Healthcare, ServiceType: 'Massage therapy' } }]) {
     assert.equal(buildReconciliationSnapshot([report, receipt, { ...bc, ...patch }, dj]).cases.length, 2);
   }
   assert.equal(buildReconciliationSnapshot([report, receipt, bc, { ...bc, Id: 'bc-tie' }, dj]).cases.length, 2);
+  assert.equal(buildReconciliationSnapshot([report, receipt, bc, dj], [{ reimbursementId: bc.Id, expenseId: receipt.Id, decision: 'rejected', at: '2026-09-01' }]).cases.length, 2);
+  assert.equal(buildReconciliationSnapshot([report, { ...receipt, Healthcare: { ...receipt.Healthcare, Conflicts: ['Unresolved amount'] } }, bc, dj]).cases.length, 2);
 });
 
 test('the PC collector reads supported text attachment content transiently and records extraction metadata', async () => {
