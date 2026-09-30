@@ -251,6 +251,7 @@ export default function ReimbursementsView({ hub }: Props) {
 
   const reviews = new Map((hub.reimbursements.AgentReviews ?? []).map(review => [review.key, review]));
   const invoiceById = useMemo(() => new Map(hub.reimbursements.Items.map(item => [item.Id, item])), [hub.reimbursements.Items]);
+  const ignoredSourceIds = useMemo(() => new Set((hub.reimbursements.IgnoredUnmatchedReimbursements ?? []).map(item => item.DocumentId)), [hub.reimbursements.IgnoredUnmatchedReimbursements]);
   const scopedCases = useMemo(() => filterReimbursementWorkflowCases(model.cases, personScope, "all"), [model.cases, personScope]);
   const scopedUnmatched = useMemo(() => model.unmatched.filter(({ item }) => personScope === "all" || item.Member === personScope), [model.unmatched, personScope]);
   const scopedIgnoredUnmatched = useMemo(() => model.ignoredUnmatched.filter(({ item }) => personScope === "all" || item.Member === personScope), [model.ignoredUnmatched, personScope]);
@@ -539,6 +540,7 @@ export default function ReimbursementsView({ hub }: Props) {
           pending={pendingFor(`workflow:${workflowExpenseId(item)}`)}
           toggleSelected={() => setSelectedClaimIds(previous => { const next = new Set(previous); if (next.has(item.Id)) next.delete(item.Id); else next.add(item.Id); return next; })}
           operationError={error} operationMessage={savedMessage}
+          allCases={model.cases} ignoredSourceIds={ignoredSourceIds}
           reviewExplanation={reviews.get(`case:${item.DocumentIds[0]}`)?.explanation}
           changeWorkflow={changeWorkflow} decideMatch={decideMatch} matchUnmatched={matchUnmatched}
           changeUnmatchedIgnored={changeUnmatchedIgnored} openInvoicePdf={openInvoicePdf} prepareClaim={workerVersionAtLeast(workerVersion, "2.12.0") ? setPreparingExpense : undefined} />)}

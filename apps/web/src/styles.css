@@ -611,3 +611,18 @@ label { font-size: 12px; color: var(--muted); }
 .claim-preparation-facts dt { color: var(--muted); font-size: 12px; }
 .claim-preparation-facts dd { margin: 0; overflow-wrap: anywhere; }
 .claim-footer { flex-wrap: wrap; }
+
+/* Source review stays within the claim sheet; each record wraps on narrow phones. */
+.nearby-sources, .nearby-source-list { display: grid; gap: 14px; min-width: 0; }
+.nearby-sources h3, .nearby-sources p { margin: 0; }
+.nearby-sources > div > p, .nearby-source-range, .nearby-sources small { color: var(--muted); font-size: 12px; line-height: 1.5; }
+.nearby-source-tabs, .nearby-source-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.nearby-source-tabs [aria-pressed="true"] { color: var(--green); background: var(--soft); border-color: currentColor; }
+.nearby-source-record { display: grid; gap: 10px; padding: 14px; border: 1px solid var(--line); border-radius: 12px; min-width: 0; overflow-wrap: anywhere; }
+.nearby-source-record > div > strong, .nearby-source-record small { display: block; }
+.nearby-source-record p { font-size: 13px; line-height: 1.5; }
+.nearby-source-amounts { display: flex; flex-wrap: wrap; gap: 12px 24px; margin: 0; }
+.nearby-source-amounts dt { font-size: 12px; color: var(--muted); }
+.nearby-source-amounts dd { margin: 2px 0 0; font-weight: 650; }
+.nearby-source-link { display: grid; gap: 3px; padding: 10px; background: var(--soft); border-radius: 8px; font-size: 12px; }
+.claim-evidence button.source-badge { min-height: 32px; cursor: pointer; }
