@@ -157,6 +157,8 @@ Rules:
 
 ### Remaining acceptance for #110
 
+- Recoverable totals exclude cases with unresolved ambiguous insurer links, including insurer-only projections, while retaining the cases and their source amounts for review. They must not sum competing interpretations of one payment as separate recovery opportunities.
+
 - Multi-PDF connector messages require separate explicit invoice-attachment selection. Each invoice keeps the original source email and an attachment-specific stable identity; other patients, amounts and treatment handouts are excluded from its classification evidence.
 
 - Full build/regressions, idempotent actual intake and preservation of manual decisions, original-PDF API opening, paired phone refresh, and both insurer forms through final review remain independent checks. Do not equate a synthetic form test with live insurer acceptance.

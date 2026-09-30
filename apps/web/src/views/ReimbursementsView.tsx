@@ -438,7 +438,7 @@ export default function ReimbursementsView({ hub }: Props) {
         <span className="totals-disclosure">Totals <span aria-hidden="true">⌄</span></span>
       </summary>
       <section className="reimbursement-summary" aria-label={`${scopeLabel} reimbursement summary`}>
-        <p className="privacy-note">Known remaining amounts on open cases. Eligibility is not guaranteed.{scopeSummaries.get(personScope)!.unknownAmounts > 0 ? ` ${scopeSummaries.get(personScope)!.unknownAmounts} amounts still need confirmation.` : ""}</p>
+        <p className="privacy-note">Known remaining amounts on open cases. Eligibility is not guaranteed. Ambiguous payment links are excluded until resolved.{scopeSummaries.get(personScope)!.unknownAmounts > 0 ? ` ${scopeSummaries.get(personScope)!.unknownAmounts} amounts still need confirmation.` : ""}</p>
         <article className="summary-primary"><small>Total expenses</small><strong>{money(finance.totalPaid)}</strong><span>{scopeLabel}</span></article>
         <article><small>Desjardins</small><strong>{money(finance.desjardins)}</strong><span>reimbursed</span></article>
         <article><small>Blue Cross</small><strong>{money(finance.blueCross)}</strong><span>reimbursed</span></article>

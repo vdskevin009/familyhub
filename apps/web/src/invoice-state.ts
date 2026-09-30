@@ -155,9 +155,9 @@ export function insurerEvidenceExpenseCases(cases: ReconciliationCase[], unmatch
       DesjardinsReimbursedAmount: source.Insurer === "desjardins" ? evidence.paid : null,
       BlueCrossReimbursedAmount: source.Insurer === "blue-cross" ? evidence.paid : null,
       NextInsurer: null,
-      Action: closed ? "complete" : "verify-balance",
+      Action: result.Reason === "ambiguous-match" ? "review-amount" : closed ? "complete" : "verify-balance",
       Status: closed ? "fully-reimbursed" : "needs-attention",
-      Summary: `Expense established from ${insurer} reimbursement evidence; original invoice not found.`,
+      Summary: result.Reason === "ambiguous-match" ? `This ${insurer} record has multiple possible invoice matches. Resolve the links before counting its remaining amount.` : `Expense established from ${insurer} reimbursement evidence; original invoice not found.`,
       Confidence: source.Confidence,
       WorkflowStatus: ignored ? "ignore" : closed ? "closed" : "open",
       WorkflowOrigin: ignored ? "manual" : "automatic",
@@ -165,6 +165,7 @@ export function insurerEvidenceExpenseCases(cases: ReconciliationCase[], unmatch
       AutomaticWorkflowStatus: closed ? "closed" : "open",
       WorkflowHistory: result.IgnoredAt ? [{ Status: "ignore", Origin: "manual", At: result.IgnoredAt, Reason: "manual-override" }] : [],
       InferredFromInsurer: true,
+      HasUnresolvedReimbursementEvidence: result.Reason === "ambiguous-match",
       OriginalInvoiceMissing: true
     });
   }
@@ -222,7 +223,7 @@ export function filterReimbursementWorkflowCases(cases: ReconciliationCase[], sc
 
 export function reimbursementWorkflowSummary(cases: ReconciliationCase[], scope: ReimbursementPersonScope): { open: number; potentiallyRecoverable: number; knownAmounts: number; unknownAmounts: number } {
   const openCases = cases.filter(item => (scope === "all" || item.Member === scope) && reimbursementWorkflowStatus(item) === "open");
-  const known = openCases.filter(item => !item.PreviouslyFound && item.PotentialRemaining != null && Number.isFinite(item.PotentialRemaining));
+  const known = openCases.filter(item => !item.PreviouslyFound && !item.HasUnresolvedReimbursementEvidence && item.PotentialRemaining != null && Number.isFinite(item.PotentialRemaining));
   return {
     open: openCases.length,
     knownAmounts: known.length,
