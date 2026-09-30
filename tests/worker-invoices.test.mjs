@@ -325,3 +325,76 @@ test('manual unmatched matching and ignore/restore persist for Nathan same-day a
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+
+test('bulk document ignore and restore keeps source evidence while removing selected records from reconciliation', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'familyhub-bulk-document-status-'));
+  const reservation = createServer(); reservation.listen(0, '127.0.0.1'); await once(reservation, 'listening');
+  const port = reservation.address().port; await new Promise(resolve => reservation.close(resolve));
+  await writeFile(join(dir, 'pairing-key.txt'), 'synthetic-bulk-key');
+
+  const common = {
+    AccountLabel: 'Test', AccountEmail: 'test@example.test', ThreadId: 'thread', InternetMessageId: '<bulk@example.test>',
+    Sender: 'Example', ReceivedAt: '2025-05-21T12:00:00Z', Category: 0, Status: 0, Currency: 'CAD',
+    Notes: '', Attachments: [], WorkerManaged: true, ReimbursementEligibility: 'possible',
+    ClassificationSource: 'rules', AmountSource: 'email-text', HasUnsubscribe: false,
+    AttentionLevel: 'none', AttentionReason: '', Fingerprint: 'bulk-synthetic', Reasons: ['Synthetic']
+  };
+  const expense = { ...common, Id: 'bulk-expense', SourceMessageId: 'bulk-expense-message', Subject: 'Clinic receipt',
+    Provider: 'Sample Clinic', Member: 'Jasmine', DocumentRole: 'expense', DocumentType: 'receipt',
+    ServiceDate: '2025-05-20', BilledAmount: 100, DetectedAmount: 100, ReimbursedAmount: null,
+    Insurer: null, Confidence: 99, NeedsReview: false, Healthcare: { ServiceType: 'Physiotherapy', OriginalBilledAmount: 100 } };
+  const statement = { ...common, Id: 'bulk-blue-cross', SourceMessageId: 'bulk-blue-cross-message', Subject: 'Blue Cross claim',
+    Provider: 'Blue Cross · Physiotherapy', Member: 'Jasmine', DocumentRole: 'insurer-statement', DocumentType: 'claim',
+    ServiceDate: '2025-05-20', BilledAmount: 100, DetectedAmount: 80, ReimbursedAmount: 80,
+    Insurer: 'blue-cross', Confidence: 99, NeedsReview: false,
+    Healthcare: { ServiceDate: '2025-05-20', ServiceType: 'Physiotherapy', SubmittedAmount: 100 } };
+  await writeFile(join(dir, 'invoices.json'), JSON.stringify({
+    items: [expense, statement], corrections: [], decisions: [], matchDecisions: [], unmatchedDecisions: [], workflowRecords: [], reviews: [], accounts: {}
+  }));
+
+  const headers = { 'x-familyhub-key': 'synthetic-bulk-key', Origin: 'https://vdskevin009.github.io' };
+  const jsonHeaders = { ...headers, 'Content-Type': 'application/json' };
+  const child = spawn(process.execPath, ['apps/worker/dist/index.js'], { env: { ...process.env, FAMILYHUB_WORKER_PORT: String(port), FAMILYHUB_WORKER_DATA: dir, FAMILYHUB_WORKER_HOST: '127.0.0.1' }, stdio: ['ignore', 'pipe', 'pipe'] });
+  const done = once(child, 'exit');
+  const snapshot = async () => (await fetch(`http://127.0.0.1:${port}/invoices`, { headers })).json();
+  const setIgnored = (documentIds, ignored) => fetch(`http://127.0.0.1:${port}/invoices/documents/ignore`, {
+    method: 'POST', headers: jsonHeaders, body: JSON.stringify({ documentIds, ignored })
+  });
+
+  try {
+    let ready = false;
+    for (let i = 0; i < 80; i++) {
+      try { if ((await fetch(`http://127.0.0.1:${port}/health`, { headers })).ok) { ready = true; break; } } catch {}
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+    assert.ok(ready);
+
+    let state = await snapshot();
+    assert.equal(state.reconciliations.length, 1);
+    assert.equal(state.reconciliations[0].MatchAssignments[0].ReimbursementDocumentId, 'bulk-blue-cross');
+
+    assert.equal((await setIgnored(['bulk-blue-cross'], true)).status, 200);
+    state = await snapshot();
+    assert.equal(state.items.some(item => item.Id === 'bulk-blue-cross'), true, 'ignored insurer evidence remains in the source library');
+    assert.equal(state.reconciliations[0].MatchAssignments?.length || 0, 0, 'ignored insurer source is removed from matching');
+    assert.equal(state.ignoredUnmatchedReimbursements.some(item => item.DocumentId === 'bulk-blue-cross'), true);
+
+    assert.equal((await setIgnored(['bulk-blue-cross'], false)).status, 200);
+    state = await snapshot();
+    assert.equal(state.reconciliations[0].MatchAssignments[0].ReimbursementDocumentId, 'bulk-blue-cross');
+    assert.equal(state.ignoredUnmatchedReimbursements.some(item => item.DocumentId === 'bulk-blue-cross'), false);
+
+    assert.equal((await setIgnored(['bulk-expense'], true)).status, 200);
+    state = await snapshot();
+    assert.equal(state.reconciliations.length, 0);
+    assert.equal(state.ignoredExpenses.some(item => item.DocumentIds.includes('bulk-expense')), true);
+
+    assert.equal((await setIgnored(['bulk-expense'], false)).status, 200);
+    state = await snapshot();
+    assert.equal(state.reconciliations.length, 1);
+    assert.equal(state.items.some(item => item.Id === 'bulk-expense' && !item.IgnoredAt), true);
+  } finally {
+    child.kill(); await done; await rm(dir, { recursive: true, force: true });
+  }
+});
