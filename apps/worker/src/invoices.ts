@@ -646,7 +646,7 @@ export async function importConnectorMessage(input: unknown, apply: unknown = fa
 
 type CollectionDependencies = { credentials: typeof credentials; accessToken: typeof accessToken; gmail: typeof gmail; classify: typeof classify; historicalClassify: typeof classifyHistorical; reviewer: Reviewer };
 export async function collectInvoices(overrides: Partial<CollectionDependencies> = {}): Promise<void> {
-  if (busy) throw new Error("Invoice collection is already running.");
+  if (busy || blueCrossBusy || desjardinsBusy) throw new Error("An insurer or invoice collection is already running.");
   busy = true;
   const dependencies: CollectionDependencies = { credentials, accessToken, gmail, classify, historicalClassify: classifyHistorical, reviewer: codexReviewer, ...overrides };
   try {

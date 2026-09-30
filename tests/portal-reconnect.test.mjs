@@ -34,7 +34,7 @@ test('reconnect is pollable, single-flight, sanitizes private paths and recovers
 test('interactive previews cannot overlap either insurer and do not modify invoices', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'familyhub-reconnect-'));
   process.env.FAMILYHUB_WORKER_DATA = dir;
-  const { initializeInvoices, syncDesjardinsPortal, syncBlueCrossPortal } = await import('../apps/worker/dist/invoices.js');
+  const { initializeInvoices, syncDesjardinsPortal, syncBlueCrossPortal, collectInvoices } = await import('../apps/worker/dist/invoices.js');
   try {
     await initializeInvoices(true);
     const before = await readFile(join(dir, 'invoices.json')).catch(() => null);
@@ -45,6 +45,7 @@ test('interactive previews cannot overlap either insurer and do not modify invoi
       const pending = first(false, true, async interactive => { assert.equal(interactive, true); entered(); return gate; });
       await ready;
       await assert.rejects(second(false, true, async () => { throw new Error('must not launch'); }), /already running/);
+      await assert.rejects(collectInvoices({ credentials: async () => { throw new Error('must not collect'); } }), /already running/);
       finish({ status: 'login-required' });
       assert.equal((await pending).status, 'login-required');
     }
