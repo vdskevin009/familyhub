@@ -5,6 +5,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { Codex } from "@openai/codex-sdk";
 import { importConnectorMessage, claimPreparation } from "./invoices.js";
+import { portalReconnectStatus, startPortalReconnect } from "./portal-reconnect.js";
 import { openClaimBrowser, inspectClaimStep, fillClaimStep, claimSessionExpense } from "./claim-browser.js";
 import { initializeInvoices, initializeBlueCrossStatus, getBlueCrossStatus, syncBlueCrossPortal, initializeDesjardinsStatus, getDesjardinsStatus, syncDesjardinsPortal, invoiceSnapshot, collectInvoices, correctInvoice, updateInvoiceStatus, undoInvoiceDecision, invoiceAttachment, importBlueCrossMessages, setDocumentsIgnored, setExpenseIgnored, setManualMatch, setMatchDecision, setReimbursementWorkflowStatus, setUnmatchedIgnored } from "./invoices.js";
 
@@ -32,7 +33,7 @@ type ResearchWatch = {
 };
 type PersistedState = { watches: ResearchWatch[] };
 
-const version = "2.13.0";
+const version = "2.14.0";
 const host = process.env.FAMILYHUB_WORKER_HOST?.trim() || "127.0.0.1";
 const port = Number(process.env.FAMILYHUB_WORKER_PORT || "4713");
 const stateDir = process.env.FAMILYHUB_WORKER_DATA?.trim() || join(homedir(), ".familyhub-worker");
@@ -223,6 +224,20 @@ const server = createServer(async (request, response) => {
         json(response, 200, await fillClaimStep(body.sessionId, body.revision, body.values, body.attachment, invoiceAttachment), origin); return;
       }
       throw new Error("Unknown preparation action. Submission is not supported.");
+    }
+    if ((parts[0] === "desjardins" || parts[0] === "bluecross") && parts[1] === "reconnect" && parts.length === 2) {
+      const insurer = parts[0];
+      if (request.method === "GET") {
+        json(response, 200, portalReconnectStatus(insurer) ?? { state: "idle" }, origin); return;
+      }
+      if (request.method === "POST") {
+        const body = await readJson<{ interactive?: unknown }>(request);
+        if (body.interactive !== true) throw new Error("Confirm opening the insurer sign-in window on the PC.");
+        if (getBlueCrossStatus().state === "syncing" || getDesjardinsStatus().state === "syncing")
+          throw new Error("An insurer collection is already running.");
+        json(response, 202, startPortalReconnect(insurer, () => insurer === "desjardins"
+          ? syncDesjardinsPortal(false, true) : syncBlueCrossPortal(false, true)), origin); return;
+      }
     }
     if (parts[0] === "desjardins" && parts[1] === "status" && parts.length === 2 && request.method === "GET") {
       const { previewSnapshot: _previewSnapshot, ...status } = getDesjardinsStatus();

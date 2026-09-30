@@ -223,7 +223,10 @@ export function filterReimbursementWorkflowCases(cases: ReconciliationCase[], sc
 
 export function reimbursementWorkflowSummary(cases: ReconciliationCase[], scope: ReimbursementPersonScope): { open: number; potentiallyRecoverable: number; knownAmounts: number; unknownAmounts: number } {
   const openCases = cases.filter(item => (scope === "all" || item.Member === scope) && reimbursementWorkflowStatus(item) === "open");
-  const known = openCases.filter(item => !item.PreviouslyFound && item.ServiceDate != null && !item.HasUnresolvedReimbursementEvidence && item.PotentialRemaining != null && Number.isFinite(item.PotentialRemaining));
+  // A missing service date does not make an explicit balance unknown. Matching
+  // still requires its own date/evidence guards; summarizing never creates a link.
+  const known = openCases.filter(item => !item.PreviouslyFound && !item.HasUnresolvedReimbursementEvidence
+    && (item.Currency || "CAD") === "CAD" && item.PotentialRemaining != null && Number.isFinite(item.PotentialRemaining));
   return {
     open: openCases.length,
     knownAmounts: known.length,

@@ -79,6 +79,15 @@ export function syncBlueCross(config: WorkerConfig, apply: boolean): Promise<Blu
 }
 
 export type DesjardinsSyncResult = BlueCrossSyncResult;
+export type PortalReconnect = { state: "idle" | "running" | "success" | "login-required" | "error"; startedAt?: string; result?: BlueCrossSyncResult; error?: string };
+export async function reconnectPortal(config: WorkerConfig, insurer: "bluecross" | "desjardins"): Promise<PortalReconnect> {
+  const health = await testWorker(config);
+  if (!workerVersionAtLeast(health.version, "2.14.0")) throw new Error("Update the PC worker to 2.14.0 to reconnect from FamilyHub.");
+  return request(config, `/${insurer}/reconnect`, { method: "POST", body: JSON.stringify({ interactive: true }) });
+}
+export function fetchPortalReconnect(config: WorkerConfig, insurer: "bluecross" | "desjardins"): Promise<PortalReconnect> {
+  return request(config, `/${insurer}/reconnect`);
+}
 export type DesjardinsSyncStatus = BlueCrossSyncStatus & { previewAt?: string; applicable?: boolean };
 export function fetchDesjardinsStatus(config: WorkerConfig): Promise<DesjardinsSyncStatus> {
   return request(config, "/desjardins/status");
