@@ -1,0 +1,30 @@
+name: PWA audit snapshot (isolated)
+on:
+  push:
+    branches: [chore/pwa-108-audit-snapshot]
+permissions:
+  contents: read
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install only frontend workspace dependencies
+        run: npm ci --workspace @familyhub/web --include-workspace-root
+      - name: Build existing frontend baseline
+        run: npm run build:web
+      - name: Package public source and frontend tooling for isolated browser checks
+        run: |
+          git rev-parse HEAD > .audit-source-commit
+          tar --exclude='./.git' --exclude='./.github/workflows/pwa-audit-snapshot.yml' -czf /tmp/pwa-audit-snapshot.tar.gz .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pwa-audit-snapshot
+          path: /tmp/pwa-audit-snapshot.tar.gz
+          retention-days: 1
