@@ -12,6 +12,11 @@
 
 ## Requirement lifecycle
 
+### 2026-09-30 balance and session recovery follow-up (#50, #36)
+
+- **FH-REIMB-022 / FH-REIMB-037 — Implemented; release verification pending.** A current open claim with a known finite CAD Remaining contributes to the family/person total even when its service date is missing. Missing dates remain unknown and keep all existing matching restrictions. Closed, ignored, stale, unresolved-payment and non-CAD cases do not contribute. Cards explain stale/unresolved/currency exclusions; totals describe their complete person scope independently of search/detail filters. `invoice-state.ts` and regression tests cover the calculation.
+- **FH-REIMB-039 — Implemented; live authentication acceptance pending.** From the paired PWA, the operator can explicitly open either insurer's sign-in window on the existing PC worker. The existing private browser profile and operator-controlled password/MFA flow are retained. After authentication, read-only collection resumes automatically. The start request returns immediately; authenticated polling survives phone disconnection or panel closure without replaying the operation. Only one insurer reconnect runs at once. No passwords or MFA codes are accepted/stored by FamilyHub, no financial changes are applied by reconnect, and no recurring schedule is enabled. Worker 2.14.0 adds `/bluecross/reconnect` and `/desjardins/reconnect`; a worker restart interrupts an in-flight job and existing sync status reports interruption. Automated credential login remains an open product choice, not a delivered feature. This extends FH-REIMB-032/033 without replacing explicit apply or their acceptance gates.
+
 Statuses: `Proposed` → `Accepted` → `In progress` → `Implemented` → `Verified`. A requirement can also be `Deferred`, `Superseded`, or `Rejected`.
 
 Rules:

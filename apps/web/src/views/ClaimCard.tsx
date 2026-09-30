@@ -92,6 +92,8 @@ export default function ClaimCard({ item, invoiceById, unmatched, paired, manual
       {status === "fully-reimbursed" && <CheckCircle2 size={14} />}
       <span>{item.PreviouslyFound ? "Verify saved source" : actionLabel}</span>
     </div>
+    {workflow === "open" && (item.PreviouslyFound || item.HasUnresolvedReimbursementEvidence || (item.Currency || "CAD") !== "CAD") &&
+      <small>Excluded from the CAD recovery total: {item.PreviouslyFound ? "saved source needs verification" : item.HasUnresolvedReimbursementEvidence ? "payment links need review" : "different currency"}.</small>}
     <div className="claim-evidence" aria-label="Evidence sources">
       {evidenceSources.map(source => <button type="button" className="source-badge" key={source} onClick={() => reviewNearby(source === "Email" ? "invoices" : source === "Desjardins" ? "desjardins" : "blue-cross")} aria-label={`Review nearby ${source === "Email" ? "invoice" : source} records`}>{source}</button>)}
       {item.OriginalInvoiceMissing && <button type="button" className="evidence-note" onClick={() => reviewNearby("invoices")}>Invoice missing</button>}

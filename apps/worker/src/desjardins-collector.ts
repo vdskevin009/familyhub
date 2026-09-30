@@ -240,7 +240,15 @@ export async function collectDesjardinsPortal(interactive = false, passes = 1): 
     const table = page.locator(historyTable);
     if (interactive) {
       const deadline = Date.now() + 10 * 60_000;
-      while (!await table.isVisible().catch(() => false) && Date.now() < deadline) await page.waitForTimeout(2000);
+      while ((!/HistoriqueReclamation_ClaimHistory\.aspx/i.test(page.url()) || !await table.isVisible().catch(() => false)) && Date.now() < deadline) {
+        // After operator login the portal can land on its home screen. Follow
+        // only the visible history link; never interact with login/MFA fields.
+        if (new URL(page.url()).origin === origin) {
+          const history = page.getByRole("link", { name: /historique des r[ée]clamations|claims history/i }).first();
+          if (await history.isVisible().catch(() => false)) await history.click();
+        }
+        await page.waitForTimeout(2000);
+      }
     } else await table.waitFor({ state: "visible", timeout: 20_000 }).catch(() => {});
     if (!await table.isVisible().catch(() => false)) return { status: "login-required" };
     if (!page.url().startsWith(origin) || !/HistoriqueReclamation_ClaimHistory\.aspx/i.test(page.url()))
