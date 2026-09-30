@@ -1522,3 +1522,10 @@ label small { font-weight: 500; }
   .claims-bulk-actions .mini-button { margin-left: 0; flex: 1 1 auto; }
   .claims-selected-count { margin-left: auto; }
 }
+
+
+/* Claims inclusive service-date filters */
+.claims-date-range { display:flex; gap:10px; align-items:end; flex-wrap:wrap; }
+.claims-date-range label { display:grid; gap:4px; font-size:.72rem; font-weight:750; color:var(--muted); }
+.claims-date-range input { min-height:38px; padding:7px 9px; border:1px solid var(--line); border-radius:10px; background:var(--surface); color:inherit; }
+@media (max-width:520px) { .claims-date-range label { flex:1 1 130px; } .claims-date-range input { width:100%; } }
