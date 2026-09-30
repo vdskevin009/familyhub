@@ -189,7 +189,7 @@ export type ReconciliationCase = {
 
 export type UnmatchedReimbursement = {
   DocumentId: string;
-  Reason: "ambiguous-match" | "missing-insurer" | "needs-review" | "no-expense-match";
+  Reason: "ambiguous-match" | "missing-insurer" | "needs-review" | "no-expense-match" | "manual-source-ignore";
   IgnoredAt?: string;
 };
 
