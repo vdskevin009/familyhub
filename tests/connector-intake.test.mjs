@@ -36,4 +36,27 @@ test('estimates and veterinary invoices are excluded from benefit intake',async(
   assert.equal((await importConnectorMessage({...message,mail:{...mail,id:'abcdef999999',subject}},false,classify)).status,'not-an-invoice');
  }
 });
+
+test('separate invoice attachments retain one source email without mixing patients or amounts',async()=>{
+ const objects=['<< /Type /Catalog /Pages 2 0 R >>','<< /Type /Pages /Kids [3 0 R] /Count 1 >>','<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 200] /Resources << >> /Contents 4 0 R >>','<< /Length 0 >>\nstream\n\nendstream'];
+ let pdf='%PDF-1.4\n';const offsets=[0];
+ for(const [i,o] of objects.entries()){offsets.push(Buffer.byteLength(pdf));pdf+=`${i+1} 0 obj\n${o}\nendobj\n`;}
+ const xref=Buffer.byteLength(pdf);pdf+='xref\n0 5\n0000000000 65535 f \n'+offsets.slice(1).map(n=>String(n).padStart(10,'0')+' 00000 n \n').join('')+`trailer\n<< /Size 5 /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF`;
+ const bytes=Buffer.from(pdf);
+ const attachments=['one','two'].map(id=>({Id:id,FileName:`Invoice ${id}.pdf`,MimeType:'application/pdf',Size:bytes.length}));
+ const multi={...message,mail:{...mail,id:'abcdef888888',text:'Other patient and amount must not leak into the selected invoice.',attachments},files:[]};
+ await assert.rejects(()=>prepareConnectorMessage(multi),/multiple PDFs/);
+ const ids=[];
+ for(const a of attachments){
+  const selected={...multi,invoiceAttachmentId:a.Id,files:[{id:a.Id,name:a.FileName,mime:a.MimeType,base64:bytes.toString('base64')}]};
+  const prepared=await prepareConnectorMessage(selected);
+  assert.equal(prepared.mail.attachments.length,1);assert.equal(prepared.mail.attachments[0].Id,a.Id);
+  assert.ok(!prepared.mail.text.includes('Other patient'));assert.equal(prepared.mail.id,multi.mail.id);
+  const result=await importConnectorMessage(selected,true,classify);ids.push(result.id);
+  assert.equal((await importConnectorMessage(selected,true,classify)).status,'unchanged');
+ }
+ assert.notEqual(ids[0],ids[1]);
+ const stored=JSON.parse(await readFile(join(dir,'invoices.json'),'utf8')).items.filter(i=>ids.includes(i.Id));
+ assert.equal(stored.length,2);assert.ok(stored.every(i=>i.SourceMessageId===multi.mail.id&&i.Attachments.length===1));
+});
 test.after(async()=>{await rm(dir,{recursive:true,force:true});});

@@ -598,12 +598,13 @@ export async function importConnectorMessage(input: unknown, apply: unknown = fa
   busy = true;
   try {
   const prepared = await prepareConnectorMessage(input);
-  const id = recordId(prepared.account, prepared.mail.id);
+    const id = recordId(prepared.account, prepared.invoiceAttachmentId ? `${prepared.mail.id}:attachment:${prepared.invoiceAttachmentId}` : prepared.mail.id);
   const existing = state.items.find(item => item.Id === id);
   if (existing) return { status: "unchanged", applied: false, id, attachments: existing.Attachments.length };
   const { result, source } = await classifier(prepared.mail, prepared.account, "Connected mailbox; patient must be explicit in the invoice, never inferred from the mailbox owner");
   if (source === "unavailable") return { status: "analysis-unavailable", applied: false, id, needsReview: true };
-  const item = toInvoice(prepared.mail, prepared.account, "Connected mailbox", result, source);
+    const item = toInvoice(prepared.mail, prepared.account, "Connected mailbox", result, source);
+    item.Id = id;
   item.AccountLabel = prepared.label;
   item.HistoricalCandidate = true;
   // Appointment reminders, treatment estimates and non-health records are not expenses.

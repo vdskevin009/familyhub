@@ -9,10 +9,10 @@ import type { Mail } from "./invoice-model.js";
 // content hashes, not caller-supplied paths, and served through the paired API.
 export type ConnectorAttachment = { id: string; name: string; mime: string; base64: string };
 export type ConnectorMessage = { account: string; label: string; since: string; through: string;
-  mail: Mail; files: ConnectorAttachment[] };
+  mail: Mail; files: ConnectorAttachment[]; invoiceAttachmentId?: string };
 const cache = join(dataDirectory, "connector-documents");
 const digest = (bytes: Buffer) => createHash("sha256").update(bytes).digest("hex");
-export async function prepareConnectorMessage(input: unknown): Promise<{ account: string; label: string; mail: Mail; files: { hash: string; bytes: Buffer }[] }> {
+export async function prepareConnectorMessage(input: unknown): Promise<{ account: string; label: string; invoiceAttachmentId?: string; mail: Mail; files: { hash: string; bytes: Buffer }[] }> {
   if (!input || typeof input !== "object") throw new Error("Provide a connector message.");
   const value = input as ConnectorMessage;
   if (typeof value.account !== "string" || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.account) || value.account.length > 254) throw new Error("Invalid source account.");
@@ -28,11 +28,18 @@ export async function prepareConnectorMessage(input: unknown): Promise<{ account
   if (!Array.isArray(source.labels) || source.labels.some(label => typeof label !== "string") || source.labels.some(label => ["SENT", "DRAFT", "SPAM", "TRASH"].includes(label))) throw new Error("Excluded mailbox message.");
   if (!Array.isArray(source.attachments) || source.attachments.length > 30 || !Array.isArray(value.files) || value.files.length > 30) throw new Error("Invalid attachments.");
   const ids = new Set<string>();
-  const attachments = source.attachments.map(a => {
+  let attachments = source.attachments.map(a => {
     if (!a || typeof a.Id !== "string" || !a.Id || a.Id.length > 1500 || ids.has(a.Id) || typeof a.FileName !== "string" || a.FileName.length > 255 || typeof a.MimeType !== "string" || !Number.isFinite(a.Size) || a.Size < 0) throw new Error("Invalid attachment metadata.");
     ids.add(a.Id);
     return { Id: a.Id, FileName: a.FileName, MimeType: a.MimeType, Size: a.Size, AnalysisStatus: "unsupported" as "unsupported" | "failed" | "text-extracted", ExtractedCharacters: 0, LocalSha256: undefined as string | undefined };
   });
+  if (value.invoiceAttachmentId != null) {
+    if (typeof value.invoiceAttachmentId !== "string" || !attachments.some(a => a.Id === value.invoiceAttachmentId && a.MimeType === "application/pdf")) throw new Error("Select an original PDF attachment from this message.");
+    attachments = attachments.filter(a => a.Id === value.invoiceAttachmentId);
+    if (value.files.length !== 1 || value.files[0].id !== value.invoiceAttachmentId) throw new Error("Provide only the selected invoice PDF.");
+  } else if (attachments.filter(a => a.MimeType === "application/pdf").length > 1) {
+    throw new Error("This email has multiple PDFs. Select each invoice separately to avoid combining different patients or amounts.");
+  }
   const chunks: string[] = [], files: { hash: string; bytes: Buffer }[] = [];
   const seen = new Set<string>();
   let total = 0;
@@ -56,10 +63,10 @@ export async function prepareConnectorMessage(input: unknown): Promise<{ account
     } catch { a.AnalysisStatus = "failed"; }
     finally { await parser.destroy(); }
   }
-  return { account: value.account.toLowerCase(), label: value.label, files,
+  return { account: value.account.toLowerCase(), label: value.label, invoiceAttachmentId: value.invoiceAttachmentId, files,
     mail: { id: source.id, threadId: source.threadId, internetMessageId: source.internetMessageId,
       subject: source.subject, sender: source.sender, receivedAt: source.receivedAt,
-      text: source.text.slice(0, 24_000), labels: source.labels, unsubscribe: Boolean(source.unsubscribe), bulk: Boolean(source.bulk),
+      text: value.invoiceAttachmentId ? "Invoice evidence is the selected original PDF. Other attachments and email amounts are intentionally excluded." : source.text.slice(0, 24_000), labels: source.labels, unsubscribe: Boolean(source.unsubscribe), bulk: Boolean(source.bulk),
       attachments, attachmentText: chunks.join("\n").slice(0, 48_000) } };
 }
 export async function saveConnectorFiles(files: { hash: string; bytes: Buffer }[]): Promise<void> {
