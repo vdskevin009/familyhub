@@ -132,6 +132,7 @@ export function insurerEvidenceExpenseCases(cases: ReconciliationCase[], unmatch
     if (!evidence || !insurer) continue;
     const remaining = Math.round(Math.max(0, evidence.original - evidence.paid) * 100) / 100;
     const closed = remaining <= .005;
+    const ignored = Boolean(result.IgnoredAt);
     const provider = source.Healthcare?.Provider
       || source.ClaimedService
       || source.Provider.replace(/^(?:Blue Cross|Desjardins)\s*·\s*/i, "")
@@ -158,9 +159,11 @@ export function insurerEvidenceExpenseCases(cases: ReconciliationCase[], unmatch
       Status: closed ? "fully-reimbursed" : "needs-attention",
       Summary: `Expense established from ${insurer} reimbursement evidence; original invoice not found.`,
       Confidence: source.Confidence,
-      WorkflowStatus: closed ? "closed" : "open",
-      WorkflowOrigin: "automatic",
+      WorkflowStatus: ignored ? "ignore" : closed ? "closed" : "open",
+      WorkflowOrigin: ignored ? "manual" : "automatic",
+      WorkflowChangedAt: result.IgnoredAt,
       AutomaticWorkflowStatus: closed ? "closed" : "open",
+      WorkflowHistory: result.IgnoredAt ? [{ Status: "ignore", Origin: "manual", At: result.IgnoredAt, Reason: "manual-override" }] : [],
       InferredFromInsurer: true,
       OriginalInvoiceMissing: true
     });
