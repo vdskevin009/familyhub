@@ -474,6 +474,17 @@ test("partial insurer-only expense stays open and asks for the other-insurer che
   assert.equal(reimbursementActionLabel(projected), "Check other insurer reimbursement");
 });
 
+test("ambiguous insurer links cannot inflate recoverable totals across competing invoice cases", () => {
+  const a = invoice("competing-one", "2026-09-28");
+  const b = invoice("competing-two", "2026-09-28");
+  const cases = [a, b].map(i => reconciliation(i, { PotentialRemaining: 50, HasUnresolvedReimbursementEvidence: true }));
+  const source = invoice("ambiguous-insurer", "2026-09-28", { DocumentRole: "insurer-statement", DocumentType: "claim", Insurer: "blue-cross", StructuredSource: "blue-cross-portal", BilledAmount: 150, ReimbursedAmount: 100, NeedsReview: false });
+  const projected = insurerEvidenceExpenseCases(cases, [{ DocumentId: source.Id, Reason: "ambiguous-match" }], [a, b, source]);
+  assert.equal(projected[0].Action, "review-amount");
+  assert.deepEqual(reimbursementWorkflowSummary([...cases, ...projected], "all"), { open: 3, potentiallyRecoverable: 0, knownAmounts: 0, unknownAmounts: 3 });
+  assert.equal(cases[0].PotentialRemaining, 50, "preserve source estimates without treating them as additive");
+});
+
 test("ignored insurer-only expense remains visible in Claims and restores to automatic workflow", () => {
   const blueCross = invoice("bc-only-ignored", "2026-09-28", {
     DocumentRole: "insurer-statement",

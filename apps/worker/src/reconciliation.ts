@@ -142,7 +142,7 @@ const isPatientName = (value: string) => memberName(value) !== "unknown";
 
 /** Collapse receipt/statement copies into one expense before matching insurer rows. */
 type CanonicalExpense = Invoice & { RelatedDocumentIds: string[] };
-function canonicalExpenses(expenses: Invoice[], statements: Invoice[] = []): CanonicalExpense[] {
+function canonicalExpenses(expenses: Invoice[], statements: Invoice[] = [], rejectedPairs: ReadonlySet<string> = new Set()): CanonicalExpense[] {
   const result: CanonicalExpense[] = [];
   for (const item of expenses) {
     const h = healthcareEvidence(item);
@@ -174,8 +174,14 @@ function canonicalExpenses(expenses: Invoice[], statements: Invoice[] = []): Can
       // carries only the post-insurance residual. Consolidate them only when one exact insurer row
       // proves the arithmetic for the same member/date/service: submitted - paid = residual.
       const coordinatedResidualMatches = reportExpense && providerResidual != null && reportSubmitted != null
-        ? statements.filter(statement => statement.AccountLabel === "Local Desjardins import"
-          && statement.DocumentRole === "insurer-statement" && statement.Insurer === "desjardins"
+        ? statements.filter(statement => (statement.AccountLabel === "Local Desjardins import" && statement.Insurer === "desjardins"
+          || statement.StructuredSource === "blue-cross-portal" && statement.Insurer === "blue-cross"
+            && statement.Confidence >= 90 && !statement.NeedsReview && !providerEvidence.Conflicts?.length
+            && Boolean(service(statement)) && service(statement) === service(providerExpense)
+            && (!statement.Currency || !providerExpense.Currency || statement.Currency === providerExpense.Currency)
+            && (!statement.Currency || !reportExpense.Currency || statement.Currency === reportExpense.Currency)
+            && ![item.Id, candidate.Id, ...candidate.RelatedDocumentIds].some(id => rejectedPairs.has(pairKey(statement.Id, id))))
+          && statement.DocumentRole === "insurer-statement"
           && statement.Member === reportExpense.Member
           && dateDistance(statement.ServiceDate, reportExpense.ServiceDate) === 0
           && (!service(statement) || !service(reportExpense) || service(statement) === service(reportExpense))
@@ -368,7 +374,6 @@ export function buildReconciliationSnapshot(items: Invoice[], matchDecisions: Ma
     || ((!item.DocumentRole || item.DocumentRole === "other") && ["receipt", "invoice", "bill"].includes(item.DocumentType)));
   const statements = health.filter(item => (item.DocumentRole === "insurer-statement" || item.DocumentType === "claim")
     && item.PortalClaimStatus !== "pended");
-  const expenses = canonicalExpenses(rawExpenses, statements);
   const assignments = new Map<string, Invoice[]>();
   const assignmentMeta = new Map<string, MatchAssignment>();
   const unmatchedReasons = new Map<string, UnmatchedReimbursement["Reason"]>();
@@ -377,6 +382,7 @@ export function buildReconciliationSnapshot(items: Invoice[], matchDecisions: Ma
   const rejectedMatches = [...latestByPair.values()].filter(decision => decision.decision === "rejected")
     .map(decision => ({ ReimbursementDocumentId: decision.reimbursementId, ExpenseDocumentId: decision.expenseId }));
   const rejectedPairs = new Set(rejectedMatches.map(item => pairKey(item.ReimbursementDocumentId, item.ExpenseDocumentId)));
+  const expenses = canonicalExpenses(rawExpenses, statements, rejectedPairs);
   const confirmedByStatement = new Map<string, MatchDecision>();
   for (const decision of matchDecisions) if (decision.decision === "confirmed") confirmedByStatement.set(decision.reimbursementId, decision);
 

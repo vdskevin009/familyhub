@@ -157,6 +157,9 @@ Rules:
 
 ### Remaining acceptance for #110
 
+- Recoverable totals exclude cases with unresolved ambiguous insurer links, including insurer-only projections, while retaining the cases and their source amounts for review. They must not sum competing interpretations of one payment as separate recovery opportunities.
+- A provider residual can consolidate with one existing report expense when a unique trusted Blue Cross row proves the same person, date, service and exact submitted-minus-paid arithmetic. Conflicting receipt evidence, low-confidence/review-required portal rows, mismatched services and ties do not qualify; no insurer order is inferred.
+
 - Multi-PDF connector messages require separate explicit invoice-attachment selection. Each invoice keeps the original source email and an attachment-specific stable identity; other patients, amounts and treatment handouts are excluded from its classification evidence.
 
 - Full build/regressions, idempotent actual intake and preservation of manual decisions, original-PDF API opening, paired phone refresh, and both insurer forms through final review remain independent checks. Do not equate a synthetic form test with live insurer acceptance.

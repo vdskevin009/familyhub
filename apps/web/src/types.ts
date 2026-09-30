@@ -168,6 +168,7 @@ export type ReconciliationCase = {
   Unreconciled?: boolean;
   InferredFromInsurer?: boolean;
   OriginalInvoiceMissing?: boolean;
+  HasUnresolvedReimbursementEvidence?: boolean;
   UnallocatedReimbursedAmount?: number;
   OriginalAmount: number | null; ReimbursedAmount: number; PotentialRemaining: number | null; Currency: string;
   PrimaryInsurer?: "Desjardins" | "Blue Cross" | null; PrimaryReimbursedAmount?: number | null;

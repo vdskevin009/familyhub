@@ -414,6 +414,25 @@ test('MIME normalization keeps source attachment identity, reads plain text, and
   assert.equal(normalized.text, 'Paid CAD 15'); assert.equal(normalized.attachments[0].Id, 'att-1');
 });
 
+test('trusted Blue Cross arithmetic consolidates a residual receipt with one report expense without guessing insurer order', () => {
+  const receipt = toInvoice({ ...mail, id: 'residual-bc', subject: 'Your Receipt - Example Clinic', sender: 'Example Clinic', text: 'Invoice #EX-123. Service date: 2026-08-20. Amount not covered: $40.00. Pacific Blue Cross PROVIDERnet - $40.00' }, 'second@example.test', 'Connected mailbox', { ...classification, category: 'health', member: 'Jasmine', documentRole: 'expense', amount: 40, billedAmount: null, serviceDate: '2026-08-20', healthcare: { ServiceType: 'Physiotherapy', PatientBalance: 40, ProcessedInsurers: ['blue-cross'] } }, 'codex');
+  const report = { ...receipt, Id: 'report-expense', AccountLabel: 'Local Desjardins import', Provider: 'Desjardins · Physiotherapy', BilledAmount: 200, DetectedAmount: 200, Healthcare: { ServiceType: 'Physiotherapy', ServiceDate: receipt.ServiceDate, OriginalBilledAmount: 200 } };
+  const bc = { ...report, Id: 'bc-proof', AccountLabel: 'Portal', DocumentRole: 'insurer-statement', Insurer: 'blue-cross', StructuredSource: 'blue-cross-portal', ReimbursedAmount: 160, Confidence: 99, NeedsReview: false };
+  const dj = { ...report, Id: 'dj-proof', DocumentRole: 'insurer-statement', Insurer: 'desjardins', ReimbursedAmount: 40, Confidence: 99, NeedsReview: false };
+  for (const items of [[report, receipt, bc, dj], [receipt, report, dj, bc]]) {
+    const result = buildReconciliationSnapshot(items);
+    assert.equal(result.cases.length, 1); assert.equal(result.unmatched.length, 0);
+    assert.equal(result.cases[0].OriginalAmount, 200); assert.equal(result.cases[0].PotentialRemaining, 0);
+    assert.equal(result.cases[0].DocumentIds.length, 4);
+  }
+  for (const patch of [{ Member: 'Kevin' }, { Currency: 'EUR' }, { ReimbursedAmount: 159 }, { NeedsReview: true }, { Confidence: 79 }, { Healthcare: { ...bc.Healthcare, ServiceType: 'Massage therapy' } }]) {
+    assert.equal(buildReconciliationSnapshot([report, receipt, { ...bc, ...patch }, dj]).cases.length, 2);
+  }
+  assert.equal(buildReconciliationSnapshot([report, receipt, bc, { ...bc, Id: 'bc-tie' }, dj]).cases.length, 2);
+  assert.equal(buildReconciliationSnapshot([report, receipt, bc, dj], [{ reimbursementId: bc.Id, expenseId: receipt.Id, decision: 'rejected', at: '2026-09-01' }]).cases.length, 2);
+  assert.equal(buildReconciliationSnapshot([report, { ...receipt, Healthcare: { ...receipt.Healthcare, Conflicts: ['Unresolved amount'] } }, bc, dj]).cases.length, 2);
+});
+
 test('the PC collector reads supported text attachment content transiently and records extraction metadata', async () => {
   const normalized = normalizeMail({ id: 'text-attachment', threadId: 't', payload: { headers: [{ name: 'Subject', value: 'Statement' }], parts: [
     { mimeType: 'text/csv', filename: 'statement.csv', body: { attachmentId: 'att-text', size: 42 } }
