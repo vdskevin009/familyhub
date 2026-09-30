@@ -55,6 +55,8 @@ export default function ReimbursementsView({ hub }: Props) {
   const [personScope, setPersonScope] = useState<ReimbursementPersonScope>("all");
   const [workflowFilter, setWorkflowFilter] = useState<WorkflowStatusFilter>("open");
   const [sourceFilter, setSourceFilter] = useState<"all" | "email" | "blue-cross" | "desjardins">("all");
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [workerVersion, setWorkerVersion] = useState("");
   const [screen, setScreen] = useState<"claims" | "reconcile">("claims");
@@ -187,7 +189,7 @@ export default function ReimbursementsView({ hub }: Props) {
   async function ignoreSelectedClaims(items: ReconciliationCase[]) {
     if (!paired || bulkIgnoring || savingId) return;
     const targets = items
-      .map(item => ({ item, expenseId: item.InferredFromInsurer ? null : workflowExpenseId(item) }))
+      .map(item => ({ item, expenseId: workflowExpenseId(item) }))
       .filter((entry): entry is { item: ReconciliationCase; expenseId: string } => Boolean(entry.expenseId)
         && reimbursementWorkflowStatus(entry.item) !== "ignore"
         && selectedClaimIds.has(entry.item.Id));
@@ -292,7 +294,9 @@ export default function ReimbursementsView({ hub }: Props) {
 
   const activeFilterCount = filters.size
     + (workflowFilter === "open" ? 0 : 1)
-    + (sourceFilter === "all" ? 0 : 1);
+    + (sourceFilter === "all" ? 0 : 1)
+    + (startDate ? 1 : 0)
+    + (endDate ? 1 : 0);
   const workflowLabel = workflowFilter === "all"
     ? "All"
     : workflowFilter[0].toUpperCase() + workflowFilter.slice(1);
@@ -306,13 +310,20 @@ export default function ReimbursementsView({ hub }: Props) {
 
   const filteredCases = useMemo(() => {
     const history = filterInvoiceHistoryCases(workflowScopedCases, filters);
-    if (sourceFilter === "all") return history;
-    const source = sourceFilter === "email" ? "Email" : sourceFilter === "blue-cross" ? "Blue Cross" : "Desjardins";
-    return history.filter(item => reimbursementEvidenceSources(item, invoiceById).includes(source));
-  }, [filters, invoiceById, sourceFilter, workflowScopedCases]);
+    const source = sourceFilter === "email" ? "Email" : sourceFilter === "blue-cross" ? "Blue Cross" : sourceFilter === "desjardins" ? "Desjardins" : null;
+    return history.filter(item => {
+      if (source && !reimbursementEvidenceSources(item, invoiceById).includes(source)) return false;
+      const serviceDay = item.ServiceDate?.slice(0, 10)
+        || invoiceById.get(item.DocumentIds[0])?.ReceivedAt?.slice(0, 10)
+        || "";
+      if (startDate && (!serviceDay || serviceDay < startDate)) return false;
+      if (endDate && (!serviceDay || serviceDay > endDate)) return false;
+      return true;
+    });
+  }, [endDate, filters, invoiceById, sourceFilter, startDate, workflowScopedCases]);
 
   const selectableVisibleCases = useMemo(() => filteredCases.filter(item =>
-    !item.InferredFromInsurer && reimbursementWorkflowStatus(item) !== "ignore" && Boolean(workflowExpenseId(item))),
+    reimbursementWorkflowStatus(item) !== "ignore" && Boolean(workflowExpenseId(item))),
     [filteredCases]);
   const selectedVisibleCount = selectableVisibleCases.filter(item => selectedClaimIds.has(item.Id)).length;
   const allVisibleSelected = selectableVisibleCases.length > 0 && selectedVisibleCount === selectableVisibleCases.length;
@@ -328,6 +339,7 @@ export default function ReimbursementsView({ hub }: Props) {
     setPersonScope(scope);
     setWorkflowFilter("open");
     setSourceFilter("all");
+    setStartDate(""); setEndDate("");
     setFilters(new Set<InvoiceHistoryFilter>());
     setFiltersOpen(false);
   }
@@ -440,7 +452,7 @@ export default function ReimbursementsView({ hub }: Props) {
         </div>
         <div className="reimbursement-filter-actions">
           {activeFilterCount > 0 && <button type="button" className="filter-clear" onClick={() => {
-            setFilters(new Set<InvoiceHistoryFilter>()); setWorkflowFilter("open"); setSourceFilter("all");
+            setFilters(new Set<InvoiceHistoryFilter>()); setWorkflowFilter("open"); setSourceFilter("all"); setStartDate(""); setEndDate("");
           }}>Reset</button>}
           <button type="button" className="filter-toggle" aria-expanded={filtersOpen} aria-controls="reimbursement-filter-panel"
             onClick={() => setFiltersOpen(open => !open)}>
@@ -468,6 +480,14 @@ export default function ReimbursementsView({ hub }: Props) {
             <button type="button" className={`filter-chip ${sourceFilter === "email" ? "active" : ""}`} onClick={() => setSourceFilter("email")}>Email <span>{filterCounts.email}</span></button>
             <button type="button" className={`filter-chip ${sourceFilter === "blue-cross" ? "active" : ""}`} onClick={() => setSourceFilter("blue-cross")}>Blue Cross <span>{filterCounts.blueCross}</span></button>
             <button type="button" className={`filter-chip ${sourceFilter === "desjardins" ? "active" : ""}`} onClick={() => setSourceFilter("desjardins")}>Desjardins <span>{filterCounts.desjardins}</span></button>
+          </div>
+        </div>
+        <div className="reimbursement-filter-group">
+          <small>Service date</small>
+          <div className="claims-date-range">
+            <label><span>Start date</span><input type="date" value={startDate} max={endDate || undefined} onChange={event => setStartDate(event.target.value)} /></label>
+            <label><span>End date</span><input type="date" value={endDate} min={startDate || undefined} onChange={event => setEndDate(event.target.value)} /></label>
+            {(startDate || endDate) && <button type="button" className="mini-button subtle" onClick={() => { setStartDate(""); setEndDate(""); }}>Clear dates</button>}
           </div>
         </div>
         <div className="reimbursement-filter-group">
@@ -544,7 +564,7 @@ export default function ReimbursementsView({ hub }: Props) {
           const invoicePdfOptions = reimbursementInvoicePdfOptions(item, invoiceById);
           const evidenceSources = reimbursementEvidenceSources(item, invoiceById);
           const actionLabel = reimbursementActionLabel(item);
-          const selectable = !item.InferredFromInsurer && workflow !== "ignore" && Boolean(workflowExpenseId(item));
+          const selectable = workflow !== "ignore" && Boolean(workflowExpenseId(item));
           const selected = selectedClaimIds.has(item.Id);
           return <article className={`expense-card ${item.InferredFromInsurer ? "insurer-inferred" : ""} ${selected ? "bulk-selected" : ""}`} key={item.Id}>
             <div className="expense-heading">
@@ -576,13 +596,7 @@ export default function ReimbursementsView({ hub }: Props) {
               <div><small>{secondInsurerLabel}</small><strong>{money(secondInsurerAmount, item.Currency)}</strong></div>
               <div className="remaining"><small>Remaining</small><strong>{money(item.PotentialRemaining, item.Currency)}</strong></div>
             </div>
-            {item.InferredFromInsurer ? <div className="workflow-control projected-workflow">
-              <div>
-                <strong>Workflow</strong>
-                <small>Automatic from insurer evidence · source data is unchanged</small>
-              </div>
-              <span className={`workflow-status ${workflow}`}>{workflow === "closed" ? "Closed" : "Open"}</span>
-            </div> : <div className="workflow-control">
+            <div className={`workflow-control ${item.InferredFromInsurer ? "projected-workflow" : ""}`}>
               <div>
                 <strong>Workflow</strong>
                 <small>{item.WorkflowOrigin === "manual" ? "Manual override" : "Automatic"}{item.WorkflowChangedAt ? ` · ${new Date(item.WorkflowChangedAt).toLocaleString()}` : ""}</small>
@@ -595,7 +609,7 @@ export default function ReimbursementsView({ hub }: Props) {
                 <option value="ignore">Ignore manually</option>
               </select>
               {workflowSaving && <span className="workflow-saving">Saving…</span>}
-            </div>}
+            </div>
             {!!item.WorkflowHistory?.length && <details className="workflow-history">
               <summary>Status history</summary>
               <div>{[...item.WorkflowHistory].slice(-6).reverse().map((entry, index) =>
