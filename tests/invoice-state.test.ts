@@ -166,6 +166,7 @@ test("workflow summaries are person-scoped and exclude Closed/Ignore from recove
   assert.deepEqual(reimbursementWorkflowSummary(cases, "Kevin"), { open: 1, potentiallyRecoverable: 38, knownAmounts: 1, unknownAmounts: 0 });
   assert.deepEqual(reimbursementWorkflowSummary(cases, "Jasmine"), { open: 0, potentiallyRecoverable: 0, knownAmounts: 0, unknownAmounts: 0 });
   assert.equal(reimbursementWorkflowSummary([{ ...cases[0], PreviouslyFound: true }], "all").potentiallyRecoverable, 0);
+  assert.equal(reimbursementWorkflowSummary([{ ...cases[0], ServiceDate: null }], "all").unknownAmounts, 1);
   assert.deepEqual(filterReimbursementWorkflowCases(cases, "Kevin", "all").map(item => item.DocumentIds[0]), ["kevin-open", "kevin-closed"]);
   assert.deepEqual(filterReimbursementWorkflowCases(cases, "all", "ignore").map(item => item.DocumentIds[0]), ["jasmine-ignore"]);
   assert.equal(reimbursementWorkflowStatus(reconciliation(invoice("legacy-closed", "2026-09-22"), { Status: "fully-reimbursed", Action: "complete" })), "closed");

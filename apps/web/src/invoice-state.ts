@@ -223,7 +223,7 @@ export function filterReimbursementWorkflowCases(cases: ReconciliationCase[], sc
 
 export function reimbursementWorkflowSummary(cases: ReconciliationCase[], scope: ReimbursementPersonScope): { open: number; potentiallyRecoverable: number; knownAmounts: number; unknownAmounts: number } {
   const openCases = cases.filter(item => (scope === "all" || item.Member === scope) && reimbursementWorkflowStatus(item) === "open");
-  const known = openCases.filter(item => !item.PreviouslyFound && !item.HasUnresolvedReimbursementEvidence && item.PotentialRemaining != null && Number.isFinite(item.PotentialRemaining));
+  const known = openCases.filter(item => !item.PreviouslyFound && item.ServiceDate != null && !item.HasUnresolvedReimbursementEvidence && item.PotentialRemaining != null && Number.isFinite(item.PotentialRemaining));
   return {
     open: openCases.length,
     knownAmounts: known.length,

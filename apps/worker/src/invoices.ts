@@ -12,7 +12,7 @@ import { blueCrossPrivateDirectory, collectBlueCrossPortal, type PortalCollectio
 import { desjardinsInvoices, planDesjardinsUpsert } from "./desjardins.js";
 import { collectDesjardinsPortal, desjardinsPrivateDirectory, loadDesjardinsSnapshot } from "./desjardins-collector.js";
 import { reviewReconciliations, reviewTargets, codexReviewer, type AgentReview, type Reviewer } from "./agents.js";
-import { prepareConnectorMessage, saveConnectorFiles, readConnectorFile } from "./connector-intake.js";
+import { prepareConnectorMessage, saveConnectorFiles, readConnectorFile, invoiceServiceDates } from "./connector-intake.js";
 import { prepareClaim } from "./claim-preparation.js";
 
 type Window = { after: number; before: number; page?: string };
@@ -606,13 +606,23 @@ export async function importConnectorMessage(input: unknown, apply: unknown = fa
     const item = toInvoice(prepared.mail, prepared.account, "Connected mailbox", result, source);
     item.Id = id;
   item.AccountLabel = prepared.label;
-  item.HistoricalCandidate = true;
+    item.HistoricalCandidate = true;
+    const serviceDates = invoiceServiceDates(prepared.mail.attachmentText || "");
+    if (serviceDates.length > 1) {
+      item.ServiceDate = null;
+      item.NeedsReview = true;
+      item.Healthcare = { ...item.Healthcare, ServiceDate: null,
+        FieldStates: { ...item.Healthcare?.FieldStates, ServiceDate: "unknown" },
+        Conflicts: [...(item.Healthcare?.Conflicts || []), `Invoice contains multiple service dates (${serviceDates.join(", ")}). Review each service separately before preparing a claim.`] };
+      delete item.Healthcare.FieldSources?.ServiceDate;
+      item.ImportWarning = "This invoice covers multiple service dates. Its total must not be claimed as one visit.";
+    }
   // Appointment reminders, treatment estimates and non-health records are not expenses.
   const eligible = item.Category === 0 && item.DocumentRole === "expense"
     && !/\b(?:veterinary|v[eé]t[eé]rinaire|estimate|quotation|confirming receipt|appointment reminder|appointment.*(?:accepted|rescheduled|coming up))\b/i.test(item.Subject);
   if (!eligible) return { status: "not-an-invoice", applied: false, id };
     if (prepared.mail.attachments.some(a => a.MimeType === "application/pdf" && !a.LocalSha256))
-      item.ImportWarning = "An original PDF from this connector source has not been downloaded. Open the source email to review it.";
+      item.ImportWarning = [item.ImportWarning, "An original PDF from this connector source has not been downloaded. Open the source email to review it."].filter(Boolean).join(" ");
     if (prepared.mail.attachments.some(a => a.AnalysisStatus === "failed")) {
       item.NeedsReview = true;
       item.ImportWarning = [item.ImportWarning, "Some attached evidence could not be read. Review the original document before claiming."].filter(Boolean).join(" ");
