@@ -572,6 +572,18 @@ label small { font-weight: 500; }
 .library-count { display: grid; min-width: 135px; }
 .library-count strong { font-size: 1.5rem; line-height: 1; }
 .library-count span { color: var(--muted); font-size: .73rem; }
+.library-selection-toolbar { display: flex; align-items: center; gap: 12px; min-height: 38px; }
+.library-selection-toolbar > span { color: var(--muted); font-size: .78rem; font-weight: 700; }
+.library-select-all { display: inline-flex; align-items: center; gap: 7px; color: var(--ink); font-size: .8rem; font-weight: 700; cursor: pointer; }
+.library-select-all input, .library-card-checkbox { width: 17px; height: 17px; accent-color: var(--green-2); cursor: pointer; }
+.library-bulk-bar { position: sticky; top: 8px; z-index: 4; display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 15px; background: rgba(255,255,255,.96); box-shadow: 0 8px 24px rgba(36,54,45,.08); }
+.library-bulk-bar > div:first-child { display: grid; gap: 2px; }
+.library-bulk-bar span { color: var(--muted); font-size: .72rem; }
+.library-bulk-actions { display: flex; flex-wrap: wrap; gap: 7px; justify-content: flex-end; }
+.library-card-label { display: inline-flex; align-items: center; gap: 9px; min-width: 0; }
+.library-card.selected { border-color: #84a895; box-shadow: 0 0 0 2px rgba(80,120,99,.08); }
+.library-card.ignored { background: #f7f7f3; }
+.library-card.ignored .library-kind { color: var(--muted); }
 .library-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; gap: 12px; }
 .library-card { display: grid; gap: 15px; padding: 19px 20px; border: 1px solid var(--line); border-radius: 20px; background: #fff; min-width: 0; }
 .library-card-top, .library-card-main, .library-card-bottom { display: flex; justify-content: space-between; gap: 16px; }
@@ -599,6 +611,10 @@ label small { font-weight: 500; }
   .library-toolbar label { flex: 1 1 130px; }
   .library-toolbar .library-search { order: 2; flex-basis: 100%; }
   .library-count { flex-basis: 100%; }
+  .library-selection-toolbar { flex-wrap: wrap; }
+  .library-bulk-bar { align-items: stretch; flex-direction: column; }
+  .library-bulk-actions { justify-content: stretch; }
+  .library-bulk-actions .mini-button { flex: 1 1 140px; }
   .library-card { padding: 15px; gap: 12px; }
   .library-card-main { flex-direction: column; gap: 9px; }
   .library-amount { text-align: left; }
