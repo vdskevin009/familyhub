@@ -330,6 +330,56 @@ test('manual unmatched matching and ignore/restore persist for Nathan same-day a
 });
 
 
+test('linking a residual invoice preserves manual status and one insurer allocation across restart', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'familyhub-invoice-link-'));
+  const reservation = createServer(); reservation.listen(0, '127.0.0.1'); await once(reservation, 'listening');
+  const port = reservation.address().port; await new Promise(resolve => reservation.close(resolve));
+  await writeFile(join(dir, 'pairing-key.txt'), 'synthetic-link-key');
+  const common = { AccountLabel: 'Synthetic', AccountEmail: 'example@example.test', Sender: 'Example',
+    ReceivedAt: '2026-09-01T12:00:00Z', Category: 0, Status: 0, Currency: 'CAD', Notes: '', Attachments: [],
+    WorkerManaged: true, ClassificationSource: 'rules', Confidence: 99, NeedsReview: false, Member: 'Kevin', ServiceDate: '2026-09-01' };
+  const receipt = { ...common, Id: 'receipt', SourceMessageId: 'receipt', Subject: 'Example receipt', Provider: 'Example clinic',
+    DocumentRole: 'expense', DocumentType: 'receipt', Insurer: null, BilledAmount: null, DetectedAmount: 40, ReimbursedAmount: null,
+    Healthcare: { ServiceType: 'RMT follow-up', OriginalBilledAmount: null, PatientBalance: 40, ProcessedInsurers: ['blue-cross'] } };
+  const payment = { ...common, Id: 'payment', SourceMessageId: 'payment', Subject: 'Example insurer record', Provider: 'Blue Cross',
+    DocumentRole: 'insurer-statement', DocumentType: 'claim', Insurer: 'blue-cross', StructuredSource: 'blue-cross-portal',
+    BilledAmount: 160, DetectedAmount: 120, ReimbursedAmount: 120, ClaimedService: 'Registered massage',
+    Healthcare: { ServiceType: 'Registered massage', SubmittedAmount: 160 } };
+  await writeFile(join(dir, 'invoices.json'), JSON.stringify({ items: [receipt, payment], corrections: [], decisions: [],
+    matchDecisions: [{ reimbursementId: 'payment', expenseId: 'receipt', decision: 'rejected', at: '2026-09-02T00:00:00Z' }],
+    unmatchedDecisions: [], workflowRecords: [{ ExpenseDocumentId: 'receipt', ManualStatus: 'open', AutomaticStatus: 'open', ChangedAt: '2026-09-02T00:00:00Z', History: [] }], reviews: [], accounts: {} }));
+  const headers = { 'x-familyhub-key': 'synthetic-link-key', Origin: 'https://vdskevin009.github.io', 'Content-Type': 'application/json' };
+  let child;
+  const start = async () => {
+    child = spawn(process.execPath, ['apps/worker/dist/index.js'], { env: { ...process.env, FAMILYHUB_WORKER_PORT: String(port), FAMILYHUB_WORKER_DATA: dir, FAMILYHUB_WORKER_HOST: '127.0.0.1' }, stdio: 'ignore' });
+    for (let i = 0; i < 80; i++) {
+      try { if ((await fetch(`http://127.0.0.1:${port}/health`, { headers })).ok) return; } catch {}
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+    throw new Error('Synthetic worker failed to start');
+  };
+  const stop = async () => { if (child && child.exitCode == null) { const done = once(child, 'exit'); child.kill(); await done; } };
+  const snapshot = async () => (await fetch(`http://127.0.0.1:${port}/invoices`, { headers })).json();
+  const link = () => fetch(`http://127.0.0.1:${port}/invoices/matches/manual`, { method: 'POST', headers, body: JSON.stringify({ reimbursementId: 'payment', expenseId: 'receipt' }) });
+  const verify = state => {
+    const expense = state.reconciliations.find(row => row.ExpenseDocumentId === 'receipt');
+    assert.equal(expense.OriginalAmount, 160);
+    assert.equal(expense.BlueCrossReimbursedAmount, 120);
+    assert.equal(expense.PotentialRemaining, 40);
+    assert.equal(expense.WorkflowStatus, 'open'); assert.equal(expense.WorkflowOrigin, 'manual');
+    assert.equal(expense.MatchAssignments[0].Verification, 'confirmed-manually');
+    assert.equal(state.reconciliations.flatMap(row => row.MatchAssignments).filter(row => row.ReimbursementDocumentId === 'payment').length, 1);
+    assert.equal(state.unmatchedReimbursements.length, 0);
+    assert.ok(state.items.some(row => row.Id === 'receipt'));
+  };
+  try {
+    await start(); assert.equal((await snapshot()).unmatchedReimbursements.length, 1);
+    assert.equal((await link()).status, 200); verify(await snapshot());
+    assert.equal((await link()).status, 400, 'a repeated link cannot allocate the payment twice');
+    await stop(); await start(); verify(await snapshot());
+  } finally { await stop(); await rm(dir, { recursive: true, force: true }); }
+});
+
 test('bulk document ignore and restore keeps source evidence while removing selected records from reconciliation', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'familyhub-bulk-document-status-'));
   const reservation = createServer(); reservation.listen(0, '127.0.0.1'); await once(reservation, 'listening');

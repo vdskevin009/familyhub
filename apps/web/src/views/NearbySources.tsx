@@ -1,9 +1,9 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { dateLabel } from "../domain";
 import { pdfAttachmentIndexes, type DocumentLibraryKind } from "../document-library";
 import { googleBridge } from "../google";
 import { healthcareTitle, type ReimbursementInvoicePdfOption } from "../invoice-state";
-import { nearbySourceRecords, sourceLabels } from "../nearby-sources";
+import { nearbyInvoiceLink, nearbySourceRecords, sourceLabels } from "../nearby-sources";
 import type { ReconciliationCase, ReimbursementItem } from "../types";
 
 function money(value: number | null | undefined, currency: string) {
@@ -12,11 +12,17 @@ function money(value: number | null | undefined, currency: string) {
   catch { return `${value.toFixed(2)} ${currency}`; }
 }
 
-export default function NearbySources({ claim, kind, onKindChange, items, cases, ignoredIds, paired, savingId, openPdf }: {
+export default function NearbySources({ claim, kind, onKindChange, items, cases, ignoredIds, paired, savingId, openPdf,
+  unmatchedIds = new Set<string>(), onLinkInvoice, manualActionsAvailable = false }: {
   claim: ReconciliationCase; kind: DocumentLibraryKind; onKindChange: (kind: DocumentLibraryKind) => void;
   items: ReimbursementItem[]; cases: ReconciliationCase[]; ignoredIds: ReadonlySet<string>;
   paired: boolean; savingId: string; openPdf: (option: ReimbursementInvoicePdfOption) => Promise<void>;
+  unmatchedIds?: ReadonlySet<string>; manualActionsAvailable?: boolean;
+  onLinkInvoice?: (target: ReconciliationCase, reimbursementId: string) => Promise<boolean>;
 }) {
+  const [confirmId, setConfirmId] = useState<string | null>(null);
+  const [linking, setLinking] = useState(false);
+  const [linkError, setLinkError] = useState("");
   const result = useMemo(() => nearbySourceRecords(claim, kind, items, cases), [claim, kind, items, cases]);
   return <section className="nearby-sources" aria-label="Nearby source records">
     <div><h3>Check nearby records</h3><p>Same person · 10 days before or after this service. Linked records are included so you can check possible mistakes.</p></div>
@@ -33,6 +39,8 @@ export default function NearbySources({ claim, kind, onKindChange, items, cases,
         const reference = item.Healthcare?.InvoiceNumber || item.PortalClaimId || item.Healthcare?.ClaimReference;
         const paid = item.ReimbursedAmount ?? null;
         const amount = kind === "invoices" ? item.BilledAmount ?? item.Healthcare?.OriginalBilledAmount : item.Healthcare?.SubmittedAmount ?? item.BilledAmount;
+        const link = kind === "invoices" && claim.InferredFromInsurer && claim.OriginalInvoiceMissing && onLinkInvoice
+          ? nearbyInvoiceLink(claim, item, items, cases, unmatchedIds, ignoredIds) : null;
         return <article className="nearby-source-record" key={item.Id}>
           <div><strong>{healthcareTitle({ Provider: item.Healthcare?.Provider || item.Provider, ServiceType: service })}</strong>
             <p>{dateLabel(serviceDate)} · {offsetDays === 0 ? "Same day" : `${Math.abs(offsetDays)} days ${offsetDays < 0 ? "before" : "after"}`}</p>
@@ -54,10 +62,30 @@ export default function NearbySources({ claim, kind, onKindChange, items, cases,
               onClick={() => void openPdf({ ItemId: item.Id, AttachmentIndex: index, FileName: item.Attachments[index].FileName, Source: "worker" })}>
               {savingId === `pdf:${item.Id}:${index}` ? "Opening…" : `View PDF${pdfs.length > 1 ? ` ${ordinal + 1}` : ""}`}</button>)}
           </div>
+          {link && <div className="nearby-invoice-link">
+            {link.reason ? <small>{link.reason}</small> : confirmId === item.Id ? <div className="nearby-source-link" role="group" aria-label="Confirm invoice link">
+              <strong>Link this invoice to the insurer payment?</strong>
+              <span>{claim.Member} · {dateLabel(claim.ServiceDate!)} · {link.reimbursement!.Insurer === "blue-cross" ? "Blue Cross" : "Desjardins"} {money(link.reimbursement!.ReimbursedAmount, claim.Currency)}</span>
+              <span>Invoice: {item.Healthcare?.Provider || item.Provider || "Provider not recorded"}{reference ? ` · ${reference}` : ""}</span>
+              <small>The payment will join this invoice’s expense. Other claims and saved status choices stay unchanged.</small>
+              <div className="nearby-source-actions"><button type="button" className="mini-button primary" disabled={!paired || !manualActionsAvailable || !!savingId || linking}
+                onClick={async () => {
+                  setLinking(true); setLinkError("");
+                  try {
+                    if (await onLinkInvoice!(link.target!, link.reimbursement!.Id)) setConfirmId(null);
+                    else setLinkError("The link was not confirmed. Review the message above and refresh before trying again.");
+                  } catch { setLinkError("The link could not be confirmed. Refresh before trying again."); }
+                  finally { setLinking(false); }
+                }}>{linking ? "Linking…" : "Confirm link"}</button>
+                <button type="button" className="mini-button" disabled={linking || !!savingId} onClick={() => { setConfirmId(null); setLinkError(""); }}>Cancel</button></div>
+              {linkError && <small role="alert">{linkError}</small>}
+            </div> : <button type="button" className="mini-button primary" disabled={!paired || !manualActionsAvailable || !!savingId || linking}
+              onClick={() => { setConfirmId(item.Id); setLinkError(""); }}>{manualActionsAvailable ? "Link this invoice" : "Update PC worker to link"}</button>}
+          </div>}
         </article>;
       })}</div>
       {result.missingDates > 0 && <small>{result.missingDates} other {sourceLabels[kind]} record{result.missingDates === 1 ? " has" : "s have"} no service date and cannot be placed in this window.</small>}
     </>}
-    <p className="privacy-note">Review only. Nothing is matched, moved or closed here. Saved sources may be incomplete; a nearby date does not prove a match.</p>
+    <p className="privacy-note">Saved sources may be incomplete; a nearby date does not prove a match. Links change only when you confirm. No insurance claim is submitted.</p>
   </section>;
 }

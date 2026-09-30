@@ -541,6 +541,7 @@ export default function ReimbursementsView({ hub }: Props) {
           toggleSelected={() => setSelectedClaimIds(previous => { const next = new Set(previous); if (next.has(item.Id)) next.delete(item.Id); else next.add(item.Id); return next; })}
           operationError={error} operationMessage={savedMessage}
           allCases={model.cases} ignoredSourceIds={ignoredSourceIds}
+          unmatchedSourceIds={new Set((hub.reimbursements.UnmatchedReimbursements || []).map(source => source.DocumentId))}
           reviewExplanation={reviews.get(`case:${item.DocumentIds[0]}`)?.explanation}
           changeWorkflow={changeWorkflow} decideMatch={decideMatch} matchUnmatched={matchUnmatched}
           changeUnmatchedIgnored={changeUnmatchedIgnored} openInvoicePdf={openInvoicePdf} prepareClaim={workerVersionAtLeast(workerVersion, "2.12.0") ? setPreparingExpense : undefined} />)}

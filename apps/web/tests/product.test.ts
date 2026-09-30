@@ -150,3 +150,18 @@ test("PWA matching offers only worker expenses and disables nearby-date assignme
   assert.match(nearby, /Matching requires the same service date/);
   assert.match(nearby, /class="mini-button primary" disabled=""/);
 });
+
+test("missing invoice popup offers explicit linking only for a current unmatched payment and eligible invoice", () => {
+  const expense = { ...fixture.state.Reconciliations[0], MatchAssignments: [], DocumentIds: [fixture.state.Reconciliations[0].ExpenseDocumentId] };
+  const invoice = fixture.state.Items.find(item => item.Id === expense.ExpenseDocumentId)!;
+  const payment = { ...invoice, Id: "payment-to-link", Insurer: "blue-cross", DocumentRole: "insurer-statement", DocumentType: "claim" };
+  const claim = { ...expense, Id: "insurer-evidence:payment-to-link", DocumentIds: [payment.Id], InferredFromInsurer: true, OriginalInvoiceMissing: true };
+  const render = (unmatchedIds: Set<string>, paired = true) => renderToString(createElement(NearbySources, {
+    claim, kind: "invoices", onKindChange() {}, items: [invoice, payment], cases: [expense], ignoredIds: new Set(),
+    paired, savingId: "", manualActionsAvailable: true, unmatchedIds, openPdf: async () => {}, onLinkInvoice: async () => true
+  }));
+  assert.match(render(new Set([payment.Id])), />Link this invoice</);
+  assert.match(render(new Set([payment.Id]), false), /class="mini-button primary" disabled=""/);
+  assert.doesNotMatch(render(new Set()), />Link this invoice</);
+  assert.match(render(new Set()), /no longer unmatched/);
+});

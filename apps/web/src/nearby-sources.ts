@@ -1,7 +1,33 @@
 import { libraryItems, type DocumentLibraryKind } from "./document-library";
 import type { ReconciliationCase, ReimbursementItem } from "./types";
+import { manualMatchUnavailableReason } from "./reconciliation-triage";
 
 export const sourceLabels: Record<DocumentLibraryKind, string> = { invoices: "Invoices", desjardins: "Desjardins", "blue-cross": "Blue Cross" };
+
+/** An explicit link moves one unmatched payment to a real expense; it never merges other claims. */
+export function nearbyInvoiceLink(claim: ReconciliationCase, invoice: ReimbursementItem,
+  items: ReimbursementItem[], cases: ReconciliationCase[], unmatchedIds: ReadonlySet<string>, ignoredIds: ReadonlySet<string>) {
+  const blocked = (reason: string) => ({ reason, target: null, reimbursement: null });
+  if (!claim.InferredFromInsurer || !claim.OriginalInvoiceMissing || claim.PreviouslyFound)
+    return blocked("This claim already has an expense. Review its existing links first.");
+  if (claim.DocumentIds.length !== 1) return blocked("Review the individual insurer records before linking.");
+  const reimbursement = items.find(item => item.Id === claim.DocumentIds[0]);
+  if (!reimbursement || !unmatchedIds.has(reimbursement.Id)) return blocked("This payment is no longer unmatched. Refresh before linking.");
+  if (claim.WorkflowStatus === "ignore" || [invoice, reimbursement].some(item => item.IgnoredAt || item.Status === 4 || ignoredIds.has(item.Id)))
+    return blocked("Restore the ignored record before linking.");
+  if (!libraryItems([invoice], "invoices").length) return blocked("Select an original invoice.");
+  const targets = cases.filter(entry => !entry.PreviouslyFound && !entry.InferredFromInsurer && !entry.Unreconciled
+    && (entry.ExpenseDocumentId === invoice.Id || entry.ExpenseDocumentIds?.includes(invoice.Id)));
+  if (targets.length !== 1) return blocked("A unique current expense is required. Refresh and review its links.");
+  const target = targets[0];
+  const reason = manualMatchUnavailableReason(reimbursement, target);
+  if (reason) return blocked(reason);
+  if (cases.some(entry => !entry.PreviouslyFound && entry.MatchAssignments?.some(match => match.ReimbursementDocumentId === reimbursement.Id)))
+    return blocked("This payment is already linked. Refresh and review its existing match.");
+  if (target.MatchAssignments?.some(match => match.Insurer === reimbursement.Insurer))
+    return blocked("This expense already has a payment from this insurer. Review its existing match first.");
+  return { reason: null, target, reimbursement };
+}
 
 function day(value: string | null | undefined): number | null {
   const date = value?.slice(0, 10);
