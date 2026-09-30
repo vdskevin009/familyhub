@@ -38,10 +38,11 @@ type Props = {
   prepareClaim?: (expenseId: string) => void;
   allCases?: ReconciliationCase[];
   ignoredSourceIds?: ReadonlySet<string>;
+  unmatchedSourceIds?: ReadonlySet<string>;
 };
 
 export default function ClaimCard({ item, invoiceById, unmatched, paired, manualActionsAvailable, busy, savingId,
-  selecting, selected, toggleSelected, pending, reviewExplanation, operationError, operationMessage, changeWorkflow, decideMatch, matchUnmatched, changeUnmatchedIgnored, openInvoicePdf, prepareClaim, allCases = [], ignoredSourceIds = new Set<string>() }: Props) {
+  selecting, selected, toggleSelected, pending, reviewExplanation, operationError, operationMessage, changeWorkflow, decideMatch, matchUnmatched, changeUnmatchedIgnored, openInvoicePdf, prepareClaim, allCases = [], ignoredSourceIds = new Set<string>(), unmatchedSourceIds = new Set<string>() }: Props) {
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [reviewSource, setReviewSource] = useState<DocumentLibraryKind | null>(null);
   const status = reimbursementCaseStatus(item);
@@ -116,6 +117,7 @@ export default function ClaimCard({ item, invoiceById, unmatched, paired, manual
         {item.OriginalInvoiceMissing && <p className="privacy-note">The original invoice has not been found. These amounts come from insurer evidence, not an inferred receipt.</p>}
         <NearbySources claim={item} kind={reviewSource || defaultSource} onKindChange={setReviewSource}
           items={[...invoiceById.values()]} cases={allCases} ignoredIds={ignoredSourceIds}
+          unmatchedIds={unmatchedSourceIds} onLinkInvoice={matchUnmatched} manualActionsAvailable={manualActionsAvailable && !busy}
           paired={paired} savingId={savingId} openPdf={openInvoicePdf} />
             {!!item.WorkflowHistory?.length && <details className="workflow-history">
               <summary>Status history</summary>

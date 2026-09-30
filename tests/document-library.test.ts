@@ -2,12 +2,36 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { documentDate, libraryItems, pdfAttachmentIndexes } from "../apps/web/src/document-library.ts";
 import type { ReimbursementItem, ReconciliationCase } from "../apps/web/src/types.ts";
-import { nearbySourceRecords } from "../apps/web/src/nearby-sources.ts";
+import { nearbyInvoiceLink, nearbySourceRecords } from "../apps/web/src/nearby-sources.ts";
 
 const base = {
   Id: "source", DocumentRole: "expense", DocumentType: "invoice", Insurer: null,
   ServiceDate: "2026-09-17", ReceivedAt: "2026-09-20T12:00:00Z", Attachments: []
 } as unknown as ReimbursementItem;
+
+test("missing invoice linking uses the existing expense identity despite different service wording or unknown price", () => {
+  const invoice = { ...base, Id: "receipt", Member: "Kevin", BilledAmount: null, Healthcare: { ServiceType: "RMT follow-up" } } as ReimbursementItem;
+  const payment = { ...base, Id: "payment", Member: "Kevin", DocumentRole: "insurer-statement", Insurer: "blue-cross" } as ReimbursementItem;
+  const claim = { Id: "insurer-evidence:payment", Member: "Kevin", ServiceDate: base.ServiceDate, DocumentIds: [payment.Id],
+    InferredFromInsurer: true, OriginalInvoiceMissing: true } as ReconciliationCase;
+  const target = { ...claim, Id: "expense", ExpenseDocumentId: invoice.Id, ExpenseDocumentIds: [invoice.Id], DocumentIds: [invoice.Id],
+    InferredFromInsurer: false, OriginalInvoiceMissing: false, WorkflowStatus: "closed", WorkflowOrigin: "manual" } as ReconciliationCase;
+  const check = (patch: Partial<ReconciliationCase> = {}, unmatched = new Set([payment.Id]), ignored = new Set<string>()) =>
+    nearbyInvoiceLink(claim, invoice, [invoice, payment], [{ ...target, ...patch }], unmatched, ignored);
+  assert.equal(check().target?.ExpenseDocumentId, invoice.Id);
+  assert.equal(check().target?.WorkflowStatus, "closed", "link must preserve saved status choice");
+  assert.equal(check().reimbursement?.Id, payment.Id);
+  assert.match(check({ ServiceDate: "2026-09-18" }).reason!, /same service date/);
+  assert.match(check({ Member: "Jasmine" }).reason!, /same confirmed family member/);
+  assert.ok(check({ PreviouslyFound: true }).reason);
+  assert.ok(check({ WorkflowStatus: "ignore" }).reason);
+  assert.ok(check({}, new Set()).reason);
+  assert.ok(check({}, undefined, new Set([invoice.Id])).reason);
+  assert.ok(check({ MatchAssignments: [{ Insurer: "blue-cross", ReimbursementDocumentId: "other" } as never] }).reason);
+  assert.ok(check({ MatchAssignments: [{ Insurer: "desjardins", ReimbursementDocumentId: payment.Id } as never] }).reason);
+  assert.equal(check({ MatchAssignments: [{ Insurer: "desjardins", ReimbursementDocumentId: "other" } as never] }).reason, null);
+  assert.ok(nearbyInvoiceLink(claim, invoice, [invoice, payment], [target, { ...target, Id: "duplicate" }], new Set([payment.Id]), new Set()).reason);
+});
 
 test("source libraries keep invoices separate from insurer statements", () => {
   const expense = { ...base, Id: "expense", Status: 3 } as ReimbursementItem;
