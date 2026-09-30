@@ -1,3 +1,4 @@
+import { PageHeader } from "../ui/primitives";
 import { ChangeEvent, FormEvent, useMemo, useState } from "react";
 import {
   Archive, Bot, Check, CloudDownload, CloudUpload, Download, KeyRound, Play, Plus,
@@ -185,14 +186,7 @@ export default function MoreView({ hub, installAvailable = false, installed = fa
 
   return (
     <div className="view-stack">
-      <section className="view-hero compact">
-        <div>
-          <span className="eyebrow">Capabilities & controls</span>
-          <h1>Connect what should help.</h1>
-          <p>FamilyHub stays useful without AI. The optional local worker lets your own PC handle deeper analysis and research while keeping a clear approval boundary.</p>
-        </div>
-        <span className="hero-icon"><Bot size={26} /></span>
-      </section>
+      <PageHeader title="Settings & tools" subtitle="Connections, research and backup" />
       {error && <div className="banner error">{error}</div>}
       {message && <div className="banner success"><Check size={17} />{message}</div>}
       <section className="surface pwa-install-surface" aria-label="Install FamilyHub">

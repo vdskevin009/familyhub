@@ -1,3 +1,5 @@
+import { FilterButton, FilterChips, Notice, PageHeader, SearchField, Sheet, SkeletonList, useSessionValue, type ActiveFilter } from "../ui/primitives";
+import { requireSaved } from "../ui/mutation-queue";
 import { useEffect, useMemo, useState } from "react";
 import { ArrowUpRight, FileText, RefreshCw, Search } from "lucide-react";
 import { dateLabel } from "../domain";
@@ -28,13 +30,14 @@ export default function DocumentLibraryView({ hub, kind }: Props) {
   const [matchedIds, setMatchedIds] = useState<Set<string>>(() => new Set((hub.reimbursements.Reconciliations ?? []).flatMap(item => (item.MatchAssignments ?? []).map(match => match.ReimbursementDocumentId))));
   const [unmatchedIds, setUnmatchedIds] = useState<Set<string>>(() => new Set((hub.reimbursements.UnmatchedReimbursements ?? []).map(item => item.DocumentId)));
   const [ignoredSourceIds, setIgnoredSourceIds] = useState<Set<string>>(() => new Set((hub.reimbursements.IgnoredUnmatchedReimbursements ?? []).map(item => item.DocumentId)));
-  const [query, setQuery] = useState("");
-  const [person, setPerson] = useState("all");
-  const [year, setYear] = useState("all");
-  const [recordFilter, setRecordFilter] = useState<RecordFilter>("all");
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
-  const [fromDate, setFromDate] = useState("");
-  const [beforeDate, setBeforeDate] = useState("");
+  const [query, setQuery] = useSessionValue(`library.${kind}.query`, "", (value): value is string => typeof value === "string");
+  const [person, setPerson] = useSessionValue(`library.${kind}.person`, "all", (value): value is string => typeof value === "string");
+  const [year, setYear] = useSessionValue(`library.${kind}.year`, "all", (value): value is string => typeof value === "string");
+  const [recordFilter, setRecordFilter] = useSessionValue<RecordFilter>(`library.${kind}.record`, "all", (value): value is RecordFilter => ["all", "matched", "unmatched", "pdf", "no-pdf"].includes(value as string));
+  const [statusFilter, setStatusFilter] = useSessionValue<StatusFilter>(`library.${kind}.status`, "all", (value): value is StatusFilter => ["all", "active", "ignored"].includes(value as string));
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [fromDate, setFromDate] = useSessionValue(`library.${kind}.fromDate`, "", (value): value is string => typeof value === "string");
+  const [beforeDate, setBeforeDate] = useSessionValue(`library.${kind}.beforeDate`, "", (value): value is string => typeof value === "string");
   const [selecting, setSelecting] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
   const [bulkBusy, setBulkBusy] = useState(false);
@@ -116,7 +119,7 @@ export default function DocumentLibraryView({ hub, kind }: Props) {
     if (!window.confirm(`${action} ${targets.length} selected ${targets.length === 1 ? "record" : "records"}? This changes only the exact selected document IDs and remains reversible.`)) return;
     setBulkBusy(true); setError(""); setBulkMessage("");
     try {
-      await setDocumentsIgnored(hub.worker, targets.map(item => item.Id), ignored);
+      requireSaved(await setDocumentsIgnored(hub.worker, targets.map(item => item.Id), ignored));
       setBulkMessage(`${targets.length} ${targets.length === 1 ? "record" : "records"} ${ignored ? "ignored" : "restored"}.`);
       setSelectedIds(new Set());
       await refresh();
@@ -132,21 +135,36 @@ export default function DocumentLibraryView({ hub, kind }: Props) {
     finally { setOpening(""); }
   }
 
+  function resetFilters() { setPerson("all"); setYear("all"); setFromDate(""); setBeforeDate(""); setStatusFilter("all"); setRecordFilter("all"); setQuery(""); }
+  const activeFilters: ActiveFilter[] = [
+    ...(person !== "all" ? [{ id: "person", label: person === "unknown" ? "Person to confirm" : person, clear: () => setPerson("all") }] : []),
+    ...(year !== "all" ? [{ id: "year", label: year, clear: () => setYear("all") }] : []),
+    ...(fromDate ? [{ id: "from", label: `From ${fromDate}`, clear: () => setFromDate("") }] : []),
+    ...(beforeDate ? [{ id: "before", label: `Before ${beforeDate}`, clear: () => setBeforeDate("") }] : []),
+    ...(statusFilter !== "all" ? [{ id: "status", label: statusFilter === "ignored" ? "Ignored" : "Active", clear: () => setStatusFilter("all") }] : []),
+    ...(recordFilter !== "all" ? [{ id: "record", label: { matched: "Matched", unmatched: "Unmatched", pdf: "With PDF", "no-pdf": "Without PDF" }[recordFilter], clear: () => setRecordFilter("all") }] : [])
+  ];
+
   return <section className="document-library view-stack" aria-label={copy[kind].title}>
-    <header className="library-heading">
-      <div><h1>{copy[kind].title}</h1><p>{copy[kind].intro}</p></div>
-      <button className="mini-button" type="button" onClick={() => void refresh()} disabled={!paired || busy} aria-label={`Refresh ${copy[kind].title}`}><RefreshCw size={16} className={busy ? "spin" : ""} /> Refresh</button>
-    </header>
-    <div className="library-toolbar">
-      <div className="library-count"><strong>{visible.length}</strong><span>of {items.length} {kind === "invoices" ? "invoices & receipts" : "source records"}</span></div>
-      <label className="library-search"><Search size={17} /><span className="sr-only">Search documents</span><input value={query} onChange={event => setQuery(event.target.value)} placeholder="Search provider, service or person" type="search" /></label>
+    <PageHeader title={copy[kind].title} subtitle={`${visible.length} of ${items.length} ${kind === "invoices" ? "invoices & receipts" : "source records"}`}>
+      <button type="button" className="icon-button" onClick={() => void refresh()} disabled={!paired || busy || bulkBusy} aria-label={`Refresh ${copy[kind].title}`}><RefreshCw size={18} className={busy ? "spin" : ""} /></button>
+    </PageHeader>
+    <div className="workspace-controls">
+      <div className="search-filter-row"><SearchField value={query} onChange={setQuery} label="Search documents" placeholder="Search documents…" /><FilterButton count={activeFilters.length} onClick={() => setFiltersOpen(true)} /></div>
+      <FilterChips filters={activeFilters} onReset={resetFilters} />
+    </div>
+    <Sheet open={filtersOpen} onClose={() => setFiltersOpen(false)} title={`Filter ${copy[kind].title.toLowerCase()}`} description={copy[kind].intro}
+      footer={<><button type="button" className="button secondary" onClick={resetFilters}>Reset</button><button type="button" className="button" onClick={() => setFiltersOpen(false)}>Show {visible.length} records</button></>}>
+      <div className="filter-form">
       <label><span>Person</span><select value={person} onChange={event => setPerson(event.target.value)}><option value="all">All people</option><option value="Kevin">Kevin</option><option value="Jasmine">Jasmine</option><option value="Nathan">Nathan</option><option value="unknown">To confirm</option></select></label>
       <label><span>Year</span><select value={year} onChange={event => setYear(event.target.value)}><option value="all">All years</option>{years.map(value => <option key={value} value={value}>{value}</option>)}</select></label>
       <label><span>From</span><input type="date" value={fromDate} onChange={event => setFromDate(event.target.value)} /></label>
       <label><span>Before</span><input type="date" value={beforeDate} onChange={event => setBeforeDate(event.target.value)} /></label>
       <label><span>Status</span><select value={statusFilter} onChange={event => setStatusFilter(event.target.value as StatusFilter)}><option value="all">All statuses</option><option value="active">Active</option><option value="ignored">Ignored</option></select></label>
       <label><span>{kind === "invoices" ? "File" : "Record"}</span><select value={recordFilter} onChange={event => setRecordFilter(event.target.value as RecordFilter)}><option value="all">All records</option>{kind === "invoices" ? <><option value="pdf">With PDF</option><option value="no-pdf">Without PDF</option></> : <><option value="matched">Matched</option><option value="unmatched">Unmatched</option><option value="pdf">With statement PDF</option></>}</select></label>
-    </div>
+      </div>
+      <p className="privacy-note">“From” includes that date. “Before” excludes that date.</p>
+    </Sheet>
     <div className="library-selection-toolbar">
       <button type="button" className="mini-button" disabled={!paired || bulkBusy} onClick={() => setSelecting(value => !value)}>{selecting ? "Done selecting" : "Select records"}</button>
       {selecting && <><label className="library-select-all"><input type="checkbox" checked={allVisibleSelected} onChange={toggleAllVisible} disabled={!visible.length || bulkBusy} /> Select all {visible.length} results</label><span>{selectedIds.size} selected</span></>}
@@ -158,9 +176,10 @@ export default function DocumentLibraryView({ hub, kind }: Props) {
         <button type="button" className="mini-button" disabled={!selectedIgnored || bulkBusy} onClick={() => void changeBulkIgnored(false)}>Restore selected</button>
       </div>
     </div>}
-    {bulkMessage && <p className="library-notice" role="status">{bulkMessage}</p>}
+    {bulkMessage && <Notice onDismiss={() => setBulkMessage("")}>{bulkMessage}</Notice>}
     {!paired && <p className="library-notice">Showing documents saved on this device. Connect the FamilyHub worker in Other → Settings & tools for the latest index.</p>}
-    {error && <p className="library-error" role="alert">{error}</p>}
+    {error && <Notice error onDismiss={() => setError("")}>{error}</Notice>}
+    {busy && !items.length && <SkeletonList label="Loading documents" />}
     <div className="library-list">
       {visible.map(item => {
         const pdfIndexes = pdfAttachmentIndexes(item);
@@ -172,10 +191,10 @@ export default function DocumentLibraryView({ hub, kind }: Props) {
           <div className="library-card-top"><div className="library-card-label">{selecting && <input className="library-card-checkbox" type="checkbox" checked={selected} onChange={() => toggleSelected(item.Id)} disabled={bulkBusy} aria-label={`Select ${healthcareTitle({ Provider: item.Healthcare?.Provider || item.Provider, ServiceType: item.Healthcare?.ServiceType || item.ClaimedService })}`} />}<span className="library-kind"><FileText size={15} />{sourceLabel}</span></div><span>{documentDate(item) ? dateLabel(documentDate(item)) : "Date to confirm"}</span></div>
           <div className="library-card-main"><div><h2>{healthcareTitle({ Provider: item.Healthcare?.Provider || item.Provider, ServiceType: item.Healthcare?.ServiceType || item.ClaimedService })}</h2><p>{item.Member && item.Member !== "unknown" ? item.Member : "Person to confirm"}{item.Healthcare?.ServiceType || item.ClaimedService ? ` · ${item.Healthcare?.ServiceType || item.ClaimedService}` : ""}</p></div><div className="library-amount"><small>{copy[kind].amount}</small><strong>{money(amount, item.Currency)}</strong></div></div>
           {kind !== "invoices" && item.BilledAmount != null && <div className="library-detail">Submitted {money(item.BilledAmount, item.Currency)}</div>}
-          <div className="library-card-bottom"><span>{pdfIndexes.length ? `${pdfIndexes.length} ${kind === "invoices" ? "invoice" : "statement"} PDF${pdfIndexes.length > 1 ? "s" : ""}` : "No PDF in this source"}</span>{pdfIndexes.length > 0 && <div className="library-pdf-actions">{pdfIndexes.map((index, ordinal) => item.DriveFileId && ordinal === 0 ? <a key={index} href={`https://drive.google.com/file/d/${encodeURIComponent(item.DriveFileId)}/view`} target="_blank" rel="noreferrer" className="mini-button"><ArrowUpRight size={15} />View {kind === "invoices" ? "invoice" : "statement"}</a> : item.WorkerManaged ? <button key={index} type="button" className="mini-button" onClick={() => void openPdf(item, index)} disabled={!paired || !!opening}><ArrowUpRight size={15} />{opening === `${item.Id}:${index}` ? "Opening…" : `View ${kind === "invoices" ? "invoice" : "statement"}${pdfIndexes.length > 1 ? ` ${ordinal + 1}` : ""}`}</button> : null)}</div>}</div>
+          <div className="library-card-bottom"><span>{pdfIndexes.length ? `${pdfIndexes.length} PDF${pdfIndexes.length > 1 ? "s" : ""}` : "No source PDF"}</span>{pdfIndexes.length > 0 && <div className="library-pdf-actions">{pdfIndexes.map((index, ordinal) => item.DriveFileId && ordinal === 0 ? <a key={index} href={`https://drive.google.com/file/d/${encodeURIComponent(item.DriveFileId)}/view`} target="_blank" rel="noreferrer" className="mini-button"><ArrowUpRight size={15} />View {kind === "invoices" ? "invoice" : "statement"}</a> : item.WorkerManaged ? <button key={index} type="button" className="mini-button" onClick={() => void openPdf(item, index)} disabled={!paired || !!opening}><ArrowUpRight size={15} />{opening === `${item.Id}:${index}` ? "Opening…" : `View ${kind === "invoices" ? "invoice" : "statement"}${pdfIndexes.length > 1 ? ` ${ordinal + 1}` : ""}`}</button> : null)}</div>}</div>
         </article>;
       })}
-      {!visible.length && <div className="library-empty"><FileText size={25} /><h2>No documents match these filters</h2><p>{items.length ? "Try another person, year or search term." : paired ? "No indexed documents are available in this section yet." : "Connect the worker to load indexed documents."}</p></div>}
+      {!busy && !visible.length && <div className="library-empty"><FileText size={25} /><h2>No documents match these filters</h2><p>{items.length ? "Try another person, year or search term." : paired ? "No indexed documents are available in this section yet." : "Connect the worker to load indexed documents."}</p></div>}
     </div>
   </section>;
 }

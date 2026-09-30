@@ -1,3 +1,4 @@
+import { PageHeader } from "../ui/primitives";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import {
   ArrowRight, CalendarCheck, CircleDollarSign, Inbox, ListChecks, MessageCircle, RefreshCw, ShoppingBasket, Sparkles
@@ -96,14 +97,7 @@ export default function TodayView({ hub, onNavigate, commandOpen, onCommandOpenC
 
   return (
     <div className="view-stack">
-      <section className="today-hero">
-        <div>
-          <span className="eyebrow">Your day, filtered</span>
-          <h1>What deserves attention.</h1>
-          <p>FamilyHub brings forward the few things most likely to save time, prevent an oversight or save money.</p>
-        </div>
-        <div className="hero-orb"><Sparkles size={30} /></div>
-      </section>
+      <PageHeader title="Today" subtitle="Your next useful actions" />
 
       {importantMail.length > 0 && <section className="today-attention mail-attention" aria-labelledby="today-mail-title">
         <div className="attention-total"><span>Important messages</span><strong>{importantMail.length}</strong><small>identified by the PC agent</small></div>
