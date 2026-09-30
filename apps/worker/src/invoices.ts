@@ -46,7 +46,8 @@ let mutation = Promise.resolve();
 let blueCrossBusy = false;
 let desjardinsBusy = false;
 const blueCrossStatusPath = join(blueCrossPrivateDirectory, "status.json");
-type BlueCrossStatus = { lastAttempt?: string; lastSuccess?: string; found?: number; state: "idle" | "syncing" | "login-required" | "error" | "up-to-date"; error?: string };
+type PortalResult = { status: "success"; applied: boolean; found: number; new: number; changed: number; unchanged: number; ambiguous: number; duplicates: number; errors: number; complete: boolean };
+type BlueCrossStatus = { lastAttempt?: string; lastSuccess?: string; lastAppliedAt?: string; latestResult?: PortalResult; found?: number; state: "idle" | "syncing" | "login-required" | "error" | "up-to-date"; error?: string };
 let blueCrossStatus: BlueCrossStatus = { state: "idle" };
 const desjardinsStatusPath = join(desjardinsPrivateDirectory, "status.json");
 type DesjardinsStatus = BlueCrossStatus & { previewSnapshot?: string; previewAt?: string; applicable?: boolean };
@@ -138,7 +139,7 @@ export async function syncBlueCrossPortal(apply = false, interactive = false, co
   if (blueCrossBusy || desjardinsBusy || busy) throw new Error("An insurer or invoice collection is already running.");
   blueCrossBusy = true;
   try {
-    await saveBlueCrossStatus({ lastAttempt: new Date().toISOString(), state: "syncing", error: undefined });
+    await saveBlueCrossStatus({ lastAttempt: new Date().toISOString(), state: "syncing", error: undefined, latestResult: undefined });
     const result = await collector(interactive);
     if (result.status === "login-required") {
       await saveBlueCrossStatus({ state: "login-required" });
@@ -155,7 +156,10 @@ export async function syncBlueCrossPortal(apply = false, interactive = false, co
       mergeBlueCross(plan.items);
     });
     await saveBlueCrossStatus({ state: errors ? "error" : !apply && (plan.new || plan.changed || plan.ambiguous) ? "idle" : "up-to-date", lastSuccess: errors ? blueCrossStatus.lastSuccess : collection.collectedAt,
-      found: plan.found, error: collection.warnings.join(" ") || undefined });
+      found: plan.found, error: collection.warnings.join(" ") || undefined,
+      lastAppliedAt: apply ? new Date().toISOString() : blueCrossStatus.lastAppliedAt,
+      latestResult: { status: "success", applied: apply, found: plan.found, new: plan.new, changed: plan.changed,
+        unchanged: plan.unchanged, ambiguous: plan.ambiguous, duplicates: plan.duplicates, errors, complete: collection.complete } });
     const reconciliation = apply ? buildReconciliationSnapshot(activeReconciliationItems(), state.matchDecisions) : undefined;
     return { status: "success" as const, applied: apply, found: plan.found, new: plan.new, changed: plan.changed,
       unchanged: plan.unchanged, ambiguous: plan.ambiguous, duplicates: plan.duplicates, errors,
@@ -179,7 +183,7 @@ export async function syncDesjardinsPortal(apply = false, interactive = false, c
   desjardinsBusy = true;
   try {
     if (apply) await initializeDesjardinsStatus();
-    await saveDesjardinsStatus({ lastAttempt: new Date().toISOString(), state: "syncing", error: undefined, applicable: false });
+    await saveDesjardinsStatus({ lastAttempt: new Date().toISOString(), state: "syncing", error: undefined, applicable: false, latestResult: undefined });
     // Apply consumes the most recent immutable preview. Desjardins often requires a new MFA
     // challenge for a fresh browser process; never rerun a live collection behind "Apply".
     const result = apply
@@ -210,7 +214,10 @@ export async function syncDesjardinsPortal(apply = false, interactive = false, c
         : plan.ambiguous ? `${plan.ambiguous} Desjardins claim rows require review; no data was applied.` : undefined,
       previewSnapshot: apply ? undefined : result.snapshotPath,
       previewAt: apply ? undefined : collection.collectedAt,
-      applicable: !apply && collection.complete && plan.ambiguous === 0 });
+      applicable: !apply && collection.complete && plan.ambiguous === 0,
+      lastAppliedAt: apply ? new Date().toISOString() : desjardinsStatus.lastAppliedAt,
+      latestResult: { status: "success", applied: apply, found: plan.found, new: plan.new, changed: plan.changed,
+        unchanged: plan.unchanged, ambiguous: plan.ambiguous, duplicates: plan.duplicates, errors, complete: collection.complete } });
     const reconciliation = apply ? buildReconciliationSnapshot(activeReconciliationItems(), state.matchDecisions) : undefined;
     return { status: "success" as const, applied: apply, found: plan.found, new: plan.new, changed: plan.changed,
       unchanged: plan.unchanged, ambiguous: plan.ambiguous, duplicates: plan.duplicates, errors,

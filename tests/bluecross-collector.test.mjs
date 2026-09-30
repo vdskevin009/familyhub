@@ -128,6 +128,12 @@ test('preview is non-destructive, apply preserves decisions and recomputes recon
   assert.equal(await readFile(join(directory, 'invoices.json'), 'utf8'), before);
   const applied = await syncBlueCrossPortal(true, false, collector);
   assert.equal(applied.new, 1);
+  assert.equal(getBlueCrossStatus().latestResult.applied, true);
+  assert.equal(getBlueCrossStatus().latestResult.new, 1);
+  assert.ok(getBlueCrossStatus().lastAppliedAt);
+  await initializeBlueCrossStatus();
+  assert.equal(getBlueCrossStatus().latestResult.applied, true, 'applied status survives reload');
+  assert.equal('snapshotPath' in getBlueCrossStatus().latestResult, false);
   const saved = JSON.parse(await readFile(join(directory, 'invoices.json'), 'utf8'));
   assert.equal(saved.items.some(item => item.Id === old.Id), true, 'old records remain');
   assert.deepEqual(saved.matchDecisions, seed.matchDecisions);
