@@ -6,6 +6,8 @@ import { googleBridge } from "../google";
 import { healthcareTitle } from "../invoice-state";
 import type { ReimbursementPersonScope } from "../invoice-state";
 import {
+  manualMatchExpenseId,
+  manualMatchUnavailableReason,
   reconciliationCaseDate,
   reconciliationContextCases,
   reconciliationDateDistanceDays,
@@ -156,7 +158,7 @@ export default function ReconciliationQueue({
     const member = current.item.Member && current.item.Member !== "unknown" ? current.item.Member : null;
     const needle = search.trim().toLowerCase();
     return cases
-      .filter(item => item.WorkflowStatus !== "ignore")
+      .filter(item => manualMatchExpenseId(item))
       .filter(item => !member || item.Member === "unknown" || item.Member === member)
       .map(item => {
         const sourceId = item.ExpenseDocumentId || item.ExpenseDocumentIds?.[0] || item.DocumentIds[0];
@@ -315,7 +317,8 @@ export default function ReconciliationQueue({
         </div>
         <div className="reconcile-candidate-footer">
           <div><small>Remaining</small><strong>{money(candidate.Case.PotentialRemaining, candidate.Case.Currency)}</strong></div>
-          <button type="button" className="mini-button primary" disabled={actionDisabled}
+          {manualMatchUnavailableReason(current.item, candidate.Case) && <small>{manualMatchUnavailableReason(current.item, candidate.Case)}</small>}
+          <button type="button" className="mini-button primary" disabled={actionDisabled || !!manualMatchUnavailableReason(current.item, candidate.Case)}
             onClick={() => void onMatch(candidate.Case, current.item.Id)}>
             {savingId === `manual-match:${current.item.Id}` ? "Matching…" : manualActionsAvailable ? "Match to this expense" : "Update PC worker"}
           </button>
@@ -363,7 +366,8 @@ export default function ReconciliationQueue({
                 <small>{item.ServiceDate ? dateLabel(item.ServiceDate) : "Date missing"}{distance != null ? ` · ${distance} day${distance === 1 ? "" : "s"} away` : ""}{item.ServiceType ? ` · ${item.ServiceType}` : ""}</small>
                 <span>{item.Summary}</span></div>
               <div className="reconcile-search-result-action"><strong>{money(item.OriginalAmount, item.Currency)}</strong>
-                <button type="button" className="mini-button primary" disabled={actionDisabled}
+                {manualMatchUnavailableReason(current.item, item) && <small>{manualMatchUnavailableReason(current.item, item)}</small>}
+                <button type="button" className="mini-button primary" disabled={actionDisabled || !!manualMatchUnavailableReason(current.item, item)}
                   onClick={() => { void onMatch(item, current.item.Id).then(saved => { if (saved) setSheet(null); }); }}>
                   {savingId === `manual-match:${current.item.Id}` ? "Matching…" : "Match"}
                 </button></div>

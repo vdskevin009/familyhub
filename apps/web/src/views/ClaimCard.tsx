@@ -4,6 +4,7 @@ import { dateLabel } from "../domain";
 import { healthcareTitle, namedInsurerReimbursementAmount, reimbursementActionLabel, reimbursementCaseStatus, reimbursementEvidenceSources, reimbursementInvoicePdfOptions, reimbursementWorkflowStatus } from "../invoice-state";
 import type { ReimbursementInvoicePdfOption } from "../invoice-state";
 import type { MatchAssignment, ReconciliationCase, ReimbursementItem, ReimbursementWorkflowStatus, UnmatchedReimbursement } from "../types";
+import { manualMatchExpenseId } from "../reconciliation-triage";
 import type { MutationProgress } from "../ui/mutation-queue";
 import { Notice, Sheet } from "../ui/primitives";
 
@@ -47,7 +48,7 @@ export default function ClaimCard({ item, invoiceById, unmatched, paired, manual
   const manuallyConfirmed = matchAssignments.length > 0 && matchAssignments.every(match => match.Verification === "confirmed-manually");
   const reviewRecommended = matchAssignments.some(match => match.Verification === "review-recommended");
   const evidenceSources = reimbursementEvidenceSources(item, invoiceById);
-  const sameDayUnmatched = !item.InferredFromInsurer && item.ServiceDate ? unmatched.filter(({ item: candidate }) =>
+  const sameDayUnmatched = manualMatchExpenseId(item) && item.ServiceDate ? unmatched.filter(({ item: candidate }) =>
     candidate.Member === item.Member && candidate.ServiceDate?.slice(0, 10) === item.ServiceDate?.slice(0, 10)) : [];
   const invoicePdfOptions = reimbursementInvoicePdfOptions(item, invoiceById);
   const received = invoiceById.get(item.DocumentIds[0])?.ReceivedAt;

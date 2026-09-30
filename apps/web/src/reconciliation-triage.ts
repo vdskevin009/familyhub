@@ -76,10 +76,24 @@ export function reconciliationCaseExpenseId(item: ReconciliationCase): string {
   return item.ExpenseDocumentId || item.ExpenseDocumentIds?.[0] || item.DocumentIds[0] || "";
 }
 
+/** Only current worker expense cases are writable; display/history rows remain evidence. */
+export function manualMatchExpenseId(item: ReconciliationCase): string | null {
+  if (item.InferredFromInsurer || item.Unreconciled || item.PreviouslyFound || item.WorkflowStatus === "ignore") return null;
+  return item.ExpenseDocumentId || item.ExpenseDocumentIds?.[0] || null;
+}
+
+export function manualMatchUnavailableReason(reimbursement: ReimbursementItem, item: ReconciliationCase): string | null {
+  if (!manualMatchExpenseId(item)) return "This row is evidence only. Select a current expense.";
+  if (!reimbursement.Member || reimbursement.Member === "unknown" || item.Member === "unknown" || reimbursement.Member !== item.Member)
+    return "Matching requires the same confirmed family member.";
+  if (!reimbursement.ServiceDate || !item.ServiceDate || reimbursement.ServiceDate.slice(0, 10) !== item.ServiceDate.slice(0, 10))
+    return "Matching requires the same service date. Nearby invoices are shown for reference.";
+  return null;
+}
+
 function scoreCandidate(reimbursement: ReimbursementItem, item: ReconciliationCase,
   itemsById: ReadonlyMap<string, ReimbursementItem>): ReconciliationCandidate | null {
-  if (item.WorkflowStatus === "ignore") return null;
-  const expenseId = reconciliationCaseExpenseId(item);
+  const expenseId = manualMatchExpenseId(item);
   if (!expenseId) return null;
 
   const source = expenseDocument(item, itemsById);
