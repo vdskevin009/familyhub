@@ -3,7 +3,7 @@ import { dateLabel } from "../domain";
 import { pdfAttachmentIndexes, type DocumentLibraryKind } from "../document-library";
 import { googleBridge } from "../google";
 import { healthcareTitle, type ReimbursementInvoicePdfOption } from "../invoice-state";
-import { nearbyInvoiceLink, nearbyReimbursementLink, nearbySourceRecords, sourceLabels } from "../nearby-sources";
+import { nearbyInvoiceLink, nearbyReimbursementLink, nearbySearchAnchor, nearbySourceRecords, sourceLabels } from "../nearby-sources";
 import type { ReconciliationCase, ReimbursementItem } from "../types";
 
 function money(value: number | null | undefined, currency: string) {
@@ -18,14 +18,23 @@ export default function NearbySources({ claim, kind, onKindChange, items, cases,
   items: ReimbursementItem[]; cases: ReconciliationCase[]; ignoredIds: ReadonlySet<string>;
   paired: boolean; savingId: string; openPdf: (option: ReimbursementInvoicePdfOption) => Promise<void>;
   unmatchedIds?: ReadonlySet<string>; manualActionsAvailable?: boolean;
-  onLink?: (target: ReconciliationCase, reimbursementId: string) => Promise<boolean>;
+  onLink?: (target: ReconciliationCase, reimbursementId: string, confirmedServiceDate?: string) => Promise<boolean>;
 }) {
   const [confirmId, setConfirmId] = useState<string | null>(null);
   const [linking, setLinking] = useState(false);
   const [linkError, setLinkError] = useState("");
-  const result = useMemo(() => nearbySourceRecords(claim, kind, items, cases), [claim, kind, items, cases]);
+  const [searchDate, setSearchDate] = useState<string | null>(null);
+  const anchor = nearbySearchAnchor(claim, items);
+  const effectiveSearchDate = searchDate ?? anchor.date;
+  const result = useMemo(() => nearbySourceRecords(claim, kind, items, cases, effectiveSearchDate), [claim, kind, items, cases, effectiveSearchDate]);
   return <section className="nearby-sources" aria-label="Nearby source records">
-    <div><h3>Check nearby records</h3><p>Same person · 10 days before or after this service. Linked records are included so you can check possible mistakes.</p></div>
+    <div><h3>Check nearby records</h3><p>Same person · 10 days before or after {claim.ServiceDate ? "this service" : "the search date"}. Linked records are included so you can check possible mistakes.</p></div>
+    {!claim.ServiceDate && <div className="nearby-source-link">
+      <strong>Service date to confirm</strong>
+      <span>{anchor.date ? `Starting from the ${anchor.source}. This is only a search aid, not a confirmed service date.` : "Choose an approximate date to find insurer records, then check the invoice before confirming a link."}</span>
+      <label>Search date (review only)<input type="date" value={effectiveSearchDate} onChange={event => { setSearchDate(event.target.value); setConfirmId(null); setLinkError(""); }} /></label>
+      <small>No date or match is saved while you browse.</small>
+    </div>}
     <div className="nearby-source-tabs" role="group" aria-label="Source to review">
       {(Object.keys(sourceLabels) as DocumentLibraryKind[]).map(source => <button key={source} type="button" className="mini-button"
         aria-pressed={kind === source} onClick={() => onKindChange(source)}>{sourceLabels[source]}</button>)}
@@ -40,7 +49,7 @@ export default function NearbySources({ claim, kind, onKindChange, items, cases,
         const paid = item.ReimbursedAmount ?? null;
         const amount = kind === "invoices" ? item.BilledAmount ?? item.Healthcare?.OriginalBilledAmount : item.Healthcare?.SubmittedAmount ?? item.BilledAmount;
         const link = !onLink ? null : kind !== "invoices"
-          ? nearbyReimbursementLink(claim, item, cases, unmatchedIds, ignoredIds)
+          ? nearbyReimbursementLink(claim, item, cases, unmatchedIds, ignoredIds, items)
           : claim.InferredFromInsurer && claim.OriginalInvoiceMissing
             ? nearbyInvoiceLink(claim, item, items, cases, unmatchedIds, ignoredIds) : null;
         const linkLabel = kind === "invoices" ? "Link this invoice" : "Link this reimbursement";
@@ -53,19 +62,20 @@ export default function NearbySources({ claim, kind, onKindChange, items, cases,
             {kind !== "invoices" && <div><dt>Reimbursed</dt><dd>{money(paid, item.Currency)}</dd></div>}</dl>
           {link && <div className="nearby-invoice-link">
             {link.reason ? <><button type="button" className="mini-button" disabled>{linkLabel}</button><small>{link.reason}</small></> : confirmId === item.Id ? <div className="nearby-source-link" role="group" aria-label="Confirm invoice link">
-              <strong>{kind === "invoices" ? "Link this invoice to the insurer payment?" : "Link this reimbursement to this invoice?"}</strong>
-              <span>{claim.Member} · {dateLabel(claim.ServiceDate!)} · {link.reimbursement!.Insurer === "blue-cross" ? "Blue Cross" : "Desjardins"} {money(link.reimbursement!.ReimbursedAmount, claim.Currency)}</span>
+              <strong>{link.requiresServiceDate ? "Confirm the service date and link?" : kind === "invoices" ? "Link this invoice to the insurer payment?" : "Link this reimbursement to this invoice?"}</strong>
+              <span>{claim.Member} · {dateLabel(link.reimbursement!.ServiceDate!)} · {link.reimbursement!.Insurer === "blue-cross" ? "Blue Cross" : "Desjardins"} {money(link.reimbursement!.ReimbursedAmount, claim.Currency)}</span>
               <span>Invoice: {healthcareTitle(link.target!)}{targetInvoice?.Healthcare?.InvoiceNumber ? ` · ${targetInvoice.Healthcare.InvoiceNumber}` : ""}</span>
+              {link.requiresServiceDate && <strong>Check the invoice: confirming will save {dateLabel(link.reimbursement!.ServiceDate!)} as its service date and link this payment.</strong>}
               <small>The payment will join this invoice’s expense. Other claims and saved status choices stay unchanged.</small>
               <div className="nearby-source-actions"><button type="button" className="mini-button primary" disabled={!paired || !manualActionsAvailable || !!savingId || linking}
                 onClick={async () => {
                   setLinking(true); setLinkError("");
                   try {
-                    if (await onLink!(link.target!, link.reimbursement!.Id)) setConfirmId(null);
+                    if (await onLink!(link.target!, link.reimbursement!.Id, link.requiresServiceDate ? link.reimbursement!.ServiceDate!.slice(0, 10) : undefined)) setConfirmId(null);
                     else setLinkError("The link was not confirmed. Review the message above and refresh before trying again.");
                   } catch { setLinkError("The link could not be confirmed. Refresh before trying again."); }
                   finally { setLinking(false); }
-                }}>{linking ? "Linking…" : "Confirm link"}</button>
+                }}>{linking ? "Linking…" : link.requiresServiceDate ? "Confirm date and link" : "Confirm link"}</button>
                 <button type="button" className="mini-button" disabled={linking || !!savingId} onClick={() => { setConfirmId(null); setLinkError(""); }}>Cancel</button></div>
               {linkError && <small role="alert">{linkError}</small>}
             </div> : <button type="button" className="mini-button primary" disabled={!paired || !manualActionsAvailable || !!savingId || linking}

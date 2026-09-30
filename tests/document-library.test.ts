@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { documentDate, libraryItems, pdfAttachmentIndexes } from "../apps/web/src/document-library.ts";
 import type { ReimbursementItem, ReconciliationCase } from "../apps/web/src/types.ts";
-import { nearbyInvoiceLink, nearbyReimbursementLink, nearbySourceRecords } from "../apps/web/src/nearby-sources.ts";
+import { nearbyInvoiceLink, nearbyReimbursementLink, nearbySearchAnchor, nearbySourceRecords } from "../apps/web/src/nearby-sources.ts";
 
 const base = {
   Id: "source", DocumentRole: "expense", DocumentType: "invoice", Insurer: null,
@@ -41,6 +41,27 @@ test("source libraries keep invoices separate from insurer statements", () => {
   assert.deepEqual(libraryItems(records, "invoices").map(item => item.Id), ["expense"]);
   assert.deepEqual(libraryItems(records, "blue-cross").map(item => item.Id), ["bc"]);
   assert.deepEqual(libraryItems(records, "desjardins").map(item => item.Id), ["dj"]);
+});
+
+test("undated invoices use a review-only search anchor and require explicit service-date confirmation", () => {
+  const invoice = { ...base, Id: "invoice", Member: "Kevin", ServiceDate: null,
+    Healthcare: { StatementDate: "2026-09-18" } } as ReimbursementItem;
+  const claim = { Id: "case", ExpenseDocumentId: invoice.Id, ExpenseDocumentIds: [invoice.Id], DocumentIds: [invoice.Id], Member: "Kevin", ServiceDate: null } as ReconciliationCase;
+  const payment = { ...base, Id: "payment", Member: "Kevin", Insurer: "desjardins", DocumentRole: "insurer-statement", ServiceDate: "2026-09-17" } as ReimbursementItem;
+  const items = [invoice, payment];
+  const before = JSON.stringify(items);
+  const anchor = nearbySearchAnchor(claim, items);
+  assert.deepEqual(anchor, { date: "2026-09-18", source: "document date" });
+  assert.deepEqual(nearbySourceRecords(claim, "desjardins", items, [claim], anchor.date).rows.map(row => row.item.Id), [payment.Id]);
+  assert.equal(nearbySourceRecords(claim, "desjardins", items, [claim], "2026-06-01").rows.length, 0);
+  assert.ok(nearbySourceRecords(claim, "desjardins", items, [claim], "2026-02-30").unavailable);
+  const plan = nearbyReimbursementLink(claim, payment, [claim], new Set([payment.Id]), new Set(), items);
+  assert.equal(plan.requiresServiceDate, true); assert.equal(plan.reason, null);
+  assert.equal(plan.target?.ServiceDate, null, "preview cannot silently assign a date");
+  const multi = { ...invoice, Healthcare: { ...invoice.Healthcare, Conflicts: ["Invoice contains multiple service dates (2026-09-17, 2026-09-18)."] } };
+  assert.match(nearbyReimbursementLink(claim, payment, [claim], new Set([payment.Id]), new Set(), [multi, payment]).reason!, /each service separately/);
+  assert.equal(JSON.stringify(items), before);
+  assert.deepEqual(nearbySearchAnchor(claim, [{ ...invoice, Healthcare: {} }]), { date: "2026-09-20", source: "email received date" });
 });
 
 test("insurer tabs link an unmatched payment to the current expense and explain unsafe choices", () => {

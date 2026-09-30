@@ -154,9 +154,11 @@ export async function setDocumentsIgnored(config: WorkerConfig, documentIds: str
 export function setMatchDecision(config: WorkerConfig, reimbursementId: string, expenseId: string, decision: "confirmed" | "rejected"): Promise<{ saved: boolean }> {
   return request(config, "/invoices/matches/decision", { method: "POST", body: JSON.stringify({ reimbursementId, expenseId, decision }) });
 }
-export async function setManualMatch(config: WorkerConfig, reimbursementId: string, expenseId: string): Promise<{ saved: boolean }> {
+export async function setManualMatch(config: WorkerConfig, reimbursementId: string, expenseId: string, confirmedServiceDate?: string): Promise<{ saved: boolean }> {
   await requireManualReconciliationWorker(config);
-  return request(config, "/invoices/matches/manual", { method: "POST", body: JSON.stringify({ reimbursementId, expenseId }) });
+  if (confirmedServiceDate && !workerVersionAtLeast((await testWorker(config)).version, "2.13.0"))
+    throw new Error("Confirming a missing service date requires PC worker 2.13.0 or later. Update the worker and refresh.");
+  return request(config, "/invoices/matches/manual", { method: "POST", body: JSON.stringify({ reimbursementId, expenseId, ...(confirmedServiceDate ? { confirmedServiceDate } : {}) }) });
 }
 export async function setUnmatchedIgnored(config: WorkerConfig, reimbursementId: string, ignored: boolean): Promise<{ saved: boolean }> {
   await requireManualReconciliationWorker(config);

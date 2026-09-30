@@ -9,7 +9,7 @@ export type HealthcareEvidence = {
   InvoiceNumber?: string | null; ClaimReference?: string | null;
   ServiceDate?: string | null; StatementDate?: string | null; PaymentDate?: string | null;
   ProcessedInsurers?: Insurer[]; InsurerPayments?: Partial<Record<Insurer, number | null>>;
-  FieldSources?: Record<string, "email" | "attachment" | "extraction" | "structured">;
+  FieldSources?: Record<string, "email" | "attachment" | "extraction" | "structured" | "manual">;
   FieldStates?: Record<string, EvidenceState>;
   Conflicts?: string[];
 };

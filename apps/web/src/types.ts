@@ -71,7 +71,7 @@ export type ReimbursementAttachment = {
 };
 
 export type ReimbursementItem = {
-  Healthcare?: { InvoiceNumber?: string | null; Provider?: string | null; ServiceType?: string | null; SubmittedAmount?: number | null; ServiceDate?: string | null; OriginalBilledAmount?: number | null; ClaimReference?: string | null };
+  Healthcare?: { InvoiceNumber?: string | null; Provider?: string | null; ServiceType?: string | null; SubmittedAmount?: number | null; ServiceDate?: string | null; StatementDate?: string | null; Conflicts?: string[]; FieldSources?: Record<string, string>; OriginalBilledAmount?: number | null; ClaimReference?: string | null };
   PortalClaimId?: string | null;
   PortalClaimStatus?: string | null;
   ClaimedService?: string;

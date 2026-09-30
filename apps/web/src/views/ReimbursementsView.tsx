@@ -161,14 +161,16 @@ export default function ReimbursementsView({ hub }: Props) {
     await saveChange(`match:${assignment.ReimbursementDocumentId}`, decision === "confirmed" ? "Confirm match" : "Reject match",
       () => setMatchDecision(hub.worker, assignment.ReimbursementDocumentId, assignment.ExpenseDocumentId, decision));
   }
-  async function matchUnmatched(item: ReconciliationCase, reimbursementId: string) {
+  async function matchUnmatched(item: ReconciliationCase, reimbursementId: string, confirmedServiceDate?: string) {
     const expenseId = manualMatchExpenseId(item);
     const current = hub.reimbursements.Reconciliations?.find(entry => !entry.PreviouslyFound
       && expenseId && (entry.ExpenseDocumentId === expenseId || entry.ExpenseDocumentIds?.includes(expenseId)));
     const reimbursement = hub.reimbursements.Items.find(entry => entry.Id === reimbursementId);
-    const unavailable = current && reimbursement ? manualMatchUnavailableReason(reimbursement, current) : "This expense is no longer current. Refresh and select it again.";
+    if (confirmedServiceDate && current?.ServiceDate) { setError("This invoice already has a service date. Refresh before linking."); return false; }
+    const reviewed = current && confirmedServiceDate ? { ...current, ServiceDate: confirmedServiceDate } : current;
+    const unavailable = reviewed && reimbursement ? manualMatchUnavailableReason(reimbursement, reviewed) : "This expense is no longer current. Refresh and select it again.";
     if (!expenseId || unavailable) { setError(unavailable || "Select a current expense."); return false; }
-    return saveChange(`manual-match:${reimbursementId}`, "Match", () => setManualMatch(hub.worker, reimbursementId, expenseId));
+    return saveChange(`manual-match:${reimbursementId}`, confirmedServiceDate ? "Confirm date and link" : "Match", () => setManualMatch(hub.worker, reimbursementId, expenseId, confirmedServiceDate));
   }
   async function changeUnmatchedIgnored(reimbursementId: string, ignored: boolean) {
     return saveChange(`unmatched-ignore:${reimbursementId}`, ignored ? "Ignore" : "Restore", () => setUnmatchedIgnored(hub.worker, reimbursementId, ignored));

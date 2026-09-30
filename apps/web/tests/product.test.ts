@@ -183,3 +183,17 @@ test("nearby insurer tabs expose reimbursement linking on an invoice-backed clai
     assert.match(render(new Set()), /no longer unmatched/);
   }
 });
+
+test("missing service date still shows nearby insurer records using a labeled document-date search", () => {
+  const source = fixture.state.Items[0];
+  const expense = { ...fixture.state.Reconciliations[0], ServiceDate: null, MatchAssignments: [], DocumentIds: [source.Id], ExpenseDocumentId: source.Id, ExpenseDocumentIds: [source.Id] };
+  const invoice = { ...source, ServiceDate: null, Healthcare: { StatementDate: "2026-09-01" } };
+  const payment = { ...source, Id: "payment", ServiceDate: "2026-09-01", Insurer: "blue-cross", DocumentRole: "insurer-statement", DocumentType: "claim" };
+  const html = renderToString(createElement(NearbySources, { claim: expense, kind: "blue-cross", onKindChange() {}, items: [invoice, payment], cases: [expense],
+    ignoredIds: new Set(), paired: true, savingId: "", manualActionsAvailable: true, unmatchedIds: new Set([payment.Id]), openPdf: async () => {}, onLink: async () => true }));
+  assert.match(html, /Search date \(review only\)/);
+  assert.match(html, /Starting from the document date/);
+  assert.match(html, /not a confirmed service date/);
+  assert.match(html, /class="mini-button primary">Link this reimbursement/);
+  assert.doesNotMatch(html, /Choose a search date to compare/);
+});

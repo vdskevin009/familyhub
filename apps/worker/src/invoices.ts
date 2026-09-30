@@ -14,6 +14,8 @@ import { collectDesjardinsPortal, desjardinsPrivateDirectory, loadDesjardinsSnap
 import { reviewReconciliations, reviewTargets, codexReviewer, type AgentReview, type Reviewer } from "./agents.js";
 import { prepareConnectorMessage, saveConnectorFiles, readConnectorFile, invoiceServiceDates } from "./connector-intake.js";
 import { prepareClaim } from "./claim-preparation.js";
+import { calendarDate } from "./healthcare-evidence.js";
+import { multipleServiceDates, withConfirmedServiceDates, type ServiceDateConfirmations } from "./service-date-confirmation.js";
 
 type Window = { after: number; before: number; page?: string };
 /** A learned category is a preference, never a replacement for freshly extracted facts. */
@@ -30,13 +32,13 @@ type AccountProgress = { through?: number; window?: Window; error?: string; last
   invoiceHistoryVersion?: number; invoiceHistoryWindow?: Window; invoiceHistoryThrough?: number; invoiceHistoryExamined?: number };
 type Decision = { id: string; itemId: string; type: "classification" | "status"; before: Partial<Invoice>; after: Partial<Invoice>; at: string; undoneAt?: string; correctionBefore?: Correction };
 type UnmatchedDecision = { reimbursementId: string; decision: "ignored"; at: string; reason: UnmatchedReimbursement["Reason"] | "manual-source-ignore" };
-type State = { items: Invoice[]; corrections: Correction[]; decisions: Decision[]; matchDecisions: MatchDecision[]; unmatchedDecisions: UnmatchedDecision[]; workflowRecords: ReimbursementWorkflowRecord[]; reviews: AgentReview[]; accounts: Record<string, AccountProgress>; lastAttempt?: string; lastSuccess?: string; error?: string };
+type State = { items: Invoice[]; confirmedServiceDates?: ServiceDateConfirmations; corrections: Correction[]; decisions: Decision[]; matchDecisions: MatchDecision[]; unmatchedDecisions: UnmatchedDecision[]; workflowRecords: ReimbursementWorkflowRecord[]; reviews: AgentReview[]; accounts: Record<string, AccountProgress>; lastAttempt?: string; lastSuccess?: string; error?: string };
 const statePath = join(dataDirectory, "invoices.json");
 const empty = (): State => ({ items: [], corrections: [], decisions: [], matchDecisions: [], unmatchedDecisions: [], workflowRecords: [], reviews: [], accounts: {} });
 
 function activeReconciliationItems(): Invoice[] {
   const ignored = new Set(state.unmatchedDecisions.map(item => item.reimbursementId));
-  return state.items.filter(item => !ignored.has(item.Id));
+  return withConfirmedServiceDates(state.items.filter(item => !ignored.has(item.Id)), state.confirmedServiceDates);
 }
 let state = empty();
 let busy = false;
@@ -411,7 +413,7 @@ export async function invoiceSnapshot() {
   try { accounts = (await credentials()).accounts.map(({ email, label }) => ({ email, label })); } catch { /* Visible setup-required status. */ }
   const activeItems = activeReconciliationItems();
   const effectiveItems = activeItems.map(item => item.IgnoredAt ? { ...item, Status: 4, NeedsReview: false } : item);
-  const displayItems = state.items.map(item => item.IgnoredAt ? { ...item, Status: 4, NeedsReview: false } : item);
+  const displayItems = withConfirmedServiceDates(state.items, state.confirmedServiceDates).map(item => item.IgnoredAt ? { ...item, Status: 4, NeedsReview: false } : item);
   const reconciliation = buildReconciliationSnapshot(effectiveItems, state.matchDecisions);
   const allReconciliation = buildReconciliationSnapshot(activeItems, state.matchDecisions);
   const ignoredExpenses = allReconciliation.cases.filter(entry => entry.DocumentIds.some(id => state.items.find(item => item.Id === id)?.IgnoredAt));
@@ -587,7 +589,7 @@ export async function classifyHistorical(mail: Mail, _email: string, _label?: st
 export function claimPreparation(expenseId: unknown, insurer: unknown) {
   if (typeof expenseId !== "string" || !["blue-cross", "desjardins"].includes(String(insurer))) throw new Error("Choose an invoice and insurer.");
   const cases = buildReconciliationSnapshot(activeReconciliationItems(), state.matchDecisions).cases.map(decorateWorkflowCase);
-  return prepareClaim(expenseId, insurer as "blue-cross" | "desjardins", state.items, cases);
+  return prepareClaim(expenseId, insurer as "blue-cross" | "desjardins", withConfirmedServiceDates(state.items, state.confirmedServiceDates), cases);
 }
 
 /** Explicit connector intake uses the same evidence and reconciliation as PC Gmail.
@@ -899,7 +901,7 @@ export async function setMatchDecision(reimbursementId: unknown, expenseId: unkn
   });
 }
 
-export async function setManualMatch(reimbursementId: unknown, expenseId: unknown): Promise<void> {
+export async function setManualMatch(reimbursementId: unknown, expenseId: unknown, confirmedServiceDate?: unknown): Promise<void> {
   if (typeof reimbursementId !== "string" || !reimbursementId || typeof expenseId !== "string" || !expenseId)
     throw new Error("Provide an unmatched reimbursement and target expense.");
   await edit(() => {
@@ -913,7 +915,22 @@ export async function setManualMatch(reimbursementId: unknown, expenseId: unknow
     if (statement.Member === "unknown" || entry.Member === "unknown" || statement.Member !== entry.Member)
       throw new Error("Manual matching requires the same known family member.");
     const statementDate = statement.ServiceDate?.slice(0, 10);
-    const expenseDate = entry.ServiceDate?.slice(0, 10);
+    let expenseDate = entry.ServiceDate?.slice(0, 10);
+    const expenseSources = state.items.filter(item => entry.ExpenseDocumentIds.includes(item.Id));
+    if (statement.IgnoredAt || statement.Status === 4 || expenseSources.some(item => item.IgnoredAt || item.Status === 4))
+      throw new Error("Restore ignored records before linking.");
+    if (confirmedServiceDate !== undefined) {
+      if (!calendarDate(confirmedServiceDate) || confirmedServiceDate !== statementDate)
+        throw new Error("Confirm a valid service date matching the selected reimbursement.");
+      if (expenseDate) throw new Error("This invoice already has a service date. Refresh before linking.");
+      if (expenseSources.length !== 1 || expenseSources.some(multipleServiceDates))
+        throw new Error("Review each service separately; a multi-service invoice cannot be dated as one visit.");
+      if (entry.MatchAssignments?.length || state.matchDecisions.some(match => match.decision === "confirmed" && entry.ExpenseDocumentIds.includes(match.expenseId)))
+        throw new Error("Review existing confirmed matches before changing the service date.");
+      state.confirmedServiceDates = { ...state.confirmedServiceDates,
+        [entry.ExpenseDocumentId]: { date: confirmedServiceDate as string, at: new Date().toISOString() } };
+      expenseDate = confirmedServiceDate as string;
+    }
     if (!statementDate || !expenseDate || statementDate !== expenseDate)
       throw new Error("Manual matching from an expense card requires the same service date.");
 

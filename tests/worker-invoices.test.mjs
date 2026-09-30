@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, writeFile, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawn } from 'node:child_process';
@@ -330,7 +330,7 @@ test('manual unmatched matching and ignore/restore persist for Nathan same-day a
 });
 
 
-test('linking a residual invoice preserves manual status and one insurer allocation across restart', async () => {
+test('confirming a missing invoice date and linking preserves evidence, manual status and one allocation across restart', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'familyhub-invoice-link-'));
   const reservation = createServer(); reservation.listen(0, '127.0.0.1'); await once(reservation, 'listening');
   const port = reservation.address().port; await new Promise(resolve => reservation.close(resolve));
@@ -339,8 +339,8 @@ test('linking a residual invoice preserves manual status and one insurer allocat
     ReceivedAt: '2026-09-01T12:00:00Z', Category: 0, Status: 0, Currency: 'CAD', Notes: '', Attachments: [],
     WorkerManaged: true, ClassificationSource: 'rules', Confidence: 99, NeedsReview: false, Member: 'Kevin', ServiceDate: '2026-09-01' };
   const receipt = { ...common, Id: 'receipt', SourceMessageId: 'receipt', Subject: 'Example receipt', Provider: 'Example clinic',
-    DocumentRole: 'expense', DocumentType: 'receipt', Insurer: null, BilledAmount: null, DetectedAmount: 40, ReimbursedAmount: null,
-    Healthcare: { ServiceType: 'RMT follow-up', OriginalBilledAmount: null, PatientBalance: 40, ProcessedInsurers: ['blue-cross'] } };
+    DocumentRole: 'expense', DocumentType: 'receipt', Insurer: null, BilledAmount: null, DetectedAmount: 40, ReimbursedAmount: null, ServiceDate: null,
+    Healthcare: { ServiceType: 'RMT follow-up', OriginalBilledAmount: null, PatientBalance: 40, ProcessedInsurers: ['blue-cross'], Conflicts: ['Invoice contains multiple service dates (2026-09-01, 2026-09-02).'] } };
   const payment = { ...common, Id: 'payment', SourceMessageId: 'payment', Subject: 'Example insurer record', Provider: 'Blue Cross',
     DocumentRole: 'insurer-statement', DocumentType: 'claim', Insurer: 'blue-cross', StructuredSource: 'blue-cross-portal',
     BilledAmount: 160, DetectedAmount: 120, ReimbursedAmount: 120, ClaimedService: 'Registered massage',
@@ -360,13 +360,15 @@ test('linking a residual invoice preserves manual status and one insurer allocat
   };
   const stop = async () => { if (child && child.exitCode == null) { const done = once(child, 'exit'); child.kill(); await done; } };
   const snapshot = async () => (await fetch(`http://127.0.0.1:${port}/invoices`, { headers })).json();
-  const link = () => fetch(`http://127.0.0.1:${port}/invoices/matches/manual`, { method: 'POST', headers, body: JSON.stringify({ reimbursementId: 'payment', expenseId: 'receipt' }) });
+  const link = confirmedServiceDate => fetch(`http://127.0.0.1:${port}/invoices/matches/manual`, { method: 'POST', headers, body: JSON.stringify({ reimbursementId: 'payment', expenseId: 'receipt', ...(confirmedServiceDate !== undefined ? { confirmedServiceDate } : {}) }) });
   const verify = state => {
     const expense = state.reconciliations.find(row => row.ExpenseDocumentId === 'receipt');
     assert.equal(expense.OriginalAmount, 160);
     assert.equal(expense.BlueCrossReimbursedAmount, 120);
     assert.equal(expense.PotentialRemaining, 40);
     assert.equal(expense.WorkflowStatus, 'open'); assert.equal(expense.WorkflowOrigin, 'manual');
+    assert.equal(expense.ServiceDate, '2026-09-01');
+    assert.equal(state.items.find(row => row.Id === 'receipt').Healthcare.FieldSources.ServiceDate, 'manual');
     assert.equal(expense.MatchAssignments[0].Verification, 'confirmed-manually');
     assert.equal(state.reconciliations.flatMap(row => row.MatchAssignments).filter(row => row.ReimbursementDocumentId === 'payment').length, 1);
     assert.equal(state.unmatchedReimbursements.length, 0);
@@ -374,9 +376,25 @@ test('linking a residual invoice preserves manual status and one insurer allocat
   };
   try {
     await start(); assert.equal((await snapshot()).unmatchedReimbursements.length, 1);
-    assert.equal((await link()).status, 200); verify(await snapshot());
-    assert.equal((await link()).status, 400, 'a repeated link cannot allocate the payment twice');
-    await stop(); await start(); verify(await snapshot());
+    assert.equal((await link()).status, 400, 'a missing date is not silently inferred');
+    assert.equal((await link('2026-02-30')).status, 400);
+    assert.equal((await link('2026-09-02')).status, 400, 'confirmation must match the insurer service date');
+    assert.equal((await link('2026-09-01')).status, 400, 'multi-service invoices cannot become one dated visit');
+    assert.equal((await snapshot()).items.find(row => row.Id === 'receipt').ServiceDate, null, 'failed confirmation is atomic');
+    await stop();
+    let stored = JSON.parse(await readFile(join(dir, 'invoices.json'), 'utf8'));
+    stored.items.find(row => row.Id === 'receipt').Healthcare.Conflicts = [];
+    await writeFile(join(dir, 'invoices.json'), JSON.stringify(stored)); await start();
+    assert.equal((await link('2026-09-01')).status, 200); verify(await snapshot());
+    assert.equal((await link('2026-09-01')).status, 400, 'a repeated link cannot allocate the payment twice');
+    await stop();
+    stored = JSON.parse(await readFile(join(dir, 'invoices.json'), 'utf8'));
+    assert.equal(stored.items.find(row => row.Id === 'receipt').ServiceDate, null, 'original extracted source stays unchanged');
+    assert.equal(stored.confirmedServiceDates.receipt.date, '2026-09-01');
+    // Simulate a later extraction update; the user-confirmed overlay must remain authoritative.
+    stored.items.find(row => row.Id === 'receipt').ServiceDate = '2026-09-02';
+    await writeFile(join(dir, 'invoices.json'), JSON.stringify(stored));
+    await start(); verify(await snapshot());
   } finally { await stop(); await rm(dir, { recursive: true, force: true }); }
 });
 

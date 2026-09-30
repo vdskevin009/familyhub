@@ -4,11 +4,11 @@ import { manualMatchExpenseId, manualMatchUnavailableReason } from "./reconcilia
 
 export const sourceLabels: Record<DocumentLibraryKind, string> = { invoices: "Invoices", desjardins: "Desjardins", "blue-cross": "Blue Cross" };
 
-const blockedLink = (reason: string) => ({ reason, target: null, reimbursement: null });
+const blockedLink = (reason: string) => ({ reason, target: null, reimbursement: null, requiresServiceDate: false });
 
 /** Shared validation for both directions of an explicit nearby-record link. */
 function paymentLink(target: ReconciliationCase, reimbursement: ReimbursementItem, cases: ReconciliationCase[],
-  unmatchedIds: ReadonlySet<string>, ignoredIds: ReadonlySet<string>) {
+  unmatchedIds: ReadonlySet<string>, ignoredIds: ReadonlySet<string>, items: ReimbursementItem[]) {
   if (reimbursement.DocumentRole !== "insurer-statement" || !["desjardins", "blue-cross"].includes(reimbursement.Insurer || ""))
     return blockedLink("Select an insurer reimbursement record.");
   if (target.WorkflowStatus === "ignore" || reimbursement.IgnoredAt || reimbursement.Status === 4 || ignoredIds.has(reimbursement.Id))
@@ -17,22 +17,30 @@ function paymentLink(target: ReconciliationCase, reimbursement: ReimbursementIte
   if (linked.length) return blockedLink(linked.some(entry => entry.Id === target.Id)
     ? "Already linked to this claim." : "Linked to another claim. Review and reject that existing match before linking here.");
   if (!unmatchedIds.has(reimbursement.Id)) return blockedLink("This payment is no longer unmatched. Refresh before linking.");
-  const reason = manualMatchUnavailableReason(reimbursement, target);
+  const requiresServiceDate = !target.ServiceDate;
+  if (requiresServiceDate) {
+    const sources = items.filter(item => (target.ExpenseDocumentIds || [target.ExpenseDocumentId]).includes(item.Id));
+    if (sources.length !== 1 || sources.some(item => /multiple service dates/i.test([item.ImportWarning, ...(item.Healthcare?.Conflicts || [])].join(" "))))
+      return blockedLink("Review each service separately before confirming a date for this invoice.");
+    if (target.MatchAssignments?.length) return blockedLink("Review existing matches before confirming the invoice service date.");
+    if (day(reimbursement.ServiceDate) == null) return blockedLink("The reimbursement also needs a confirmed service date.");
+  }
+  const reason = manualMatchUnavailableReason(reimbursement, requiresServiceDate ? { ...target, ServiceDate: reimbursement.ServiceDate! } : target);
   if (reason) return blockedLink(reason);
   if (target.MatchAssignments?.some(match => match.Insurer === reimbursement.Insurer))
     return blockedLink("This expense already has a payment from this insurer. Review its existing match first.");
-  return { reason: null, target, reimbursement };
+  return { reason: null, target, reimbursement, requiresServiceDate };
 }
 
 /** Link a selected insurer-tab row to the current expense-backed claim. */
 export function nearbyReimbursementLink(claim: ReconciliationCase, reimbursement: ReimbursementItem,
-  cases: ReconciliationCase[], unmatchedIds: ReadonlySet<string>, ignoredIds: ReadonlySet<string>) {
+  cases: ReconciliationCase[], unmatchedIds: ReadonlySet<string>, ignoredIds: ReadonlySet<string>, items: ReimbursementItem[] = []) {
   const expenseId = manualMatchExpenseId(claim);
   if (!expenseId) return blockedLink("Link an original invoice first, then add its insurer reimbursement.");
   const targets = cases.filter(entry => !entry.PreviouslyFound && !entry.InferredFromInsurer && !entry.Unreconciled
     && (entry.ExpenseDocumentId === expenseId || entry.ExpenseDocumentIds?.includes(expenseId)));
   if (targets.length !== 1) return blockedLink("A unique current expense is required. Refresh and review its links.");
-  return paymentLink(targets[0], reimbursement, cases, unmatchedIds, ignoredIds);
+  return paymentLink(targets[0], reimbursement, cases, unmatchedIds, ignoredIds, items);
 }
 
 /** An explicit link moves one unmatched payment to a real expense; it never merges other claims. */
@@ -50,7 +58,16 @@ export function nearbyInvoiceLink(claim: ReconciliationCase, invoice: Reimbursem
   const targets = cases.filter(entry => !entry.PreviouslyFound && !entry.InferredFromInsurer && !entry.Unreconciled
     && (entry.ExpenseDocumentId === invoice.Id || entry.ExpenseDocumentIds?.includes(invoice.Id)));
   if (targets.length !== 1) return blocked("A unique current expense is required. Refresh and review its links.");
-  return paymentLink(targets[0], reimbursement, cases, unmatchedIds, ignoredIds);
+  return paymentLink(targets[0], reimbursement, cases, unmatchedIds, ignoredIds, items);
+}
+
+/** A document date can anchor browsing but is never promoted to a service date. */
+export function nearbySearchAnchor(claim: ReconciliationCase, items: ReimbursementItem[]) {
+  if (day(claim.ServiceDate) != null) return { date: claim.ServiceDate!.slice(0, 10), source: "service date" };
+  const item = items.find(item => item.Id === (claim.ExpenseDocumentId || claim.ExpenseDocumentIds?.[0] || claim.DocumentIds[0]));
+  for (const [value, source] of [[item?.Healthcare?.StatementDate || item?.StatementDate, "document date"], [item?.ReceivedAt, "email received date"]])
+    if (day(value) != null) return { date: value!.slice(0, 10), source: source! };
+  return { date: "", source: "chosen search date" };
 }
 
 function day(value: string | null | undefined): number | null {
@@ -62,8 +79,8 @@ function day(value: string | null | undefined): number | null {
 
 /** Read-only library lookup, deliberately independent of match score and workflow status. */
 export function nearbySourceRecords(claim: ReconciliationCase, kind: DocumentLibraryKind,
-  items: ReimbursementItem[], cases: ReconciliationCase[]) {
-  const center = day(claim.ServiceDate);
+  items: ReimbursementItem[], cases: ReconciliationCase[], searchDate?: string) {
+  const center = day(searchDate === undefined ? claim.ServiceDate : searchDate);
   const knownMember = Boolean(claim.Member && claim.Member !== "unknown");
   const sources = libraryItems(items, kind).filter(item => knownMember && item.Member === claim.Member);
   const dateFor = (item: ReimbursementItem) => item.ServiceDate || item.Healthcare?.ServiceDate;
@@ -78,7 +95,7 @@ export function nearbySourceRecords(claim: ReconciliationCase, kind: DocumentLib
   }).sort((a, b) => Math.abs(a.offsetDays) - Math.abs(b.offsetDays) || a.serviceDate.localeCompare(b.serviceDate) || a.item.Id.localeCompare(b.item.Id));
   return {
     rows, missingDates: sources.filter(item => day(dateFor(item)) == null).length,
-    unavailable: !knownMember ? "Confirm the family member to compare nearby records." : center == null ? "Confirm the service date to compare nearby records." : null,
+    unavailable: !knownMember ? "Confirm the family member to compare nearby records." : center == null ? "Choose a search date to compare nearby records." : null,
     from: center == null ? null : new Date((center - 10) * 86400000).toISOString().slice(0, 10),
     to: center == null ? null : new Date((center + 10) * 86400000).toISOString().slice(0, 10)
   };
