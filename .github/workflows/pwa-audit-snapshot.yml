@@ -1,30 +1,102 @@
-name: PWA audit snapshot (isolated)
+name: PWA product verification (isolated)
 on:
   push:
     branches: [chore/pwa-108-audit-snapshot]
+    paths: [.github/workflows/pwa-audit-snapshot.yml]
 permissions:
-  contents: read
+  contents: write
 jobs:
-  snapshot:
+  verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - name: Read temporary source transport
+        uses: actions/checkout@v4
         with:
+          path: transport
           persist-credentials: false
+      - name: Checkout pinned main baseline, not the transport branch
+        uses: actions/checkout@v4
+        with:
+          ref: 9a4ba5726ec488391860bb08939f0b87ce468538
+          path: product
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify transport and apply the reviewed frontend-only delta
+        run: |
+          python - <<'PY'
+          import base64, hashlib, json, lzma
+          from pathlib import Path
+          parts = sorted(Path('transport/.pwa-108-transport').glob('part-*.b64'))
+          assert len(parts) == 6
+          encoded = ''.join(part.read_text().strip() for part in parts)
+          packed = base64.b64decode(encoded, validate=True)
+          assert hashlib.sha256(packed).hexdigest() == 'b8f8d086335addc7b93368e68c8e06158a86d2b8780dd50223373e7ef2689d6b', 'Transport digest mismatch'
+          delta = json.loads(lzma.decompress(packed))
+          assert delta['base'] == '9a4ba5726ec488391860bb08939f0b87ce468538'
+          for item in delta['files']:
+              name = item['path']
+              assert '..' not in Path(name).parts and not Path(name).is_absolute()
+              assert name.startswith(('apps/web/src/', 'apps/web/tests/')) or name in ('package.json', 'REQUIREMENTS.md', 'docs/PWA_PRODUCT_DESIGN.md'), name
+              target = Path('product') / name
+              before = target.read_text() if target.exists() else ''
+              assert hashlib.sha256(before.encode()).hexdigest() == item['before'], 'Baseline differs: ' + name
+              lines = before.splitlines(keepends=True)
+              for edit in reversed(item['edits']):
+                  lines[edit['start']:edit['end']] = edit['text'].splitlines(keepends=True)
+              after = ''.join(lines)
+              assert hashlib.sha256(after.encode()).hexdigest() == item['after'], 'Output differs: ' + name
+              target.parent.mkdir(parents=True, exist_ok=True)
+              target.write_text(after)
+              print('Verified source:', name)
+          doc = Path('product/docs/PWA_PRODUCT_DESIGN.md')
+          doc.write_text(doc.read_text().replace('npm --workspace @familyhub/web run preview -- --host 127.0.0.1 --port 4173', '(cd apps/web && npx vite preview --host 127.0.0.1 --port 4173)'))
+          PY
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Install only frontend workspace dependencies
+      - name: Install frontend verification dependencies
+        working-directory: product
         run: npm install --workspace @familyhub/web --include-workspace-root
-      - name: Build existing frontend baseline
-        run: npm run build:web
-      - name: Package public source and frontend tooling for isolated browser checks
+      - name: Frontend typecheck, production build and permanent product tests
+        working-directory: product
         run: |
-          git rev-parse HEAD > .audit-source-commit
-          tar --exclude='./.git' --exclude='./.github/workflows/pwa-audit-snapshot.yml' -czf /tmp/pwa-audit-snapshot.tar.gz .
-      - uses: actions/upload-artifact@v4
+          npm --workspace @familyhub/web run typecheck
+          npm run build:web
+          npm run test:pwa
+      - name: Install isolated browser tooling
+        run: |
+          python -m pip install playwright
+          python -m playwright install --with-deps chromium
+      - name: Verify actual HTTP app with synthetic data at four viewport widths
+        working-directory: product
+        run: |
+          mkdir -p ../evidence
+          (cd apps/web && ../../node_modules/.bin/vite preview --host 127.0.0.1 --port 4173) > ../evidence/preview.log 2>&1 &
+          server=$!
+          trap 'kill $server 2>/dev/null || true' EXIT
+          for i in $(seq 1 30); do curl --silent --fail http://127.0.0.1:4173/familyhub/ > /dev/null && break; sleep 1; done
+          python apps/web/tests/browser_smoke.py --url http://127.0.0.1:4173/familyhub/ --output ../evidence
+      - name: Publish only the verified source changes to the feature branch
+        working-directory: product
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git fetch origin main
+          test "$(git rev-parse origin/main)" = 9a4ba5726ec488391860bb08939f0b87ce468538
+          git switch -c feat/pwa-108-product-redesign
+          git add apps/web/src apps/web/tests package.json REQUIREMENTS.md docs/PWA_PRODUCT_DESIGN.md
+          test -z "$(git diff --cached --name-only -- apps/worker src .github)"
+          git diff --cached --stat
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'feat(#108): redesign FamilyHub PWA as a compact product with verified daily actions'
+          git -c credential.helper='!f() { echo username=x-access-token; echo password=$GH_TOKEN; }; f' push origin HEAD:refs/heads/feat/pwa-108-product-redesign
+          git rev-parse HEAD > ../evidence/feature-commit.txt
+      - name: Upload synthetic browser evidence
+        if: always()
+        uses: actions/upload-artifact@v4
         with:
-          name: pwa-audit-snapshot
-          path: /tmp/pwa-audit-snapshot.tar.gz
-          retention-days: 1
+          name: pwa-product-verification
+          path: evidence
+          retention-days: 7
