@@ -1,3 +1,4 @@
+import { Sheet as AppSheet, SearchField, Notice } from "../ui/primitives";
 import { useEffect, useMemo, useState } from "react";
 import { AlertTriangle, ArrowLeft, ArrowRight, CheckCircle2, ExternalLink, Search, X } from "lucide-react";
 import { dateLabel } from "../domain";
@@ -24,9 +25,10 @@ type Props = {
   manualActionsAvailable: boolean;
   busy: boolean;
   savingId: string;
+  operationError?: string; operationMessage?: string;
   onPersonScopeChange: (scope: ReimbursementPersonScope) => void;
-  onMatch: (expense: ReconciliationCase, reimbursementId: string) => Promise<void>;
-  onIgnore: (reimbursementId: string, ignored: boolean) => Promise<void>;
+  onMatch: (expense: ReconciliationCase, reimbursementId: string) => Promise<boolean>;
+  onIgnore: (reimbursementId: string, ignored: boolean) => Promise<boolean>;
 };
 
 type Sheet = "search" | "context" | null;
@@ -80,6 +82,7 @@ export default function ReconciliationQueue({
   manualActionsAvailable,
   busy,
   savingId,
+  operationError, operationMessage,
   onPersonScopeChange,
   onMatch,
   onIgnore
@@ -335,16 +338,10 @@ export default function ReconciliationQueue({
       </div>
     </details>}
 
-    {sheet && <div className="reconcile-sheet-backdrop" role="presentation" onMouseDown={event => {
-      if (event.currentTarget === event.target) setSheet(null);
-    }}>
-      <section className="reconcile-sheet" role="dialog" aria-modal="true" aria-label={sheet === "search" ? "Search another invoice" : "Reimbursement context"}>
-        <div className="reconcile-sheet-header">
-          <div><small>{current.item.Member || "Unknown member"} · {current.item.ServiceDate ? dateLabel(current.item.ServiceDate) : "Date unknown"}</small>
-            <h2>{sheet === "search" ? "Search another invoice" : "Around this reimbursement"}</h2></div>
-          <button type="button" className="icon-button" aria-label="Close" onClick={() => setSheet(null)}><X size={18} /></button>
-        </div>
-
+    <AppSheet open={sheet !== null} onClose={() => setSheet(null)} title={sheet === "search" ? "Search another invoice" : "Around this reimbursement"}
+      description={`${current.item.Member || "Unknown member"} · ${current.item.ServiceDate ? dateLabel(current.item.ServiceDate) : "Date unknown"}`} wide>
+        {operationError && <Notice error>{operationError}</Notice>}
+        {operationMessage && <Notice>{operationMessage}</Notice>}
         {sheet === "search" && <>
           <div className="reconcile-prefill">
             <span>Member: {current.item.Member || "unknown"}</span>
@@ -354,8 +351,7 @@ export default function ReconciliationQueue({
             <span>Amount: {money(current.item.BilledAmount ?? reimbursementAmount(current.item), current.item.Currency)}</span>
           </div>
           <div className="reconcile-search-controls">
-            <label><Search size={15} /><input value={search} onChange={event => setSearch(event.target.value)}
-              placeholder="Provider, service or invoice reference" /></label>
+            <SearchField value={search} onChange={setSearch} label="Search another invoice" placeholder="Provider, service or reference" />
             <button type="button" className="mini-button subtle" onClick={() => setShowAllDates(value => !value)}>
               {showAllDates ? "Use ±30 days" : "Show all dates"}
             </button>
@@ -368,7 +364,7 @@ export default function ReconciliationQueue({
                 <span>{item.Summary}</span></div>
               <div className="reconcile-search-result-action"><strong>{money(item.OriginalAmount, item.Currency)}</strong>
                 <button type="button" className="mini-button primary" disabled={actionDisabled}
-                  onClick={() => { setSheet(null); void onMatch(item, current.item.Id); }}>
+                  onClick={() => { void onMatch(item, current.item.Id).then(saved => { if (saved) setSheet(null); }); }}>
                   {savingId === `manual-match:${current.item.Id}` ? "Matching…" : "Match"}
                 </button></div>
             </article>)}
@@ -400,7 +396,6 @@ export default function ReconciliationQueue({
             {nearbyUnmatched.map(entry => <span key={entry.item.Id}>{insurerName(entry.item)} · {dateLabel(entry.item.ServiceDate || entry.item.ReceivedAt)} · {money(reimbursementAmount(entry.item), entry.item.Currency)}</span>)}
           </div>}
         </div>}
-      </section>
-    </div>}
+    </AppSheet>
   </section>;
 }

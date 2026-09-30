@@ -1,0 +1,39 @@
+/* FamilyHub product tokens. Status, source identity and confidence are separate dimensions. */
+:root {
+  color-scheme: light;
+  font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  --ink: #1c3029;
+  --muted: #5c6e65;
+  --line: #dce3dd;
+  --surface: #ffffff;
+  --surface-strong: #ffffff;
+  --canvas: #f4f6f3;
+  --soft: #f0f3ef;
+  --green: #205744;
+  --green-2: #174634;
+  --mint: #e6f0e8;
+  --success: #226044;
+  --success-soft: #e8f3ea;
+  --warning: #805312;
+  --warning-soft: #fbf3e3;
+  --danger: #a12e31;
+  --danger-soft: #fcecec;
+  --info: #335c77;
+  --info-soft: #edf3f7;
+  --shadow: 0 2px 8px #1c302907;
+  --shadow-overlay: 0 20px 70px #10271d30;
+  --radius-sm: 8px;
+  --radius: 14px;
+  --radius-lg: 20px;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --control: 44px;
+  --rail-width: 208px;
+  --header-height: 60px;
+}

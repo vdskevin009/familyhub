@@ -1,3 +1,4 @@
+import { PageHeader } from "../ui/primitives";
 import { FormEvent, useMemo, useState } from "react";
 import {
   CalendarDays, Check, ChefHat, CirclePlus, Clock3, ShoppingBasket, Sparkles, Trash2
@@ -125,14 +126,7 @@ export default function PlanView({ hub }: Props) {
 
   return (
     <div className="view-stack">
-      <section className="view-hero compact">
-        <div>
-          <span className="eyebrow">Plan once, reuse the work</span>
-          <h1>Meals, groceries and the week.</h1>
-          <p>Build dinner plans from recipes, convert ingredients into one list, and keep everyday tasks beside them.</p>
-        </div>
-        <span className="hero-icon"><CalendarDays size={26} /></span>
-      </section>
+      <PageHeader title="Plan" subtitle="Meals, groceries and tasks" />
 
       {message && <div className="banner info"><Check size={17} />{message}</div>}
 

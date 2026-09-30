@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import { CalendarDays, CircleDollarSign, Download, FileText, HeartHandshake, Home, Mail, MoreHorizontal, ShieldCheck } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { CalendarDays, CircleDollarSign, Download, FileText, HeartHandshake, Home, Mail, MoreHorizontal, ShieldCheck, ChevronRight, Settings2 } from "lucide-react";
 import { viewFromQuery } from "./domain";
 import { useFamilyHubState } from "./state";
 import type { AppView } from "./types";
@@ -10,6 +10,7 @@ import PlanView from "./views/PlanView";
 import MoneyView from "./views/MoneyView";
 import MoreView from "./views/MoreView";
 import DocumentLibraryView from "./views/DocumentLibraryView";
+import { PageHeader } from "./ui/primitives";
 
 type BeforeInstallPromptEvent = Event & {
   prompt: () => Promise<void>;
@@ -43,9 +44,24 @@ export default function App() {
   const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [installed, setInstalled] = useState(() => runningStandalone());
 
-  const todayLabel = useMemo(() => new Intl.DateTimeFormat(undefined, {
-    weekday: "long", month: "long", day: "numeric"
-  }).format(new Date()), []);
+  const scrollPositions = useRef<Partial<Record<AppView, number>>>({});
+  const viewRef = useRef(view); viewRef.current = view;
+  const mainRef = useRef<HTMLElement>(null);
+  const navigationActive = (id: AppView) => view === id || id === "other" && otherViews.some(other => other.id === view);
+  const pageName = nav.find(item => item.id === view)?.label || otherViews.find(item => item.id === view)?.label || "FamilyHub";
+  useEffect(() => {
+    document.title = `${pageName} · FamilyHub`;
+    const frame = requestAnimationFrame(() => window.scrollTo({ top: scrollPositions.current[view] || 0, behavior: "instant" }));
+    return () => cancelAnimationFrame(frame);
+  }, [view, pageName]);
+  useEffect(() => {
+    const onBack = () => {
+      scrollPositions.current[viewRef.current] = window.scrollY;
+      setView(viewFromQuery());
+    };
+    window.addEventListener("popstate", onBack);
+    return () => window.removeEventListener("popstate", onBack);
+  }, []);
 
   useEffect(() => {
     const onPrompt = (event: Event) => {
@@ -76,50 +92,46 @@ export default function App() {
   }
 
   const navigate = (next: AppView) => {
-    setView(next);
+    if (next === view) { window.scrollTo({ top: 0, behavior: "instant" }); return; }
+    scrollPositions.current[view] = window.scrollY;
     const url = new URL(location.href);
     if (next === "reimbursements") url.searchParams.delete("view");
     else url.searchParams.set("view", next);
-    history.replaceState({}, "", url);
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    history.pushState({}, "", url);
+    setView(next);
+    requestAnimationFrame(() => mainRef.current?.focus({ preventScroll: true }));
   };
 
   return (
     <div className="app-shell">
+      <a className="skip-link" href="#main-content">Skip to content</a>
       <aside className="app-rail">
-        <div className="brand-mark" aria-label="FamilyHub"><span>F</span></div>
+        <button type="button" className="rail-brand" onClick={() => navigate("reimbursements")} aria-label="FamilyHub home"><span className="brand-mark">F</span><span>FamilyHub<small>Your everyday assistant</small></span></button>
         <nav aria-label="Primary">
           {nav.map(item => {
             const Icon = item.icon;
             return (
-              <button key={item.id} className={view === item.id || item.id === "other" && otherViews.some(other => other.id === view) ? "nav-item active" : "nav-item"} onClick={() => navigate(item.id)} aria-current={view === item.id ? "page" : undefined}>
+              <button key={item.id} className={navigationActive(item.id) ? "nav-item active" : "nav-item"} onClick={() => navigate(item.id)} aria-current={navigationActive(item.id) ? "page" : undefined}>
                 <Icon size={21} strokeWidth={2} />
-                <span>{item.label}</span>
+                <span>{item.id === "desjardins" ? "Desjardins" : item.id === "blue-cross" ? "Blue Cross" : item.label}</span>
               </button>
             );
           })}
         </nav>
+        {!installed && installPrompt && <button type="button" className="header-install-button" onClick={() => void installApp()}><Download size={15} />Install app</button>}
+        <button type="button" className="rail-settings" onClick={() => navigate("more")}><Settings2 size={18} />Settings & tools</button>
+        <div className="rail-footnote">Saved on your device<br />Synced with your paired PC</div>
       </aside>
 
       <div className="app-stage">
-        <header className="app-header">
-          <div>
-            <div className="app-kicker">{todayLabel}</div>
-            <strong>FamilyHub</strong>
-          </div>
-          {!installed && installPrompt && <button type="button" className="header-install-button" onClick={() => void installApp()}>
-            <Download size={15} /> Install app
-          </button>}
-        </header>
-
-        <main className="app-main">
+        <main className="app-main" id="main-content" tabIndex={-1} ref={mainRef}>
           {view === "today" && <TodayView hub={state} onNavigate={navigate} commandOpen={commandOpen} onCommandOpenChange={setCommandOpen} />}
           {view === "inbox" && <InboxView hub={state} />}
           {view === "reimbursements" && <ReimbursementsView hub={state} />}
-          {view === "invoices" && <DocumentLibraryView hub={state} kind="invoices" />}
-          {view === "desjardins" && <DocumentLibraryView hub={state} kind="desjardins" />}
-          {view === "blue-cross" && <DocumentLibraryView hub={state} kind="blue-cross" />}
-          {view === "other" && <section className="view-stack"><div className="section-heading"><div><h1>Other</h1><p>Your household tools are still here whenever you need them.</p></div></div><div className="other-grid">{otherViews.map(item => { const Icon = item.icon; return <button key={item.id} className="other-link" onClick={() => navigate(item.id)}><Icon size={22} /><span><strong>{item.label}</strong><small>{item.description}</small></span></button>; })}</div></section>}
+          {view === "invoices" && <DocumentLibraryView key="invoices" hub={state} kind="invoices" />}
+          {view === "desjardins" && <DocumentLibraryView key="desjardins" hub={state} kind="desjardins" />}
+          {view === "blue-cross" && <DocumentLibraryView key="blue-cross" hub={state} kind="blue-cross" />}
+          {view === "other" && <section className="view-stack"><PageHeader title="Your household" subtitle="Everyday tools, in one place">{!installed && installPrompt && <button type="button" className="button secondary" onClick={() => void installApp()}><Download size={15} />Install</button>}</PageHeader><div className="other-grid">{otherViews.map(item => { const Icon = item.icon; return <button key={item.id} className="other-link" onClick={() => navigate(item.id)}><span className="other-icon"><Icon size={22} /></span><span><strong>{item.label}</strong><small>{item.description}</small></span><ChevronRight size={18} /></button>; })}</div></section>}
           {view === "plan" && <PlanView hub={state} />}
           {view === "money" && <MoneyView hub={state} />}
           {view === "more" && <MoreView hub={state} installAvailable={Boolean(installPrompt)} installed={installed} onInstall={() => void installApp()} />}
@@ -130,7 +142,7 @@ export default function App() {
         {nav.map(item => {
           const Icon = item.icon;
           return (
-            <button key={item.id} className={view === item.id || item.id === "other" && otherViews.some(other => other.id === view) ? "active" : ""} onClick={() => navigate(item.id)} aria-current={view === item.id ? "page" : undefined}>
+            <button key={item.id} className={navigationActive(item.id) ? "active" : ""} onClick={() => navigate(item.id)} aria-current={navigationActive(item.id) ? "page" : undefined}>
               <Icon size={21} strokeWidth={2} />
               <span>{item.label}</span>
             </button>

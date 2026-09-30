@@ -1,3 +1,4 @@
+import { PageHeader, Sheet } from "../ui/primitives";
 import { useEffect, useMemo, useState } from "react";
 import {
   Archive, Check, ChevronDown, Download, ExternalLink, FileText, Inbox, Mail, RefreshCw, RotateCcw, ShieldCheck, Trash2
@@ -227,34 +228,19 @@ export default function InboxView({ hub }: Props) {
     }
   }
 
+  const [connectionsOpen, setConnectionsOpen] = useState(false);
+
   return (
     <div className="view-stack">
-      <section className="view-hero compact">
-        <div>
-          <span className="eyebrow">Life admin</span>
-          <h1>Important mail, without the noise.</h1>
-          <p>Review time-sensitive and administrative messages prepared by the daily PC agent. Reimbursement tracking now has its own main screen.</p>
-        </div>
-        <span className="hero-icon"><Inbox size={26} /></span>
-      </section>
-
+      <PageHeader title="Important mail" subtitle="Messages that need your attention">
+        <button type="button" className="button secondary" onClick={() => setConnectionsOpen(true)}>Sources{workerError || collection?.error ? " · !" : ""}</button>
+      </PageHeader>
+      {(workerError || collection?.error) && <div className="banner error" role="alert">{workerError || collection?.error}</div>}
       {error && <div className="banner error">{error}</div>}
       {message && <div className="banner success"><Check size={17} />{message}{lastDecision && <button className="banner-action" disabled={!!busy} onClick={undoLastDecision}><RotateCcw size={14} /> Annuler</button>}</div>}
 
-      <section className="surface" aria-label="Daily PC collection">
-        <div className="section-heading inline"><div><span className="eyebrow">PC agent</span><h2>Daily mailbox analysis</h2></div></div>
-        {!paired ? <p>Pair your PC in More → Local AI to retrieve its daily collection here.</p> : <>
-          <p>{collection?.busy ? "Collection in progress…" : collection?.lastSuccess ? `Last complete scan: ${new Date(collection.lastSuccess).toLocaleString()}` : "No completed daily scan yet."}</p>
-          {collection?.setupRequired && <p>One-time setup required: connect Gmail on the PC using Connect-Gmail.ps1, then install the daily task. Browser Google connections below do not enable background collection.</p>}
-          {collection?.accounts.map(account => <p key={account.email}>{account.label}: {account.email} · {collection.progress[account.email]?.error || (collection.progress[account.email]?.window ? "Backlog: will resume next run" : "Connected on PC")}</p>)}
-          {(workerError || collection?.error) && <p role="status" className="banner error">{workerError || collection?.error} Previously synced documents remain available below.</p>}
-          <div className="inbox-actions"><button className="mini-button primary" disabled={!!busy} onClick={() => refreshCollection()}>Refresh results</button></div>
-        </>}
-        <p className="privacy-note">The PC must be on and reachable. Email text is classified through your Codex session; Gmail is read-only. Reimbursement eligibility is a suggestion. Claims are never submitted automatically.</p>
-      </section>
-
       <section className="surface important-mail" aria-labelledby="important-mail-title">
-        <div className="section-heading inline"><div><span className="eyebrow">Mailbox</span><h2 id="important-mail-title">Important messages</h2></div><span className="learning-count">separate from reimbursements</span></div>
+        <div className="section-heading inline"><div><span className="eyebrow">Mailbox</span><h2 id="important-mail-title">Important messages</h2></div><span className="learning-count">{hub.reimbursements.ImportantMail?.length || 0}</span></div>
         {!hub.reimbursements.ImportantMail?.length && <div className="empty-state"><Mail size={30} /><strong>No important mail waiting</strong><span>The PC agent will place time-sensitive messages here.</span></div>}
         {(hub.reimbursements.ImportantMail ?? []).slice(0, 6).map(item => <article className="important-mail-row" key={item.Id}>
           <span className={`attention-badge ${item.AttentionLevel}`}>{item.AttentionLevel === "critical" ? "Urgent" : item.AttentionLevel === "action" ? "Action" : "Important"}</span>
@@ -270,6 +256,19 @@ export default function InboxView({ hub }: Props) {
           <p>{item.Action === "unsubscribe-with-confirmation" ? "Désabonnement suggéré — confirmation requise; aucun courriel n'a été modifié." : item.Reason}</p>
         </div>)}
       </section>}
+
+      <Sheet open={connectionsOpen} onClose={() => setConnectionsOpen(false)} title="Mail sources" description="Connection, collection status and optional Drive access.">
+      <section className="surface" aria-label="Daily PC collection">
+        <div className="section-heading inline"><div><span className="eyebrow">PC agent</span><h2>Daily mailbox analysis</h2></div></div>
+        {!paired ? <p>Pair your PC in More → Local AI to retrieve its daily collection here.</p> : <>
+          <p>{collection?.busy ? "Collection in progress…" : collection?.lastSuccess ? `Last complete scan: ${new Date(collection.lastSuccess).toLocaleString()}` : "No completed daily scan yet."}</p>
+          {collection?.setupRequired && <p>One-time setup required: connect Gmail on the PC using Connect-Gmail.ps1, then install the daily task. Browser Google connections below do not enable background collection.</p>}
+          {collection?.accounts.map(account => <p key={account.email}>{account.label}: {account.email} · {collection.progress[account.email]?.error || (collection.progress[account.email]?.window ? "Backlog: will resume next run" : "Connected on PC")}</p>)}
+          {(workerError || collection?.error) && <p role="status" className="banner error">{workerError || collection?.error} Previously synced documents remain available below.</p>}
+          <div className="inbox-actions"><button className="mini-button primary" disabled={!!busy} onClick={() => refreshCollection()}>Refresh results</button></div>
+        </>}
+        <p className="privacy-note">The PC must be on and reachable. Email text is classified through your Codex session; Gmail is read-only. Reimbursement eligibility is a suggestion. Claims are never submitted automatically.</p>
+      </section>
 
       {!paired && <section className="surface">
         <div className="section-heading inline">
@@ -333,6 +332,8 @@ export default function InboxView({ hub }: Props) {
             : <button className="mini-button" disabled={Boolean(busy)} onClick={() => connect(slot)}>Connect</button>}
         </article>)}</div>
       </section>}
+
+      </Sheet>
 
       <section className="section-block">
         <div className="filter-tabs">

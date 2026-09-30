@@ -1,0 +1,2493 @@
+{
+  "state": {
+    "SchemaVersion": 2,
+    "Items": [
+      {
+        "Id": "fixture-expense-0",
+        "AccountLabel": "Synthetic account",
+        "AccountEmail": "example@example.invalid",
+        "SourceMessageId": "fixture-expense-0",
+        "ThreadId": "fixture-expense-0",
+        "InternetMessageId": "",
+        "Subject": "Maple Wellness \u2014 synthetic invoice",
+        "Sender": "Example clinic",
+        "Provider": "Maple Wellness",
+        "ReceivedAt": "2026-09-25T18:00:00Z",
+        "Category": 0,
+        "Status": 0,
+        "DetectedAmount": 180,
+        "BilledAmount": 180,
+        "Currency": "CAD",
+        "Confidence": 93,
+        "Notes": "Fictitious data for UI testing only.",
+        "Attachments": [
+          {
+            "Id": "pdf-fixture",
+            "FileName": "example-invoice.pdf",
+            "MimeType": "application/pdf",
+            "Size": 1024
+          }
+        ],
+        "DocumentType": "invoice",
+        "DocumentRole": "expense",
+        "WorkerManaged": true,
+        "NeedsReview": false,
+        "Member": "Kevin",
+        "ServiceDate": "2026-09-25",
+        "Healthcare": {
+          "Provider": "Maple Wellness",
+          "ServiceType": "Physiotherapy",
+          "InvoiceNumber": "EXAMPLE-0"
+        }
+      },
+      {
+        "Id": "fixture-expense-0-desjardins",
+        "AccountLabel": "Synthetic account",
+        "AccountEmail": "example@example.invalid",
+        "SourceMessageId": "fixture-expense-0-desjardins",
+        "ThreadId": "fixture-expense-0-desjardins",
+        "InternetMessageId": "",
+        "Subject": "Maple Wellness \u2014 synthetic invoice",
+        "Sender": "Example clinic",
+        "Provider": "Desjardins",
+        "ReceivedAt": "2026-09-25T18:00:00Z",
+        "Category": 0,
+        "Status": 0,
+        "DetectedAmount": 90,
+        "BilledAmount": 180,
+        "Currency": "CAD",
+        "Confidence": 93,
+        "Notes": "Fictitious data for UI testing only.",
+        "Attachments": [],
+        "DocumentType": "claim",
+        "DocumentRole": "insurer-statement",
+        "WorkerManaged": true,
+        "NeedsReview": false,
+        "Member": "Kevin",
+        "ServiceDate": "2026-09-25",
+        "Healthcare": {
+          "Provider": "Maple Wellness",
+          "ServiceType": "Physiotherapy",
+          "InvoiceNumber": "EXAMPLE-0"
+        },
+        "Insurer": "desjardins",
+        "ReimbursedAmount": 90,
+        "StructuredSource": "synthetic-ui-fixture"
+      },
+      {
+        "Id": "fixture-expense-1",
+        "AccountLabel": "Synthetic account",
+        "AccountEmail": "example@example.invalid",
+        "SourceMessageId": "fixture-expense-1",
+        "ThreadId": "fixture-expense-1",
+        "InternetMessageId": "",
+        "Subject": "Cedar Health \u2014 synthetic invoice",
+        "Sender": "Example clinic",
+        "Provider": "Cedar Health",
+        "ReceivedAt": "2026-09-24T18:00:00Z",
+        "Category": 0,
+        "Status": 0,
+        "DetectedAmount": 185,
+        "BilledAmount": 185,
+        "Currency": "CAD",
+        "Confidence": 93,
+        "Notes": "Fictitious data for UI testing only.",
+        "Attachments": [],
+        "DocumentType": "invoice",
+        "DocumentRole": "expense",
+        "WorkerManaged": true,
+        "NeedsReview": false,
+        "Member": "Jasmine",
+        "ServiceDate": "2026-09-24",
+        "Healthcare": {
+          "Provider": "Cedar Health",
+          "ServiceType": "Physiotherapy",
+          "InvoiceNumber": "EXAMPLE-1"
+        }
+      },
+      {
+        "Id": "fixture-expense-2",
+        "AccountLabel": "Synthetic account",
+        "AccountEmail": "example@example.invalid",
+        "SourceMessageId": "fixture-expense-2",
+        "ThreadId": "fixture-expense-2",
+        "InternetMessageId": "",
+        "Subject": "Northside Therapy \u2014 synthetic invoice",
+        "Sender": "Example clinic",
+        "Provider": "Northside Therapy",
+        "ReceivedAt": "2026-09-23T18:00:00Z",
+        "Category": 0,
+        "Status": 0,
+        "DetectedAmount": 190,
+        "BilledAmount": 190,
+        "Currency": "CAD",
+        "Confidence": 93,
+        "Notes": "Fictitious data for UI testing only.",
+        "Attachments": [
+          {
+            "Id": "pdf-fixture",
+            "FileName": "example-invoice.pdf",
+            "MimeType": "application/pdf",
+            "Size": 1024
+          }
+        ],
+        "DocumentType": "invoice",
+        "DocumentRole": "expense",
+        "WorkerManaged": true,
+        "NeedsReview": false,
+        "Member": "Nathan",
+        "ServiceDate": "2026-09-23",
+        "Healthcare": {
+          "Provider": "Northside Therapy",
+          "ServiceType": "Physiotherapy",
+          "InvoiceNumber": "EXAMPLE-2"
+        }
+      },
+      {
+        "Id": "fixture-expense-2-desjardins",
+        "AccountLabel": "Synthetic account",
+        "AccountEmail": "example@example.invalid",
+        "SourceMessageId": "fixture-expense-2-desjardins",
+        "ThreadId": "fixture-expense-2-desjardins",
+        "InternetMessageId": "",
+        "Subject": "Northside Therapy \u2014 synthetic invoice",
+        "Sender": "Example clinic",
+        "Provider": "Desjardins",
+        "ReceivedAt": "2026-09-23T18:00:00Z",
+        "Category": 0,
+        "Status": 0,
+        "DetectedAmount": 35,
+        "BilledAmount": 190,
+        "Currency": "CAD",
+        "Confidence": 93,
+        "Notes": "Fictitious data for UI testing only.",
+        "Attachments": [],
+        "DocumentType": "claim",
+        "DocumentRole": "insurer-statement",
+        "WorkerManaged": true,
+        "NeedsReview": false,
+        "Member": "Nathan",
+        "ServiceDate": "2026-09-23",
+        "Healthcare": {
+          "Provider": "Northside Therapy",
+          "ServiceType": "Physiotherapy",
+          "InvoiceNumber": "EXAMPLE-2"
+        },
+        "Insurer": "desjardins",
+        "ReimbursedAmount": 35,
+        "StructuredSource": "synthetic-ui-fixture"
+      },
+      {
+        "Id": "fixture-expense-2-blue-cross",
+        "AccountLabel": "Synthetic account",
+        "AccountEmail": "example@example.invalid",
+        "SourceMessageId": "fixture-expense-2-blue-cross",
+        "ThreadId": "fixture-expense-2-blue-cross",
+        "InternetMessageId": "",
+        "Subject": "Northside Therapy \u2014 synthetic invoice",
+        "Sender": "Example clinic",
+        "Provider": "Blue Cross",
+        "ReceivedAt": "2026-09-23T18:00:00Z",
+        "Category": 0,
+        "Status": 0,
+        "DetectedAmount": 70,
+        "BilledAmount": 190,
+        "Currency": "CAD",
+        "Confidence": 93,
+        "Notes": "Fictitious data for UI testing only.",
+        "Attachments": [],
+        "DocumentType": "claim",
+        "DocumentRole": "insurer-statement",
+        "WorkerManaged": true,
+        "NeedsReview": false,
+        "Member": "Nathan",
+        "ServiceDate": "2026-09-23",
+        "Healthcare": {
+          "Provider": "Northside Therapy",
+          "ServiceType": "Physiotherapy",
+          "InvoiceNumber": "EXAMPLE-2"
+        },
+        "Insurer": "blue-cross",
+        "ReimbursedAmount": 70,
+        "StructuredSource": "synthetic-ui-fixture"
+      },
+      {
+        "Id": "fixture-expense-3",
+        "AccountLabel": "Synthetic account",
+        "AccountEmail": "example@example.invalid",
+        "SourceMessageId": "fixture-expense-3",
+        "ThreadId": "fixture-expense-3",
+        "InternetMessageId": "",
+        "Subject": "Harbour Dental \u2014 synthetic invoice",
+        "Sender": "Example clinic",
+        "Provider": "Harbour Dental",
+        "ReceivedAt": "2026-09-22T18:00:00Z",
+        "Category": 0,
+        "Status": 0,
+        "DetectedAmount": 195,
+        "BilledAmount": 195,
+        "Currency": "CAD",
+        "Confidence": 93,
+        "Notes": "Fictitious data for UI testing only.",
+        "Attachments": [],
+        "DocumentType": "invoice",
+        "DocumentRole": "expense",
+        "WorkerManaged": true,
+        "NeedsReview": false,
+        "Member": "Kevin",
+        "ServiceDate": "2026-09-22",
+        "Healthcare": {
+          "Provider": "Harbour Dental",
+          "ServiceType": "Physiotherapy",
+          "InvoiceNumber": "EXAMPLE-3"
+        }
+      },
+      {
+        "Id": "fixture-expense-4",
+        "AccountLabel": "Synthetic account",
+        "AccountEmail": "example@example.invalid",
+        "SourceMessageId": "fixture-expense-4",
+        "ThreadId": "fixture-expense-4",
+        "InternetMessageId": "",
+        "Subject": "Elm Family Clinic \u2014 synthetic invoice",
+        "Sender": "Example clinic",
+        "Provider": "Elm Family Clinic",
+        "ReceivedAt": "2026-09-21T18:00:00Z",
+        "Category": 0,
+        "Status": 0,
+        "DetectedAmount": 200,
+        "BilledAmount": 200,
+        "Currency": "CAD",
+        "Confidence": 93,
+        "Notes": "Fictitious data for UI testing only.",
+        "Attachments": [
+          {
+            "Id": "pdf-fixture",
+            "FileName": "example-invoice.pdf",
+            "MimeType": "application/pdf",
+            "Size": 1024
+          }
+        ],
+        "DocumentType": "invoice",
+        "DocumentRole": "expense",
+        "WorkerManaged": true,
+        "NeedsReview": false,
+        "Member": "Jasmine",
+        "ServiceDate": "2026-09-21",
+        "Healthcare": {
+          "Provider": "Elm Family Clinic",
+          "ServiceType": "Physiotherapy",
+          "InvoiceNumber": "EXAMPLE-4"
+        }
+      },
+      {
+        "Id": "fixture-expense-4-desjardins",
+        "AccountLabel": "Synthetic account",
+        "AccountEmail": "example@example.invalid",
+        "SourceMessageId": "fixture-expense-4-desjardins",
+        "ThreadId": "fixture-expense-4-desjardins",
+        "InternetMessageId": "",
+        "Subject": "Elm Family Clinic \u2014 synthetic invoice",
+        "Sender": "Example clinic",
+        "Provider": "Desjardins",
+        "ReceivedAt": "2026-09-21T18:00:00Z",
+        "Category": 0,
+        "Status": 0,
+        "DetectedAmount": 90,
+        "BilledAmount": 200,
+        "Currency": "CAD",
+        "Confidence": 93,
+        "Notes": "Fictitious data for UI testing only.",
+        "Attachments": [],
+        "DocumentType": "claim",
+        "DocumentRole": "insurer-statement",
+        "WorkerManaged": true,
+        "NeedsReview": false,
+        "Member": "Jasmine",
+        "ServiceDate": "2026-09-21",
+        "Healthcare": {
+          "Provider": "Elm Family Clinic",
+          "ServiceType": "Physiotherapy",
+          "InvoiceNumber": "EXAMPLE-4"
+        },
+        "Insurer": "desjardins",
+        "ReimbursedAmount": 90,
+        "StructuredSource": "synthetic-ui-fixture"
+      },
+      {
+        "Id": "fixture-expense-5",
+        "AccountLabel": "Synthetic account",
+        "AccountEmail": "example@example.invalid",
+        "SourceMessageId": "fixture-expense-5",
+        "ThreadId": "fixture-expense-5",
+        "InternetMessageId": "",
+        "Subject": "Pine Physiotherapy \u2014 synthetic invoice",
+        "Sender": "Example clinic",
+        "Provider": "Pine Physiotherapy",
+        "ReceivedAt": "2026-09-20T18:00:00Z",
+        "Category": 0,
+        "Status": 0,
+        "DetectedAmount": 205,
+        "BilledAmount": 205,
+        "Currency": "CAD",
+        "Confidence": 93,
+        "Notes": "Fictitious data for UI testing only.",
+        "Attachments": [],
+        "DocumentType": "invoice",
+        "DocumentRole": "expense",
+        "WorkerManaged": true,
+        "NeedsReview": false,
+        "Member": "Nathan",
+        "ServiceDate": "2026-09-20",
+        "Healthcare": {
+          "Provider": "Pine Physiotherapy",
+          "ServiceType": "Physiotherapy",
+          "InvoiceNumber": "EXAMPLE-5"
+        }
+      },
+      {
+        "Id": "fixture-expense-6",
+        "AccountLabel": "Synthetic account",
+        "AccountEmail": "example@example.invalid",
+        "SourceMessageId": "fixture-expense-6",
+        "ThreadId": "fixture-expense-6",
+        "InternetMessageId": "",
+        "Subject": "Maple Wellness \u2014 synthetic invoice",
+        "Sender": "Example clinic",
+        "Provider": "Maple Wellness",
+        "ReceivedAt": "2026-09-19T18:00:00Z",
+        "Category": 0,
+        "Status": 0,
+        "DetectedAmount": 210,
+        "BilledAmount": 210,
+        "Currency": "CAD",
+        "Confidence": 93,
+        "Notes": "Fictitious data for UI testing only.",
+        "Attachments": [
+          {
+            "Id": "pdf-fixture",
+            "FileName": "example-invoice.pdf",
+            "MimeType": "application/pdf",
+            "Size": 1024
+          }
+        ],
+        "DocumentType": "invoice",
+        "DocumentRole": "expense",
+        "WorkerManaged": true,
+        "NeedsReview": false,
+        "Member": "Kevin",
+        "ServiceDate": "2026-09-19",
+        "Healthcare": {
+          "Provider": "Maple Wellness",
+          "ServiceType": "Physiotherapy",
+          "InvoiceNumber": "EXAMPLE-6"
+        }
+      },
+      {
+        "Id": "fixture-expense-6-desjardins",
+        "AccountLabel": "Synthetic account",
+        "AccountEmail": "example@example.invalid",
+        "SourceMessageId": "fixture-expense-6-desjardins",
+        "ThreadId": "fixture-expense-6-desjardins",
+        "InternetMessageId": "",
+        "Subject": "Maple Wellness \u2014 synthetic invoice",
+        "Sender": "Example clinic",
+        "Provider": "Desjardins",
+        "ReceivedAt": "2026-09-19T18:00:00Z",
+        "Category": 0,
+        "Status": 0,
+        "DetectedAmount": 90,
+        "BilledAmount": 210,
+        "Currency": "CAD",
+        "Confidence": 93,
+        "Notes": "Fictitious data for UI testing only.",
+        "Attachments": [],
+        "DocumentType": "claim",
+        "DocumentRole": "insurer-statement",
+        "WorkerManaged": true,
+        "NeedsReview": false,
+        "Member": "Kevin",
+        "ServiceDate": "2026-09-19",
+        "Healthcare": {
+          "Provider": "Maple Wellness",
+          "ServiceType": "Physiotherapy",
+          "InvoiceNumber": "EXAMPLE-6"
+        },
+        "Insurer": "desjardins",
+        "ReimbursedAmount": 90,
+        "StructuredSource": "synthetic-ui-fixture"
+      },
+      {
+        "Id": "fixture-expense-6-blue-cross",
+        "AccountLabel": "Synthetic account",
+        "AccountEmail": "example@example.invalid",
+        "SourceMessageId": "fixture-expense-6-blue-cross",
+        "ThreadId": "fixture-expense-6-blue-cross",
+        "InternetMessageId": "",
+        "Subject": "Maple Wellness \u2014 synthetic invoice",
+        "Sender": "Example clinic",
+        "Provider": "Blue Cross",
+        "ReceivedAt": "2026-09-19T18:00:00Z",
+        "Category": 0,
+        "Status": 0,
+        "DetectedAmount": 120,
+        "BilledAmount": 210,
+        "Currency": "CAD",
+        "Confidence": 93,
+        "Notes": "Fictitious data for UI testing only.",
+        "Attachments": [],
+        "DocumentType": "claim",
+        "DocumentRole": "insurer-statement",
+        "WorkerManaged": true,
+        "NeedsReview": false,
+        "Member": "Kevin",
+        "ServiceDate": "2026-09-19",
+        "Healthcare": {
+          "Provider": "Maple Wellness",
+          "ServiceType": "Physiotherapy",
+          "InvoiceNumber": "EXAMPLE-6"
+        },
+        "Insurer": "blue-cross",
+        "ReimbursedAmount": 120,
+        "StructuredSource": "synthetic-ui-fixture"
+      },
+      {
+        "Id": "fixture-expense-7",
+        "AccountLabel": "Synthetic account",
+        "AccountEmail": "example@example.invalid",
+        "SourceMessageId": "fixture-expense-7",
+        "ThreadId": "fixture-expense-7",
+        "InternetMessageId": "",
+        "Subject": "Cedar Health \u2014 synthetic invoice",
+        "Sender": "Example clinic",
+        "Provider": "Cedar Health",
+        "ReceivedAt": "2026-09-18T18:00:00Z",
+        "Category": 0,
+        "Status": 0,
+        "DetectedAmount": 215,
+        "BilledAmount": 215,
+        "Currency": "CAD",
+        "Confidence": 93,
+        "Notes": "Fictitious data for UI testing only.",
+        "Attachments": [],
+        "DocumentType": "invoice",
+        "DocumentRole": "expense",
+        "WorkerManaged": true,
+        "NeedsReview": false,
+        "Member": "Jasmine",
+        "ServiceDate": "2026-09-18",
+        "Healthcare": {
+          "Provider": "Cedar Health",
+          "ServiceType": "Physiotherapy",
+          "InvoiceNumber": "EXAMPLE-7"
+        }
+      },
+      {
+        "Id": "fixture-expense-7-blue-cross",
+        "AccountLabel": "Synthetic account",
+        "AccountEmail": "example@example.invalid",
+        "SourceMessageId": "fixture-expense-7-blue-cross",
+        "ThreadId": "fixture-expense-7-blue-cross",
+        "InternetMessageId": "",
+        "Subject": "Cedar Health \u2014 synthetic invoice",
+        "Sender": "Example clinic",
+        "Provider": "Blue Cross",
+        "ReceivedAt": "2026-09-18T18:00:00Z",
+        "Category": 0,
+        "Status": 0,
+        "DetectedAmount": 215,
+        "BilledAmount": 215,
+        "Currency": "CAD",
+        "Confidence": 93,
+        "Notes": "Fictitious data for UI testing only.",
+        "Attachments": [],
+        "DocumentType": "claim",
+        "DocumentRole": "insurer-statement",
+        "WorkerManaged": true,
+        "NeedsReview": false,
+        "Member": "Jasmine",
+        "ServiceDate": "2026-09-18",
+        "Healthcare": {
+          "Provider": "Cedar Health",
+          "ServiceType": "Physiotherapy",
+          "InvoiceNumber": "EXAMPLE-7"
+        },
+        "Insurer": "blue-cross",
+        "ReimbursedAmount": 215,
+        "StructuredSource": "synthetic-ui-fixture"
+      },
+      {
+        "Id": "fixture-expense-8",
+        "AccountLabel": "Synthetic account",
+        "AccountEmail": "example@example.invalid",
+        "SourceMessageId": "fixture-expense-8",
+        "ThreadId": "fixture-expense-8",
+        "InternetMessageId": "",
+        "Subject": "Northside Therapy \u2014 synthetic invoice",
+        "Sender": "Example clinic",
+        "Provider": "Northside Therapy",
+        "ReceivedAt": "2026-09-17T18:00:00Z",
+        "Category": 0,
+        "Status": 0,
+        "DetectedAmount": 220,
+        "BilledAmount": 220,
+        "Currency": "CAD",
+        "Confidence": 93,
+        "Notes": "Fictitious data for UI testing only.",
+        "Attachments": [
+          {
+            "Id": "pdf-fixture",
+            "FileName": "example-invoice.pdf",
+            "MimeType": "application/pdf",
+            "Size": 1024
+          }
+        ],
+        "DocumentType": "invoice",
+        "DocumentRole": "expense",
+        "WorkerManaged": true,
+        "NeedsReview": false,
+        "Member": "Nathan",
+        "ServiceDate": "2026-09-17",
+        "Healthcare": {
+          "Provider": "Northside Therapy",
+          "ServiceType": "Physiotherapy",
+          "InvoiceNumber": "EXAMPLE-8"
+        }
+      },
+      {
+        "Id": "fixture-expense-8-desjardins",
+        "AccountLabel": "Synthetic account",
+        "AccountEmail": "example@example.invalid",
+        "SourceMessageId": "fixture-expense-8-desjardins",
+        "ThreadId": "fixture-expense-8-desjardins",
+        "InternetMessageId": "",
+        "Subject": "Northside Therapy \u2014 synthetic invoice",
+        "Sender": "Example clinic",
+        "Provider": "Desjardins",
+        "ReceivedAt": "2026-09-17T18:00:00Z",
+        "Category": 0,
+        "Status": 0,
+        "DetectedAmount": 90,
+        "BilledAmount": 220,
+        "Currency": "CAD",
+        "Confidence": 93,
+        "Notes": "Fictitious data for UI testing only.",
+        "Attachments": [],
+        "DocumentType": "claim",
+        "DocumentRole": "insurer-statement",
+        "WorkerManaged": true,
+        "NeedsReview": false,
+        "Member": "Nathan",
+        "ServiceDate": "2026-09-17",
+        "Healthcare": {
+          "Provider": "Northside Therapy",
+          "ServiceType": "Physiotherapy",
+          "InvoiceNumber": "EXAMPLE-8"
+        },
+        "Insurer": "desjardins",
+        "ReimbursedAmount": 90,
+        "StructuredSource": "synthetic-ui-fixture"
+      },
+      {
+        "Id": "fixture-expense-8-blue-cross",
+        "AccountLabel": "Synthetic account",
+        "AccountEmail": "example@example.invalid",
+        "SourceMessageId": "fixture-expense-8-blue-cross",
+        "ThreadId": "fixture-expense-8-blue-cross",
+        "InternetMessageId": "",
+        "Subject": "Northside Therapy \u2014 synthetic invoice",
+        "Sender": "Example clinic",
+        "Provider": "Blue Cross",
+        "ReceivedAt": "2026-09-17T18:00:00Z",
+        "Category": 0,
+        "Status": 0,
+        "DetectedAmount": 130,
+        "BilledAmount": 220,
+        "Currency": "CAD",
+        "Confidence": 93,
+        "Notes": "Fictitious data for UI testing only.",
+        "Attachments": [],
+        "DocumentType": "claim",
+        "DocumentRole": "insurer-statement",
+        "WorkerManaged": true,
+        "NeedsReview": false,
+        "Member": "Nathan",
+        "ServiceDate": "2026-09-17",
+        "Healthcare": {
+          "Provider": "Northside Therapy",
+          "ServiceType": "Physiotherapy",
+          "InvoiceNumber": "EXAMPLE-8"
+        },
+        "Insurer": "blue-cross",
+        "ReimbursedAmount": 130,
+        "StructuredSource": "synthetic-ui-fixture"
+      },
+      {
+        "Id": "fixture-unmatched-0",
+        "AccountLabel": "Synthetic account",
+        "AccountEmail": "example@example.invalid",
+        "SourceMessageId": "fixture-unmatched-0",
+        "ThreadId": "fixture-unmatched-0",
+        "InternetMessageId": "",
+        "Subject": "Maple Wellness \u2014 synthetic invoice",
+        "Sender": "Example clinic",
+        "Provider": "Blue Cross",
+        "ReceivedAt": "2026-09-25T18:00:00Z",
+        "Category": 0,
+        "Status": 0,
+        "DetectedAmount": 45,
+        "BilledAmount": null,
+        "Currency": "CAD",
+        "Confidence": 93,
+        "Notes": "Fictitious data for UI testing only.",
+        "Attachments": [],
+        "DocumentType": "claim",
+        "DocumentRole": "insurer-statement",
+        "WorkerManaged": true,
+        "NeedsReview": false,
+        "Member": "Kevin",
+        "ServiceDate": "2026-09-25",
+        "Healthcare": {
+          "ServiceType": "Physiotherapy",
+          "SubmittedAmount": null
+        },
+        "Insurer": "blue-cross",
+        "ReimbursedAmount": 45,
+        "StructuredSource": "synthetic-ui-fixture"
+      },
+      {
+        "Id": "fixture-unmatched-1",
+        "AccountLabel": "Synthetic account",
+        "AccountEmail": "example@example.invalid",
+        "SourceMessageId": "fixture-unmatched-1",
+        "ThreadId": "fixture-unmatched-1",
+        "InternetMessageId": "",
+        "Subject": "Maple Wellness \u2014 synthetic invoice",
+        "Sender": "Example clinic",
+        "Provider": "Blue Cross",
+        "ReceivedAt": "2026-09-25T18:00:00Z",
+        "Category": 0,
+        "Status": 0,
+        "DetectedAmount": 45,
+        "BilledAmount": null,
+        "Currency": "CAD",
+        "Confidence": 93,
+        "Notes": "Fictitious data for UI testing only.",
+        "Attachments": [],
+        "DocumentType": "claim",
+        "DocumentRole": "insurer-statement",
+        "WorkerManaged": true,
+        "NeedsReview": false,
+        "Member": "Jasmine",
+        "ServiceDate": "2026-09-24",
+        "Healthcare": {
+          "ServiceType": "Physiotherapy",
+          "SubmittedAmount": null
+        },
+        "Insurer": "blue-cross",
+        "ReimbursedAmount": 45,
+        "StructuredSource": "synthetic-ui-fixture"
+      },
+      {
+        "Id": "fixture-unmatched-2",
+        "AccountLabel": "Synthetic account",
+        "AccountEmail": "example@example.invalid",
+        "SourceMessageId": "fixture-unmatched-2",
+        "ThreadId": "fixture-unmatched-2",
+        "InternetMessageId": "",
+        "Subject": "Maple Wellness \u2014 synthetic invoice",
+        "Sender": "Example clinic",
+        "Provider": "Blue Cross",
+        "ReceivedAt": "2026-09-25T18:00:00Z",
+        "Category": 0,
+        "Status": 0,
+        "DetectedAmount": 45,
+        "BilledAmount": null,
+        "Currency": "CAD",
+        "Confidence": 93,
+        "Notes": "Fictitious data for UI testing only.",
+        "Attachments": [],
+        "DocumentType": "claim",
+        "DocumentRole": "insurer-statement",
+        "WorkerManaged": true,
+        "NeedsReview": false,
+        "Member": "Nathan",
+        "ServiceDate": "2026-09-23",
+        "Healthcare": {
+          "ServiceType": "Physiotherapy",
+          "SubmittedAmount": null
+        },
+        "Insurer": "blue-cross",
+        "ReimbursedAmount": 45,
+        "StructuredSource": "synthetic-ui-fixture"
+      }
+    ],
+    "Reconciliations": [
+      {
+        "Id": "case-fixture-expense-0",
+        "ExpenseDocumentId": "fixture-expense-0",
+        "ExpenseDocumentIds": [
+          "fixture-expense-0"
+        ],
+        "Member": "Kevin",
+        "Provider": "Maple Wellness",
+        "ServiceType": "Physiotherapy",
+        "ServiceDate": "2026-09-25",
+        "OriginalAmount": 180,
+        "ReimbursedAmount": 90,
+        "PotentialRemaining": 90,
+        "Currency": "CAD",
+        "PrimaryInsurer": "Desjardins",
+        "PrimaryReimbursedAmount": 90,
+        "SecondaryInsurer": "Blue Cross",
+        "SecondaryReimbursedAmount": 0,
+        "DesjardinsReimbursedAmount": 90,
+        "BlueCrossReimbursedAmount": 0,
+        "NextInsurer": "Blue Cross",
+        "Action": "submit-secondary",
+        "Status": "waiting-secondary",
+        "Summary": "Synthetic evidence only. Review the recorded source before taking an action.",
+        "Confidence": 93,
+        "DocumentIds": [
+          "fixture-expense-0",
+          "fixture-expense-0-desjardins"
+        ],
+        "MatchConfidence": 88,
+        "MatchAssignments": [
+          {
+            "ExpenseDocumentId": "fixture-expense-0",
+            "ReimbursementDocumentId": "fixture-expense-0-desjardins",
+            "Insurer": "desjardins",
+            "Confidence": 88,
+            "Verification": "review-recommended",
+            "Evidence": [
+              "Same person and service date",
+              "Compatible recorded amount"
+            ]
+          }
+        ],
+        "WorkflowStatus": "open",
+        "AutomaticWorkflowStatus": "open",
+        "WorkflowOrigin": "automatic",
+        "WorkflowChangedAt": "2026-09-26T12:00:00Z",
+        "WorkflowHistory": [
+          {
+            "Status": "open",
+            "Origin": "automatic",
+            "At": "2026-09-26T12:00:00Z"
+          }
+        ]
+      },
+      {
+        "Id": "case-fixture-expense-1",
+        "ExpenseDocumentId": "fixture-expense-1",
+        "ExpenseDocumentIds": [
+          "fixture-expense-1"
+        ],
+        "Member": "Jasmine",
+        "Provider": "Cedar Health",
+        "ServiceType": "Physiotherapy",
+        "ServiceDate": "2026-09-24",
+        "OriginalAmount": 185,
+        "ReimbursedAmount": 0,
+        "PotentialRemaining": 185,
+        "Currency": "CAD",
+        "PrimaryInsurer": "Blue Cross",
+        "PrimaryReimbursedAmount": 0,
+        "SecondaryInsurer": "Desjardins",
+        "SecondaryReimbursedAmount": 0,
+        "DesjardinsReimbursedAmount": 0,
+        "BlueCrossReimbursedAmount": 0,
+        "NextInsurer": "Blue Cross",
+        "Action": "submit-secondary",
+        "Status": "waiting-secondary",
+        "Summary": "Synthetic evidence only. Review the recorded source before taking an action.",
+        "Confidence": 93,
+        "DocumentIds": [
+          "fixture-expense-1"
+        ],
+        "MatchConfidence": 99,
+        "MatchAssignments": [],
+        "WorkflowStatus": "open",
+        "AutomaticWorkflowStatus": "open",
+        "WorkflowOrigin": "automatic",
+        "WorkflowChangedAt": "2026-09-26T12:00:00Z",
+        "WorkflowHistory": [
+          {
+            "Status": "open",
+            "Origin": "automatic",
+            "At": "2026-09-26T12:00:00Z"
+          }
+        ]
+      },
+      {
+        "Id": "case-fixture-expense-2",
+        "ExpenseDocumentId": "fixture-expense-2",
+        "ExpenseDocumentIds": [
+          "fixture-expense-2"
+        ],
+        "Member": "Nathan",
+        "Provider": "Northside Therapy",
+        "ServiceType": "Physiotherapy",
+        "ServiceDate": "2026-09-23",
+        "OriginalAmount": 190,
+        "ReimbursedAmount": 105,
+        "PotentialRemaining": 85,
+        "Currency": "CAD",
+        "PrimaryInsurer": null,
+        "PrimaryReimbursedAmount": null,
+        "SecondaryInsurer": null,
+        "SecondaryReimbursedAmount": null,
+        "DesjardinsReimbursedAmount": 35,
+        "BlueCrossReimbursedAmount": 70,
+        "NextInsurer": "Blue Cross",
+        "Action": "submit-secondary",
+        "Status": "waiting-secondary",
+        "Summary": "Synthetic evidence only. Review the recorded source before taking an action.",
+        "Confidence": 93,
+        "DocumentIds": [
+          "fixture-expense-2",
+          "fixture-expense-2-desjardins",
+          "fixture-expense-2-blue-cross"
+        ],
+        "MatchConfidence": 99,
+        "MatchAssignments": [
+          {
+            "ExpenseDocumentId": "fixture-expense-2",
+            "ReimbursementDocumentId": "fixture-expense-2-desjardins",
+            "Insurer": "desjardins",
+            "Confidence": 99,
+            "Verification": "auto",
+            "Evidence": [
+              "Same person and service date",
+              "Compatible recorded amount"
+            ]
+          },
+          {
+            "ExpenseDocumentId": "fixture-expense-2",
+            "ReimbursementDocumentId": "fixture-expense-2-blue-cross",
+            "Insurer": "blue-cross",
+            "Confidence": 99,
+            "Verification": "auto",
+            "Evidence": [
+              "Same person and service date",
+              "Compatible recorded amount"
+            ]
+          }
+        ],
+        "WorkflowStatus": "open",
+        "AutomaticWorkflowStatus": "open",
+        "WorkflowOrigin": "automatic",
+        "WorkflowChangedAt": "2026-09-26T12:00:00Z",
+        "WorkflowHistory": [
+          {
+            "Status": "open",
+            "Origin": "automatic",
+            "At": "2026-09-26T12:00:00Z"
+          }
+        ]
+      },
+      {
+        "Id": "case-fixture-expense-3",
+        "ExpenseDocumentId": "fixture-expense-3",
+        "ExpenseDocumentIds": [
+          "fixture-expense-3"
+        ],
+        "Member": "Kevin",
+        "Provider": "Harbour Dental",
+        "ServiceType": "Physiotherapy",
+        "ServiceDate": "2026-09-22",
+        "OriginalAmount": 195,
+        "ReimbursedAmount": 0,
+        "PotentialRemaining": 195,
+        "Currency": "CAD",
+        "PrimaryInsurer": "Desjardins",
+        "PrimaryReimbursedAmount": 0,
+        "SecondaryInsurer": "Blue Cross",
+        "SecondaryReimbursedAmount": 0,
+        "DesjardinsReimbursedAmount": 0,
+        "BlueCrossReimbursedAmount": 0,
+        "NextInsurer": "Blue Cross",
+        "Action": "submit-secondary",
+        "Status": "waiting-secondary",
+        "Summary": "Synthetic evidence only. Review the recorded source before taking an action.",
+        "Confidence": 93,
+        "DocumentIds": [
+          "fixture-expense-3"
+        ],
+        "MatchConfidence": 99,
+        "MatchAssignments": [],
+        "WorkflowStatus": "open",
+        "AutomaticWorkflowStatus": "open",
+        "WorkflowOrigin": "automatic",
+        "WorkflowChangedAt": "2026-09-26T12:00:00Z",
+        "WorkflowHistory": [
+          {
+            "Status": "open",
+            "Origin": "automatic",
+            "At": "2026-09-26T12:00:00Z"
+          }
+        ]
+      },
+      {
+        "Id": "case-fixture-expense-4",
+        "ExpenseDocumentId": "fixture-expense-4",
+        "ExpenseDocumentIds": [
+          "fixture-expense-4"
+        ],
+        "Member": "Jasmine",
+        "Provider": "Elm Family Clinic",
+        "ServiceType": "Physiotherapy",
+        "ServiceDate": "2026-09-21",
+        "OriginalAmount": 200,
+        "ReimbursedAmount": 90,
+        "PotentialRemaining": 110,
+        "Currency": "CAD",
+        "PrimaryInsurer": "Blue Cross",
+        "PrimaryReimbursedAmount": 0,
+        "SecondaryInsurer": "Desjardins",
+        "SecondaryReimbursedAmount": 90,
+        "DesjardinsReimbursedAmount": 90,
+        "BlueCrossReimbursedAmount": 0,
+        "NextInsurer": "Blue Cross",
+        "Action": "submit-secondary",
+        "Status": "waiting-secondary",
+        "Summary": "Synthetic evidence only. Review the recorded source before taking an action.",
+        "Confidence": 93,
+        "DocumentIds": [
+          "fixture-expense-4",
+          "fixture-expense-4-desjardins"
+        ],
+        "MatchConfidence": 99,
+        "MatchAssignments": [
+          {
+            "ExpenseDocumentId": "fixture-expense-4",
+            "ReimbursementDocumentId": "fixture-expense-4-desjardins",
+            "Insurer": "desjardins",
+            "Confidence": 99,
+            "Verification": "auto",
+            "Evidence": [
+              "Same person and service date",
+              "Compatible recorded amount"
+            ]
+          }
+        ],
+        "WorkflowStatus": "open",
+        "AutomaticWorkflowStatus": "open",
+        "WorkflowOrigin": "automatic",
+        "WorkflowChangedAt": "2026-09-26T12:00:00Z",
+        "WorkflowHistory": [
+          {
+            "Status": "open",
+            "Origin": "automatic",
+            "At": "2026-09-26T12:00:00Z"
+          }
+        ]
+      },
+      {
+        "Id": "case-fixture-expense-5",
+        "ExpenseDocumentId": "fixture-expense-5",
+        "ExpenseDocumentIds": [
+          "fixture-expense-5"
+        ],
+        "Member": "Nathan",
+        "Provider": "Pine Physiotherapy",
+        "ServiceType": "Physiotherapy",
+        "ServiceDate": "2026-09-20",
+        "OriginalAmount": 205,
+        "ReimbursedAmount": 0,
+        "PotentialRemaining": 205,
+        "Currency": "CAD",
+        "PrimaryInsurer": null,
+        "PrimaryReimbursedAmount": null,
+        "SecondaryInsurer": null,
+        "SecondaryReimbursedAmount": null,
+        "DesjardinsReimbursedAmount": 0,
+        "BlueCrossReimbursedAmount": 0,
+        "NextInsurer": "Blue Cross",
+        "Action": "submit-secondary",
+        "Status": "waiting-secondary",
+        "Summary": "Synthetic evidence only. Review the recorded source before taking an action.",
+        "Confidence": 93,
+        "DocumentIds": [
+          "fixture-expense-5"
+        ],
+        "MatchConfidence": 99,
+        "MatchAssignments": [],
+        "WorkflowStatus": "open",
+        "AutomaticWorkflowStatus": "open",
+        "WorkflowOrigin": "automatic",
+        "WorkflowChangedAt": "2026-09-26T12:00:00Z",
+        "WorkflowHistory": [
+          {
+            "Status": "open",
+            "Origin": "automatic",
+            "At": "2026-09-26T12:00:00Z"
+          }
+        ]
+      },
+      {
+        "Id": "case-fixture-expense-6",
+        "ExpenseDocumentId": "fixture-expense-6",
+        "ExpenseDocumentIds": [
+          "fixture-expense-6"
+        ],
+        "Member": "Kevin",
+        "Provider": "Maple Wellness",
+        "ServiceType": "Physiotherapy",
+        "ServiceDate": "2026-09-19",
+        "OriginalAmount": 210,
+        "ReimbursedAmount": 210,
+        "PotentialRemaining": 0,
+        "Currency": "CAD",
+        "PrimaryInsurer": "Desjardins",
+        "PrimaryReimbursedAmount": 90,
+        "SecondaryInsurer": "Blue Cross",
+        "SecondaryReimbursedAmount": 120,
+        "DesjardinsReimbursedAmount": 90,
+        "BlueCrossReimbursedAmount": 120,
+        "NextInsurer": null,
+        "Action": "complete",
+        "Status": "fully-reimbursed",
+        "Summary": "Synthetic evidence only. Review the recorded source before taking an action.",
+        "Confidence": 93,
+        "DocumentIds": [
+          "fixture-expense-6",
+          "fixture-expense-6-desjardins",
+          "fixture-expense-6-blue-cross"
+        ],
+        "MatchConfidence": 99,
+        "MatchAssignments": [
+          {
+            "ExpenseDocumentId": "fixture-expense-6",
+            "ReimbursementDocumentId": "fixture-expense-6-desjardins",
+            "Insurer": "desjardins",
+            "Confidence": 99,
+            "Verification": "auto",
+            "Evidence": [
+              "Same person and service date",
+              "Compatible recorded amount"
+            ]
+          },
+          {
+            "ExpenseDocumentId": "fixture-expense-6",
+            "ReimbursementDocumentId": "fixture-expense-6-blue-cross",
+            "Insurer": "blue-cross",
+            "Confidence": 99,
+            "Verification": "auto",
+            "Evidence": [
+              "Same person and service date",
+              "Compatible recorded amount"
+            ]
+          }
+        ],
+        "WorkflowStatus": "closed",
+        "AutomaticWorkflowStatus": "closed",
+        "WorkflowOrigin": "automatic",
+        "WorkflowChangedAt": "2026-09-26T12:00:00Z",
+        "WorkflowHistory": [
+          {
+            "Status": "closed",
+            "Origin": "automatic",
+            "At": "2026-09-26T12:00:00Z"
+          }
+        ]
+      },
+      {
+        "Id": "case-fixture-expense-7",
+        "ExpenseDocumentId": "fixture-expense-7",
+        "ExpenseDocumentIds": [
+          "fixture-expense-7"
+        ],
+        "Member": "Jasmine",
+        "Provider": "Cedar Health",
+        "ServiceType": "Physiotherapy",
+        "ServiceDate": "2026-09-18",
+        "OriginalAmount": 215,
+        "ReimbursedAmount": 215,
+        "PotentialRemaining": 0,
+        "Currency": "CAD",
+        "PrimaryInsurer": "Blue Cross",
+        "PrimaryReimbursedAmount": 215,
+        "SecondaryInsurer": "Desjardins",
+        "SecondaryReimbursedAmount": 0,
+        "DesjardinsReimbursedAmount": 0,
+        "BlueCrossReimbursedAmount": 215,
+        "NextInsurer": null,
+        "Action": "complete",
+        "Status": "fully-reimbursed",
+        "Summary": "Synthetic evidence only. Review the recorded source before taking an action.",
+        "Confidence": 93,
+        "DocumentIds": [
+          "fixture-expense-7",
+          "fixture-expense-7-blue-cross"
+        ],
+        "MatchConfidence": 99,
+        "MatchAssignments": [
+          {
+            "ExpenseDocumentId": "fixture-expense-7",
+            "ReimbursementDocumentId": "fixture-expense-7-blue-cross",
+            "Insurer": "blue-cross",
+            "Confidence": 99,
+            "Verification": "auto",
+            "Evidence": [
+              "Same person and service date",
+              "Compatible recorded amount"
+            ]
+          }
+        ],
+        "WorkflowStatus": "closed",
+        "AutomaticWorkflowStatus": "closed",
+        "WorkflowOrigin": "automatic",
+        "WorkflowChangedAt": "2026-09-26T12:00:00Z",
+        "WorkflowHistory": [
+          {
+            "Status": "closed",
+            "Origin": "automatic",
+            "At": "2026-09-26T12:00:00Z"
+          }
+        ]
+      },
+      {
+        "Id": "case-fixture-expense-8",
+        "ExpenseDocumentId": "fixture-expense-8",
+        "ExpenseDocumentIds": [
+          "fixture-expense-8"
+        ],
+        "Member": "Nathan",
+        "Provider": "Northside Therapy",
+        "ServiceType": "Physiotherapy",
+        "ServiceDate": "2026-09-17",
+        "OriginalAmount": 220,
+        "ReimbursedAmount": 220,
+        "PotentialRemaining": 0,
+        "Currency": "CAD",
+        "PrimaryInsurer": null,
+        "PrimaryReimbursedAmount": null,
+        "SecondaryInsurer": null,
+        "SecondaryReimbursedAmount": null,
+        "DesjardinsReimbursedAmount": 90,
+        "BlueCrossReimbursedAmount": 130,
+        "NextInsurer": null,
+        "Action": "complete",
+        "Status": "fully-reimbursed",
+        "Summary": "Synthetic evidence only. Review the recorded source before taking an action.",
+        "Confidence": 93,
+        "DocumentIds": [
+          "fixture-expense-8",
+          "fixture-expense-8-desjardins",
+          "fixture-expense-8-blue-cross"
+        ],
+        "MatchConfidence": 99,
+        "MatchAssignments": [
+          {
+            "ExpenseDocumentId": "fixture-expense-8",
+            "ReimbursementDocumentId": "fixture-expense-8-desjardins",
+            "Insurer": "desjardins",
+            "Confidence": 99,
+            "Verification": "auto",
+            "Evidence": [
+              "Same person and service date",
+              "Compatible recorded amount"
+            ]
+          },
+          {
+            "ExpenseDocumentId": "fixture-expense-8",
+            "ReimbursementDocumentId": "fixture-expense-8-blue-cross",
+            "Insurer": "blue-cross",
+            "Confidence": 99,
+            "Verification": "auto",
+            "Evidence": [
+              "Same person and service date",
+              "Compatible recorded amount"
+            ]
+          }
+        ],
+        "WorkflowStatus": "closed",
+        "AutomaticWorkflowStatus": "closed",
+        "WorkflowOrigin": "automatic",
+        "WorkflowChangedAt": "2026-09-26T12:00:00Z",
+        "WorkflowHistory": [
+          {
+            "Status": "closed",
+            "Origin": "automatic",
+            "At": "2026-09-26T12:00:00Z"
+          }
+        ]
+      }
+    ],
+    "CleanupSuggestions": [],
+    "ImportantMail": [],
+    "LearningDecisions": 0,
+    "UnmatchedReimbursements": [
+      {
+        "DocumentId": "fixture-unmatched-0",
+        "Reason": "ambiguous-match"
+      },
+      {
+        "DocumentId": "fixture-unmatched-1",
+        "Reason": "no-expense-match"
+      },
+      {
+        "DocumentId": "fixture-unmatched-2",
+        "Reason": "no-expense-match"
+      }
+    ],
+    "IgnoredUnmatchedReimbursements": [],
+    "IgnoredExpenses": [],
+    "AgentReviews": [],
+    "InvoiceCoverage": {
+      "since": "2025-06-01",
+      "complete": true
+    }
+  },
+  "snapshot": {
+    "items": [
+      {
+        "Id": "fixture-expense-0",
+        "AccountLabel": "Synthetic account",
+        "AccountEmail": "example@example.invalid",
+        "SourceMessageId": "fixture-expense-0",
+        "ThreadId": "fixture-expense-0",
+        "InternetMessageId": "",
+        "Subject": "Maple Wellness \u2014 synthetic invoice",
+        "Sender": "Example clinic",
+        "Provider": "Maple Wellness",
+        "ReceivedAt": "2026-09-25T18:00:00Z",
+        "Category": 0,
+        "Status": 0,
+        "DetectedAmount": 180,
+        "BilledAmount": 180,
+        "Currency": "CAD",
+        "Confidence": 93,
+        "Notes": "Fictitious data for UI testing only.",
+        "Attachments": [
+          {
+            "Id": "pdf-fixture",
+            "FileName": "example-invoice.pdf",
+            "MimeType": "application/pdf",
+            "Size": 1024
+          }
+        ],
+        "DocumentType": "invoice",
+        "DocumentRole": "expense",
+        "WorkerManaged": true,
+        "NeedsReview": false,
+        "Member": "Kevin",
+        "ServiceDate": "2026-09-25",
+        "Healthcare": {
+          "Provider": "Maple Wellness",
+          "ServiceType": "Physiotherapy",
+          "InvoiceNumber": "EXAMPLE-0"
+        }
+      },
+      {
+        "Id": "fixture-expense-0-desjardins",
+        "AccountLabel": "Synthetic account",
+        "AccountEmail": "example@example.invalid",
+        "SourceMessageId": "fixture-expense-0-desjardins",
+        "ThreadId": "fixture-expense-0-desjardins",
+        "InternetMessageId": "",
+        "Subject": "Maple Wellness \u2014 synthetic invoice",
+        "Sender": "Example clinic",
+        "Provider": "Desjardins",
+        "ReceivedAt": "2026-09-25T18:00:00Z",
+        "Category": 0,
+        "Status": 0,
+        "DetectedAmount": 90,
+        "BilledAmount": 180,
+        "Currency": "CAD",
+        "Confidence": 93,
+        "Notes": "Fictitious data for UI testing only.",
+        "Attachments": [],
+        "DocumentType": "claim",
+        "DocumentRole": "insurer-statement",
+        "WorkerManaged": true,
+        "NeedsReview": false,
+        "Member": "Kevin",
+        "ServiceDate": "2026-09-25",
+        "Healthcare": {
+          "Provider": "Maple Wellness",
+          "ServiceType": "Physiotherapy",
+          "InvoiceNumber": "EXAMPLE-0"
+        },
+        "Insurer": "desjardins",
+        "ReimbursedAmount": 90,
+        "StructuredSource": "synthetic-ui-fixture"
+      },
+      {
+        "Id": "fixture-expense-1",
+        "AccountLabel": "Synthetic account",
+        "AccountEmail": "example@example.invalid",
+        "SourceMessageId": "fixture-expense-1",
+        "ThreadId": "fixture-expense-1",
+        "InternetMessageId": "",
+        "Subject": "Cedar Health \u2014 synthetic invoice",
+        "Sender": "Example clinic",
+        "Provider": "Cedar Health",
+        "ReceivedAt": "2026-09-24T18:00:00Z",
+        "Category": 0,
+        "Status": 0,
+        "DetectedAmount": 185,
+        "BilledAmount": 185,
+        "Currency": "CAD",
+        "Confidence": 93,
+        "Notes": "Fictitious data for UI testing only.",
+        "Attachments": [],
+        "DocumentType": "invoice",
+        "DocumentRole": "expense",
+        "WorkerManaged": true,
+        "NeedsReview": false,
+        "Member": "Jasmine",
+        "ServiceDate": "2026-09-24",
+        "Healthcare": {
+          "Provider": "Cedar Health",
+          "ServiceType": "Physiotherapy",
+          "InvoiceNumber": "EXAMPLE-1"
+        }
+      },
+      {
+        "Id": "fixture-expense-2",
+        "AccountLabel": "Synthetic account",
+        "AccountEmail": "example@example.invalid",
+        "SourceMessageId": "fixture-expense-2",
+        "ThreadId": "fixture-expense-2",
+        "InternetMessageId": "",
+        "Subject": "Northside Therapy \u2014 synthetic invoice",
+        "Sender": "Example clinic",
+        "Provider": "Northside Therapy",
+        "ReceivedAt": "2026-09-23T18:00:00Z",
+        "Category": 0,
+        "Status": 0,
+        "DetectedAmount": 190,
+        "BilledAmount": 190,
+        "Currency": "CAD",
+        "Confidence": 93,
+        "Notes": "Fictitious data for UI testing only.",
+        "Attachments": [
+          {
+            "Id": "pdf-fixture",
+            "FileName": "example-invoice.pdf",
+            "MimeType": "application/pdf",
+            "Size": 1024
+          }
+        ],
+        "DocumentType": "invoice",
+        "DocumentRole": "expense",
+        "WorkerManaged": true,
+        "NeedsReview": false,
+        "Member": "Nathan",
+        "ServiceDate": "2026-09-23",
+        "Healthcare": {
+          "Provider": "Northside Therapy",
+          "ServiceType": "Physiotherapy",
+          "InvoiceNumber": "EXAMPLE-2"
+        }
+      },
+      {
+        "Id": "fixture-expense-2-desjardins",
+        "AccountLabel": "Synthetic account",
+        "AccountEmail": "example@example.invalid",
+        "SourceMessageId": "fixture-expense-2-desjardins",
+        "ThreadId": "fixture-expense-2-desjardins",
+        "InternetMessageId": "",
+        "Subject": "Northside Therapy \u2014 synthetic invoice",
+        "Sender": "Example clinic",
+        "Provider": "Desjardins",
+        "ReceivedAt": "2026-09-23T18:00:00Z",
+        "Category": 0,
+        "Status": 0,
+        "DetectedAmount": 35,
+        "BilledAmount": 190,
+        "Currency": "CAD",
+        "Confidence": 93,
+        "Notes": "Fictitious data for UI testing only.",
+        "Attachments": [],
+        "DocumentType": "claim",
+        "DocumentRole": "insurer-statement",
+        "WorkerManaged": true,
+        "NeedsReview": false,
+        "Member": "Nathan",
+        "ServiceDate": "2026-09-23",
+        "Healthcare": {
+          "Provider": "Northside Therapy",
+          "ServiceType": "Physiotherapy",
+          "InvoiceNumber": "EXAMPLE-2"
+        },
+        "Insurer": "desjardins",
+        "ReimbursedAmount": 35,
+        "StructuredSource": "synthetic-ui-fixture"
+      },
+      {
+        "Id": "fixture-expense-2-blue-cross",
+        "AccountLabel": "Synthetic account",
+        "AccountEmail": "example@example.invalid",
+        "SourceMessageId": "fixture-expense-2-blue-cross",
+        "ThreadId": "fixture-expense-2-blue-cross",
+        "InternetMessageId": "",
+        "Subject": "Northside Therapy \u2014 synthetic invoice",
+        "Sender": "Example clinic",
+        "Provider": "Blue Cross",
+        "ReceivedAt": "2026-09-23T18:00:00Z",
+        "Category": 0,
+        "Status": 0,
+        "DetectedAmount": 70,
+        "BilledAmount": 190,
+        "Currency": "CAD",
+        "Confidence": 93,
+        "Notes": "Fictitious data for UI testing only.",
+        "Attachments": [],
+        "DocumentType": "claim",
+        "DocumentRole": "insurer-statement",
+        "WorkerManaged": true,
+        "NeedsReview": false,
+        "Member": "Nathan",
+        "ServiceDate": "2026-09-23",
+        "Healthcare": {
+          "Provider": "Northside Therapy",
+          "ServiceType": "Physiotherapy",
+          "InvoiceNumber": "EXAMPLE-2"
+        },
+        "Insurer": "blue-cross",
+        "ReimbursedAmount": 70,
+        "StructuredSource": "synthetic-ui-fixture"
+      },
+      {
+        "Id": "fixture-expense-3",
+        "AccountLabel": "Synthetic account",
+        "AccountEmail": "example@example.invalid",
+        "SourceMessageId": "fixture-expense-3",
+        "ThreadId": "fixture-expense-3",
+        "InternetMessageId": "",
+        "Subject": "Harbour Dental \u2014 synthetic invoice",
+        "Sender": "Example clinic",
+        "Provider": "Harbour Dental",
+        "ReceivedAt": "2026-09-22T18:00:00Z",
+        "Category": 0,
+        "Status": 0,
+        "DetectedAmount": 195,
+        "BilledAmount": 195,
+        "Currency": "CAD",
+        "Confidence": 93,
+        "Notes": "Fictitious data for UI testing only.",
+        "Attachments": [],
+        "DocumentType": "invoice",
+        "DocumentRole": "expense",
+        "WorkerManaged": true,
+        "NeedsReview": false,
+        "Member": "Kevin",
+        "ServiceDate": "2026-09-22",
+        "Healthcare": {
+          "Provider": "Harbour Dental",
+          "ServiceType": "Physiotherapy",
+          "InvoiceNumber": "EXAMPLE-3"
+        }
+      },
+      {
+        "Id": "fixture-expense-4",
+        "AccountLabel": "Synthetic account",
+        "AccountEmail": "example@example.invalid",
+        "SourceMessageId": "fixture-expense-4",
+        "ThreadId": "fixture-expense-4",
+        "InternetMessageId": "",
+        "Subject": "Elm Family Clinic \u2014 synthetic invoice",
+        "Sender": "Example clinic",
+        "Provider": "Elm Family Clinic",
+        "ReceivedAt": "2026-09-21T18:00:00Z",
+        "Category": 0,
+        "Status": 0,
+        "DetectedAmount": 200,
+        "BilledAmount": 200,
+        "Currency": "CAD",
+        "Confidence": 93,
+        "Notes": "Fictitious data for UI testing only.",
+        "Attachments": [
+          {
+            "Id": "pdf-fixture",
+            "FileName": "example-invoice.pdf",
+            "MimeType": "application/pdf",
+            "Size": 1024
+          }
+        ],
+        "DocumentType": "invoice",
+        "DocumentRole": "expense",
+        "WorkerManaged": true,
+        "NeedsReview": false,
+        "Member": "Jasmine",
+        "ServiceDate": "2026-09-21",
+        "Healthcare": {
+          "Provider": "Elm Family Clinic",
+          "ServiceType": "Physiotherapy",
+          "InvoiceNumber": "EXAMPLE-4"
+        }
+      },
+      {
+        "Id": "fixture-expense-4-desjardins",
+        "AccountLabel": "Synthetic account",
+        "AccountEmail": "example@example.invalid",
+        "SourceMessageId": "fixture-expense-4-desjardins",
+        "ThreadId": "fixture-expense-4-desjardins",
+        "InternetMessageId": "",
+        "Subject": "Elm Family Clinic \u2014 synthetic invoice",
+        "Sender": "Example clinic",
+        "Provider": "Desjardins",
+        "ReceivedAt": "2026-09-21T18:00:00Z",
+        "Category": 0,
+        "Status": 0,
+        "DetectedAmount": 90,
+        "BilledAmount": 200,
+        "Currency": "CAD",
+        "Confidence": 93,
+        "Notes": "Fictitious data for UI testing only.",
+        "Attachments": [],
+        "DocumentType": "claim",
+        "DocumentRole": "insurer-statement",
+        "WorkerManaged": true,
+        "NeedsReview": false,
+        "Member": "Jasmine",
+        "ServiceDate": "2026-09-21",
+        "Healthcare": {
+          "Provider": "Elm Family Clinic",
+          "ServiceType": "Physiotherapy",
+          "InvoiceNumber": "EXAMPLE-4"
+        },
+        "Insurer": "desjardins",
+        "ReimbursedAmount": 90,
+        "StructuredSource": "synthetic-ui-fixture"
+      },
+      {
+        "Id": "fixture-expense-5",
+        "AccountLabel": "Synthetic account",
+        "AccountEmail": "example@example.invalid",
+        "SourceMessageId": "fixture-expense-5",
+        "ThreadId": "fixture-expense-5",
+        "InternetMessageId": "",
+        "Subject": "Pine Physiotherapy \u2014 synthetic invoice",
+        "Sender": "Example clinic",
+        "Provider": "Pine Physiotherapy",
+        "ReceivedAt": "2026-09-20T18:00:00Z",
+        "Category": 0,
+        "Status": 0,
+        "DetectedAmount": 205,
+        "BilledAmount": 205,
+        "Currency": "CAD",
+        "Confidence": 93,
+        "Notes": "Fictitious data for UI testing only.",
+        "Attachments": [],
+        "DocumentType": "invoice",
+        "DocumentRole": "expense",
+        "WorkerManaged": true,
+        "NeedsReview": false,
+        "Member": "Nathan",
+        "ServiceDate": "2026-09-20",
+        "Healthcare": {
+          "Provider": "Pine Physiotherapy",
+          "ServiceType": "Physiotherapy",
+          "InvoiceNumber": "EXAMPLE-5"
+        }
+      },
+      {
+        "Id": "fixture-expense-6",
+        "AccountLabel": "Synthetic account",
+        "AccountEmail": "example@example.invalid",
+        "SourceMessageId": "fixture-expense-6",
+        "ThreadId": "fixture-expense-6",
+        "InternetMessageId": "",
+        "Subject": "Maple Wellness \u2014 synthetic invoice",
+        "Sender": "Example clinic",
+        "Provider": "Maple Wellness",
+        "ReceivedAt": "2026-09-19T18:00:00Z",
+        "Category": 0,
+        "Status": 0,
+        "DetectedAmount": 210,
+        "BilledAmount": 210,
+        "Currency": "CAD",
+        "Confidence": 93,
+        "Notes": "Fictitious data for UI testing only.",
+        "Attachments": [
+          {
+            "Id": "pdf-fixture",
+            "FileName": "example-invoice.pdf",
+            "MimeType": "application/pdf",
+            "Size": 1024
+          }
+        ],
+        "DocumentType": "invoice",
+        "DocumentRole": "expense",
+        "WorkerManaged": true,
+        "NeedsReview": false,
+        "Member": "Kevin",
+        "ServiceDate": "2026-09-19",
+        "Healthcare": {
+          "Provider": "Maple Wellness",
+          "ServiceType": "Physiotherapy",
+          "InvoiceNumber": "EXAMPLE-6"
+        }
+      },
+      {
+        "Id": "fixture-expense-6-desjardins",
+        "AccountLabel": "Synthetic account",
+        "AccountEmail": "example@example.invalid",
+        "SourceMessageId": "fixture-expense-6-desjardins",
+        "ThreadId": "fixture-expense-6-desjardins",
+        "InternetMessageId": "",
+        "Subject": "Maple Wellness \u2014 synthetic invoice",
+        "Sender": "Example clinic",
+        "Provider": "Desjardins",
+        "ReceivedAt": "2026-09-19T18:00:00Z",
+        "Category": 0,
+        "Status": 0,
+        "DetectedAmount": 90,
+        "BilledAmount": 210,
+        "Currency": "CAD",
+        "Confidence": 93,
+        "Notes": "Fictitious data for UI testing only.",
+        "Attachments": [],
+        "DocumentType": "claim",
+        "DocumentRole": "insurer-statement",
+        "WorkerManaged": true,
+        "NeedsReview": false,
+        "Member": "Kevin",
+        "ServiceDate": "2026-09-19",
+        "Healthcare": {
+          "Provider": "Maple Wellness",
+          "ServiceType": "Physiotherapy",
+          "InvoiceNumber": "EXAMPLE-6"
+        },
+        "Insurer": "desjardins",
+        "ReimbursedAmount": 90,
+        "StructuredSource": "synthetic-ui-fixture"
+      },
+      {
+        "Id": "fixture-expense-6-blue-cross",
+        "AccountLabel": "Synthetic account",
+        "AccountEmail": "example@example.invalid",
+        "SourceMessageId": "fixture-expense-6-blue-cross",
+        "ThreadId": "fixture-expense-6-blue-cross",
+        "InternetMessageId": "",
+        "Subject": "Maple Wellness \u2014 synthetic invoice",
+        "Sender": "Example clinic",
+        "Provider": "Blue Cross",
+        "ReceivedAt": "2026-09-19T18:00:00Z",
+        "Category": 0,
+        "Status": 0,
+        "DetectedAmount": 120,
+        "BilledAmount": 210,
+        "Currency": "CAD",
+        "Confidence": 93,
+        "Notes": "Fictitious data for UI testing only.",
+        "Attachments": [],
+        "DocumentType": "claim",
+        "DocumentRole": "insurer-statement",
+        "WorkerManaged": true,
+        "NeedsReview": false,
+        "Member": "Kevin",
+        "ServiceDate": "2026-09-19",
+        "Healthcare": {
+          "Provider": "Maple Wellness",
+          "ServiceType": "Physiotherapy",
+          "InvoiceNumber": "EXAMPLE-6"
+        },
+        "Insurer": "blue-cross",
+        "ReimbursedAmount": 120,
+        "StructuredSource": "synthetic-ui-fixture"
+      },
+      {
+        "Id": "fixture-expense-7",
+        "AccountLabel": "Synthetic account",
+        "AccountEmail": "example@example.invalid",
+        "SourceMessageId": "fixture-expense-7",
+        "ThreadId": "fixture-expense-7",
+        "InternetMessageId": "",
+        "Subject": "Cedar Health \u2014 synthetic invoice",
+        "Sender": "Example clinic",
+        "Provider": "Cedar Health",
+        "ReceivedAt": "2026-09-18T18:00:00Z",
+        "Category": 0,
+        "Status": 0,
+        "DetectedAmount": 215,
+        "BilledAmount": 215,
+        "Currency": "CAD",
+        "Confidence": 93,
+        "Notes": "Fictitious data for UI testing only.",
+        "Attachments": [],
+        "DocumentType": "invoice",
+        "DocumentRole": "expense",
+        "WorkerManaged": true,
+        "NeedsReview": false,
+        "Member": "Jasmine",
+        "ServiceDate": "2026-09-18",
+        "Healthcare": {
+          "Provider": "Cedar Health",
+          "ServiceType": "Physiotherapy",
+          "InvoiceNumber": "EXAMPLE-7"
+        }
+      },
+      {
+        "Id": "fixture-expense-7-blue-cross",
+        "AccountLabel": "Synthetic account",
+        "AccountEmail": "example@example.invalid",
+        "SourceMessageId": "fixture-expense-7-blue-cross",
+        "ThreadId": "fixture-expense-7-blue-cross",
+        "InternetMessageId": "",
+        "Subject": "Cedar Health \u2014 synthetic invoice",
+        "Sender": "Example clinic",
+        "Provider": "Blue Cross",
+        "ReceivedAt": "2026-09-18T18:00:00Z",
+        "Category": 0,
+        "Status": 0,
+        "DetectedAmount": 215,
+        "BilledAmount": 215,
+        "Currency": "CAD",
+        "Confidence": 93,
+        "Notes": "Fictitious data for UI testing only.",
+        "Attachments": [],
+        "DocumentType": "claim",
+        "DocumentRole": "insurer-statement",
+        "WorkerManaged": true,
+        "NeedsReview": false,
+        "Member": "Jasmine",
+        "ServiceDate": "2026-09-18",
+        "Healthcare": {
+          "Provider": "Cedar Health",
+          "ServiceType": "Physiotherapy",
+          "InvoiceNumber": "EXAMPLE-7"
+        },
+        "Insurer": "blue-cross",
+        "ReimbursedAmount": 215,
+        "StructuredSource": "synthetic-ui-fixture"
+      },
+      {
+        "Id": "fixture-expense-8",
+        "AccountLabel": "Synthetic account",
+        "AccountEmail": "example@example.invalid",
+        "SourceMessageId": "fixture-expense-8",
+        "ThreadId": "fixture-expense-8",
+        "InternetMessageId": "",
+        "Subject": "Northside Therapy \u2014 synthetic invoice",
+        "Sender": "Example clinic",
+        "Provider": "Northside Therapy",
+        "ReceivedAt": "2026-09-17T18:00:00Z",
+        "Category": 0,
+        "Status": 0,
+        "DetectedAmount": 220,
+        "BilledAmount": 220,
+        "Currency": "CAD",
+        "Confidence": 93,
+        "Notes": "Fictitious data for UI testing only.",
+        "Attachments": [
+          {
+            "Id": "pdf-fixture",
+            "FileName": "example-invoice.pdf",
+            "MimeType": "application/pdf",
+            "Size": 1024
+          }
+        ],
+        "DocumentType": "invoice",
+        "DocumentRole": "expense",
+        "WorkerManaged": true,
+        "NeedsReview": false,
+        "Member": "Nathan",
+        "ServiceDate": "2026-09-17",
+        "Healthcare": {
+          "Provider": "Northside Therapy",
+          "ServiceType": "Physiotherapy",
+          "InvoiceNumber": "EXAMPLE-8"
+        }
+      },
+      {
+        "Id": "fixture-expense-8-desjardins",
+        "AccountLabel": "Synthetic account",
+        "AccountEmail": "example@example.invalid",
+        "SourceMessageId": "fixture-expense-8-desjardins",
+        "ThreadId": "fixture-expense-8-desjardins",
+        "InternetMessageId": "",
+        "Subject": "Northside Therapy \u2014 synthetic invoice",
+        "Sender": "Example clinic",
+        "Provider": "Desjardins",
+        "ReceivedAt": "2026-09-17T18:00:00Z",
+        "Category": 0,
+        "Status": 0,
+        "DetectedAmount": 90,
+        "BilledAmount": 220,
+        "Currency": "CAD",
+        "Confidence": 93,
+        "Notes": "Fictitious data for UI testing only.",
+        "Attachments": [],
+        "DocumentType": "claim",
+        "DocumentRole": "insurer-statement",
+        "WorkerManaged": true,
+        "NeedsReview": false,
+        "Member": "Nathan",
+        "ServiceDate": "2026-09-17",
+        "Healthcare": {
+          "Provider": "Northside Therapy",
+          "ServiceType": "Physiotherapy",
+          "InvoiceNumber": "EXAMPLE-8"
+        },
+        "Insurer": "desjardins",
+        "ReimbursedAmount": 90,
+        "StructuredSource": "synthetic-ui-fixture"
+      },
+      {
+        "Id": "fixture-expense-8-blue-cross",
+        "AccountLabel": "Synthetic account",
+        "AccountEmail": "example@example.invalid",
+        "SourceMessageId": "fixture-expense-8-blue-cross",
+        "ThreadId": "fixture-expense-8-blue-cross",
+        "InternetMessageId": "",
+        "Subject": "Northside Therapy \u2014 synthetic invoice",
+        "Sender": "Example clinic",
+        "Provider": "Blue Cross",
+        "ReceivedAt": "2026-09-17T18:00:00Z",
+        "Category": 0,
+        "Status": 0,
+        "DetectedAmount": 130,
+        "BilledAmount": 220,
+        "Currency": "CAD",
+        "Confidence": 93,
+        "Notes": "Fictitious data for UI testing only.",
+        "Attachments": [],
+        "DocumentType": "claim",
+        "DocumentRole": "insurer-statement",
+        "WorkerManaged": true,
+        "NeedsReview": false,
+        "Member": "Nathan",
+        "ServiceDate": "2026-09-17",
+        "Healthcare": {
+          "Provider": "Northside Therapy",
+          "ServiceType": "Physiotherapy",
+          "InvoiceNumber": "EXAMPLE-8"
+        },
+        "Insurer": "blue-cross",
+        "ReimbursedAmount": 130,
+        "StructuredSource": "synthetic-ui-fixture"
+      },
+      {
+        "Id": "fixture-unmatched-0",
+        "AccountLabel": "Synthetic account",
+        "AccountEmail": "example@example.invalid",
+        "SourceMessageId": "fixture-unmatched-0",
+        "ThreadId": "fixture-unmatched-0",
+        "InternetMessageId": "",
+        "Subject": "Maple Wellness \u2014 synthetic invoice",
+        "Sender": "Example clinic",
+        "Provider": "Blue Cross",
+        "ReceivedAt": "2026-09-25T18:00:00Z",
+        "Category": 0,
+        "Status": 0,
+        "DetectedAmount": 45,
+        "BilledAmount": null,
+        "Currency": "CAD",
+        "Confidence": 93,
+        "Notes": "Fictitious data for UI testing only.",
+        "Attachments": [],
+        "DocumentType": "claim",
+        "DocumentRole": "insurer-statement",
+        "WorkerManaged": true,
+        "NeedsReview": false,
+        "Member": "Kevin",
+        "ServiceDate": "2026-09-25",
+        "Healthcare": {
+          "ServiceType": "Physiotherapy",
+          "SubmittedAmount": null
+        },
+        "Insurer": "blue-cross",
+        "ReimbursedAmount": 45,
+        "StructuredSource": "synthetic-ui-fixture"
+      },
+      {
+        "Id": "fixture-unmatched-1",
+        "AccountLabel": "Synthetic account",
+        "AccountEmail": "example@example.invalid",
+        "SourceMessageId": "fixture-unmatched-1",
+        "ThreadId": "fixture-unmatched-1",
+        "InternetMessageId": "",
+        "Subject": "Maple Wellness \u2014 synthetic invoice",
+        "Sender": "Example clinic",
+        "Provider": "Blue Cross",
+        "ReceivedAt": "2026-09-25T18:00:00Z",
+        "Category": 0,
+        "Status": 0,
+        "DetectedAmount": 45,
+        "BilledAmount": null,
+        "Currency": "CAD",
+        "Confidence": 93,
+        "Notes": "Fictitious data for UI testing only.",
+        "Attachments": [],
+        "DocumentType": "claim",
+        "DocumentRole": "insurer-statement",
+        "WorkerManaged": true,
+        "NeedsReview": false,
+        "Member": "Jasmine",
+        "ServiceDate": "2026-09-24",
+        "Healthcare": {
+          "ServiceType": "Physiotherapy",
+          "SubmittedAmount": null
+        },
+        "Insurer": "blue-cross",
+        "ReimbursedAmount": 45,
+        "StructuredSource": "synthetic-ui-fixture"
+      },
+      {
+        "Id": "fixture-unmatched-2",
+        "AccountLabel": "Synthetic account",
+        "AccountEmail": "example@example.invalid",
+        "SourceMessageId": "fixture-unmatched-2",
+        "ThreadId": "fixture-unmatched-2",
+        "InternetMessageId": "",
+        "Subject": "Maple Wellness \u2014 synthetic invoice",
+        "Sender": "Example clinic",
+        "Provider": "Blue Cross",
+        "ReceivedAt": "2026-09-25T18:00:00Z",
+        "Category": 0,
+        "Status": 0,
+        "DetectedAmount": 45,
+        "BilledAmount": null,
+        "Currency": "CAD",
+        "Confidence": 93,
+        "Notes": "Fictitious data for UI testing only.",
+        "Attachments": [],
+        "DocumentType": "claim",
+        "DocumentRole": "insurer-statement",
+        "WorkerManaged": true,
+        "NeedsReview": false,
+        "Member": "Nathan",
+        "ServiceDate": "2026-09-23",
+        "Healthcare": {
+          "ServiceType": "Physiotherapy",
+          "SubmittedAmount": null
+        },
+        "Insurer": "blue-cross",
+        "ReimbursedAmount": 45,
+        "StructuredSource": "synthetic-ui-fixture"
+      }
+    ],
+    "reconciliations": [
+      {
+        "Id": "case-fixture-expense-0",
+        "ExpenseDocumentId": "fixture-expense-0",
+        "ExpenseDocumentIds": [
+          "fixture-expense-0"
+        ],
+        "Member": "Kevin",
+        "Provider": "Maple Wellness",
+        "ServiceType": "Physiotherapy",
+        "ServiceDate": "2026-09-25",
+        "OriginalAmount": 180,
+        "ReimbursedAmount": 90,
+        "PotentialRemaining": 90,
+        "Currency": "CAD",
+        "PrimaryInsurer": "Desjardins",
+        "PrimaryReimbursedAmount": 90,
+        "SecondaryInsurer": "Blue Cross",
+        "SecondaryReimbursedAmount": 0,
+        "DesjardinsReimbursedAmount": 90,
+        "BlueCrossReimbursedAmount": 0,
+        "NextInsurer": "Blue Cross",
+        "Action": "submit-secondary",
+        "Status": "waiting-secondary",
+        "Summary": "Synthetic evidence only. Review the recorded source before taking an action.",
+        "Confidence": 93,
+        "DocumentIds": [
+          "fixture-expense-0",
+          "fixture-expense-0-desjardins"
+        ],
+        "MatchConfidence": 88,
+        "MatchAssignments": [
+          {
+            "ExpenseDocumentId": "fixture-expense-0",
+            "ReimbursementDocumentId": "fixture-expense-0-desjardins",
+            "Insurer": "desjardins",
+            "Confidence": 88,
+            "Verification": "review-recommended",
+            "Evidence": [
+              "Same person and service date",
+              "Compatible recorded amount"
+            ]
+          }
+        ],
+        "WorkflowStatus": "open",
+        "AutomaticWorkflowStatus": "open",
+        "WorkflowOrigin": "automatic",
+        "WorkflowChangedAt": "2026-09-26T12:00:00Z",
+        "WorkflowHistory": [
+          {
+            "Status": "open",
+            "Origin": "automatic",
+            "At": "2026-09-26T12:00:00Z"
+          }
+        ]
+      },
+      {
+        "Id": "case-fixture-expense-1",
+        "ExpenseDocumentId": "fixture-expense-1",
+        "ExpenseDocumentIds": [
+          "fixture-expense-1"
+        ],
+        "Member": "Jasmine",
+        "Provider": "Cedar Health",
+        "ServiceType": "Physiotherapy",
+        "ServiceDate": "2026-09-24",
+        "OriginalAmount": 185,
+        "ReimbursedAmount": 0,
+        "PotentialRemaining": 185,
+        "Currency": "CAD",
+        "PrimaryInsurer": "Blue Cross",
+        "PrimaryReimbursedAmount": 0,
+        "SecondaryInsurer": "Desjardins",
+        "SecondaryReimbursedAmount": 0,
+        "DesjardinsReimbursedAmount": 0,
+        "BlueCrossReimbursedAmount": 0,
+        "NextInsurer": "Blue Cross",
+        "Action": "submit-secondary",
+        "Status": "waiting-secondary",
+        "Summary": "Synthetic evidence only. Review the recorded source before taking an action.",
+        "Confidence": 93,
+        "DocumentIds": [
+          "fixture-expense-1"
+        ],
+        "MatchConfidence": 99,
+        "MatchAssignments": [],
+        "WorkflowStatus": "open",
+        "AutomaticWorkflowStatus": "open",
+        "WorkflowOrigin": "automatic",
+        "WorkflowChangedAt": "2026-09-26T12:00:00Z",
+        "WorkflowHistory": [
+          {
+            "Status": "open",
+            "Origin": "automatic",
+            "At": "2026-09-26T12:00:00Z"
+          }
+        ]
+      },
+      {
+        "Id": "case-fixture-expense-2",
+        "ExpenseDocumentId": "fixture-expense-2",
+        "ExpenseDocumentIds": [
+          "fixture-expense-2"
+        ],
+        "Member": "Nathan",
+        "Provider": "Northside Therapy",
+        "ServiceType": "Physiotherapy",
+        "ServiceDate": "2026-09-23",
+        "OriginalAmount": 190,
+        "ReimbursedAmount": 105,
+        "PotentialRemaining": 85,
+        "Currency": "CAD",
+        "PrimaryInsurer": null,
+        "PrimaryReimbursedAmount": null,
+        "SecondaryInsurer": null,
+        "SecondaryReimbursedAmount": null,
+        "DesjardinsReimbursedAmount": 35,
+        "BlueCrossReimbursedAmount": 70,
+        "NextInsurer": "Blue Cross",
+        "Action": "submit-secondary",
+        "Status": "waiting-secondary",
+        "Summary": "Synthetic evidence only. Review the recorded source before taking an action.",
+        "Confidence": 93,
+        "DocumentIds": [
+          "fixture-expense-2",
+          "fixture-expense-2-desjardins",
+          "fixture-expense-2-blue-cross"
+        ],
+        "MatchConfidence": 99,
+        "MatchAssignments": [
+          {
+            "ExpenseDocumentId": "fixture-expense-2",
+            "ReimbursementDocumentId": "fixture-expense-2-desjardins",
+            "Insurer": "desjardins",
+            "Confidence": 99,
+            "Verification": "auto",
+            "Evidence": [
+              "Same person and service date",
+              "Compatible recorded amount"
+            ]
+          },
+          {
+            "ExpenseDocumentId": "fixture-expense-2",
+            "ReimbursementDocumentId": "fixture-expense-2-blue-cross",
+            "Insurer": "blue-cross",
+            "Confidence": 99,
+            "Verification": "auto",
+            "Evidence": [
+              "Same person and service date",
+              "Compatible recorded amount"
+            ]
+          }
+        ],
+        "WorkflowStatus": "open",
+        "AutomaticWorkflowStatus": "open",
+        "WorkflowOrigin": "automatic",
+        "WorkflowChangedAt": "2026-09-26T12:00:00Z",
+        "WorkflowHistory": [
+          {
+            "Status": "open",
+            "Origin": "automatic",
+            "At": "2026-09-26T12:00:00Z"
+          }
+        ]
+      },
+      {
+        "Id": "case-fixture-expense-3",
+        "ExpenseDocumentId": "fixture-expense-3",
+        "ExpenseDocumentIds": [
+          "fixture-expense-3"
+        ],
+        "Member": "Kevin",
+        "Provider": "Harbour Dental",
+        "ServiceType": "Physiotherapy",
+        "ServiceDate": "2026-09-22",
+        "OriginalAmount": 195,
+        "ReimbursedAmount": 0,
+        "PotentialRemaining": 195,
+        "Currency": "CAD",
+        "PrimaryInsurer": "Desjardins",
+        "PrimaryReimbursedAmount": 0,
+        "SecondaryInsurer": "Blue Cross",
+        "SecondaryReimbursedAmount": 0,
+        "DesjardinsReimbursedAmount": 0,
+        "BlueCrossReimbursedAmount": 0,
+        "NextInsurer": "Blue Cross",
+        "Action": "submit-secondary",
+        "Status": "waiting-secondary",
+        "Summary": "Synthetic evidence only. Review the recorded source before taking an action.",
+        "Confidence": 93,
+        "DocumentIds": [
+          "fixture-expense-3"
+        ],
+        "MatchConfidence": 99,
+        "MatchAssignments": [],
+        "WorkflowStatus": "open",
+        "AutomaticWorkflowStatus": "open",
+        "WorkflowOrigin": "automatic",
+        "WorkflowChangedAt": "2026-09-26T12:00:00Z",
+        "WorkflowHistory": [
+          {
+            "Status": "open",
+            "Origin": "automatic",
+            "At": "2026-09-26T12:00:00Z"
+          }
+        ]
+      },
+      {
+        "Id": "case-fixture-expense-4",
+        "ExpenseDocumentId": "fixture-expense-4",
+        "ExpenseDocumentIds": [
+          "fixture-expense-4"
+        ],
+        "Member": "Jasmine",
+        "Provider": "Elm Family Clinic",
+        "ServiceType": "Physiotherapy",
+        "ServiceDate": "2026-09-21",
+        "OriginalAmount": 200,
+        "ReimbursedAmount": 90,
+        "PotentialRemaining": 110,
+        "Currency": "CAD",
+        "PrimaryInsurer": "Blue Cross",
+        "PrimaryReimbursedAmount": 0,
+        "SecondaryInsurer": "Desjardins",
+        "SecondaryReimbursedAmount": 90,
+        "DesjardinsReimbursedAmount": 90,
+        "BlueCrossReimbursedAmount": 0,
+        "NextInsurer": "Blue Cross",
+        "Action": "submit-secondary",
+        "Status": "waiting-secondary",
+        "Summary": "Synthetic evidence only. Review the recorded source before taking an action.",
+        "Confidence": 93,
+        "DocumentIds": [
+          "fixture-expense-4",
+          "fixture-expense-4-desjardins"
+        ],
+        "MatchConfidence": 99,
+        "MatchAssignments": [
+          {
+            "ExpenseDocumentId": "fixture-expense-4",
+            "ReimbursementDocumentId": "fixture-expense-4-desjardins",
+            "Insurer": "desjardins",
+            "Confidence": 99,
+            "Verification": "auto",
+            "Evidence": [
+              "Same person and service date",
+              "Compatible recorded amount"
+            ]
+          }
+        ],
+        "WorkflowStatus": "open",
+        "AutomaticWorkflowStatus": "open",
+        "WorkflowOrigin": "automatic",
+        "WorkflowChangedAt": "2026-09-26T12:00:00Z",
+        "WorkflowHistory": [
+          {
+            "Status": "open",
+            "Origin": "automatic",
+            "At": "2026-09-26T12:00:00Z"
+          }
+        ]
+      },
+      {
+        "Id": "case-fixture-expense-5",
+        "ExpenseDocumentId": "fixture-expense-5",
+        "ExpenseDocumentIds": [
+          "fixture-expense-5"
+        ],
+        "Member": "Nathan",
+        "Provider": "Pine Physiotherapy",
+        "ServiceType": "Physiotherapy",
+        "ServiceDate": "2026-09-20",
+        "OriginalAmount": 205,
+        "ReimbursedAmount": 0,
+        "PotentialRemaining": 205,
+        "Currency": "CAD",
+        "PrimaryInsurer": null,
+        "PrimaryReimbursedAmount": null,
+        "SecondaryInsurer": null,
+        "SecondaryReimbursedAmount": null,
+        "DesjardinsReimbursedAmount": 0,
+        "BlueCrossReimbursedAmount": 0,
+        "NextInsurer": "Blue Cross",
+        "Action": "submit-secondary",
+        "Status": "waiting-secondary",
+        "Summary": "Synthetic evidence only. Review the recorded source before taking an action.",
+        "Confidence": 93,
+        "DocumentIds": [
+          "fixture-expense-5"
+        ],
+        "MatchConfidence": 99,
+        "MatchAssignments": [],
+        "WorkflowStatus": "open",
+        "AutomaticWorkflowStatus": "open",
+        "WorkflowOrigin": "automatic",
+        "WorkflowChangedAt": "2026-09-26T12:00:00Z",
+        "WorkflowHistory": [
+          {
+            "Status": "open",
+            "Origin": "automatic",
+            "At": "2026-09-26T12:00:00Z"
+          }
+        ]
+      },
+      {
+        "Id": "case-fixture-expense-6",
+        "ExpenseDocumentId": "fixture-expense-6",
+        "ExpenseDocumentIds": [
+          "fixture-expense-6"
+        ],
+        "Member": "Kevin",
+        "Provider": "Maple Wellness",
+        "ServiceType": "Physiotherapy",
+        "ServiceDate": "2026-09-19",
+        "OriginalAmount": 210,
+        "ReimbursedAmount": 210,
+        "PotentialRemaining": 0,
+        "Currency": "CAD",
+        "PrimaryInsurer": "Desjardins",
+        "PrimaryReimbursedAmount": 90,
+        "SecondaryInsurer": "Blue Cross",
+        "SecondaryReimbursedAmount": 120,
+        "DesjardinsReimbursedAmount": 90,
+        "BlueCrossReimbursedAmount": 120,
+        "NextInsurer": null,
+        "Action": "complete",
+        "Status": "fully-reimbursed",
+        "Summary": "Synthetic evidence only. Review the recorded source before taking an action.",
+        "Confidence": 93,
+        "DocumentIds": [
+          "fixture-expense-6",
+          "fixture-expense-6-desjardins",
+          "fixture-expense-6-blue-cross"
+        ],
+        "MatchConfidence": 99,
+        "MatchAssignments": [
+          {
+            "ExpenseDocumentId": "fixture-expense-6",
+            "ReimbursementDocumentId": "fixture-expense-6-desjardins",
+            "Insurer": "desjardins",
+            "Confidence": 99,
+            "Verification": "auto",
+            "Evidence": [
+              "Same person and service date",
+              "Compatible recorded amount"
+            ]
+          },
+          {
+            "ExpenseDocumentId": "fixture-expense-6",
+            "ReimbursementDocumentId": "fixture-expense-6-blue-cross",
+            "Insurer": "blue-cross",
+            "Confidence": 99,
+            "Verification": "auto",
+            "Evidence": [
+              "Same person and service date",
+              "Compatible recorded amount"
+            ]
+          }
+        ],
+        "WorkflowStatus": "closed",
+        "AutomaticWorkflowStatus": "closed",
+        "WorkflowOrigin": "automatic",
+        "WorkflowChangedAt": "2026-09-26T12:00:00Z",
+        "WorkflowHistory": [
+          {
+            "Status": "closed",
+            "Origin": "automatic",
+            "At": "2026-09-26T12:00:00Z"
+          }
+        ]
+      },
+      {
+        "Id": "case-fixture-expense-7",
+        "ExpenseDocumentId": "fixture-expense-7",
+        "ExpenseDocumentIds": [
+          "fixture-expense-7"
+        ],
+        "Member": "Jasmine",
+        "Provider": "Cedar Health",
+        "ServiceType": "Physiotherapy",
+        "ServiceDate": "2026-09-18",
+        "OriginalAmount": 215,
+        "ReimbursedAmount": 215,
+        "PotentialRemaining": 0,
+        "Currency": "CAD",
+        "PrimaryInsurer": "Blue Cross",
+        "PrimaryReimbursedAmount": 215,
+        "SecondaryInsurer": "Desjardins",
+        "SecondaryReimbursedAmount": 0,
+        "DesjardinsReimbursedAmount": 0,
+        "BlueCrossReimbursedAmount": 215,
+        "NextInsurer": null,
+        "Action": "complete",
+        "Status": "fully-reimbursed",
+        "Summary": "Synthetic evidence only. Review the recorded source before taking an action.",
+        "Confidence": 93,
+        "DocumentIds": [
+          "fixture-expense-7",
+          "fixture-expense-7-blue-cross"
+        ],
+        "MatchConfidence": 99,
+        "MatchAssignments": [
+          {
+            "ExpenseDocumentId": "fixture-expense-7",
+            "ReimbursementDocumentId": "fixture-expense-7-blue-cross",
+            "Insurer": "blue-cross",
+            "Confidence": 99,
+            "Verification": "auto",
+            "Evidence": [
+              "Same person and service date",
+              "Compatible recorded amount"
+            ]
+          }
+        ],
+        "WorkflowStatus": "closed",
+        "AutomaticWorkflowStatus": "closed",
+        "WorkflowOrigin": "automatic",
+        "WorkflowChangedAt": "2026-09-26T12:00:00Z",
+        "WorkflowHistory": [
+          {
+            "Status": "closed",
+            "Origin": "automatic",
+            "At": "2026-09-26T12:00:00Z"
+          }
+        ]
+      },
+      {
+        "Id": "case-fixture-expense-8",
+        "ExpenseDocumentId": "fixture-expense-8",
+        "ExpenseDocumentIds": [
+          "fixture-expense-8"
+        ],
+        "Member": "Nathan",
+        "Provider": "Northside Therapy",
+        "ServiceType": "Physiotherapy",
+        "ServiceDate": "2026-09-17",
+        "OriginalAmount": 220,
+        "ReimbursedAmount": 220,
+        "PotentialRemaining": 0,
+        "Currency": "CAD",
+        "PrimaryInsurer": null,
+        "PrimaryReimbursedAmount": null,
+        "SecondaryInsurer": null,
+        "SecondaryReimbursedAmount": null,
+        "DesjardinsReimbursedAmount": 90,
+        "BlueCrossReimbursedAmount": 130,
+        "NextInsurer": null,
+        "Action": "complete",
+        "Status": "fully-reimbursed",
+        "Summary": "Synthetic evidence only. Review the recorded source before taking an action.",
+        "Confidence": 93,
+        "DocumentIds": [
+          "fixture-expense-8",
+          "fixture-expense-8-desjardins",
+          "fixture-expense-8-blue-cross"
+        ],
+        "MatchConfidence": 99,
+        "MatchAssignments": [
+          {
+            "ExpenseDocumentId": "fixture-expense-8",
+            "ReimbursementDocumentId": "fixture-expense-8-desjardins",
+            "Insurer": "desjardins",
+            "Confidence": 99,
+            "Verification": "auto",
+            "Evidence": [
+              "Same person and service date",
+              "Compatible recorded amount"
+            ]
+          },
+          {
+            "ExpenseDocumentId": "fixture-expense-8",
+            "ReimbursementDocumentId": "fixture-expense-8-blue-cross",
+            "Insurer": "blue-cross",
+            "Confidence": 99,
+            "Verification": "auto",
+            "Evidence": [
+              "Same person and service date",
+              "Compatible recorded amount"
+            ]
+          }
+        ],
+        "WorkflowStatus": "closed",
+        "AutomaticWorkflowStatus": "closed",
+        "WorkflowOrigin": "automatic",
+        "WorkflowChangedAt": "2026-09-26T12:00:00Z",
+        "WorkflowHistory": [
+          {
+            "Status": "closed",
+            "Origin": "automatic",
+            "At": "2026-09-26T12:00:00Z"
+          }
+        ]
+      }
+    ],
+    "cleanupSuggestions": [],
+    "importantMail": [],
+    "unmatchedReimbursements": [
+      {
+        "DocumentId": "fixture-unmatched-0",
+        "Reason": "ambiguous-match"
+      },
+      {
+        "DocumentId": "fixture-unmatched-1",
+        "Reason": "no-expense-match"
+      },
+      {
+        "DocumentId": "fixture-unmatched-2",
+        "Reason": "no-expense-match"
+      }
+    ],
+    "ignoredUnmatchedReimbursements": [],
+    "ignoredExpenses": [],
+    "agentReviews": [],
+    "coverage": {
+      "since": "2025-06-01",
+      "complete": true
+    },
+    "learning": {
+      "decisions": 0,
+      "undoable": []
+    },
+    "accounts": [],
+    "progress": {},
+    "lastSuccess": "2026-09-30T12:00:00Z",
+    "busy": false,
+    "setupRequired": false
+  }
+}

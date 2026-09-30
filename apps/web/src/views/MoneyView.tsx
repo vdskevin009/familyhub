@@ -1,3 +1,4 @@
+import { PageHeader } from "../ui/primitives";
 import { ChangeEvent, FormEvent, useMemo, useState } from "react";
 import {
   AlertCircle, BarChart3, Check, CircleDollarSign, FileSpreadsheet, Landmark, Plus, RefreshCw,
@@ -161,14 +162,7 @@ export default function MoneyView({ hub }: Props) {
 
   return (
     <div className="view-stack">
-      <section className="view-hero compact">
-        <div>
-          <span className="eyebrow">Money autopilot</span>
-          <h1>See where money leaks.</h1>
-          <p>Import transactions when you want a review. FamilyHub keeps the analysis local in your browser and surfaces recurring costs, subscriptions and mortgage comparisons.</p>
-        </div>
-        <span className="hero-icon"><CircleDollarSign size={26} /></span>
-      </section>
+      <PageHeader title="Money" subtitle="Your imported spending and plans" />
 
       {error && <div className="banner error"><AlertCircle size={17} />{error}</div>}
       {message && <div className="banner info"><Check size={17} /><span>{message}</span></div>}
