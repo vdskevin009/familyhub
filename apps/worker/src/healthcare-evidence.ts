@@ -73,7 +73,9 @@ export function extractHealthcareEvidence(mail: Mail, result: Classification): H
     // Card payments and upcoming appointments after the totals are not insurer adjustments.
     const window = text.slice(match.index, nextInsurer >= 0 ? match.index + match[0].length + nextInsurer : Math.min(text.length, match.index + 700))
       .split(/\b(?:subtotal|payer total|payments|upcoming appointments)\b/i)[0];
-    const values = [...window.matchAll(/-\s*(?:CAD\s*)?\$?\s*([0-9]{1,7}(?:,[0-9]{3})*\.[0-9]{2})/gi)]
+    // A spaced dash in a plain-text receipt is a column separator ("provider - $10"),
+    // not a negative adjustment. Require the minus sign to touch the amount/currency.
+    const values = [...window.matchAll(/-(?:CAD\s*|\$\s*)?([0-9]{1,7}(?:,[0-9]{3})*\.[0-9]{2})/gi)]
       .map(item => Number(item[1].replace(/,/g, ""))).filter(validMoney);
     return values.length ? Math.max(...values) : null;
   };
@@ -109,7 +111,8 @@ export function extractHealthcareEvidence(mail: Mail, result: Classification): H
     // Jane's item row labels the appointment, independently of payment/printed/received dates.
     if (receiptProvider(mail.subject) && /invoice\s*#/i.test(`${mail.text}\n${mail.attachmentText || ""}`)) {
       // The PDF reader flattens whitespace. "Items and Payments" is a header, not the payment section.
-      const items = text.split(/\binvoice\s*#|\bupcoming appointments\b/i)[0];
+      const items = text.split(/\binvoice\s*#|\bupcoming appointments\b/i)[0]
+        .replace(/(\(\d+)\s*\r?\n\s*(minutes?\))/gi, "$1 $2");
       const appointments = [...items.matchAll(/\b(January|February|March|April|May|June|July|August|September|October|November|December)\s+(\d{1,2}),\s+(\d{4})\s*-\s*\d{1,2}:\d{2}\s*(?:am|pm),\s*([^\n]+)/gi)];
       if (appointments.length === 1) {
         const row = appointments[0];

@@ -10,6 +10,7 @@ import { fetchInvoices, fetchBlueCrossStatus, syncBlueCross, fetchDesjardinsStat
 import type { BlueCrossSyncStatus, BlueCrossSyncResult, DesjardinsSyncStatus, DesjardinsSyncResult } from "../worker";
 import ReconciliationQueue from "./ReconciliationQueue";
 import ClaimCard from "./ClaimCard";
+import PrepareClaim from "./PrepareClaim";
 import { FilterButton, FilterChips, Notice, PageHeader, SearchField, Sheet, SkeletonList, useSessionValue, type ActiveFilter } from "../ui/primitives";
 import { useMutations } from "../ui/use-mutations";
 import { requireSaved } from "../ui/mutation-queue";
@@ -47,6 +48,7 @@ function reimbursementAmount(item: ReimbursementItem): number | null {
 }
 
 export default function ReimbursementsView({ hub }: Props) {
+  const [preparingExpense, setPreparingExpense] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [lastSuccess, setLastSuccess] = useState("");
@@ -359,6 +361,7 @@ export default function ReimbursementsView({ hub }: Props) {
   ];
 
   return <div className="view-stack reimbursement-app-view">
+    {preparingExpense && <PrepareClaim expenseId={preparingExpense} config={hub.worker} onClose={() => setPreparingExpense("")} />}
     <PageHeader title="Claims" subtitle={paired ? lastSuccess ? `Updated ${new Date(lastSuccess).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : "Saved results" : "Saved on this device"}>
       <button type="button" className="button secondary" onClick={() => setSourcesOpen(true)} aria-haspopup="dialog">Sources{blueCrossStatus?.state === "error" || desjardinsStatus?.state === "error" || blueCrossStatus?.state === "login-required" || desjardinsStatus?.state === "login-required" ? " · !" : ""}</button>
       <button type="button" className="icon-button" aria-label="Refresh reimbursements" disabled={!paired || busy || pending.length > 0 || bulkIgnoring} onClick={() => void refresh()}><RefreshCw size={18} className={busy ? "spin" : ""} /></button>
@@ -401,7 +404,9 @@ export default function ReimbursementsView({ hub }: Props) {
     {error && <Notice error onDismiss={() => setError("")}>{error}</Notice>}
     {workerVersion && !manualActionsAvailable && <div className="banner error" role="status"><AlertTriangle size={17} />PC worker {workerVersion} is outdated for manual reimbursement matching. Update/restart the FamilyHub worker to {manualReconciliationWorkerVersion} or later, then refresh this page.</div>}
     {savedMessage && <Notice onDismiss={() => setSavedMessage("")}>{savedMessage}</Notice>}
-    {model.warnings.map(warning => <div className="banner" role="status" key={warning}><AlertTriangle size={17} />{warning}</div>)}
+    {model.warnings.length > 0 && <details className="source-notices"><summary>Source notes · {model.warnings.length}</summary>
+      {model.warnings.map(warning => <p key={warning}>{warning}</p>)}
+    </details>}
 
     <section className="reimbursement-mode-tabs" aria-label="Claims workspace">
       <button type="button" className={screen === "claims" ? "active" : ""} aria-pressed={screen === "claims"} onClick={() => setScreen("claims")}>
@@ -420,17 +425,20 @@ export default function ReimbursementsView({ hub }: Props) {
         const label = scope === "all" ? "All family" : scope;
         return <button type="button" key={scope} className={`family-scope-card ${personScope === scope ? "active" : ""}`}
           aria-pressed={personScope === scope} onClick={() => selectScope(scope)}>
-          <span>{label}</span><b>{summary.open}</b><span className="sr-only">open cases · {money(summary.potentiallyRecoverable)} potentially recoverable</span>
+          <span className="scope-person">{label} <b>{summary.open}<span className="sr-only"> open cases</span></b></span>
+          <span className="scope-recovery">{summary.knownAmounts ? money(summary.potentiallyRecoverable) : summary.open ? "—" : money(0)}{summary.unknownAmounts > 0 ? " + ?" : ""}</span>
+          <span className="sr-only">potentially recoverable{summary.unknownAmounts > 0 ? `; ${summary.unknownAmounts} amounts to confirm` : ""}</span>
         </button>;
       })}
     </section>
 
     <details className="reimbursement-totals">
       <summary>
-        <span><small>Potential to recover</small><strong>{money(scopeSummaries.get(personScope)!.potentiallyRecoverable)}</strong></span>
+        <span><small>Potential to recover</small><strong>{scopeSummaries.get(personScope)!.knownAmounts || !scopeSummaries.get(personScope)!.open ? money(scopeSummaries.get(personScope)!.potentiallyRecoverable) : "—"}{scopeSummaries.get(personScope)!.unknownAmounts > 0 ? " + ?" : ""}</strong></span>
         <span className="totals-disclosure">Totals <span aria-hidden="true">⌄</span></span>
       </summary>
       <section className="reimbursement-summary" aria-label={`${scopeLabel} reimbursement summary`}>
+        <p className="privacy-note">Known remaining amounts on open cases. Eligibility is not guaranteed.{scopeSummaries.get(personScope)!.unknownAmounts > 0 ? ` ${scopeSummaries.get(personScope)!.unknownAmounts} amounts still need confirmation.` : ""}</p>
         <article className="summary-primary"><small>Total expenses</small><strong>{money(finance.totalPaid)}</strong><span>{scopeLabel}</span></article>
         <article><small>Desjardins</small><strong>{money(finance.desjardins)}</strong><span>reimbursed</span></article>
         <article><small>Blue Cross</small><strong>{money(finance.blueCross)}</strong><span>reimbursed</span></article>
@@ -528,7 +536,7 @@ export default function ReimbursementsView({ hub }: Props) {
           operationError={error} operationMessage={savedMessage}
           reviewExplanation={reviews.get(`case:${item.DocumentIds[0]}`)?.explanation}
           changeWorkflow={changeWorkflow} decideMatch={decideMatch} matchUnmatched={matchUnmatched}
-          changeUnmatchedIgnored={changeUnmatchedIgnored} openInvoicePdf={openInvoicePdf} />)}
+          changeUnmatchedIgnored={changeUnmatchedIgnored} openInvoicePdf={openInvoicePdf} prepareClaim={workerVersionAtLeast(workerVersion, "2.12.0") ? setPreparingExpense : undefined} />)}
       </div>
     </section>
 

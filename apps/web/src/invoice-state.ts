@@ -220,11 +220,14 @@ export function filterReimbursementWorkflowCases(cases: ReconciliationCase[], sc
     && (workflow === "all" || reimbursementWorkflowStatus(item) === workflow));
 }
 
-export function reimbursementWorkflowSummary(cases: ReconciliationCase[], scope: ReimbursementPersonScope): { open: number; potentiallyRecoverable: number } {
+export function reimbursementWorkflowSummary(cases: ReconciliationCase[], scope: ReimbursementPersonScope): { open: number; potentiallyRecoverable: number; knownAmounts: number; unknownAmounts: number } {
   const openCases = cases.filter(item => (scope === "all" || item.Member === scope) && reimbursementWorkflowStatus(item) === "open");
+  const known = openCases.filter(item => !item.PreviouslyFound && item.PotentialRemaining != null && Number.isFinite(item.PotentialRemaining));
   return {
     open: openCases.length,
-    potentiallyRecoverable: Math.round(openCases.reduce((sum, item) => sum + Math.max(0, item.PotentialRemaining ?? 0), 0) * 100) / 100
+    knownAmounts: known.length,
+    unknownAmounts: openCases.length - known.length,
+    potentiallyRecoverable: Math.round(known.reduce((sum, item) => sum + Math.max(0, item.PotentialRemaining!), 0) * 100) / 100
   };
 }
 

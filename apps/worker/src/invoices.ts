@@ -12,6 +12,8 @@ import { blueCrossPrivateDirectory, collectBlueCrossPortal, type PortalCollectio
 import { desjardinsInvoices, planDesjardinsUpsert } from "./desjardins.js";
 import { collectDesjardinsPortal, desjardinsPrivateDirectory, loadDesjardinsSnapshot } from "./desjardins-collector.js";
 import { reviewReconciliations, reviewTargets, codexReviewer, type AgentReview, type Reviewer } from "./agents.js";
+import { prepareConnectorMessage, saveConnectorFiles, readConnectorFile } from "./connector-intake.js";
+import { prepareClaim } from "./claim-preparation.js";
 
 type Window = { after: number; before: number; page?: string };
 /** A learned category is a preference, never a replacement for freshly extracted facts. */
@@ -527,6 +529,7 @@ export async function classify(mail: Mail, email: string, label = email, diagnos
       "First distinguish an actual transaction/document from marketing. A price, insurance word or unsubscribe footer alone proves nothing.",
       "Then assess reimbursement only as possible/unknown/no. Never claim insurance eligibility is verified. Coverage details are unavailable.",
       "Use only explicit evidence. Do not invent a currency (a dollar sign alone is ambiguous), amount, purchase, or attachment contents.",
+      "For an unknown currency return the empty string, never the word unknown. For unknown dates return null, never an empty string. Amount and billedAmount must be positive or null; a known zero insurer payment belongs in reimbursedAmount or healthcare.InsurerPayments.",
       "Claim means an actual claim status/EOB document, not an advertisement about benefits. Ambiguity must lower confidence below 0.9.",
       "Routine appointment reminders, clinic booking notices, tee-time/activity bookings and generic service notices are not document-inbox items unless they contain actual payment/receipt evidence. Travel itineraries and flight booking documents may be administrative/travel.",
       "For health documents, identify Kevin or Jasmine only when explicit or strongly supported by the account label. Identify Desjardins and Blue Cross/Croix Bleue statements.",
@@ -579,6 +582,53 @@ export async function classifyHistorical(mail: Mail, _email: string, _label?: st
     amount: null, currency: "", category: rule?.category || (health ? "health" : "other"), member: "unknown",
     documentRole: rule ? "other" : statement ? "insurer-statement" : expense ? "expense" : "other", insurer: rule ? null : statement ? insurer : null,
     serviceDate: null, billedAmount: null, reimbursedAmount: null, attention: rule?.attention || "none", attentionReason: rule?.attention ? rule.reason : "" } };
+}
+
+export function claimPreparation(expenseId: unknown, insurer: unknown) {
+  if (typeof expenseId !== "string" || !["blue-cross", "desjardins"].includes(String(insurer))) throw new Error("Choose an invoice and insurer.");
+  const cases = buildReconciliationSnapshot(activeReconciliationItems(), state.matchDecisions).cases.map(decorateWorkflowCase);
+  return prepareClaim(expenseId, insurer as "blue-cross" | "desjardins", state.items, cases);
+}
+
+/** Explicit connector intake uses the same evidence and reconciliation as PC Gmail.
+ * Existing source IDs are immutable here: reruns cannot overwrite user decisions. */
+export async function importConnectorMessage(input: unknown, apply: unknown = false, classifier = classify) {
+  if (typeof apply !== "boolean") throw new Error("Provide a boolean apply flag.");
+  if (busy || blueCrossBusy || desjardinsBusy) throw new Error("Collection is running. Retry after it finishes.");
+  busy = true;
+  try {
+  const prepared = await prepareConnectorMessage(input);
+  const id = recordId(prepared.account, prepared.mail.id);
+  const existing = state.items.find(item => item.Id === id);
+  if (existing) return { status: "unchanged", applied: false, id, attachments: existing.Attachments.length };
+  const { result, source } = await classifier(prepared.mail, prepared.account, "Connected mailbox; patient must be explicit in the invoice, never inferred from the mailbox owner");
+  if (source === "unavailable") return { status: "analysis-unavailable", applied: false, id, needsReview: true };
+  const item = toInvoice(prepared.mail, prepared.account, "Connected mailbox", result, source);
+  item.AccountLabel = prepared.label;
+  item.HistoricalCandidate = true;
+  // Appointment reminders, treatment estimates and non-health records are not expenses.
+  const eligible = item.Category === 0 && item.DocumentRole === "expense"
+    && !/\b(?:veterinary|v[eé]t[eé]rinaire|estimate|quotation|confirming receipt|appointment reminder|appointment.*(?:accepted|rescheduled|coming up))\b/i.test(item.Subject);
+  if (!eligible) return { status: "not-an-invoice", applied: false, id };
+    if (prepared.mail.attachments.some(a => a.MimeType === "application/pdf" && !a.LocalSha256))
+      item.ImportWarning = "An original PDF from this connector source has not been downloaded. Open the source email to review it.";
+    if (prepared.mail.attachments.some(a => a.AnalysisStatus === "failed")) {
+      item.NeedsReview = true;
+      item.ImportWarning = [item.ImportWarning, "Some attached evidence could not be read. Review the original document before claiming."].filter(Boolean).join(" ");
+    }
+  if (apply) {
+    await saveConnectorFiles(prepared.files);
+    await edit(async () => {
+      if (state.items.some(item => item.Id === id)) return;
+      // Back up the actual current state inside the mutation queue, never a stale read.
+      await atomicJson(join(dataDirectory, "backups", `connector-${Date.now()}-${randomUUID()}.json`), state);
+      state.items.push(item);
+    });
+  }
+  return { status: "new", applied: apply, id, member: item.Member, serviceDate: item.ServiceDate,
+    service: item.Healthcare?.ServiceType ?? item.ClaimedService, needsReview: item.NeedsReview,
+    attachments: item.Attachments.length, cachedPdfs: prepared.files.length };
+  } finally { busy = false; }
 }
 
 type CollectionDependencies = { credentials: typeof credentials; accessToken: typeof accessToken; gmail: typeof gmail; classify: typeof classify; historicalClassify: typeof classifyHistorical; reviewer: Reviewer };
@@ -941,6 +991,7 @@ export async function invoiceAttachment(id: string, attachmentId: string, overri
   const item = state.items.find(x => x.Id === id);
   const attachment = item?.Attachments.find(x => x.Id === attachmentId);
   if (!item || !attachment) throw new Error("Attachment not found.");
+  if (attachment.LocalSha256) return { bytes: await readConnectorFile(attachment.LocalSha256), name: attachment.FileName };
   if (attachment.Size > 20_000_000) throw new Error("This attachment exceeds 20 MB. Open the source email instead.");
   const account = (await dependencies.credentials()).accounts.find(x => x.email.toLowerCase() === item.AccountEmail);
   if (!account) throw new Error("Reconnect the source Gmail account on the PC.");
