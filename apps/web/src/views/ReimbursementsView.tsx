@@ -196,7 +196,10 @@ export default function ReimbursementsView({ hub }: Props) {
     if (!targets.length) return;
     setBulkIgnoring(true); setError(""); setSavedMessage("");
     try {
-      for (const target of targets) await setReimbursementWorkflowStatus(hub.worker, target.expenseId, "ignore");
+      for (const target of targets) {
+        if (target.item.InferredFromInsurer) await setUnmatchedIgnored(hub.worker, target.expenseId, true);
+        else await setReimbursementWorkflowStatus(hub.worker, target.expenseId, "ignore");
+      }
       setSelectedClaimIds(new Set());
       await refresh();
       setSavedMessage(`${targets.length} claim${targets.length === 1 ? "" : "s"} ignored. The source evidence is preserved and each claim can be restored from the Ignore filter.`);
@@ -213,7 +216,13 @@ export default function ReimbursementsView({ hub }: Props) {
     const key = `workflow:${expenseId}`;
     setSavingId(key); setError(""); setSavedMessage("");
     try {
-      await setReimbursementWorkflowStatus(hub.worker, expenseId, status);
+      if (item.InferredFromInsurer) {
+        if (status === "ignore") await setUnmatchedIgnored(hub.worker, expenseId, true);
+        else if (status === "automatic") await setUnmatchedIgnored(hub.worker, expenseId, false);
+        else throw new Error("This reimbursement-only claim supports Automatic or Ignore until an original expense is available.");
+      } else {
+        await setReimbursementWorkflowStatus(hub.worker, expenseId, status);
+      }
       await refresh();
       setSavedMessage(status === "automatic"
         ? "Manual override removed. FamilyHub is using the automatic workflow rule again."
@@ -230,7 +239,9 @@ export default function ReimbursementsView({ hub }: Props) {
       WorkflowOrigin: item.WorkflowOrigin ?? "manual" as const
     }));
     const baseCases = [...(hub.reimbursements.Reconciliations ?? []), ...ignoredCases];
-    const inferredCases = insurerEvidenceExpenseCases(baseCases, hub.reimbursements.UnmatchedReimbursements ?? [], hub.reimbursements.Items);
+    const inferenceSources = [...(hub.reimbursements.UnmatchedReimbursements ?? []), ...(hub.reimbursements.IgnoredUnmatchedReimbursements ?? [])]
+      .filter((item, index, all) => all.findIndex(candidate => candidate.DocumentId === item.DocumentId) === index);
+    const inferredCases = insurerEvidenceExpenseCases(baseCases, inferenceSources, hub.reimbursements.Items);
     const inferredSourceIds = new Set(inferredCases.flatMap(item => item.DocumentIds));
     const cases = buildInvoiceHistoryCases([...baseCases, ...inferredCases], hub.reimbursements.Items);
     const unmatched = excludeAssignedUnmatched(hub.reimbursements.UnmatchedReimbursements ?? [], cases)
@@ -604,8 +615,8 @@ export default function ReimbursementsView({ hub }: Props) {
               <select aria-label="Reimbursement workflow status" value={workflowValue} disabled={!paired || !!savingId || busy}
                 onChange={event => void changeWorkflow(item, event.target.value as ReimbursementWorkflowStatus | "automatic")}>
                 <option value="automatic">Automatic ({item.AutomaticWorkflowStatus === "closed" ? "Closed" : "Open"})</option>
-                <option value="open">Open manually</option>
-                <option value="closed">Closed manually</option>
+                {!item.InferredFromInsurer && <option value="open">Open manually</option>}
+                {!item.InferredFromInsurer && <option value="closed">Closed manually</option>}
                 <option value="ignore">Ignore manually</option>
               </select>
               {workflowSaving && <span className="workflow-saving">Saving…</span>}
