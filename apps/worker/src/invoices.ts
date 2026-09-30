@@ -27,7 +27,7 @@ const invoiceExclusions = '-in:spam -in:trash -in:sent -in:drafts -from:notifica
 type AccountProgress = { through?: number; window?: Window; error?: string; lastSuccess?: string; healthReceiptRepairVersion?: number; healthReceiptRepairPage?: string; healthReceiptRepairTargetVersion?: number;
   invoiceHistoryVersion?: number; invoiceHistoryWindow?: Window; invoiceHistoryThrough?: number; invoiceHistoryExamined?: number };
 type Decision = { id: string; itemId: string; type: "classification" | "status"; before: Partial<Invoice>; after: Partial<Invoice>; at: string; undoneAt?: string; correctionBefore?: Correction };
-type UnmatchedDecision = { reimbursementId: string; decision: "ignored"; at: string; reason: UnmatchedReimbursement["Reason"] };
+type UnmatchedDecision = { reimbursementId: string; decision: "ignored"; at: string; reason: UnmatchedReimbursement["Reason"] | "manual-source-ignore" };
 type State = { items: Invoice[]; corrections: Correction[]; decisions: Decision[]; matchDecisions: MatchDecision[]; unmatchedDecisions: UnmatchedDecision[]; workflowRecords: ReimbursementWorkflowRecord[]; reviews: AgentReview[]; accounts: Record<string, AccountProgress>; lastAttempt?: string; lastSuccess?: string; error?: string };
 const statePath = join(dataDirectory, "invoices.json");
 const empty = (): State => ({ items: [], corrections: [], decisions: [], matchDecisions: [], unmatchedDecisions: [], workflowRecords: [], reviews: [], accounts: {} });
@@ -774,6 +774,47 @@ export async function setExpenseIgnored(documentIds: unknown, ignored: unknown):
     for (const item of state.items.filter(item => entry.DocumentIds.includes(item.Id))) {
       item.IgnoredAt = ignored ? at : undefined;
       item.UpdatedAt = at;
+    }
+  });
+}
+
+export async function setDocumentsIgnored(documentIds: unknown, ignored: unknown): Promise<void> {
+  if (!Array.isArray(documentIds) || !documentIds.length || documentIds.length > 500
+    || documentIds.some(id => typeof id !== "string" || !id.trim()) || typeof ignored !== "boolean")
+    throw new Error("Provide 1–500 document IDs and an ignore flag.");
+  const ids = [...new Set(documentIds as string[])];
+  await edit(() => {
+    const documents = ids.map(id => state.items.find(item => item.Id === id));
+    if (documents.some(item => !item)) throw new Error("One or more documents are unavailable. Refresh before saving.");
+    const at = new Date().toISOString();
+    const snapshot = buildReconciliationSnapshot(activeReconciliationItems(), state.matchDecisions);
+    const handledExpenses = new Set<string>();
+
+    for (const document of documents as Invoice[]) {
+      const insurerSource = document.DocumentRole === "insurer-statement" || document.DocumentType === "claim";
+      if (insurerSource) {
+        state.unmatchedDecisions = state.unmatchedDecisions.filter(item => item.reimbursementId !== document.Id);
+        if (ignored) state.unmatchedDecisions.push({
+          reimbursementId: document.Id, decision: "ignored", at, reason: "manual-source-ignore"
+        });
+        continue;
+      }
+
+      const entry = snapshot.cases.find(item => item.DocumentIds.includes(document.Id));
+      if (entry) {
+        const expenseId = workflowExpenseId(entry);
+        if (handledExpenses.has(expenseId)) continue;
+        handledExpenses.add(expenseId);
+        applyWorkflowChoice(entry, ignored ? "ignore" : undefined, at);
+        for (const source of state.items.filter(item => entry.DocumentIds.includes(item.Id))) {
+          source.IgnoredAt = ignored ? at : undefined;
+          source.UpdatedAt = at;
+        }
+        continue;
+      }
+
+      document.IgnoredAt = ignored ? at : undefined;
+      document.UpdatedAt = at;
     }
   });
 }
