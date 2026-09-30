@@ -26,6 +26,8 @@ import {
 } from "../apps/web/src/types.ts";
 import { manualReconciliationWorkerVersion, workerVersionAtLeast } from "../apps/web/src/worker.ts";
 import {
+  manualMatchExpenseId,
+  manualMatchUnavailableReason,
   reconciliationContextCases,
   reconciliationTriageAssessment
 } from "../apps/web/src/reconciliation-triage.ts";
@@ -77,9 +79,42 @@ function reconciliation(item: ReimbursementItem, overrides: Partial<Reconciliati
     Summary: "Regression fixture",
     Confidence: 99,
     DocumentIds: [item.Id],
+    ExpenseDocumentId: item.Id,
+    ExpenseDocumentIds: [item.Id],
     ...overrides
   };
 }
+
+test("manual matching excludes presentation-only and stale cases but keeps their evidence in history", () => {
+  const expense = invoice("current-expense", "2026-08-10", { Member: "Kevin" });
+  const statement = invoice("statement", "2026-08-10", { Member: "Kevin", DocumentRole: "insurer-statement", DocumentType: "claim", Insurer: "desjardins" });
+  const current = reconciliation(expense);
+  const excluded = [
+    reconciliation(statement, { InferredFromInsurer: true }),
+    reconciliation(expense, { Id: "unreconciled", Unreconciled: true }),
+    reconciliation(expense, { Id: "retained", PreviouslyFound: true }),
+    reconciliation(expense, { Id: "ignored", WorkflowStatus: "ignore" }),
+    reconciliation(expense, { Id: "no-worker-id", ExpenseDocumentId: undefined, ExpenseDocumentIds: undefined })
+  ];
+  const byId = new Map([expense, statement].map(item => [item.Id, item]));
+  assert.equal(manualMatchExpenseId(current), expense.Id);
+  assert.equal(manualMatchUnavailableReason(statement, current), null);
+  assert.ok(excluded.every(item => manualMatchExpenseId(item) === null));
+  const ranked = reconciliationTriageAssessment(statement, [...excluded, current], byId);
+  assert.deepEqual(ranked.Candidates.map(item => item.ExpenseDocumentId), [expense.Id]);
+  assert.equal(buildInvoiceHistoryCases([current, ...excluded], [expense, statement]).length, 6);
+});
+
+test("manual matching keeps member and service-date restrictions aligned with the worker", () => {
+  const expense = invoice("expense", "2026-08-10", { Member: "Kevin" });
+  const statement = invoice("statement", "2026-08-10", { Member: "Kevin" });
+  assert.equal(manualMatchUnavailableReason(statement, reconciliation(expense)), null);
+  for (const patch of [{ Member: "unknown" as const }, { Member: "Jasmine" as const }, { ServiceDate: null }, { ServiceDate: "2026-08-11" }]) {
+    assert.ok(manualMatchUnavailableReason(statement, reconciliation(expense, patch)));
+  }
+  assert.ok(manualMatchUnavailableReason({ ...statement, Member: "unknown" }, reconciliation(expense)));
+  assert.ok(manualMatchUnavailableReason({ ...statement, ServiceDate: null }, reconciliation(expense)));
+});
 
 test("invoice history survives sorting, temporary filters, reconciliation refreshes and partial worker snapshots", () => {
   const september17 = invoice("invoice-2026-09-17", "2026-09-17");

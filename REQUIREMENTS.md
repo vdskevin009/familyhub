@@ -225,3 +225,8 @@ After implementing:
 - Run the relevant build/tests/acceptance checks.
 - Update the baseline/reference commit when the change is merged.
 - Keep README/docs aligned, but do not use them as a substitute for this file.
+
+### Manual match target integrity — issue #115
+
+FH-REIMB-021: Manual matching must select a current worker expense identity. Presentation-only insurer summaries, unreconciled display rows and retained historical cases remain visible as evidence but must not be offered as writable targets. Suggested and searched matches enforce the worker's same-known-member and exact-service-date constraints. Implemented in apps/web/src/reconciliation-triage.ts and ReconciliationQueue.tsx; automated and phone acceptance tracked in #115.
+

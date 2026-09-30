@@ -9,6 +9,7 @@ import type { MatchAssignment, ReconciliationCase, ReimbursementItem, Reimbursem
 import { fetchInvoices, fetchBlueCrossStatus, syncBlueCross, fetchDesjardinsStatus, syncDesjardins, manualReconciliationWorkerVersion, setManualMatch, setMatchDecision, setReimbursementWorkflowStatus, setUnmatchedIgnored, testWorker, viewWorkerAttachment, workerVersionAtLeast } from "../worker";
 import type { BlueCrossSyncStatus, BlueCrossSyncResult, DesjardinsSyncStatus, DesjardinsSyncResult } from "../worker";
 import ReconciliationQueue from "./ReconciliationQueue";
+import { manualMatchExpenseId, manualMatchUnavailableReason } from "../reconciliation-triage";
 import ClaimCard from "./ClaimCard";
 import PrepareClaim from "./PrepareClaim";
 import { FilterButton, FilterChips, Notice, PageHeader, SearchField, Sheet, SkeletonList, useSessionValue, type ActiveFilter } from "../ui/primitives";
@@ -161,8 +162,12 @@ export default function ReimbursementsView({ hub }: Props) {
       () => setMatchDecision(hub.worker, assignment.ReimbursementDocumentId, assignment.ExpenseDocumentId, decision));
   }
   async function matchUnmatched(item: ReconciliationCase, reimbursementId: string) {
-    const expenseId = workflowExpenseId(item);
-    if (!expenseId) return false;
+    const expenseId = manualMatchExpenseId(item);
+    const current = hub.reimbursements.Reconciliations?.find(entry => !entry.PreviouslyFound
+      && expenseId && (entry.ExpenseDocumentId === expenseId || entry.ExpenseDocumentIds?.includes(expenseId)));
+    const reimbursement = hub.reimbursements.Items.find(entry => entry.Id === reimbursementId);
+    const unavailable = current && reimbursement ? manualMatchUnavailableReason(reimbursement, current) : "This expense is no longer current. Refresh and select it again.";
+    if (!expenseId || unavailable) { setError(unavailable || "Select a current expense."); return false; }
     return saveChange(`manual-match:${reimbursementId}`, "Match", () => setManualMatch(hub.worker, reimbursementId, expenseId));
   }
   async function changeUnmatchedIgnored(reimbursementId: string, ignored: boolean) {

@@ -4,6 +4,7 @@ import { createElement } from "react";
 import { renderToString } from "react-dom/server";
 import { readFileSync } from "node:fs";
 import ClaimCard from "../src/views/ClaimCard";
+import ReconciliationQueue from "../src/views/ReconciliationQueue";
 import { MutationQueue, requireSaved, type MutationProgress } from "../src/ui/mutation-queue";
 import type { ReconciliationCase, ReimbursementItem } from "../src/types";
 
@@ -110,4 +111,26 @@ test("PWA insurer-only claims cannot fabricate manual Open or Closed workflow op
 test("PWA selection checkboxes are opt-in and pending status is explicit", () => {
   const html = card(fixture.state.Reconciliations[0], { selecting: true, pending: { key: "a", label: "Closed", phase: "saving" } });
   assert.match(html, /type="checkbox"/); assert.match(html, /Saving…/); assert.match(html, /disabled=""/);
+});
+
+test("PWA matching offers only worker expenses and disables nearby-date assignments", () => {
+  const expense = fixture.state.Reconciliations[0];
+  const source = fixture.state.Items.find(item => item.Id === expense.ExpenseDocumentId)!;
+  const statement = { ...source, Id: "synthetic-unmatched", DocumentRole: "insurer-statement" as const, DocumentType: "claim" as const,
+    ReimbursedAmount: 20, Insurer: "desjardins" as const };
+  const render = (date: string | null | undefined) => renderToString(createElement(ReconciliationQueue, {
+    items: [...fixture.state.Items, statement], cases: [
+      { ...expense, ServiceDate: date },
+      { ...expense, Id: "display-only", Provider: "Display-only insurer summary", InferredFromInsurer: true },
+      { ...expense, Id: "retained", Provider: "Retained stale case", PreviouslyFound: true }
+    ], unmatched: [{ item: statement, result: { DocumentId: statement.Id, Reason: "ambiguous-match" } }],
+    ignoredUnmatched: [], personScope: "all", paired: true, manualActionsAvailable: true, busy: false, savingId: "",
+    onPersonScopeChange() {}, onMatch: async () => true, onIgnore: async () => true
+  }));
+  const exact = render(expense.ServiceDate);
+  assert.match(exact, /<button[^>]*class="mini-button primary"[^>]*>Match to this expense/);
+  assert.doesNotMatch(exact, /Display-only insurer summary|Retained stale case/);
+  const nearby = render("2026-09-02");
+  assert.match(nearby, /Matching requires the same service date/);
+  assert.match(nearby, /class="mini-button primary" disabled=""/);
 });
