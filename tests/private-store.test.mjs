@@ -8,7 +8,7 @@ test('Windows DPAPI roundtrip keeps synthetic refresh credentials out of plainte
   const dir = await mkdtemp(join(tmpdir(), 'familyhub-dpapi-'));
   try {
     const path = join(dir, 'test.dpapi');
-    const data = { refreshToken: 'SYNTHETIC-NOT-A-REAL-GOOGLE-TOKEN' };
+    const data = { refreshToken: 'SYNTHETIC-NOT-A-REAL-GOOGLE-TOKEN', unicodePassword: 'Synthétique-秘密-🔒' };
     await savePrivate(path, data);
     assert.equal((await readFile(path, 'utf8')).includes(data.refreshToken), false);
     assert.deepEqual(await loadPrivate(path), data);

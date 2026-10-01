@@ -1,3 +1,4 @@
+import { acquirePortalLock, authenticatedPortal, tryPortalLogin, type LoginReason } from "./portal-login.js";
 import { createHash, randomUUID } from "node:crypto";
 import { mkdir, open, readFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
@@ -13,7 +14,6 @@ export const desjardinsAuthPath = join(desjardinsPrivateDirectory, "auth-state.d
 export const desjardinsMemberAliasesPath = join(desjardinsPrivateDirectory, "member-aliases.dpapi");
 export const desjardinsCollectorVersion = 1;
 const origin = "https://www.agea-gbim.dsf-dfs.com";
-const loginUrl = `${origin}/AGEA-GBIM/Athntfctn/Authentification_Authentication.aspx?bhcp=1&cltr=fr-CA`;
 const historyUrl = `${origin}/AGEA-GBIM/Rclmtn/RclmtnTrt/HistoriqueReclamation_ClaimHistory.aspx`;
 const historyTable = "table.tableau-donnees";
 
@@ -211,9 +211,17 @@ async function saveDesjardinsAuth(context: import("playwright").BrowserContext, 
   } catch { return "Desjardins session could not be saved for repeat previews."; }
 }
 
-/** Visible login and MFA are always performed by the operator. The collector only reads history. */
-export async function collectDesjardinsPortal(interactive = false, passes = 1): Promise<{
-  status: "success" | "login-required"; collection?: DesjardinsCollection; snapshotPath?: string;
+/** Reuse the private session, optionally sign in once, then collect read-only history. MFA stays manual. */
+export async function collectDesjardinsPortal(interactive = false, passes = 1): ReturnType<typeof collectDesjardinsPortalLocked> {
+  let release: () => Promise<void>;
+  try { release = await acquirePortalLock("desjardins"); }
+  catch { return { status: "login-required", authReason: "profile-busy" }; }
+  try { return await collectDesjardinsPortalLocked(interactive, passes); }
+  finally { await release(); }
+}
+
+async function collectDesjardinsPortalLocked(interactive = false, passes = 1): Promise<{
+  status: "success" | "login-required"; authReason?: LoginReason; collection?: DesjardinsCollection; snapshotPath?: string;
 }> {
   await mkdir(desjardinsProfileDirectory, { recursive: true, mode: 0o700 });
   const { chromium } = await import("playwright");
@@ -226,7 +234,11 @@ export async function collectDesjardinsPortal(interactive = false, passes = 1): 
     if (process.platform === "win32") {
       try {
         const saved = await loadPrivate<{ cookies: Cookie[]; session?: { origin: string; values: Record<string, string> } }>(desjardinsAuthPath);
-        await context.addCookies(desjardinsAuthCookies(saved.cookies));
+        const existing = await context.cookies();
+        const restored = desjardinsAuthCookies(saved.cookies).filter(cookie =>
+          (cookie.expires < 0 || cookie.expires > Date.now() / 1000) && !existing.some(current =>
+            current.name === cookie.name && current.domain === cookie.domain && current.path === cookie.path));
+        await context.addCookies(restored);
         if (saved.session?.origin === origin && saved.session.values && typeof saved.session.values === "object")
           await context.addInitScript(({ expectedOrigin, values }) => {
             if (location.origin !== expectedOrigin) return;
@@ -236,23 +248,24 @@ export async function collectDesjardinsPortal(interactive = false, passes = 1): 
       } catch { /* Missing or expired browser state falls back to the visible login. */ }
     }
     const page = context.pages()[0] ?? await context.newPage();
-    await page.goto(interactive ? loginUrl : historyUrl, { waitUntil: "domcontentloaded", timeout: 45_000 });
+    await page.goto(historyUrl, { waitUntil: "domcontentloaded", timeout: 45_000 });
     const table = page.locator(historyTable);
-    if (interactive) {
-      const deadline = Date.now() + 10 * 60_000;
-      while ((!/HistoriqueReclamation_ClaimHistory\.aspx/i.test(page.url()) || !await table.isVisible().catch(() => false)) && Date.now() < deadline) {
-        // After operator login the portal can land on its home screen. Follow
-        // only the visible history link; never interact with login/MFA fields.
-        if (new URL(page.url()).origin === origin) {
-          const history = page.getByRole("link", { name: /historique des r[ée]clamations|claims history/i }).first();
-          if (await history.isVisible().catch(() => false)) await history.click();
-        }
-        await page.waitForTimeout(2000);
+    const ready = async () => {
+      if (new URL(page.url()).origin !== origin) return false;
+      if (!/HistoriqueReclamation_ClaimHistory\.aspx/i.test(page.url())) {
+        const history = page.getByRole("link", { name: /historique des r[ée]clamations|claims history/i }).first();
+        if (await history.isVisible().catch(() => false)) await history.click();
       }
-    } else await table.waitFor({ state: "visible", timeout: 20_000 }).catch(() => {});
-    if (!await table.isVisible().catch(() => false)) return { status: "login-required" };
-    if (!page.url().startsWith(origin) || !/HistoriqueReclamation_ClaimHistory\.aspx/i.test(page.url()))
-      return { status: "login-required" };
+      return new URL(page.url()).origin === origin && /HistoriqueReclamation_ClaimHistory\.aspx/i.test(page.url())
+        && await table.isVisible().catch(() => false);
+    };
+    const authReason = await tryPortalLogin(page, "desjardins", ready);
+    if (interactive && !await ready()) {
+      const deadline = Date.now() + 600_000;
+      while (!await ready() && Date.now() < deadline) await page.waitForTimeout(2000);
+    }
+    if (!await ready()) return { status: "login-required", authReason: authReason || "human-required" };
+    await authenticatedPortal("desjardins");
     const authWarning = await saveDesjardinsAuth(context, page);
 
     if (passes !== 1 && passes !== 2) throw new Error("Desjardins supports one or two manual preview passes.");

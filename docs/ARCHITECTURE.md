@@ -201,3 +201,7 @@ Main performs the same build, prepares `apps/web/dist`, and deploys it through G
 The preferred direction is to add capability behind stable interfaces rather than spin up separate applications. New modules should first ask whether they can fit into Today, Inbox, Plan, Money, More, or the local worker.
 
 Potential future infrastructure (authenticated household sync, push scheduling, server-side integrations) should be introduced only when its benefit justifies the privacy/operations cost and should not make the local-first core dependent on a paid service.
+
+### Optional insurer login (FH-REIMB-040)
+
+The existing collectors first reuse their private browser sessions, then may make one credential login on an exact HTTPS origin using locally configured Windows CurrentUser DPAPI credentials. A shared filesystem profile lock serializes worker, CLI and configuration. Retry protection is persisted before submission; ambiguous outcomes and human challenges remain blocked until successful operator authentication or credential replacement. A 30-minute cooldown survives successful authentication. MFA/CAPTCHA are never automated. The paired API exposes only configuration presence and fixed recovery codes. Saved claims and lastSuccess survive failure; preview/apply and scheduling boundaries are unchanged. See [setup and acceptance](INSURER-LOGIN.md).

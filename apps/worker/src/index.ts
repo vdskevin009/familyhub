@@ -1,3 +1,4 @@
+import { hasPortalCredentials } from "./portal-login.js";
 import { createServer, IncomingMessage, ServerResponse } from "node:http";
 import { randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
@@ -33,7 +34,7 @@ type ResearchWatch = {
 };
 type PersistedState = { watches: ResearchWatch[] };
 
-const version = "2.15.0";
+const version = "2.16.0";
 const host = process.env.FAMILYHUB_WORKER_HOST?.trim() || "127.0.0.1";
 const port = Number(process.env.FAMILYHUB_WORKER_PORT || "4713");
 const stateDir = process.env.FAMILYHUB_WORKER_DATA?.trim() || join(homedir(), ".familyhub-worker");
@@ -241,7 +242,7 @@ const server = createServer(async (request, response) => {
     }
     if (parts[0] === "desjardins" && parts[1] === "status" && parts.length === 2 && request.method === "GET") {
       const { previewSnapshot: _previewSnapshot, ...status } = getDesjardinsStatus();
-      json(response, 200, status, origin); return;
+      json(response, 200, { ...status, loginConfigured: await hasPortalCredentials("desjardins") }, origin); return;
     }
     if (parts[0] === "desjardins" && parts[1] === "sync" && parts.length === 2 && request.method === "POST") {
       const body = await readJson<{ apply?: unknown }>(request);
@@ -251,7 +252,7 @@ const server = createServer(async (request, response) => {
       json(response, 200, publicResult, origin); return;
     }
     if (parts[0] === "bluecross" && parts[1] === "status" && parts.length === 2 && request.method === "GET") {
-      json(response, 200, getBlueCrossStatus(), origin); return;
+      json(response, 200, { ...getBlueCrossStatus(), loginConfigured: await hasPortalCredentials("bluecross") }, origin); return;
     }
     if (parts[0] === "bluecross" && parts[1] === "sync" && parts.length === 2 && request.method === "POST") {
       const body = await readJson<{ apply?: unknown }>(request);

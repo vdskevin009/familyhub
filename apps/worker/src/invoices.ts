@@ -1,3 +1,4 @@
+import type { LoginReason } from "./portal-login.js";
 import { mkdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
@@ -47,7 +48,7 @@ let blueCrossBusy = false;
 let desjardinsBusy = false;
 const blueCrossStatusPath = join(blueCrossPrivateDirectory, "status.json");
 type PortalResult = { status: "success"; applied: boolean; found: number; new: number; changed: number; unchanged: number; ambiguous: number; duplicates: number; errors: number; complete: boolean };
-type BlueCrossStatus = { lastAttempt?: string; lastSuccess?: string; lastAppliedAt?: string; latestResult?: PortalResult; found?: number; state: "idle" | "syncing" | "login-required" | "error" | "up-to-date"; error?: string };
+type BlueCrossStatus = { authReason?: LoginReason; lastAttempt?: string; lastSuccess?: string; lastAppliedAt?: string; latestResult?: PortalResult; found?: number; state: "idle" | "syncing" | "login-required" | "error" | "up-to-date"; error?: string };
 let blueCrossStatus: BlueCrossStatus = { state: "idle" };
 const desjardinsStatusPath = join(desjardinsPrivateDirectory, "status.json");
 type DesjardinsStatus = BlueCrossStatus & { previewSnapshot?: string; previewAt?: string; applicable?: boolean };
@@ -139,11 +140,11 @@ export async function syncBlueCrossPortal(apply = false, interactive = false, co
   if (blueCrossBusy || desjardinsBusy || busy) throw new Error("An insurer or invoice collection is already running.");
   blueCrossBusy = true;
   try {
-    await saveBlueCrossStatus({ lastAttempt: new Date().toISOString(), state: "syncing", error: undefined, latestResult: undefined });
+    await saveBlueCrossStatus({ lastAttempt: new Date().toISOString(), state: "syncing", error: undefined, authReason: undefined, latestResult: undefined });
     const result = await collector(interactive);
     if (result.status === "login-required") {
-      await saveBlueCrossStatus({ state: "login-required" });
-      return { status: "login-required" as const, loginRequired: true };
+      await saveBlueCrossStatus({ state: "login-required", authReason: result.authReason });
+      return { status: "login-required" as const, loginRequired: true, authReason: result.authReason };
     }
     const collection = result.collection!;
     const plan = planBlueCrossUpsert(state.items, collection);
@@ -183,15 +184,15 @@ export async function syncDesjardinsPortal(apply = false, interactive = false, c
   desjardinsBusy = true;
   try {
     if (apply) await initializeDesjardinsStatus();
-    await saveDesjardinsStatus({ lastAttempt: new Date().toISOString(), state: "syncing", error: undefined, applicable: false, latestResult: undefined });
+    await saveDesjardinsStatus({ lastAttempt: new Date().toISOString(), state: "syncing", error: undefined, authReason: undefined, applicable: false, latestResult: undefined });
     // Apply consumes the most recent immutable preview. Desjardins often requires a new MFA
     // challenge for a fresh browser process; never rerun a live collection behind "Apply".
     const result = apply
       ? { status: "success" as const, collection: await loadDesjardinsSnapshot(desjardinsStatus.previewSnapshot, desjardinsStatus.previewAt), snapshotPath: desjardinsStatus.previewSnapshot }
       : await collector(interactive);
     if (result.status === "login-required") {
-      await saveDesjardinsStatus({ state: "login-required" });
-      return { status: "login-required" as const, loginRequired: true };
+      await saveDesjardinsStatus({ state: "login-required", authReason: result.authReason });
+      return { status: "login-required" as const, loginRequired: true, authReason: result.authReason };
     }
     const collection = result.collection!;
     const plan = planDesjardinsUpsert(state.items, collection);

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile, writeFile, rm } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawn } from 'node:child_process';
@@ -26,6 +26,14 @@ test('invoice endpoints require pairing/origin checks and report unconfigured Gm
     assert.ok(ready, logs);
     assert.equal((await call('/invoices')).status, 401);
     for (const insurer of ['bluecross', 'desjardins']) {
+      assert.equal((await call('/'+insurer+'/status')).status,401);
+      assert.equal((await (await call('/'+insurer+'/status',{headers})).json()).loginConfigured,false);
+      await mkdir(join(dir,insurer),{recursive:true});
+      await writeFile(join(dir,insurer,'login.dpapi'),'SYNTHETIC-PRIVATE-CONTENT');
+      const status=await (await call('/'+insurer+'/status',{headers})).json();
+      assert.equal(status.loginConfigured,true);
+      assert.equal(JSON.stringify(status).includes('SYNTHETIC-PRIVATE-CONTENT'),false);
+      assert.equal(logs.includes('SYNTHETIC-PRIVATE-CONTENT'),false);
       assert.equal((await call(`/${insurer}/reconnect`, { method: 'POST' })).status, 401);
       assert.equal((await call(`/${insurer}/reconnect`, { method: 'POST', headers: { ...headers, Origin: 'https://evil.example' }, body: '{"interactive":true}' })).status, 403);
       assert.equal((await call(`/${insurer}/reconnect`, { method: 'POST', headers, body: '{}' })).status, 400);

@@ -45,7 +45,11 @@ test('real invoice workflow previews without edits, then applies once from a pri
     assert.equal(getDesjardinsStatus().latestResult.applied, false);
     assert.equal(getDesjardinsStatus().latestResult.new, 0);
     assert.equal(getDesjardinsStatus().lastAppliedAt, appliedAt, 'later previews retain the saved-data refresh marker');
-    const login = await syncDesjardinsPortal(false, false, async () => ({ status: 'login-required' }));
+    const lastSuccess = getDesjardinsStatus().lastSuccess;
+    const login = await syncDesjardinsPortal(false, false, async () => ({ status: 'login-required', authReason: 'human-required' }));
+    assert.equal(getDesjardinsStatus().lastSuccess, lastSuccess);
+    assert.equal(getDesjardinsStatus().authReason, 'human-required');
+    assert.deepEqual(await readFile(join(dir, 'invoices.json')), manualBytes);
     assert.equal(login.status, 'login-required');
     assert.equal(getDesjardinsStatus().applicable, false);
     assert.equal(getDesjardinsStatus().latestResult, undefined, 'failed login cannot retain a stale successful preview');
