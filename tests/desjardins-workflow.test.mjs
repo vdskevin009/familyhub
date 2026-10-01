@@ -29,6 +29,12 @@ test('real invoice workflow previews without edits, then applies once from a pri
     assert.equal(getDesjardinsStatus().applicable, true);
     const first = await syncDesjardinsPortal(true);
     assert.deepEqual([first.new, first.unchanged, first.applied], [1, 0, true]);
+    assert.equal(getDesjardinsStatus().latestResult.applied, true);
+    const appliedAt = getDesjardinsStatus().lastAppliedAt;
+    assert.ok(appliedAt);
+    await initializeDesjardinsStatus();
+    assert.equal(getDesjardinsStatus().latestResult.applied, true, 'applied status survives reload');
+    assert.equal('snapshotPath' in getDesjardinsStatus().latestResult, false);
     assert.equal((await invoiceSnapshot()).items.length, 1);
     assert.ok(first.backup);
     assert.equal(JSON.parse(await readFile(join(dir, first.backup), 'utf8')).items.length, 0);
@@ -36,9 +42,13 @@ test('real invoice workflow previews without edits, then applies once from a pri
     const manualBytes = await readFile(join(dir, 'invoices.json'));
     const repeatPreview = await syncDesjardinsPortal(false, false, async () => ({ status: 'success', collection, snapshotPath: path }));
     assert.deepEqual([repeatPreview.new, repeatPreview.unchanged], [0, 1]);
+    assert.equal(getDesjardinsStatus().latestResult.applied, false);
+    assert.equal(getDesjardinsStatus().latestResult.new, 0);
+    assert.equal(getDesjardinsStatus().lastAppliedAt, appliedAt, 'later previews retain the saved-data refresh marker');
     const login = await syncDesjardinsPortal(false, false, async () => ({ status: 'login-required' }));
     assert.equal(login.status, 'login-required');
     assert.equal(getDesjardinsStatus().applicable, false);
+    assert.equal(getDesjardinsStatus().latestResult, undefined, 'failed login cannot retain a stale successful preview');
     await syncDesjardinsPortal(false, false, async () => ({ status: 'success', collection, snapshotPath: path }));
     const repeat = await syncDesjardinsPortal(true);
     assert.deepEqual([repeat.new, repeat.changed, repeat.unchanged], [0, 0, 1]);

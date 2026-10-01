@@ -25,6 +25,7 @@ import {
   type ReimbursementItem
 } from "../apps/web/src/types.ts";
 import { manualReconciliationWorkerVersion, workerVersionAtLeast } from "../apps/web/src/worker.ts";
+import { applicableInsurerPreview, insurerSyncMessage } from "../apps/web/src/insurer-sync.ts";
 import {
   manualMatchExpenseId,
   manualMatchUnavailableReason,
@@ -598,4 +599,22 @@ test("email and insurer evidence appear as separate sources on the same expense"
     }]
   });
   assert.deepEqual(reimbursementEvidenceSources(item, new Map([[expense.Id, expense], [blueCross.Id, blueCross]])), ["Email", "Blue Cross"]);
+});
+
+
+test("current insurer status replaces stale reconnect previews after apply and reload", () => {
+  const preview = { status: "success" as const, new: 2, changed: 0, unchanged: 3, applied: false, complete: true };
+  const applied = { ...preview, applied: true };
+  const status = { state: "up-to-date" as const, latestResult: applied, lastAppliedAt: "2026-01-01T00:00:00Z" };
+  assert.match(insurerSyncMessage(status, preview, false), /Saved in FamilyHub: 2 new/);
+  assert.match(insurerSyncMessage(status, null, false), /Saved in FamilyHub/);
+  assert.equal(applicableInsurerPreview(status, preview), false);
+  assert.match(insurerSyncMessage({ state: "syncing" }, preview, false), /Reading insurer history/);
+  assert.equal(applicableInsurerPreview({ state: "syncing" }, preview), false);
+  assert.match(insurerSyncMessage({ state: "error", error: "Unavailable" }, preview, false), /Unavailable/);
+  assert.match(insurerSyncMessage({ state: "login-required" }, preview, false), /Session expired/);
+  assert.equal(applicableInsurerPreview({ state: "idle", latestResult: preview }, null), true);
+  const unchanged = { ...preview, new: 0, unchanged: 5 };
+  assert.match(insurerSyncMessage({ state: "up-to-date", latestResult: unchanged }, preview, false), /already saved/);
+  assert.equal(applicableInsurerPreview({ state: "up-to-date", latestResult: unchanged }, preview), false);
 });
