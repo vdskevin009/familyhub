@@ -28,7 +28,7 @@ function fixture({body='Claim Details',fields=[],providers=[]}={}) {
    locator(selector){
     if(selector==='body')return {innerText:async()=>body};
     if(selector==='input[type="password"]')return {isVisible:async()=>false};
-    if(selector.startsWith('input[type="radio"]'))return list(providers);
+    if(selector.startsWith('input[type="radio"]') || selector.startsWith('main input[type="radio"]'))return list(providers);
     if(selector.startsWith('input:not('))return list(fields);
     const id=selector.match(/^\[id="([^"]+)"\]$/)?.[1];
     if(id?.endsWith('_DropDown')) {
@@ -132,4 +132,20 @@ test('Desjardins French final review and submitted confirmation never offer fina
  try{const step=await inspectClaimStep(id);assert.equal(step.status,status);assert.equal(step.fields.some(x=>x.kind==='originalAmount'),false);
  assert.equal(step.submitAllowed,false);assert.deepEqual(f.calls,[]);
  }finally{await closeClaimBrowser(id);}}
+});
+
+test('observed Desjardins beneficiary radio group is explicit, single-choice, stale guarded and preserves selections',async()=>{
+ const providers=[{id:'dsd-tile-input-1',name:'personneAssuree',label:'Pour quelle personne assurée réclamez-vous? SAMPLE MEMBER',checked:false},
+ {id:'dsd-tile-input-2',name:'personneAssuree',label:'Pour quelle personne assurée réclamez-vous? OTHER MEMBER',checked:false}];
+ const f=desjardinsFixture({providers});f.setUrl('https://www.agea-gbim.dsf-dfs.com/AGEA-GBIM/Reclamation/PersonneAssuree_InsuredPerson.aspx');const id=await opened(f,desjardinsDossier);
+ try{const step=await inspectClaimStep(id);const field=step.fields.find(x=>x.type==='radio');assert.equal(field.kind,'patient');assert.equal(field.suggested,null);
+ assert.equal(field.options.length,2);await fillClaimStep(id,step.revision,{[field.key]:field.options[0].value},null,async()=>{assert.fail();});
+ assert.deepEqual(f.calls,[['provider','dsd-tile-input-1']]);assert.equal((await inspectClaimStep(id)).fields.some(x=>x.type==='radio'),false);
+ }finally{await closeClaimBrowser(id);}
+});
+test('Desjardins radio choices are never offered outside the two observed claim steps or at final review',async()=>{
+ const providers=[{id:'choice',name:'consent',label:'Accept declaration',checked:false}];
+ for(const [url,body] of [['https://www.agea-gbim.dsf-dfs.com/AGEA-GBIM/Default.aspx','Home'],['https://www.agea-gbim.dsf-dfs.com/AGEA-GBIM/Reclamation/PersonneAssuree_InsuredPerson.aspx','Résumé de votre réclamation']]){
+ const f=desjardinsFixture({providers,body});f.setUrl(url);const id=await opened(f,desjardinsDossier);
+ try{assert.equal((await inspectClaimStep(id)).fields.some(x=>x.type==='radio'),false);assert.deepEqual(f.calls,[]);}finally{await closeClaimBrowser(id);}}
 });

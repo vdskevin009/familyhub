@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { dataDirectory, loadPrivate } from "./private-store.js";
 import type { ClaimPreparation } from "./claim-preparation.js";
 import { exactServiceOption } from "./claim-preparation.js";
+import { desjardinsRadioField } from "./desjardins-claim-form.js";
 import { blueCrossComboFields, blueCrossSuggestion, blueCrossTextField } from "./bluecross-claim-form.js";
 import { blueCrossSessionMarker } from "./bluecross-collector.js";
 
@@ -113,6 +114,18 @@ async function inspect(s: Session) {
       s.fields.set(field.key, { locator: providers.first(), providers, field, signature: JSON.stringify(providerMetadata), initialValue: "" });
     }
   }
+  if (s.dossier.insurer === "desjardins" && !atReview) {
+    const definition = desjardinsRadioField(new URL(s.page.url()).pathname);
+    if (definition) {
+      const choices = s.page.locator(`main input[type="radio"][name="${definition.name}"]`).filter({ visible: true });
+      const metadata = await choices.evaluateAll((els: HTMLInputElement[]) => els.map(el => ({ id: el.id, name: el.name, label: Array.from(el.labels || []).map(l => l.textContent?.trim()).filter(Boolean).join(" "), checked: el.checked })));
+      if (metadata.length && !metadata.some(o => o.checked)) {
+        const options = metadata.filter(o => o.id && o.label).map(o => ({ value: o.id, label: o.label }));
+        const field: Field = { key: randomUUID(), label: definition.label, kind: definition.kind, type: "radio", options, suggested: null };
+        s.fields.set(field.key, { locator: choices.first(), providers: choices, field, signature: JSON.stringify(metadata), initialValue: "" });
+      }
+    }
+  }
   const locators = await s.page.locator("input:not([type=hidden]):not([type=password]):not([type=submit]):not([type=button]):not([type=checkbox]):not([type=radio]), select, textarea").all();
   const fields: Field[] = [];
   for (const locator of locators) {
@@ -159,7 +172,7 @@ export async function fillClaimStep(id: unknown, revision: unknown, values: unkn
     for (const [key, value] of entries) {
       const target = s.fields.get(key);
       if (!target || !target.field.kind || typeof value !== "string" || value.length > 500 || target.field.type === "file") throw new Error("Invalid reviewed field.");
-      if (["select", "combo", "provider"].includes(target.field.type) && value && !target.field.options.some(o => o.value === value)) throw new Error("The selected portal option is not available.");
+      if (["select", "combo", "provider", "radio"].includes(target.field.type) && value && !target.field.options.some(o => o.value === value)) throw new Error("The selected portal option is not available.");
     }
     let filled = 0;
     // Fill stable text first; each dropdown can replace the form via postback.
@@ -171,10 +184,11 @@ export async function fillClaimStep(id: unknown, revision: unknown, values: unkn
       const target = s.fields.get(key)!;
       if (target.providers) {
         const now = await target.providers.evaluateAll((els: HTMLInputElement[]) => els.map(el => ({ id: el.id, name: el.name, label: Array.from(el.labels || []).map(l => l.textContent?.trim()).filter(Boolean).join(" "), checked: el.checked })));
-        if (JSON.stringify(now) !== target.signature || s.page.url() !== s.inspectedUrl || !allowed(s.page.url(), s.dossier.insurer)) throw new Error("Provider choices changed. Read the form again.");
+        if (JSON.stringify(now) !== target.signature || s.page.url() !== s.inspectedUrl || !allowed(s.page.url(), s.dossier.insurer)) throw new Error("Portal choices changed. Read the form again.");
         const choice = s.page.locator(`[id="${value}"]`);
-        if (!await choice.isVisible() || !await choice.isEnabled()) throw new Error("The selected provider is unavailable.");
+        if (!await choice.isVisible() || !await choice.isEnabled()) throw new Error("The selected portal choice is unavailable.");
         await choice.check(); filled++;
+        if (target.field.type === "radio") return { status: "filled", filled, message: "Review the selected choice in Desjardins, then choose Continue yourself and read the next step. No claim was submitted by FamilyHub.", submitAllowed: false };
         continue;
       }
       // Refuse to follow postbacks/navigation with stale form locators.
