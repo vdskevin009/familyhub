@@ -52,6 +52,7 @@ function reimbursementAmount(item: ReimbursementItem): number | null {
 
 export default function ReimbursementsView({ hub }: Props) {
   const [preparingExpense, setPreparingExpense] = useState("");
+  const [preparingInsurer, setPreparingInsurer] = useState<"blue-cross" | "desjardins">("blue-cross");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [lastSuccess, setLastSuccess] = useState("");
@@ -421,7 +422,7 @@ export default function ReimbursementsView({ hub }: Props) {
   ];
 
   return <div className="view-stack reimbursement-app-view">
-    {preparingExpense && <PrepareClaim expenseId={preparingExpense} config={hub.worker} onClose={() => setPreparingExpense("")} />}
+    {preparingExpense && <PrepareClaim expenseId={preparingExpense} initialInsurer={preparingInsurer} config={hub.worker} onClose={() => setPreparingExpense("")} />}
     <PageHeader title="Claims" subtitle={paired ? lastSuccess ? `Updated ${new Date(lastSuccess).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : "Saved results" : "Saved on this device"}>
       <button type="button" className="button secondary" onClick={() => setSourcesOpen(true)} aria-haspopup="dialog">Sources{blueCrossStatus?.state === "error" || desjardinsStatus?.state === "error" || blueCrossStatus?.state === "login-required" || desjardinsStatus?.state === "login-required" ? " · !" : ""}</button>
       <button type="button" className="icon-button" aria-label="Refresh reimbursements" disabled={!paired || busy || pending.length > 0 || bulkIgnoring} onClick={() => void refresh()}><RefreshCw size={18} className={busy ? "spin" : ""} /></button>
@@ -604,7 +605,7 @@ export default function ReimbursementsView({ hub }: Props) {
           unmatchedSourceIds={new Set((hub.reimbursements.UnmatchedReimbursements || []).map(source => source.DocumentId))}
           reviewExplanation={reviews.get(`case:${item.DocumentIds[0]}`)?.explanation}
           changeWorkflow={changeWorkflow} decideMatch={decideMatch} matchUnmatched={matchUnmatched}
-          changeUnmatchedIgnored={changeUnmatchedIgnored} openInvoicePdf={openInvoicePdf} prepareClaim={workerVersionAtLeast(workerVersion, "2.12.0") ? setPreparingExpense : undefined} />)}
+          changeUnmatchedIgnored={changeUnmatchedIgnored} openInvoicePdf={openInvoicePdf} prepareClaim={workerVersionAtLeast(workerVersion, "2.12.0") ? (expenseId, insurer = "blue-cross") => { setPreparingInsurer(insurer); setPreparingExpense(expenseId); } : undefined} />)}
       </div>
     </section>
 

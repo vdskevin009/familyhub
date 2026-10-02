@@ -197,3 +197,12 @@ test("missing service date still shows nearby insurer records using a labeled do
   assert.match(html, /class="mini-button primary">Link this reimbursement/);
   assert.doesNotMatch(html, /Choose a search date to compare/);
 });
+
+test("eligible claim card names the known next insurer and preserves the preparation gate", () => {
+ const item = { ...fixture.state.Reconciliations[0], WorkflowStatus: "open", NextInsurer: "Desjardins", InferredFromInsurer: false };
+ const html = card(item, { prepareClaim() {} });
+ assert.match(html, /Prepare Desjardins claim/);
+ assert.doesNotMatch(html, /Prepare Blue Cross claim/);
+ assert.match(card(item, { prepareClaim() {}, paired: false }), /disabled=""[^>]*>Prepare Desjardins claim/);
+ assert.doesNotMatch(card({ ...item, InferredFromInsurer: true }, { prepareClaim() {} }), /Prepare Desjardins claim/);
+});

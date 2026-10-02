@@ -56,15 +56,15 @@ export async function openClaimBrowser(dossier: ClaimPreparation, historyReviewe
   } catch (error) { await browser.close(); throw error; }
 }
 
-function fieldKind(label: string): string | null {
-  const name = label.toLowerCase().replace(/[\s:*]+/g, " ").trim();
-  if (/^(?:patient|claimant|covered person|personne assurée|bénéficiaire|personne concernée)$/.test(name)) return "patient";
+export function fieldKind(label: string): string | null {
+  const name = label.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[\s:*]+/g, " ").trim();
+  if (/^(?:patient|claimant|covered person|personne assuree|beneficiaire|personne concernee)$/.test(name)) return "patient";
   if (/^(?:service date|date of service|date du service|date des soins|date du traitement)$/.test(name)) return "serviceDate";
-  if (/^(?:service|benefit|service type|type of service|type de service|catégorie de soins|type de soins)$/.test(name)) return "service";
-  if (/^(?:amount|amount claimed|amount charged|cost|submitted amount|montant réclamé|montant des frais|coût)$/.test(name)) return "originalAmount";
-  if (/^(?:provider|provider name|clinic|nom du fournisseur|professionnel de la santé)$/.test(name)) return "provider";
+  if (/^(?:service|benefit|service type|type of service|type de service|categorie de soins|type de soins)$/.test(name)) return "service";
+  if (/^(?:amount|amount claimed|amount charged|cost|submitted amount|montant reclame|montant des frais|cout)$/.test(name)) return "originalAmount";
+  if (/^(?:provider|provider name|clinic|nom du fournisseur|professionnel de la sante)$/.test(name)) return "provider";
   if (/^(?:practitioner|practitioner name|nom du professionnel)$/.test(name)) return "practitioner";
-  if (/^(?:invoice number|receipt number|numéro de facture|numéro du reçu)$/.test(name)) return "invoiceNumber";
+  if (/^(?:invoice number|receipt number|numero de facture|numero du recu)$/.test(name)) return "invoiceNumber";
   return null;
 }
 export async function inspectClaimStep(id: unknown) {
@@ -78,9 +78,9 @@ async function inspect(s: Session) {
   const candidates = s.page.context().pages().filter(p => !p.isClosed() && allowed(p.url(), s.dossier.insurer));
   if (candidates.length) s.page = candidates[candidates.length - 1];
   if (!allowed(s.page.url(), s.dossier.insurer) || await s.page.locator('input[type="password"]').isVisible().catch(() => false)) return { status: "login-required", fields: [], revision: "", submitAllowed: false };
-  const body = (await s.page.locator("body").innerText()).slice(0, 30_000);
-  const completed = /your claim has been (?:processed|submitted)|réclamation a été (?:transmise|soumise)/i.test(body);
-  const atReview = completed || /review (?:your )?claim|claim summary|I confirm all the information above is correct and I have read and agree|vérifi(?:ez|cation).*réclamation|résumé de (?:la|votre) réclamation/i.test(body);
+  const body = (await s.page.locator("body").innerText()).slice(0, 30_000).normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  const completed = /your claim has been (?:processed|submitted)|reclamation a ete (?:transmise|soumise)/i.test(body);
+  const atReview = completed || /review (?:your )?claim|claim summary|I confirm all the information above is correct and I have read and agree|verifi(?:ez|cation).*reclamation|resume de (?:la|votre) reclamation/i.test(body);
   s.fields.clear();
   s.revision = randomUUID();
   s.inspectedUrl = s.page.url();
@@ -125,7 +125,7 @@ async function inspect(s: Session) {
     }));
     // Never overwrite a value the operator already entered, except placeholder selects.
     if (metadata.type !== "select" && metadata.type !== "file" && metadata.value) continue;
-    if (metadata.type === "select" && metadata.value && !/^(?:select|please select|choose|choisir|sélectionnez)/i.test(metadata.options.find(o => o.value === metadata.value)?.label || "")) continue;
+    if (metadata.type === "select" && metadata.value && !/^(?:select|please select|choose|choisir|selectionnez)/i.test((metadata.options.find(o => o.value === metadata.value)?.label || "").normalize("NFD").replace(/[\u0300-\u036f]/g, ""))) continue;
     if (atReview && metadata.type !== "file") continue;
     if ([...s.fields.values()].some(f => f.locator === locator)) continue;
     const id = await locator.getAttribute("id") || "";
@@ -164,7 +164,7 @@ export async function fillClaimStep(id: unknown, revision: unknown, values: unkn
     let filled = 0;
     // Fill stable text first; each dropdown can replace the form via postback.
     // Stop after one dropdown selection instead of touching stale controls.
-    const order = (key: string) => s.fields.get(key)!.field.type === "combo" ? 2 : s.fields.get(key)!.field.type === "provider" ? 1 : 0;
+    const order = (key: string) => ["combo", "select"].includes(s.fields.get(key)!.field.type) ? 2 : s.fields.get(key)!.field.type === "provider" ? 1 : 0;
     const ordered = entries.slice().sort(([a], [b]) => order(a) - order(b));
     for (const [key, value] of ordered) {
       if (!value) continue;
@@ -190,7 +190,10 @@ export async function fillClaimStep(id: unknown, revision: unknown, values: unkn
         if (await option.count() !== 1 || !await option.isVisible()) throw new Error("The portal options changed. Read the form again.");
         await option.click(); filled++;
         return { status: "filled", filled, message: "The selected option updates the Blue Cross form. Read its fields again to prepare the remaining details.", submitAllowed: false };
-      } else if (target.field.type === "select") await target.locator.selectOption(value as string);
+      } else if (target.field.type === "select") {
+        await target.locator.selectOption(value as string); filled++;
+        return { status: "filled", filled, message: "The selected option may update the insurer form. Read its fields again before filling more details or attaching a receipt.", submitAllowed: false };
+      }
       else { await target.locator.fill(value as string); if (target.field.kind === "serviceDate") await target.locator.press("Tab"); }
       filled++;
     }
@@ -201,7 +204,7 @@ export async function fillClaimStep(id: unknown, revision: unknown, values: unkn
       if (!selected || targets.length !== 1) throw new Error("Select the correct supporting-document field in the portal.");
       const file = await loadAttachment(selected.documentId, selected.attachmentId);
       const hash = createHash("sha256").update(file.bytes).digest("hex");
-      if (s.attemptedAttachments.has(hash)) throw new Error("This PDF upload was already attempted. Check its status in Blue Cross; FamilyHub will not repeat an uncertain permanent upload.");
+      if (s.attemptedAttachments.has(hash)) throw new Error("This PDF upload was already attempted. Check its status in the insurer portal; FamilyHub will not repeat an uncertain permanent upload.");
       const target = targets[0];
       const current = await target.locator.evaluate((el: HTMLInputElement) => ({ value: el.value,
         signature: JSON.stringify([el.tagName, el.id, el.getAttribute("name"), el.getAttribute("type"), Array.from(el.labels || []).map(l => l.textContent?.trim()), el.getAttribute("aria-label")]) }));
@@ -212,7 +215,7 @@ export async function fillClaimStep(id: unknown, revision: unknown, values: unkn
       await targets[0].locator.setInputFiles({ name: file.name, mimeType: "application/pdf", buffer: file.bytes });
       filled++;
     }
-    return { status: "filled", filled, message: attachment != null ? "The PDF was placed in the portal's upload field. Verify the successful-upload indicator in Blue Cross before consent or submission." : "Review these fields in the insurer window, then choose Next yourself. FamilyHub never clicks Next or Submit.", submitAllowed: false };
+    return { status: "filled", filled, message: attachment != null ? "The PDF was placed in the portal's upload field. Verify the successful-upload indicator in the insurer portal before consent or submission." : "Review these fields in the insurer window, then choose Next yourself. FamilyHub never clicks Next or Submit.", submitAllowed: false };
   } finally { s.fields.clear(); s.revision = ""; s.busy = false; }
 }
 export function claimSessionExpense(id: unknown) { return current(id).dossier; }

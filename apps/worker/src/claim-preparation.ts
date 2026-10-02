@@ -83,3 +83,9 @@ export function exactServiceOption(service: string | null, options: { value: str
   const exact = options.filter(o => o.value && clean(o.label) === value);
   return exact.length === 1 ? exact[0].value : null;
 }
+
+export function requireClaimUploadConfirmation(insurer: Insurer, attachment: unknown, confirmed: unknown) {
+  if (attachment != null && confirmed !== true) throw new Error(insurer === "blue-cross"
+    ? "Confirm uploading this original PDF to the permanent Blue Cross claims record."
+    : "Confirm sending this selected original PDF to Desjardins for this claim. Review its document-retention notice in the portal before uploading.");
+}
