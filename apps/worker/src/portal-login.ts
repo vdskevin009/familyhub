@@ -83,7 +83,7 @@ export async function submitPortalLogin(page: Page, insurer: Insurer, credential
     await page.locator('input[name="spouse"][value="' + (credentials.role === "spouse" ? "1" : "0") + '"]').check({ timeout: 5000 });
   }
   guard();
-  const submit = insurer === "bluecross" ? page.getByRole("button", { name: "LOGIN", exact: true }) : page.locator("#submitButton[type=submit]");
+  const submit = insurer === "bluecross" ? page.getByRole("button", { name: /^Login$/i }) : page.locator("#submitButton[type=submit]");
   await submit.click({ timeout: 10_000 });
 }
 

@@ -87,6 +87,22 @@ test('observed forms fill only approved fields and submit once for each insurer'
     if(insurer==='bluecross')assert.deepEqual(calls.find(x=>x[0]==='check'),['check','input[name="spouse"][value="1"]']);
   }
 });
+test('Blue Cross matches the observed Login button without matching other actions', async () => {
+  let submissions=0;
+  const page={url:()=> 'https://service.pac.bluecross.ca/member/login/',
+    locator:selector=>({count:async()=>1,isVisible:async()=>true,isEditable:async()=>true,
+      getAttribute:async()=>selector==='#password'?'password':'text',fill:async()=>{},check:async()=>{}}),
+    getByRole:(role,options)=>({click:async()=>{
+      assert.equal(role,'button');
+      const matches=label=>options.name instanceof RegExp ? options.name.test(label) : options.name===label;
+      assert.equal(matches('Login'),true,'The current portal Login button must be found');
+      assert.equal(matches('Login help'),false,'Other login-related actions must not match');
+      submissions++;
+    }})};
+  await auth.submitPortalLogin(page,'bluecross',{version:1,insurer:'bluecross',password:'synthetic',policy:'synthetic-policy',certificate:'synthetic-id',role:'member'});
+  assert.equal(submissions,1);
+});
+
 test('navigation away between fills prevents transmitting a password to another origin', async () => {
   let url='https://id.desjardins.com/login';const fills=[];
   const page={url:()=>url,locator:selector=>({count:async()=>1,isVisible:async()=>true,isEditable:async()=>true,getAttribute:async()=>/Password/.test(selector)?'password':'text',fill:async value=>{fills.push(value);url='https://unexpected.test/login';}})};
