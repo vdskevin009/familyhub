@@ -173,3 +173,5 @@ Pages source must be **GitHub Actions** in repository Settings → Pages.
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for boundaries and data flows.
 
 Optional automatic insurer sign-in is configured locally using [secure insurer login](docs/INSURER-LOGIN.md). It does not enable a schedule or automatically apply financial changes.
+
+Daily insurer previews (FH-REIMB-041): on Windows, run `scripts/Install-InsurerPreviews.ps1 -DataDirectory <existing-private-directory> -NodePath <node.exe> -At 04:00`. This opt-in task runs Blue Cross then Desjardins through the existing worker with no financial apply. It leaves the Gmail schedule unchanged. Keep the worker running and this Windows user signed in (a locked session is sufficient); wake requires Windows wake timers, and missed runs start when available. Human verification must be completed manually in Sources & sync. Sanitized runner results are stored in `insurer-automation-status.json` in private storage; Task Scheduler reports failure for attention or an unavailable worker. The runner never retries an uncertain collection request.
