@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { automaticReplacement, hasManualAuthority } from "./ingestion-policy.js";
 import { toInvoice, type Invoice, type Mail } from "./invoice-model.js";
 
 export type DesjardinsRow = {
@@ -62,8 +63,8 @@ export function desjardinsInvoices(collection: DesjardinsCollection): Invoice[] 
 /** Legacy report rows are evidence, not records to overwrite with portal metadata. */
 export function planDesjardinsUpsert(existing: Invoice[], collection: DesjardinsCollection) {
   const imported = desjardinsInvoices(collection);
-  const previous = existing.filter(item => item.Insurer === "desjardins" && item.DocumentRole === "insurer-statement");
-  const byId = new Map(previous.map(item => [item.Id, item]));
+  const previous = existing.filter(item => item.StructuredSource === "desjardins-portal" || item.Insurer === "desjardins" && item.DocumentRole === "insurer-statement");
+  const byId = new Map(existing.map(item => [item.Id, item]));
   const incomingIds = new Set(imported.map(item => item.Id));
   const seen = new Set<string>();
   const usedLegacyIds = new Set<string>();
@@ -80,6 +81,7 @@ export function planDesjardinsUpsert(existing: Invoice[], collection: Desjardins
   for (const item of imported) {
     if (seen.has(item.Id)) { duplicates++; ambiguous++; continue; }
     seen.add(item.Id);
+    if (existing.filter(old => old.Id === item.Id).length > 1) { ambiguous++; continue; }
     if (item.Member === "unknown" || item.ServiceDate == null || item.ReimbursedAmount == null) {
       ambiguous++; continue;
     }
@@ -93,14 +95,11 @@ export function planDesjardinsUpsert(existing: Invoice[], collection: Desjardins
         && sameId.StatementDate === item.StatementDate && serviceKey(previousService(sameId)) === serviceKey(item.ClaimedService ?? "")) {
         unchanged++; continue;
       }
-      if (sameId.CorrectedAt || sameId.IgnoredAt || serviceKey(previousService(sameId)) !== serviceKey(item.ClaimedService ?? "")
+      if (hasManualAuthority(sameId) || serviceKey(previousService(sameId)) !== serviceKey(item.ClaimedService ?? "")
         || sameId.PortalClaimStatus !== "pended" && item.PortalClaimStatus === "pended") {
         ambiguous++; continue;
       }
-      planned.push({ ...item, Status: sameId.Status, NeedsReview: sameId.LastDecisionId ? sameId.NeedsReview : item.NeedsReview,
-        LastDecisionId: sameId.LastDecisionId,
-        IgnoredAt: sameId.IgnoredAt, AccountEmail: sameId.AccountEmail, SourceMessageId: sameId.SourceMessageId,
-        ThreadId: sameId.ThreadId, InternetMessageId: sameId.InternetMessageId });
+      planned.push(automaticReplacement(sameId, item));
       changed++; continue;
     }
     const exact = previous.filter(old => claimKey(old.Member, old.ServiceDate, previousService(old),

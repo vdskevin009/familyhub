@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { hasManualAuthority } from "./ingestion-policy.js";
 import type { Correction, Invoice } from "./invoice-model.js";
 import { healthcareEvidence, memberName, type EvidenceState } from "./healthcare-evidence.js";
 
@@ -24,6 +25,7 @@ export type ReconciliationCase = {
   Action: "review-amount" | "submit-primary" | "submit-secondary" | "verify-balance" | "complete";
   Status: "fully-reimbursed" | "waiting-primary" | "waiting-secondary" | "patient-balance" | "needs-attention";
   Summary: string;
+  ReconciliationReasons?: string[];
   Confidence: number;
   DocumentIds: string[];
   UnallocatedReimbursedAmount?: number;
@@ -67,6 +69,8 @@ export type MatchDecision = {
 export type UnmatchedReimbursement = {
   DocumentId: string;
   Reason: "ambiguous-match" | "missing-insurer" | "needs-review" | "no-expense-match";
+  DetailReason?: string;
+  Explanation?: string;
 };
 
 export type ReconciliationSnapshot = {
@@ -146,9 +150,22 @@ function canonicalExpenses(expenses: Invoice[], statements: Invoice[] = [], reje
   const result: CanonicalExpense[] = [];
   for (const item of expenses) {
     const h = healthcareEvidence(item);
+    // An explicit whole-record override may outlive all older extraction provenance.
+    if (item.ManualOverride && !item.ManualOverride.Derived && item.BilledAmount != null
+      && !/manual|user/i.test(h.FieldSources?.OriginalBilledAmount ?? "")) {
+      h.OriginalBilledAmount = item.BilledAmount;
+      h.FieldSources = { ...h.FieldSources, OriginalBilledAmount: "manual" };
+      h.FieldStates = { ...h.FieldStates, OriginalBilledAmount: "confirmed" };
+    }
     const provider = h.Provider || (item.AccountLabel === "Local Desjardins import" || isPatientName(item.Provider) ? "" : item.Provider);
     const key = `${item.Member}|${h.ServiceDate || item.ServiceDate || "unknown"}|${service(item) || serviceKey(h.ServiceType || "") || "unknown"}`;
     const candidates = result.filter(candidate => {
+      if (item.ManualOverride?.WorkflowStatus && candidate.ManualOverride?.WorkflowStatus
+        && item.ManualOverride.WorkflowStatus !== candidate.ManualOverride.WorkflowStatus) return false;
+      if (item.ManualOverride?.Reasons.includes("match-decision") && candidate.ManualOverride?.Reasons.includes("match-decision")) return false;
+      // Canonicalization must not replace corrected amounts, allocations or a manual target.
+      if (hasManualAuthority(item) && hasManualAuthority(candidate)
+        && JSON.stringify([item.BilledAmount, item.Healthcare?.InsurerPayments]) !== JSON.stringify([candidate.BilledAmount, candidate.Healthcare?.InsurerPayments])) return false;
       const c = healthcareEvidence(candidate);
       const ckey = `${candidate.Member}|${c.ServiceDate || candidate.ServiceDate || "unknown"}|${service(candidate) || serviceKey(c.ServiceType || "") || "unknown"}`;
       const providerMatch = providerKey(candidate.Provider) === providerKey(provider) && providerKey(provider).length > 2;
@@ -196,6 +213,12 @@ function canonicalExpenses(expenses: Invoice[], statements: Invoice[] = [], reje
     // Ties remain separate evidence, never a first-row-wins duplicate decision.
     const existing = candidates.length === 1 ? candidates[0] : undefined;
     if (!existing) { result.push({ ...item, Provider: provider, ServiceDate: h.ServiceDate || item.ServiceDate, Healthcare: h, RelatedDocumentIds: [item.Id] }); continue; }
+    if (hasManualAuthority(existing) || hasManualAuthority(item)) {
+      const related = [...existing.RelatedDocumentIds, item.Id];
+      if (!hasManualAuthority(existing) || item.ManualOverride?.Reasons.includes("match-decision")) Object.assign(existing, { ...item, Provider: provider, ServiceDate: h.ServiceDate || item.ServiceDate, Healthcare: h });
+      existing.RelatedDocumentIds = related;
+      continue;
+    }
     existing.RelatedDocumentIds.push(item.Id);
     const eh = healthcareEvidence(existing);
     const preferredEvidence = existing.AccountLabel === "Local Desjardins import" ? h : eh;
@@ -369,7 +392,11 @@ function matchEvidence(expense: Invoice, statement: Invoice): string[] {
 const pairKey = (reimbursementId: string, expenseId: string) => `${reimbursementId}::${expenseId}`;
 
 export function buildReconciliationSnapshot(items: Invoice[], matchDecisions: MatchDecision[] = []): ReconciliationSnapshot {
-  const health = items.filter(item => item.Category === 0 && item.Status !== 4);
+  const compareId = (a: Invoice, b: Invoice) => a.Id < b.Id ? -1 : a.Id > b.Id ? 1 : 0;
+  const manualTargets = new Set(matchDecisions.flatMap(decision => [decision.expenseId, decision.reimbursementId]));
+  const health = items.filter(item => item.Category === 0 && item.Status !== 4).map(item => manualTargets.has(item.Id)
+    ? { ...item, ManualOverride: { ...item.ManualOverride, Version: 1 as const, Reasons: [...new Set([...(item.ManualOverride?.Reasons ?? []), "match-decision"])] } }
+    : item).sort(compareId);
   const rawExpenses = health.filter(item => item.DocumentRole === "expense"
     || ((!item.DocumentRole || item.DocumentRole === "other") && ["receipt", "invoice", "bill"].includes(item.DocumentType)));
   const statements = health.filter(item => (item.DocumentRole === "insurer-statement" || item.DocumentType === "claim")
@@ -378,13 +405,25 @@ export function buildReconciliationSnapshot(items: Invoice[], matchDecisions: Ma
   const assignmentMeta = new Map<string, MatchAssignment>();
   const unmatchedReasons = new Map<string, UnmatchedReimbursement["Reason"]>();
   const latestByPair = new Map<string, MatchDecision>();
-  for (const decision of matchDecisions) latestByPair.set(pairKey(decision.reimbursementId, decision.expenseId), decision);
+  for (const decision of matchDecisions) {
+    const key = pairKey(decision.reimbursementId, decision.expenseId);
+    if (!latestByPair.has(key) || latestByPair.get(key)!.at <= decision.at) latestByPair.set(key, decision);
+  }
   const rejectedMatches = [...latestByPair.values()].filter(decision => decision.decision === "rejected")
     .map(decision => ({ ReimbursementDocumentId: decision.reimbursementId, ExpenseDocumentId: decision.expenseId }));
   const rejectedPairs = new Set(rejectedMatches.map(item => pairKey(item.ReimbursementDocumentId, item.ExpenseDocumentId)));
   const expenses = canonicalExpenses(rawExpenses, statements, rejectedPairs);
   const confirmedByStatement = new Map<string, MatchDecision>();
-  for (const decision of matchDecisions) if (decision.decision === "confirmed") confirmedByStatement.set(decision.reimbursementId, decision);
+  for (const decision of latestByPair.values()) if (decision.decision === "confirmed") {
+    const previous = confirmedByStatement.get(decision.reimbursementId);
+    if (!previous || previous.at < decision.at) confirmedByStatement.set(decision.reimbursementId, decision);
+  }
+  const plausiblePayment = (item: Invoice) => !(item.NeedsReview && item.ReimbursedAmount === 0);
+  const possibleDuplicates = new Set(statements.filter(statement => statement.Insurer && plausiblePayment(statement) && statements.some(other =>
+    plausiblePayment(other) &&
+    other.Id !== statement.Id && other.Insurer === statement.Insurer && other.Member === statement.Member
+    && other.ServiceDate === statement.ServiceDate && service(other) === service(statement)
+    && sameMoney(submitted(other), submitted(statement)))).map(item => item.Id));
 
   // Manual confirmation is authoritative for the association while source records still exist.
   for (const [statementId, decision] of confirmedByStatement) {
@@ -434,6 +473,9 @@ export function buildReconciliationSnapshot(items: Invoice[], matchDecisions: Ma
   // amount required to match a secondary row. Two passes make source order irrelevant.
   for (let pass = 0; pass < 2; pass++) for (const statement of statements) {
     if ([...assignments.values()].some(rows => rows.some(item => item.Id === statement.Id))) continue;
+    // A missing/ignored manual target is a review problem, never permission to retarget.
+    if (confirmedByStatement.has(statement.Id)) { unmatchedReasons.set(statement.Id, "needs-review"); continue; }
+    if (possibleDuplicates.has(statement.Id)) { unmatchedReasons.set(statement.Id, "ambiguous-match"); continue; }
     unmatchedReasons.delete(statement.Id);
     if (!statement.Insurer) { unmatchedReasons.set(statement.Id, "missing-insurer"); continue; }
     const ranked = expenses.filter(expense => ![expense.Id, ...expense.RelatedDocumentIds]
@@ -453,6 +495,9 @@ export function buildReconciliationSnapshot(items: Invoice[], matchDecisions: Ma
     }
     if (!best || best.score < 8) { unmatchedReasons.set(statement.Id, statement.NeedsReview ? "needs-review" : "no-expense-match"); continue; }
     if (runnerUp && runnerUp.score >= best.score - 1) { unmatchedReasons.set(statement.Id, "ambiguous-match"); continue; }
+    if ((assignments.get(best.expense.Id) ?? []).some(item => item.Insurer === statement.Insurer)) {
+      unmatchedReasons.set(statement.Id, "ambiguous-match"); continue;
+    }
     assignments.set(best.expense.Id, [...(assignments.get(best.expense.Id) ?? []), statement]);
     const confidence = matchConfidence(best.score, best.expense, statement);
     assignmentMeta.set(statement.Id, {
@@ -470,7 +515,27 @@ export function buildReconciliationSnapshot(items: Invoice[], matchDecisions: Ma
   const assignedStatementIds = new Set([...assignments.values()].flat().map(item => item.Id));
   const unmatched: UnmatchedReimbursement[] = statements
     .filter(statement => !assignedStatementIds.has(statement.Id))
-    .map(statement => ({ DocumentId: statement.Id, Reason: unmatchedReasons.get(statement.Id) ?? "no-expense-match" }));
+    .map(statement => {
+      const Reason = unmatchedReasons.get(statement.Id) ?? "no-expense-match";
+      const related = expenses.filter(expense => expense.Member === statement.Member);
+      const sameDate = related.filter(expense => expense.ServiceDate === statement.ServiceDate);
+      const explicitSubmitted = healthcareEvidence(statement).SubmittedAmount
+        ?? (statement.StructuredSource || statement.AccountLabel === "Local Desjardins import" ? statement.BilledAmount : null);
+      const DetailReason = confirmedByStatement.has(statement.Id) ? "manual-target-unavailable"
+        : !statement.Insurer ? "missing-insurer-information"
+        : statement.Member === "unknown" ? "beneficiary-uncertain"
+        : !statement.ServiceDate ? "source-data-incomplete"
+        : possibleDuplicates.has(statement.Id) ? "possible-duplicate"
+        : Reason === "ambiguous-match" ? (sameDate.some(expense => (assignments.get(expense.Id) ?? []).some(item => item.Insurer === statement.Insurer)) ? "possible-duplicate" : "several-plausible-matches")
+        : sameDate.length && sameDate.every(expense => [expense.Id, ...expense.RelatedDocumentIds].some(id => rejectedPairs.has(pairKey(statement.Id, id)))) ? "manual-match-rejected"
+        : sameDate.length && service(statement) && sameDate.every(expense => service(expense) && service(expense) !== service(statement)) ? "service-mismatch"
+        : sameDate.length && sameDate.every(expense => statement.Currency && expense.Currency && expense.Currency !== statement.Currency) ? "currency-mismatch"
+        : sameDate.length && sameDate.every(expense => explicitSubmitted != null && !sameMoney(healthcareEvidence(expense).OriginalBilledAmount ?? expense.BilledAmount, explicitSubmitted)) ? "amount-mismatch"
+        : related.length && !sameDate.length ? "date-mismatch"
+        : statement.NeedsReview || statement.ReimbursedAmount == null ? "source-data-incomplete"
+        : "reimbursement-without-invoice";
+      return { DocumentId: statement.Id, Reason, DetailReason, Explanation: DetailReason.replace(/-/g, " ") + ". Review source evidence before linking." };
+    });
 
   const cases = expenses.map(expense => {
     const matched = assignments.get(expense.Id) ?? [];
@@ -482,7 +547,9 @@ export function buildReconciliationSnapshot(items: Invoice[], matchDecisions: Ma
     const coordinated = matched.filter(item => (item.StructuredSource || item.AccountLabel === "Local Desjardins import") && submitted(item) != null && item.ReimbursedAmount != null
       && (sameMoney(original, submitted(item)! - item.ReimbursedAmount)
         || sameMoney(residual, submitted(item)! - item.ReimbursedAmount)));
-    if (coordinated.length === 1) original = submitted(coordinated[0]);
+    const manualFinancialEvidence = Boolean(expense.CorrectedAt || expense.ClassificationSource === "manual" || expense.ManualOverride && !expense.ManualOverride.Derived
+      || Object.entries(expense.Healthcare?.FieldSources || {}).some(([field, source]) => /amount|balance|payment/i.test(field) && /manual|user/i.test(source)));
+    if (coordinated.length === 1 && !manualFinancialEvidence) original = submitted(coordinated[0]);
     const member = expense.Member || "unknown";
     const order = insurerOrder(member);
     const knownPayment = (insurer: string | undefined): number | null => {
@@ -491,6 +558,7 @@ export function buildReconciliationSnapshot(items: Invoice[], matchDecisions: Ma
         ? rows.reduce((sum, item) => sum + item.ReimbursedAmount!, 0) : null;
     };
     const insurerKnown = (insurer: "desjardins" | "blue-cross"): number | null => {
+      if (manualFinancialEvidence && evidence.InsurerPayments?.[insurer] != null) return evidence.InsurerPayments[insurer]!;
       const matchedAmount = knownPayment(insurer);
       return matched.some(item => item.Insurer === insurer) ? matchedAmount : evidence.InsurerPayments?.[insurer] ?? null;
     };
@@ -578,6 +646,15 @@ export function buildReconciliationSnapshot(items: Invoice[], matchDecisions: Ma
       PotentialRemaining: remaining,
       Currency: expense.Currency || "CAD", NextInsurer: next, Action: action, Summary: summary,
       Status: status,
+      ReconciliationReasons: [
+        ...(matched.length === 0 ? ["invoice-without-reimbursement"] : []),
+        ...(member === "unknown" ? ["beneficiary-uncertain"] : []),
+        ...(!expense.ServiceDate || remaining == null ? ["source-data-incomplete"] : []),
+        ...(!order.length && member !== "unknown" ? ["missing-primary-secondary-information"] : []),
+        ...(original != null && reimbursed > original + .005 ? ["amount-mismatch", "possible-duplicate"] : []),
+        ...unmatched.filter(result => statements.some(item => item.Id === result.DocumentId && item.Member === member && item.ServiceDate === expense.ServiceDate)).map(result => result.DetailReason!),
+        ...(matched.some(item => item.Insurer && hasManualAuthority(expense) && evidence.InsurerPayments?.[item.Insurer] != null && !sameMoney(evidence.InsurerPayments[item.Insurer], item.ReimbursedAmount)) ? ["manual-allocation-source-conflict"] : [])
+      ],
       Confidence: matched.length ? Math.min(expense.Confidence, ...matched.map(item => item.Confidence)) : expense.Confidence,
       DocumentIds: [...expense.RelatedDocumentIds, ...matched.map(item => item.Id)], Evidence: evidenceMap,
       Explanation: `Case ${expense.Id} uses ${[expense.Id, ...matched.map(item => item.Id)].length} linked evidence records. ${summary}`,

@@ -31,8 +31,8 @@ assert.equal((await read()).items[0].Status, 0);
 await correctInvoice(recordId('test@example.test', 'one'), 'marketing');
 fail = false; calls = [];
 await collectInvoices(deps);
-assert.equal(calls.filter(x => x.includes('/one?')).length, 1); // One bounded refetch upgrades the legacy record.
-saved = await read(); assert.equal(saved.items.length, 2); assert.equal(saved.items[0].Status, 4); assert.equal(saved.items[0].DocumentRole, 'expense'); assert.ok(saved.lastSuccess);
+assert.equal(calls.filter(x => x.includes('/one?')).length, 0); // A protected legacy record is never reclassified to enrich missing fields.
+saved = await read(); assert.equal(saved.items.length, 2); assert.equal(saved.items[0].Status, 4); assert.equal(saved.items[0].DocumentRole, undefined); assert.ok(saved.lastSuccess);
 await updateInvoiceStatus(recordId('test@example.test', 'two'), 2);
 await collectInvoices(deps);
 saved = await read(); assert.equal(saved.items[1].Status, 2);

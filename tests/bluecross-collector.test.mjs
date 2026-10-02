@@ -153,11 +153,11 @@ test('preview is non-destructive, apply preserves decisions and recomputes recon
   assert.equal(repeated.items.length, saved.items.length);
   const changed = collection([row('Physiotherapy Treatment', 70)]);
   const changedCollector = async () => ({ status: 'success', collection: changed, snapshotPath: 'test' });
-  assert.equal((await syncBlueCrossPortal(true, false, changedCollector)).changed, 1);
+  await assert.rejects(syncBlueCrossPortal(true, false, changedCollector), /incomplete or ambiguous/);
   const changedState = JSON.parse(await readFile(join(directory, 'invoices.json'), 'utf8'));
-  assert.equal(changedState.items.find(item => item.Id === initial.Id).ReimbursedAmount, 70);
+  assert.equal(changedState.items.find(item => item.Id === initial.Id).ReimbursedAmount, 80);
   assert.deepEqual(changedState.matchDecisions, seed.matchDecisions);
-  assert.equal((await syncBlueCrossPortal(true, false, changedCollector)).unchanged, 1);
+  await assert.rejects(syncBlueCrossPortal(true, false, changedCollector), /incomplete or ambiguous/);
   assert.equal(JSON.parse(await readFile(join(directory, 'invoices.json'), 'utf8')).items.length, saved.items.length);
 });
 test('snapshots are immutable audit inputs with minimal source facts', async () => {

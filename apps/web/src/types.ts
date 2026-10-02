@@ -112,6 +112,7 @@ export type ReimbursementItem = {
   AttentionLevel?: "critical" | "action" | "important" | "none";
   AttentionReason?: string;
   LastDecisionId?: string;
+  ManualOverride?: { Version: 1; Reasons: string[] };
   CorrectedAt?: string;
   IgnoredAt?: string;
   UpdatedAt?: string;
@@ -161,6 +162,7 @@ export type ReimbursementWorkflowHistoryEntry = {
 };
 
 export type ReconciliationCase = {
+  ReconciliationReasons?: string[];
   ServiceType?: string | null;
   Id: string;
   ExpenseDocumentId?: string;
@@ -191,6 +193,8 @@ export type ReconciliationCase = {
 };
 
 export type UnmatchedReimbursement = {
+  DetailReason?: string;
+  Explanation?: string;
   DocumentId: string;
   Reason: "ambiguous-match" | "missing-insurer" | "needs-review" | "no-expense-match" | "manual-source-ignore";
   IgnoredAt?: string;

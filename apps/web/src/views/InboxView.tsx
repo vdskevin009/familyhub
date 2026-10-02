@@ -97,7 +97,8 @@ export default function InboxView({ hub }: Props) {
   }
 
   async function changeStatus(item: ReimbursementItem, status: ReimbursementStatus) {
-    if (!item.WorkerManaged) { updateItem(item.Id, { Status: status, NeedsReview: status === ReimbursementStatus.ToReview }); return; }
+    if (!item.WorkerManaged) { updateItem(item.Id, { Status: status, NeedsReview: status === ReimbursementStatus.ToReview,
+      ManualOverride: { Version: 1, Reasons: [...new Set([...(item.ManualOverride?.Reasons ?? []), "browser-status"])] } }); return; }
     setBusy(item.Id); setError("");
     try { const result = await saveInvoiceStatus(hub.worker, item.Id, status); updateItem(item.Id, result); setLastDecision(result.LastDecisionId || ""); setMessage("Statut enregistré dans l'historique."); }
     catch (err) { setError(err instanceof Error ? err.message : "Status could not be saved on the PC."); }

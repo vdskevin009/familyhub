@@ -30,6 +30,9 @@ export type Mail = {
   blueCrossExport?: import("./bluecross.js").BlueCrossExport;
 };
 export type Invoice = {
+  ManualOverride?: import("./ingestion-policy.js").ManualOverride;
+  SourceIdentity?: { Source: string; ExternalId: string; RecordId: string; Account: string; OriginalReference: string; Strength: "external-id" | "source-facts" | "message-id" };
+  IngestedAt?: string;
   Healthcare?: HealthcareEvidence;
   AnalysisVersion: number;
   Id: string; AccountLabel: string; AccountEmail: string; SourceMessageId: string;

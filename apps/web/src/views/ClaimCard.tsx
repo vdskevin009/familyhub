@@ -17,6 +17,7 @@ export function money(value: number | null | undefined, code = "CAD"): string {
 }
 function reimbursementAmount(item: ReimbursementItem) { return item.ReimbursedAmount ?? item.DetectedAmount ?? null; }
 function unmatchedReason(item: UnmatchedReimbursement): string {
+  if (item.Explanation) return item.Explanation;
   if (item.Reason === "ambiguous-match") return "Several expenses could match. Review before linking.";
   if (item.Reason === "missing-insurer") return "Insurer to confirm.";
   if (item.Reason === "needs-review") return "Source classification needs review.";
@@ -117,6 +118,7 @@ export default function ClaimCard({ item, invoiceById, unmatched, paired, manual
         <div className="detail-workflow"><span className={`workflow-status ${workflow}`}>{workflow}</span><span>{item.WorkflowOrigin === "manual" ? "Manual choice" : "Automatic workflow"}{item.WorkflowChangedAt ? ` · ${new Date(item.WorkflowChangedAt).toLocaleString()}` : ""}</span></div>
         <div className="expense-amounts"><div><small>Expense</small><strong>{money(item.OriginalAmount, item.Currency)}</strong></div><div><small>Desjardins</small><strong>{money(namedInsurerReimbursementAmount(item, "Desjardins", invoiceById), item.Currency)}</strong></div><div><small>Blue Cross</small><strong>{money(namedInsurerReimbursementAmount(item, "Blue Cross", invoiceById), item.Currency)}</strong></div><div className="remaining"><small>Remaining</small><strong>{money(item.PotentialRemaining, item.Currency)}</strong></div></div>
         {item.OriginalInvoiceMissing && <p className="privacy-note">The original invoice has not been found. These amounts come from insurer evidence, not an inferred receipt.</p>}
+        {!!item.ReconciliationReasons?.length && <p className="privacy-note">Review: {[...new Set(item.ReconciliationReasons)].map(reason => reason.replace(/-/g, " ")).join("; ")}.</p>}
         <NearbySources claim={item} kind={reviewSource || defaultSource} onKindChange={setReviewSource}
           items={[...invoiceById.values()]} cases={allCases} ignoredIds={ignoredSourceIds}
           unmatchedIds={unmatchedSourceIds} onLink={matchUnmatched} manualActionsAvailable={manualActionsAvailable && !busy}

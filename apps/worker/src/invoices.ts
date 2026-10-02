@@ -1,4 +1,5 @@
 import type { LoginReason } from "./portal-login.js";
+import { automaticReplacement, hasManualAuthority, manualReasons, sourceIdentity } from "./ingestion-policy.js";
 import { mkdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
@@ -33,7 +34,7 @@ type AccountProgress = { through?: number; window?: Window; error?: string; last
   invoiceHistoryVersion?: number; invoiceHistoryWindow?: Window; invoiceHistoryThrough?: number; invoiceHistoryExamined?: number };
 type Decision = { id: string; itemId: string; type: "classification" | "status"; before: Partial<Invoice>; after: Partial<Invoice>; at: string; undoneAt?: string; correctionBefore?: Correction };
 type UnmatchedDecision = { reimbursementId: string; decision: "ignored"; at: string; reason: UnmatchedReimbursement["Reason"] | "manual-source-ignore" };
-type State = { items: Invoice[]; confirmedServiceDates?: ServiceDateConfirmations; corrections: Correction[]; decisions: Decision[]; matchDecisions: MatchDecision[]; unmatchedDecisions: UnmatchedDecision[]; workflowRecords: ReimbursementWorkflowRecord[]; reviews: AgentReview[]; accounts: Record<string, AccountProgress>; lastAttempt?: string; lastSuccess?: string; error?: string };
+type State = { reconciliationIssues?: { Version: 1; Cases: Array<{ ExpenseDocumentId: string; Reasons: string[] }>; Unmatched: UnmatchedReimbursement[] }; items: Invoice[]; confirmedServiceDates?: ServiceDateConfirmations; corrections: Correction[]; decisions: Decision[]; matchDecisions: MatchDecision[]; unmatchedDecisions: UnmatchedDecision[]; workflowRecords: ReimbursementWorkflowRecord[]; reviews: AgentReview[]; accounts: Record<string, AccountProgress>; lastAttempt?: string; lastSuccess?: string; error?: string };
 const statePath = join(dataDirectory, "invoices.json");
 const empty = (): State => ({ items: [], corrections: [], decisions: [], matchDecisions: [], unmatchedDecisions: [], workflowRecords: [], reviews: [], accounts: {} });
 
@@ -95,7 +96,7 @@ function portalKey(item: Invoice): string {
 export function planBlueCrossUpsert(existing: Invoice[], collection: PortalCollection) {
   const imported = blueCrossInvoices(portalMail(collection), "", "Pacific Blue Cross portal").slice(1);
   const current = existing.filter(item => item.StructuredSource === "blue-cross-portal" && item.DocumentRole === "insurer-statement");
-  const byId = new Map(current.map(item => [item.Id, item]));
+  const byId = new Map(existing.map(item => [item.Id, item]));
   const byKey = new Map<string, Invoice[]>();
   for (const item of current) byKey.set(portalKey(item), [...(byKey.get(portalKey(item)) || []), item]);
   const incomingIds = new Set(imported.map(item => item.Id));
@@ -105,15 +106,17 @@ export function planBlueCrossUpsert(existing: Invoice[], collection: PortalColle
   for (const item of imported) {
     if (inputIds.has(item.Id)) { duplicates++; ambiguous++; continue; }
     inputIds.add(item.Id);
-    const exact = byId.get(item.Id);
+    const strongMatches = item.PortalClaimId ? current.filter(old => old.PortalClaimId === item.PortalClaimId) : [];
+    if (existing.filter(old => old.Id === item.Id).length > 1 || strongMatches.length > 1) { ambiguous++; continue; }
+    const exact = byId.get(item.Id) ?? strongMatches[0];
     if (exact) {
       if (item.PortalClaimStatus === "pended" && exact.ReimbursedAmount != null) { ambiguous++; continue; }
       if (exact.ReimbursedAmount === item.ReimbursedAmount && exact.BilledAmount === item.BilledAmount
         && exact.StatementDate === item.StatementDate && exact.ClaimedService === item.ClaimedService) { unchanged++; continue; }
-      if (exact.CorrectedAt) { ambiguous++; continue; }
-      planned.push(item); changed++; continue;
+      if (hasManualAuthority(exact)) { ambiguous++; continue; }
+      planned.push(automaticReplacement(exact, item)); changed++; continue;
     }
-    const candidates = byKey.get(portalKey(item)) || [];
+    const candidates = (byKey.get(portalKey(item)) || []).filter(old => !old.PortalClaimId || !item.PortalClaimId || old.PortalClaimId === item.PortalClaimId);
     // If every old row with this business key is still present unchanged in this
     // same portal snapshot, this is a separate processing row, not an update.
     if (candidates.length && candidates.every(candidate => incomingIds.has(candidate.Id)
@@ -128,8 +131,8 @@ export function planBlueCrossUpsert(existing: Invoice[], collection: PortalColle
       if (item.PortalClaimStatus === "pended" && old.ReimbursedAmount != null) { ambiguous++; continue; }
       if (old.ReimbursedAmount === item.ReimbursedAmount && old.StatementDate === item.StatementDate
         && old.BilledAmount === item.BilledAmount) { unchanged++; continue; }
-      if (old.CorrectedAt) { ambiguous++; continue; }
-      planned.push({ ...item, Id: old.Id, Fingerprint: old.Fingerprint });
+      if (hasManualAuthority(old)) { ambiguous++; continue; }
+      planned.push(automaticReplacement(old, item));
       changed++;
     } else { planned.push(item); added++; }
   }
@@ -152,9 +155,11 @@ export async function syncBlueCrossPortal(apply = false, interactive = false, co
     if (apply && (!collection.complete || plan.ambiguous)) throw new Error("Collection is incomplete or ambiguous; existing FamilyHub data was not modified.");
     let backup: string | undefined;
     if (apply) await edit(async () => {
+      const latest = planBlueCrossUpsert(state.items, collection);
+      if (latest.ambiguous) throw new Error("Collection is incomplete or ambiguous; existing FamilyHub data was not modified.");
       backup = `invoices.pre-bluecross-portal-${Date.now()}-${randomUUID()}.json`;
       await atomicJson(join(dataDirectory, backup), state);
-      mergeBlueCross(plan.items);
+      mergeBlueCross(latest.items);
     });
     await saveBlueCrossStatus({ state: errors ? "error" : !apply && (plan.new || plan.changed || plan.ambiguous) ? "idle" : "up-to-date", lastSuccess: errors ? blueCrossStatus.lastSuccess : collection.collectedAt,
       found: plan.found, error: collection.warnings.join(" ") || undefined,
@@ -201,9 +206,11 @@ export async function syncDesjardinsPortal(apply = false, interactive = false, c
       throw new Error("Collection is incomplete or ambiguous; existing FamilyHub data was not modified.");
     let backup: string | undefined;
     if (apply && plan.items.length) await edit(async () => {
+      const latest = planDesjardinsUpsert(state.items, collection);
+      if (latest.ambiguous) throw new Error("Collection is incomplete or ambiguous; existing FamilyHub data was not modified.");
       backup = `invoices.pre-desjardins-portal-${Date.now()}-${randomUUID()}.json`;
       await atomicJson(join(dataDirectory, backup), state);
-      for (const item of plan.items) {
+      for (const item of latest.items) {
         const index = state.items.findIndex(current => current.Id === item.Id);
         if (index < 0) state.items.push(item);
         else state.items[index] = item;
@@ -243,7 +250,8 @@ function workflowExpenseId(entry: ReconciliationCase): string {
 
 function workflowRecord(entry: ReconciliationCase): ReimbursementWorkflowRecord | undefined {
   const expenseIds = new Set([workflowExpenseId(entry), ...(entry.ExpenseDocumentIds ?? [])].filter(Boolean));
-  return state.workflowRecords.find(item => expenseIds.has(item.ExpenseDocumentId));
+  return state.workflowRecords.find(item => expenseIds.has(item.ExpenseDocumentId) && item.ManualStatus)
+    ?? state.workflowRecords.find(item => expenseIds.has(item.ExpenseDocumentId));
 }
 
 function appendWorkflowHistory(record: ReimbursementWorkflowRecord, status: ReimbursementWorkflowStatus,
@@ -262,7 +270,7 @@ function syncWorkflowRecords(cases: ReconciliationCase[], at = new Date().toISOS
     const expenseId = workflowExpenseId(entry);
     if (!expenseId) continue;
     const automatic = automaticWorkflowStatus(entry);
-    let record = state.workflowRecords.find(item => item.ExpenseDocumentId === expenseId);
+    let record = workflowRecord(entry);
     if (!record) {
       const ignoredAt = entry.DocumentIds.map(id => state.items.find(item => item.Id === id)?.IgnoredAt)
         .filter((value): value is string => Boolean(value)).sort()[0];
@@ -353,8 +361,8 @@ function metadataClassification(senderValue: string, subjectValue: string, textV
 function normalizeStoredMetadata(): boolean {
   let changed = false;
   for (const item of state.items) {
+    if (hasManualAuthority(item)) continue;
     if (!item.AttentionLevel) { item.AttentionLevel = "none"; item.AttentionReason = ""; changed = true; }
-    if (item.CorrectedAt) continue;
     const storedStatementEvidence = item.ReimbursedAmount != null || item.BilledAmount != null || item.DetectedAmount != null
       || Boolean(item.ServiceDate || item.Healthcare?.ServiceDate || item.Healthcare?.StatementDate || item.Healthcare?.ClaimReference)
       || item.Healthcare?.SubmittedAmount != null || item.Healthcare?.EligibleAmount != null
@@ -383,18 +391,54 @@ function normalizeStoredMetadata(): boolean {
   return changed;
 }
 
+/** Idempotent JSON enrichment, also run after user actions so authority is explicit on every row. */
+function syncIngestionMetadata(): boolean {
+  let changed = false;
+  for (const item of state.items) {
+    const derivedReasons = new Set(["classification", "decision-history", "ignore", "legacy-status", "corrected-evidence", "match-decision", "unmatched-ignore", "workflow", "confirmed-service-date"]);
+    const explicitOverride = Boolean(item.ManualOverride && !item.ManualOverride.Derived);
+    const reasons = [...manualReasons(item), ...(item.ManualOverride?.Reasons.filter(reason => explicitOverride || !derivedReasons.has(reason)) ?? [])];
+    if (state.decisions.some(decision => decision.itemId === item.Id && !decision.undoneAt)) reasons.push("decision-history");
+    if (state.matchDecisions.some(decision => decision.expenseId === item.Id || decision.reimbursementId === item.Id)) reasons.push("match-decision");
+    if (state.unmatchedDecisions.some(decision => decision.reimbursementId === item.Id)) reasons.push("unmatched-ignore");
+    if (state.workflowRecords.some(record => record.ExpenseDocumentId === item.Id && record.ManualStatus)) reasons.push("workflow");
+    if (state.confirmedServiceDates?.[item.Id]) reasons.push("confirmed-service-date");
+    const workflowStatus = state.workflowRecords.find(record => record.ExpenseDocumentId === item.Id && record.ManualStatus)?.ManualStatus
+      ?? (explicitOverride ? item.ManualOverride?.WorkflowStatus : undefined);
+    const override = reasons.length ? { Version: 1 as const, Reasons: [...new Set(reasons)].sort(), ...(explicitOverride ? {} : { Derived: true as const }), ...(workflowStatus ? { WorkflowStatus: workflowStatus } : {}) } : undefined;
+    if (JSON.stringify(item.ManualOverride) !== JSON.stringify(override)) { item.ManualOverride = override; changed = true; }
+    if (!item.SourceIdentity) { item.SourceIdentity = sourceIdentity(item); changed = true; }
+    if (!item.IngestedAt) { item.IngestedAt = item.UpdatedAt || item.ReceivedAt; changed = true; }
+  }
+  return changed;
+}
+
+function syncReconciliationIssues(): boolean {
+  const effective = activeReconciliationItems().map(item => item.IgnoredAt ? { ...item, Status: 4 } : item);
+  const snapshot = buildReconciliationSnapshot(effective, state.matchDecisions);
+  const issues: State["reconciliationIssues"] = { Version: 1,
+    Cases: snapshot.cases.map(entry => ({ ExpenseDocumentId: entry.ExpenseDocumentId, Reasons: entry.ReconciliationReasons ?? [] })),
+    Unmatched: snapshot.unmatched };
+  if (JSON.stringify(state.reconciliationIssues) === JSON.stringify(issues)) return false;
+  state.reconciliationIssues = issues;
+  return true;
+}
+
 function edit(action: () => void | Promise<void>): Promise<void> {
   const next = mutation.then(async () => {
     const before = structuredClone(state);
     try {
       await action();
+      syncIngestionMetadata();
       // A later exact duplicate or insurer source of an ignored case inherits the choice.
       const cases = buildReconciliationSnapshot(activeReconciliationItems(), state.matchDecisions).cases;
       for (const entry of cases) {
         const ignoredAt = entry.DocumentIds.map(id => state.items.find(item => item.Id === id)?.IgnoredAt).find(Boolean);
-        if (ignoredAt) for (const item of state.items.filter(item => entry.DocumentIds.includes(item.Id))) item.IgnoredAt = ignoredAt;
+        if (ignoredAt) for (const item of state.items.filter(item => entry.DocumentIds.includes(item.Id) && !hasManualAuthority(item))) item.IgnoredAt = ignoredAt;
       }
       syncWorkflowRecords(cases);
+      syncIngestionMetadata();
+      syncReconciliationIssues();
       await atomicJson(statePath, state);
     }
     catch (error) { state = before; throw error; }
@@ -408,10 +452,16 @@ export async function initializeInvoices(readOnly = false): Promise<void> {
     state = { ...empty(), ...saved, items: saved.items || [], corrections: saved.corrections || [], decisions: saved.decisions || [], matchDecisions: saved.matchDecisions || [],
       unmatchedDecisions: Array.isArray(saved.unmatchedDecisions) ? saved.unmatchedDecisions : [],
       workflowRecords: Array.isArray(saved.workflowRecords) ? saved.workflowRecords : [], reviews: saved.reviews || [], accounts: saved.accounts || {} };
+    const ingestionChanged = syncIngestionMetadata();
     if (!readOnly) {
       const metadataChanged = normalizeStoredMetadata();
       const workflowChanged = syncWorkflowRecords(buildReconciliationSnapshot(activeReconciliationItems(), state.matchDecisions).cases);
-      if (metadataChanged || workflowChanged) await atomicJson(statePath, state);
+      const workflowAuthorityChanged = syncIngestionMetadata();
+      const issuesChanged = syncReconciliationIssues();
+      if (ingestionChanged || workflowAuthorityChanged || metadataChanged || workflowChanged || issuesChanged) {
+        if (ingestionChanged || workflowAuthorityChanged) await atomicJson(join(dataDirectory, `invoices.pre-authority-v1-${Date.now()}-${randomUUID()}.json`), saved);
+        await atomicJson(statePath, state);
+      }
     }
   }
   catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw new Error("Invoice index is unreadable. Restore the index before collecting; it was not overwritten."); }
@@ -451,12 +501,10 @@ function mergeBlueCross(items: Invoice[]): number {
   for (const item of [...items, ...recoverMissingDesjardinsExpenses(state.items, items)]) {
     const index = state.items.findIndex(current => current.Id === item.Id);
     if (index < 0) { state.items.push(item); added++; }
-    else if (!state.items[index].CorrectedAt) {
+    else {
       const current = state.items[index];
       // Keep the first source link and all review/status choices when another copied page repeats a row.
-      state.items[index] = { ...item, AccountEmail: current.AccountEmail, SourceMessageId: current.SourceMessageId,
-        InternetMessageId: current.InternetMessageId, ThreadId: current.ThreadId, Status: current.Status,
-        Notes: current.Notes, LastDecisionId: current.LastDecisionId, IgnoredAt: current.IgnoredAt };
+      state.items[index] = automaticReplacement(current, item);
     }
   }
   return added;
@@ -683,7 +731,7 @@ export async function collectInvoices(overrides: Partial<CollectionDependencies>
           const existing = state.items.find(x => x.Id === recordId(key, id));
           const needsUpgrade = existing && (existing.AnalysisVersion !== 4 || !existing.DocumentRole || !existing.Member || !("BilledAmount" in existing));
           const repairKnownExpense = Boolean(amountRepair && existing && existing.Category === 0 && existing.DocumentRole === "expense" && existing.Status !== 4);
-          if (existing?.IgnoredAt) return;
+          if (existing && hasManualAuthority(existing)) return;
           if (existing?.CorrectedAt && !needsUpgrade && !repairKnownExpense) return;
           if (historical && existing?.HistoricalCandidate && !repairKnownExpense) return;
           if (existing && !needsUpgrade && !repairKnownExpense && (!retry || existing.ClassificationSource !== "unavailable")
@@ -699,10 +747,9 @@ export async function collectInvoices(overrides: Partial<CollectionDependencies>
               const index = state.items.findIndex(x => x.Id === recordId(key, id));
               if (index < 0) return;
               const current = state.items[index];
+              if (hasManualAuthority(current)) return;
               const repaired = repairHealthcareAmounts(current, mail);
-              state.items[index] = { ...current, Provider: repaired.Provider, ServiceDate: repaired.ServiceDate, ClaimedService: repaired.ClaimedService,
-                Healthcare: repaired.Healthcare, BilledAmount: repaired.BilledAmount,
-                DetectedAmount: repaired.DetectedAmount, AmountSource: repaired.AmountSource, UpdatedAt: repaired.UpdatedAt };
+              state.items[index] = automaticReplacement(current, repaired);
             });
             return;
           }
@@ -719,9 +766,7 @@ export async function collectInvoices(overrides: Partial<CollectionDependencies>
               // A temporary model failure cannot turn an indexed expense into an unknown document.
               if (source === "unavailable" && current.ClassificationSource !== "unavailable") return;
               // A user's correction/status during classification wins over the background result.
-              state.items[index] = current.CorrectedAt
-                ? { ...item, DocumentType: current.DocumentType, Status: current.Status, NeedsReview: current.NeedsReview, ClassificationSource: current.ClassificationSource, CorrectedAt: current.CorrectedAt, Notes: current.Notes, LastDecisionId: current.LastDecisionId, IgnoredAt: current.IgnoredAt }
-                : { ...item, Status: current.Status === 0 || repair && current.Status === 4 && !current.LastDecisionId ? item.Status : current.Status, Notes: current.Notes, LastDecisionId: current.LastDecisionId, IgnoredAt: current.IgnoredAt };
+              state.items[index] = automaticReplacement(current, item);
             } else state.items.push(item);
           });
         };
@@ -977,7 +1022,8 @@ export async function correctInvoice(id: string, kind: unknown): Promise<Invoice
   await edit(() => {
     const index = state.items.findIndex(item => item.Id === id);
     if (index < 0) throw new Error("Document not found.");
-    const before = { DocumentType: state.items[index].DocumentType, Status: state.items[index].Status, NeedsReview: state.items[index].NeedsReview, ClassificationSource: state.items[index].ClassificationSource };
+    const before = { DocumentType: state.items[index].DocumentType, Status: state.items[index].Status, NeedsReview: state.items[index].NeedsReview, ClassificationSource: state.items[index].ClassificationSource,
+      CorrectedAt: state.items[index].CorrectedAt, ReimbursementEligibility: state.items[index].ReimbursementEligibility };
     result = applyCorrection(state.items[index], kind);
     const existingRule = [...state.corrections].reverse().find(x => x.account === result!.AccountEmail && x.fingerprint === result!.Fingerprint);
     const decision: Decision = { id: randomUUID(), itemId: id, type: "classification", before, after: { DocumentType: result.DocumentType, Status: result.Status, NeedsReview: result.NeedsReview, ClassificationSource: result.ClassificationSource }, at: new Date().toISOString(), correctionBefore: existingRule ? { ...existingRule } : undefined };
@@ -1010,10 +1056,15 @@ export async function undoInvoiceDecision(id: string): Promise<Invoice> {
   await edit(() => {
     const decision = [...state.decisions].reverse().find(item => item.id === id && !item.undoneAt);
     if (!decision) throw new Error("Decision not found or already undone.");
+    if ([...state.decisions].reverse().find(item => item.itemId === decision.itemId && !item.undoneAt)?.id !== id)
+      throw new Error("Undo the latest decision for this document first; newer manual choices were preserved.");
     result = state.items.find(item => item.Id === decision.itemId);
     if (!result) throw new Error("Document not found.");
-    Object.assign(result, decision.before, { UpdatedAt: new Date().toISOString(), LastDecisionId: undefined });
+    Object.assign(result, decision.before, { UpdatedAt: new Date().toISOString() });
     decision.undoneAt = new Date().toISOString();
+    result.LastDecisionId = [...state.decisions].reverse().find(item => item.itemId === result!.Id && !item.undoneAt)?.id;
+    if (decision.type === "classification" && !("CorrectedAt" in decision.before)
+      && !state.decisions.some(item => item.itemId === result!.Id && item.type === "classification" && !item.undoneAt)) result.CorrectedAt = undefined;
     if (decision.type === "classification") {
       state.corrections = state.corrections.filter(item => !(item.account === result!.AccountEmail && item.fingerprint === result!.Fingerprint));
       if (decision.correctionBefore) state.corrections.push(decision.correctionBefore);

@@ -107,6 +107,24 @@ function reconciliation(item: ReimbursementItem, overrides: Partial<Reconciliati
   };
 }
 
+test("browser default/Open override and money survive repeated rescans and a worker source appearing", () => {
+  const chosen = invoice("browser-record", "2026-09-03", { WorkerManaged: false, Status: ReimbursementStatus.ToReview,
+    DocumentType: "bill", DetectedAmount: 17, BilledAmount: 17, Member: "Jasmine", ManualOverride: { Version: 1, Reasons: ["browser-status"] } });
+  const incoming = { ...chosen, Id: "worker-record", WorkerManaged: true, ManualOverride: undefined, DocumentType: "invoice" as const,
+    Status: ReimbursementStatus.Ignored, DetectedAmount: 999, BilledAmount: 999, Member: "Kevin" as const };
+  let current = mergeInvoiceItems([chosen], [incoming]);
+  for (let i = 0; i < 3; i++) current = mergeInvoiceItems(current, [incoming]);
+  assert.equal(current.length, 1); assert.equal(current[0].Status, ReimbursementStatus.ToReview);
+  assert.equal(current[0].DetectedAmount, 17); assert.equal(current[0].Member, "Jasmine"); assert.equal(current[0].DocumentType, "bill");
+  assert.equal(current[0].WorkerManaged, false);
+});
+
+test("worker detection is authoritative and frontend metadata triage cannot reset its manual status", () => {
+  const chosen = invoice("controlled", "2026-09-03", { Sender: "notifications@github.com", Subject: "Workflow", Status: ReimbursementStatus.Reimbursed,
+    ManualOverride: { Version: 1, Reasons: ["decision-history"] } });
+  assert.equal(mergeInvoiceItems([], [chosen])[0].Status, ReimbursementStatus.Reimbursed);
+});
+
 test("manual matching excludes presentation-only and stale cases but keeps their evidence in history", () => {
   const expense = invoice("current-expense", "2026-08-10", { Member: "Kevin" });
   const statement = invoice("statement", "2026-08-10", { Member: "Kevin", DocumentRole: "insurer-statement", DocumentType: "claim", Insurer: "desjardins" });

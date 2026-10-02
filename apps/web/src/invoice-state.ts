@@ -8,7 +8,8 @@ export function healthcareTitle(item: { Provider?: string | null; ServiceType?: 
 }
 
 function autoTriageKnownItem(item: ReimbursementItem): ReimbursementItem {
-  if (item.ClassificationSource === "manual") return item;
+  if (item.WorkerManaged || item.ManualOverride?.Reasons.length || item.ClassificationSource === "manual"
+    || item.CorrectedAt || item.LastDecisionId || item.IgnoredAt || item.Status !== ReimbursementStatus.ToReview) return item;
   const sender = item.Sender.toLowerCase();
   const subject = item.Subject.trim();
   const ignored = sender.includes("notifications@github.com")
@@ -42,12 +43,15 @@ export function mergeInvoiceItems(existing: ReimbursementItem[], incoming: Reimb
     const key = keyFor(next);
     const oldBrowserKey = messageKey(next);
     const current = map.get(key) ?? (next.WorkerManaged ? map.get(oldBrowserKey) : undefined);
+    const localAuthority = current && !current.WorkerManaged && (current.ClassificationSource === "manual" || current.CorrectedAt
+      || current.LastDecisionId || current.ManualOverride?.Reasons.length || current.Status !== ReimbursementStatus.ToReview);
     if (!next.WorkerManaged && [...map.values()].some(item => item.WorkerManaged && messageKey(item) === oldBrowserKey)) continue;
     if (next.WorkerManaged) map.delete(oldBrowserKey);
     map.set(key, current ? {
       ...next,
+      ...(localAuthority ? { ...current, WorkerManaged: false } : {}),
       Id: next.WorkerManaged ? next.Id : current.Id,
-      Status: next.WorkerManaged && (current.WorkerManaged || next.Status === ReimbursementStatus.Ignored) ? next.Status : current.Status,
+      Status: !localAuthority && next.WorkerManaged && (current.WorkerManaged || next.Status === ReimbursementStatus.Ignored) ? next.Status : current.Status,
       Notes: current.Notes,
       DriveFileId: current.DriveFileId,
       DrivePath: current.DrivePath,
