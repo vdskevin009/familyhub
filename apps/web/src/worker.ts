@@ -12,7 +12,13 @@ export type ClaimPreparation = {
   duplicate: { status: string; scope: string; checkedAt: string; records: { id: string; reference: string | null; service: string | null; status: string }[] };
 };
 export type ClaimStep = { status: string; revision: string; submitAllowed: false; fields: { key: string; label: string; type: string; kind: string | null; suggested: string | null; options: { value: string; label: string }[] }[] };
-export function claimAction<T>(config: WorkerConfig, action: "preview" | "open" | "inspect" | "fill" | "close", body: object): Promise<T> {
+export async function claimAction<T>(config: WorkerConfig, action: "preview" | "open" | "inspect" | "fill" | "close", body: object): Promise<T> {
+  if (action !== "close") {
+    const health = await testWorker(config);
+    if (!workerVersionAtLeast(health.version, "2.17.0")) {
+      throw new Error(`Your PC worker is ${health.version || "an older version"}. Claim preparation requires worker 2.17.0 or later. Update and restart the FamilyHub worker on the PC, then reopen this panel.`);
+    }
+  }
   return request(config, `/claim-preparation/${action}`, { method: "POST", body: JSON.stringify(body) }, 90_000);
 }
 

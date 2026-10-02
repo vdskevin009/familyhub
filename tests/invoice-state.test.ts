@@ -24,7 +24,28 @@ import {
   type ReconciliationCase,
   type ReimbursementItem
 } from "../apps/web/src/types.ts";
-import { manualReconciliationWorkerVersion, workerVersionAtLeast } from "../apps/web/src/worker.ts";
+import { claimAction, manualReconciliationWorkerVersion, workerVersionAtLeast } from "../apps/web/src/worker.ts";
+
+test("claim preparation blocks an older worker before sending expense data", async t => {
+  const requests: string[] = [];
+  t.mock.method(globalThis, "fetch", async (url: string) => {
+    requests.push(url);
+    return Response.json({ version: "2.16.1" });
+  });
+  await assert.rejects(claimAction({ Endpoint: "http://worker.test", ApiKey: "test-only" }, "preview", { expenseId: "fixture-expense" }), /restart.*2\.17|2\.17.*restart/i);
+  assert.deepEqual(requests, ["http://worker.test/health"]);
+});
+
+test("claim preparation sends the reviewed request to a supported worker", async t => {
+  const requests: { url: string; body?: string }[] = [];
+  t.mock.method(globalThis, "fetch", async (url: string, init: RequestInit) => {
+    requests.push({ url, body: init.body as string | undefined });
+    return Response.json(url.endsWith("/health") ? { version: "2.17.0" } : { submitAllowed: false });
+  });
+  const body = { expenseId: "fixture-expense", insurer: "blue-cross" };
+  assert.deepEqual(await claimAction({ Endpoint: "http://worker.test", ApiKey: "test-only" }, "preview", body), { submitAllowed: false });
+  assert.deepEqual(requests, [{ url: "http://worker.test/health", body: undefined }, { url: "http://worker.test/claim-preparation/preview", body: JSON.stringify(body) }]);
+});
 import { applicableInsurerPreview, insurerSyncMessage } from "../apps/web/src/insurer-sync.ts";
 import {
   manualMatchExpenseId,
