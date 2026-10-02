@@ -95,6 +95,8 @@ Saved research watches are persisted under `~/.familyhub-worker/`. Automatic wat
 
 ## Manual Pacific Blue Cross portal collection
 
+For an open invoice-backed expense, choose **Prepare Blue Cross claim**. Review the original PDF, original expense and other-insurer payment, check current insurer history (including pending claims), and open the preparation window on the existing PC worker. Read the current form fields, review the suggested values, then fill them. Read again after a dropdown updates the form. Blue Cross supports the observed chiropractic return and explicit 30-minute physiotherapy follow-up options; other mappings remain yours to select. You control Next, document readiness, consent and final Submit. On the review screen, enable document upload in the portal, read its fields again, choose an original PDF and confirm the permanent upload. Verify Blue Cross's successful-upload indicator before submitting. Preparation does not mark an expense claimed; import the actual portal result using Sources & sync after submission. Worker 2.17.0 is required for the extended Blue Cross preparation.
+
 Issue #92 / FH-REIMB-032 adds a read-only collector to the local PC worker. It uses the existing Blue Cross import and reimbursement reconciliation. It has **no nightly schedule**. On the PC running the worker:
 
 ```sh
