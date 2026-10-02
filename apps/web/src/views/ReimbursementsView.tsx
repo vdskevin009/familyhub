@@ -426,7 +426,7 @@ export default function ReimbursementsView({ hub }: Props) {
       <button type="button" className="button secondary" onClick={() => setSourcesOpen(true)} aria-haspopup="dialog">Sources{blueCrossStatus?.state === "error" || desjardinsStatus?.state === "error" || blueCrossStatus?.state === "login-required" || desjardinsStatus?.state === "login-required" ? " · !" : ""}</button>
       <button type="button" className="icon-button" aria-label="Refresh reimbursements" disabled={!paired || busy || pending.length > 0 || bulkIgnoring} onClick={() => void refresh()}><RefreshCw size={18} className={busy ? "spin" : ""} /></button>
     </PageHeader>
-    <Sheet open={sourcesOpen} onClose={() => setSourcesOpen(false)} title="Sources & sync" description="Refresh reads saved results. Reconnect opens sign-in on the PC, then collects a preview automatically. Review before applying changes.">
+    <Sheet open={sourcesOpen} onClose={() => setSourcesOpen(false)} title="Sources & sync" description="Update collects a preview and uses automatic sign-in when configured. Reconnect opens the PC browser for verification. Review before applying changes.">
       <div className="source-tools">
       {error && <Notice error onDismiss={() => setError("")}>{error}</Notice>}
       <p>Saved records appear in DJ/BC. Claims may move to Closed; only unmatched records enter À réconcilier.</p>
@@ -440,6 +440,7 @@ export default function ReimbursementsView({ hub }: Props) {
         onClick={() => void runBlueCrossSync(false)}>{blueCrossBusy ? "Synchronisation Blue Cross…" : "Mettre à jour Blue Cross"}</button>
       {applicableInsurerPreview(blueCrossStatus, blueCrossResult) &&
         <button type="button" className="button secondary compact-button" disabled={blueCrossBusy || desjardinsBusy || portalBusy || pending.length > 0} onClick={() => void runBlueCrossSync(true)}>Appliquer Blue Cross</button>}
+      <small>{blueCrossStatus?.loginConfigured === true ? "Automatic sign-in configured on PC" : blueCrossStatus?.loginConfigured === false ? "Automatic sign-in not configured" : ""}</small>
       <small role="status">{insurerSyncMessage(blueCrossStatus, blueCrossResult, blueCrossBusy)}</small>
       {blueCrossStatus?.lastAttempt && <small>Dernière tentative : {new Date(blueCrossStatus.lastAttempt).toLocaleString()}</small>}
     </section>
@@ -453,10 +454,12 @@ export default function ReimbursementsView({ hub }: Props) {
         onClick={() => void runDesjardinsSync(false)}>{desjardinsBusy ? "Synchronisation Desjardins…" : "Mettre à jour Desjardins"}</button>
       {desjardinsStatus?.applicable && applicableInsurerPreview(desjardinsStatus, desjardinsResult) && desjardinsStatus.previewAt && Date.now() - Date.parse(desjardinsStatus.previewAt) < 24 * 60 * 60_000 &&
         <button type="button" className="button secondary compact-button" disabled={blueCrossBusy || desjardinsBusy || portalBusy || pending.length > 0} onClick={() => void runDesjardinsSync(true)}>Appliquer Desjardins</button>}
+      <small>{desjardinsStatus?.loginConfigured === true ? "Automatic sign-in configured on PC" : desjardinsStatus?.loginConfigured === false ? "Automatic sign-in not configured" : ""}</small>
       <small role="status">{insurerSyncMessage(desjardinsStatus, desjardinsResult, desjardinsBusy)}</small>
       {desjardinsStatus?.lastAttempt && <small>Dernière tentative : {new Date(desjardinsStatus.lastAttempt).toLocaleString()}</small>}
     </section>
 
+        <details className="data-coverage"><summary>Set up automatic sign-in</summary><p>On the PC, run <code>scripts/Set-InsurerLogin.ps1</code> from the worker folder with its existing DataDirectory. Enter your login only in the masked local prompts. The same tool can replace or delete it. Worker 2.16.0 or later is required.</p><p>Update then tries one sign-in when the saved session expires. If verification is requested, use Reconnect on PC; collection continues after you finish signing in.</p></details>
         <details className="data-coverage"><summary>Invoice-search coverage</summary><p>{hub.reimbursements.InvoiceCoverage?.complete
           ? "Potential invoice search completed since June 1, 2025 for connected accounts. Scanned images and unreadable attachments may still need review."
           : "Historical collection since June 1, 2025 is not yet confirmed complete. Run the PC collection to resume it."} Insurance coverage is not confirmed by a receipt.</p></details>

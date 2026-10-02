@@ -116,7 +116,10 @@ test('malformed row, partial collection, and network failure are non-applicable'
 });
 test('expired session returns login-required without changing invoice ledger', async () => {
   const before = await readFile(join(directory, 'invoices.json'), 'utf8');
-  const result = await syncBlueCrossPortal(false, false, async () => ({ status: 'login-required' }));
+  const lastSuccess = getBlueCrossStatus().lastSuccess;
+  const result = await syncBlueCrossPortal(false, false, async () => ({ status: 'login-required', authReason: 'credentials-rejected' }));
+  assert.equal(getBlueCrossStatus().lastSuccess, lastSuccess);
+  assert.equal(getBlueCrossStatus().authReason, 'credentials-rejected');
   assert.equal(result.status, 'login-required');
   assert.equal(await readFile(join(directory, 'invoices.json'), 'utf8'), before);
 });

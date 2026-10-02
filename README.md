@@ -171,3 +171,5 @@ Pages source must be **GitHub Actions** in repository Settings → Pages.
 - authenticated household sync only if it can be added without weakening the local-first/privacy model.
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for boundaries and data flows.
+
+Optional automatic insurer sign-in is configured locally using [secure insurer login](docs/INSURER-LOGIN.md). It does not enable a schedule or automatically apply financial changes.

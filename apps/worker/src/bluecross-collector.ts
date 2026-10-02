@@ -1,3 +1,4 @@
+import { acquirePortalLock, authenticatedPortal, tryPortalLogin, type LoginReason } from "./portal-login.js";
 import { mkdir, open } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
@@ -73,7 +74,15 @@ export async function savePortalSnapshot(collection: PortalCollection): Promise<
   return path;
 }
 
-export async function collectBlueCrossPortal(interactive = false): Promise<{ status: "success" | "login-required"; collection?: PortalCollection; snapshotPath?: string }> {
+export async function collectBlueCrossPortal(interactive = false): ReturnType<typeof collectBlueCrossPortalLocked> {
+  let release: () => Promise<void>;
+  try { release = await acquirePortalLock("bluecross"); }
+  catch { return { status: "login-required", authReason: "profile-busy" }; }
+  try { return await collectBlueCrossPortalLocked(interactive); }
+  finally { await release(); }
+}
+
+async function collectBlueCrossPortalLocked(interactive = false): Promise<{ status: "success" | "login-required"; authReason?: LoginReason; collection?: PortalCollection; snapshotPath?: string }> {
   await mkdir(blueCrossProfileDirectory, { recursive: true, mode: 0o700 });
   const { chromium } = await import("playwright");
   const context = await chromium.launchPersistentContext(blueCrossProfileDirectory, {
@@ -86,7 +95,11 @@ export async function collectBlueCrossPortal(interactive = false): Promise<{ sta
     if (process.platform === "win32") {
       try {
         const saved = await loadPrivate<{ cookies: Cookie[]; session?: { origin: string; value: string } }>(blueCrossAuthPath);
-        await context.addCookies(blueCrossAuthCookies(saved.cookies));
+        const existing = await context.cookies();
+        const restored = blueCrossAuthCookies(saved.cookies).filter(cookie =>
+          (cookie.expires < 0 || cookie.expires > Date.now() / 1000) && !existing.some(current =>
+            current.name === cookie.name && current.domain === cookie.domain && current.path === cookie.path));
+        await context.addCookies(restored);
         const marker = blueCrossSessionMarker(saved.session?.origin ?? "", saved.session?.value);
         if (marker) await context.addInitScript(({ origin, key, value }) => {
           if (location.origin === origin && !sessionStorage.getItem(key)) sessionStorage.setItem(key, value);
@@ -97,27 +110,26 @@ export async function collectBlueCrossPortal(interactive = false): Promise<{ sta
     await page.goto(memberUrl, { waitUntil: "domcontentloaded", timeout: 45_000 });
     const claims = page.locator("table[id*='grdClaimsGrid']");
     const openHistory = async () => {
+      if (new URL(page.url()).origin !== sessionOrigin) return false;
       const link = page.getByRole("link", { name: /view more claims|claims history/i }).first();
       const button = page.getByRole("button", { name: /view more claims|claims history/i }).first();
       if (await link.isVisible().catch(() => false)) { await link.click(); return true; }
       if (await button.isVisible().catch(() => false)) { await button.click(); return true; }
       return false;
     };
-    if (!interactive && !await claims.isVisible().catch(() => false)) {
-      const link = page.getByRole("link", { name: /view more claims|claims history/i }).first();
-      await link.waitFor({ state: "visible", timeout: 15_000 }).catch(() => {});
-    }
-    if (!await claims.isVisible().catch(() => false)) await openHistory();
-    if (!interactive && !await claims.isVisible().catch(() => false))
-      await claims.waitFor({ state: "visible", timeout: 30_000 }).catch(() => {});
-    if (interactive) {
+    const ready = async () => {
+      if (new URL(page.url()).origin !== sessionOrigin) return false;
+      if (!await claims.isVisible().catch(() => false)) await openHistory().catch(() => {});
+      return await claims.isVisible().catch(() => false);
+    };
+    // Give an existing trusted session time to restore before touching credentials.
+    const authReason = await tryPortalLogin(page, "bluecross", ready);
+    if (interactive && !await ready()) {
       const deadline = Date.now() + 600_000;
-      while (!await claims.isVisible().catch(() => false) && Date.now() < deadline) {
-        await openHistory().catch(() => {});
-        if (!await claims.isVisible().catch(() => false)) await page.waitForTimeout(2000);
-      }
-      if (!await claims.isVisible().catch(() => false)) return { status: "login-required" };
-    } else if (!await claims.isVisible().catch(() => false)) return { status: "login-required" };
+      while (!await ready() && Date.now() < deadline) await page.waitForTimeout(2000);
+    }
+    if (!await ready()) return { status: "login-required", authReason: authReason || "human-required" };
+    await authenticatedPortal("bluecross");
     let warning = "";
     if (process.platform === "win32") {
       try {

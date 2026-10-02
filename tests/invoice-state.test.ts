@@ -618,3 +618,12 @@ test("current insurer status replaces stale reconnect previews after apply and r
   assert.match(insurerSyncMessage({ state: "up-to-date", latestResult: unchanged }, preview, false), /already saved/);
   assert.equal(applicableInsurerPreview({ state: "up-to-date", latestResult: unchanged }, preview), false);
 });
+
+test("insurer authentication failures give recovery guidance and never expose Apply", () => {
+  const checks = { "human-required": /verification/, "credentials-rejected": /retries are paused/, "not-configured": /Set up automatic login/, "credentials-unavailable": /cannot be unlocked/, "layout-changed": /not recognized/, "cooldown": /30 minutes/, "profile-busy": /another collection/ } as const;
+  for (const [authReason, expected] of Object.entries(checks)) {
+    const status = { state: "login-required" as const, authReason: authReason as keyof typeof checks };
+    assert.match(insurerSyncMessage(status, null, false), expected);
+    assert.equal(applicableInsurerPreview(status, null), false);
+  }
+});

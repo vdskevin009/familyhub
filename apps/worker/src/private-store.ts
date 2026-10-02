@@ -15,8 +15,8 @@ export async function atomicJson(path: string, value: unknown): Promise<void> {
 
 // DPAPI is scoped to this Windows user. Secrets travel over stdin/stdout pipes, never command arguments or logs.
 async function dpapi(value: string, decrypt: boolean): Promise<string> {
-  if (process.platform !== "win32") throw new Error("Daily Gmail authorization currently requires Windows DPAPI.");
-  const script = "$ErrorActionPreference='Stop'; $s=[Console]::In.ReadToEnd(); " + (decrypt
+  if (process.platform !== "win32") throw new Error("Local credential protection requires Windows DPAPI.");
+  const script = "$ErrorActionPreference='Stop'; [Console]::InputEncoding=[Text.UTF8Encoding]::new($false); [Console]::OutputEncoding=[Text.UTF8Encoding]::new($false); $s=[Console]::In.ReadToEnd(); " + (decrypt
     ? "$p=ConvertTo-SecureString $s; $b=[Runtime.InteropServices.Marshal]::SecureStringToBSTR($p); try {[Console]::Write([Runtime.InteropServices.Marshal]::PtrToStringBSTR($b))} finally {[Runtime.InteropServices.Marshal]::ZeroFreeBSTR($b)}"
     : "$p=ConvertTo-SecureString $s -AsPlainText -Force; [Console]::Write((ConvertFrom-SecureString $p))");
   return new Promise((resolve, reject) => {
