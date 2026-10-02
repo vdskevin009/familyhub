@@ -517,7 +517,7 @@ export async function classify(mail: Mail, email: string, label = email, diagnos
     serviceDate: null, billedAmount: null, reimbursedAmount: null, attention: "none", attentionReason: "", reason: "Promotional signals without evidence of a completed transaction." } };
   // The email body may omit prices; an extracted clinic invoice still proves an expense.
   const clinicReceipt = /janeapp\.com/i.test(mail.sender) && /\breceipt\b/i.test(mail.subject)
-    && mail.attachments.some(a => /invoice[-_ .0-9]/i.test(a.FileName) && a.AnalysisStatus === "text-extracted")
+    && mail.attachments.some(a => /(?:invoice|receipt)[-_ .0-9]/i.test(a.FileName) && a.AnalysisStatus === "text-extracted")
     && /\binvoice\s*(?:number|no\.?|#)\s*[:#-]?\s*[a-z0-9-]{3,}/i.test(mail.attachmentText || "")
     && /\b(?:massage|physiotherapy|physical therapy|chiropractic|osteopath|acupuncture|rmt)\b/i.test(mail.attachmentText || "");
   const clinicFallback = (): { source: Invoice["ClassificationSource"]; result: Classification } =>

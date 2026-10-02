@@ -11,6 +11,25 @@ const mail = { id: 'clinic-receipt', threadId: 'thread', internetMessageId: '<cl
   text: 'Below is a Receipt for your visit.', labels: [], unsubscribe: false, bulk: false,
   attachments: [{ Id: 'pdf', FileName: 'Example-Invoice-XYZ123.pdf', MimeType: 'application/pdf', Size: 100,
     AnalysisStatus: 'text-extracted' }], attachmentText: 'Invoice #XYZ123 Massage therapy Amount not covered: $38.00' };
+// File naming is not evidence of the billed total or insurance payment. Both Jane
+// invoice and receipt PDFs still need readable invoice identity and a care service.
+for (const name of ['Example-Invoice-XYZ123.pdf', 'Example-Receipt-2026-09-17.pdf']) {
+  const result = await classify({ ...mail, attachments: [{ ...mail.attachments[0], FileName: name }] }, account);
+  assert.equal(result.source, 'rules');
+  assert.equal(result.result.documentRole, 'expense');
+  assert.equal(result.result.reimbursement, 'possible');
+  assert.equal(result.result.billedAmount, null);
+  assert.equal(result.result.reimbursedAmount, null);
+}
+mail.attachments[0].FileName = 'Example-Receipt-2026-09-17.pdf';
+for (const candidate of [
+  { ...mail, attachmentText: 'Massage therapy Amount not covered: $38.00' },
+  { ...mail, attachmentText: 'Invoice #XYZ123 Amount not covered: $38.00' },
+  { ...mail, attachments: [{ ...mail.attachments[0], AnalysisStatus: 'failed' }] },
+  { ...mail, subject: 'Appointment reminder' },
+]) {
+  assert.notEqual((await classify(candidate, account)).result.documentRole, 'expense');
+}
 const old = toInvoice(mail, account, 'Test', { kind: 'other', confidence: .95, transaction: false,
   reimbursement: 'unknown', reason: 'Prior mistake', amount: null, currency: '', category: 'other', member: 'unknown',
   documentRole: 'other', insurer: null, serviceDate: null, billedAmount: null, reimbursedAmount: null }, 'codex');
@@ -50,3 +69,29 @@ snapshot = await invoiceSnapshot();
 assert.equal(searched, 1);
 assert.equal(snapshot.items.length, 1);
 console.log('Previously missed clinic receipt recovered as one reviewable expense.');
+
+// A current receipt already fetched after completed history is retried in place
+// by the normal daily run; it must not require another historical scan.
+await writeFile(path, JSON.stringify({ items: [{ ...old, ClassificationSource: 'unavailable', Confidence: 0 }],
+  corrections: [], decisions: [{ id: 'preserved-decision' }], reviews: [],
+  accounts: { [account]: { through: Math.floor(Date.now() / 1000), invoiceHistoryVersion: 1,
+    healthReceiptRepairVersion } } }));
+await initializeInvoices(true);
+const priorSearches = searched;
+await collectInvoices(deps);
+snapshot = await invoiceSnapshot();
+assert.equal(searched, priorSearches, 'no new history traversal');
+assert.equal(snapshot.items.length, 1);
+assert.equal(snapshot.items[0].Id, old.Id);
+assert.equal(snapshot.items[0].SourceMessageId, mail.id);
+assert.equal(snapshot.items[0].DocumentType, 'receipt');
+assert.equal(snapshot.items[0].DocumentRole, 'expense');
+assert.equal(snapshot.items[0].ClassificationSource, 'rules');
+assert.equal(snapshot.items[0].NeedsReview, true);
+assert.equal(snapshot.items[0].BilledAmount, null, 'residual is not original total');
+assert.equal(snapshot.items[0].ReimbursedAmount, null, 'unknown insurance stays unknown');
+assert.equal(snapshot.reconciliations.length, 1);
+assert.deepEqual(JSON.parse(await readFile(path, 'utf8')).decisions, [{ id: 'preserved-decision' }]);
+await collectInvoices(deps);
+assert.equal((await invoiceSnapshot()).items.length, 1, 'daily rerun cannot duplicate the receipt');
+console.log('Current receipt recovered through bounded daily retry without a historical rescan.');
