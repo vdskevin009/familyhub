@@ -33,6 +33,7 @@ strong { font-weight: 700; }
 .rail-brand { display: flex; align-items: center; gap: 10px; padding: 0; border: 0; background: none; text-align: left; font-size: 18px; font-weight: 750; letter-spacing: -.04em; }
 .brand-mark, .brand-mini { background: var(--green); color: white; display: grid; place-items: center; border-radius: 11px; font-weight: 750; }
 .brand-mark { width: 38px; height: 38px; flex: 0 0 38px; font-size: 20px; }
+.brand-mark img { width: 38px; height: 38px; display: block; border-radius: 11px; }
 .rail-brand small { display: block; font-size: 10px; font-weight: 500; letter-spacing: 0; margin-top: 2px; }
 .app-rail nav { display: grid; gap: 6px; }
 .nav-item { display: flex; align-items: center; gap: 12px; min-height: 48px; padding: 10px 12px; border: 0; border-radius: var(--radius-sm); background: transparent; text-align: left; color: var(--muted); font-size: 13px; font-weight: 620; }
@@ -626,3 +627,31 @@ label { font-size: 12px; color: var(--muted); }
 .nearby-source-amounts dd { margin: 2px 0 0; font-weight: 650; }
 .nearby-source-link { display: grid; gap: 3px; padding: 10px; background: var(--soft); border-radius: 8px; font-size: 12px; }
 .claim-evidence button.source-badge { min-height: 32px; cursor: pointer; }
+
+
+/* Invoice candidate review ------------------------------------------------ */
+.library-mode-tabs { display: inline-flex; width: fit-content; max-width: 100%; gap: 4px; padding: 4px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--soft); }
+.library-mode-tabs button { min-height: 38px; display: inline-flex; align-items: center; gap: 8px; border: 0; border-radius: calc(var(--radius-sm) - 3px); padding: 7px 12px; background: transparent; color: var(--muted); font-size: 12px; font-weight: 700; }
+.library-mode-tabs button strong { min-width: 24px; padding: 2px 6px; border-radius: 999px; background: var(--surface); color: inherit; font-size: 11px; text-align: center; }
+.library-mode-tabs button.active { background: var(--surface); color: var(--green); box-shadow: var(--shadow); }
+.excluded-candidate { display: grid; gap: 14px; }
+.excluded-candidate-main { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.excluded-candidate-main > div { min-width: 0; }
+.excluded-candidate-main h2 { overflow-wrap: anywhere; }
+.excluded-candidate-main p { margin-top: 3px; overflow-wrap: anywhere; }
+.excluded-confidence { flex: 0 0 auto; padding: 4px 8px; border-radius: 999px; background: var(--soft); color: var(--muted); font-size: 11px; font-weight: 700; }
+.excluded-reason { padding: 12px 14px; border-radius: var(--radius-sm); background: var(--soft); border: 1px solid var(--line); }
+.excluded-reason small { display: block; margin-bottom: 4px; color: var(--green); font-weight: 750; }
+.excluded-reason p { color: var(--ink); font-size: 13px; }
+.excluded-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding-top: 2px; }
+.excluded-action-label { margin-left: auto; color: var(--muted); font-size: 11px; font-weight: 650; }
+
+@media (max-width: 640px) {
+  .library-mode-tabs { width: 100%; }
+  .library-mode-tabs button { flex: 1; justify-content: center; }
+  .excluded-candidate-main { display: grid; gap: 8px; }
+  .excluded-confidence { width: fit-content; }
+  .excluded-actions { align-items: stretch; }
+  .excluded-actions .mini-button { flex: 1 1 auto; }
+  .excluded-action-label { width: 100%; margin-left: 0; }
+}

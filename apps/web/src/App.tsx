@@ -106,7 +106,7 @@ export default function App() {
     <div className="app-shell">
       <a className="skip-link" href="#main-content">Skip to content</a>
       <aside className="app-rail">
-        <button type="button" className="rail-brand" onClick={() => navigate("reimbursements")} aria-label="FamilyHub home"><span className="brand-mark">F</span><span>FamilyHub<small>Your everyday assistant</small></span></button>
+        <button type="button" className="rail-brand" onClick={() => navigate("reimbursements")} aria-label="FamilyHub home"><span className="brand-mark"><img src={`${import.meta.env.BASE_URL}icon.svg`} alt="" /></span><span>FamilyHub<small>Your everyday assistant</small></span></button>
         <nav aria-label="Primary">
           {nav.map(item => {
             const Icon = item.icon;

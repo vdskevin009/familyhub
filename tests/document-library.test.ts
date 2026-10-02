@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { documentDate, libraryItems, pdfAttachmentIndexes } from "../apps/web/src/document-library.ts";
+import { documentDate, excludedInvoiceCandidates, libraryItems, pdfAttachmentIndexes } from "../apps/web/src/document-library.ts";
 import type { ReimbursementItem, ReconciliationCase } from "../apps/web/src/types.ts";
 import { nearbyInvoiceLink, nearbyReimbursementLink, nearbySearchAnchor, nearbySourceRecords } from "../apps/web/src/nearby-sources.ts";
 
@@ -41,6 +41,16 @@ test("source libraries keep invoices separate from insurer statements", () => {
   assert.deepEqual(libraryItems(records, "invoices").map(item => item.Id), ["expense"]);
   assert.deepEqual(libraryItems(records, "blue-cross").map(item => item.Id), ["bc"]);
   assert.deepEqual(libraryItems(records, "desjardins").map(item => item.Id), ["dj"]);
+});
+
+test("excluded invoice review contains indexed Gmail candidates but not invoices or insurer sources", () => {
+  const invoice = { ...base, Id: "invoice", WorkerManaged: true, SourceMessageId: "aaa111" } as ReimbursementItem;
+  const marketing = { ...base, Id: "marketing", WorkerManaged: true, SourceMessageId: "bbb222", DocumentRole: "other", DocumentType: "marketing", Reasons: ["Promotional signals."] } as ReimbursementItem;
+  const administrative = { ...base, Id: "admin", WorkerManaged: true, SourceMessageId: "ccc333", DocumentRole: "other", DocumentType: "administrative" } as ReimbursementItem;
+  const insurer = { ...base, Id: "statement", WorkerManaged: true, SourceMessageId: "ddd444", DocumentRole: "insurer-statement", DocumentType: "claim", Insurer: "desjardins" } as ReimbursementItem;
+  const portal = { ...administrative, Id: "portal", StructuredSource: "desjardins-portal" } as ReimbursementItem;
+  const browserOnly = { ...administrative, Id: "browser", WorkerManaged: false } as ReimbursementItem;
+  assert.deepEqual(excludedInvoiceCandidates([invoice, marketing, administrative, insurer, portal, browserOnly]).map(item => item.Id), ["marketing", "admin"]);
 });
 
 test("undated invoices use a review-only search anchor and require explicit service-date confirmation", () => {
