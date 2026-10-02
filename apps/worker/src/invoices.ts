@@ -396,14 +396,16 @@ function syncIngestionMetadata(): boolean {
   let changed = false;
   for (const item of state.items) {
     const derivedReasons = new Set(["classification", "decision-history", "ignore", "legacy-status", "corrected-evidence", "match-decision", "unmatched-ignore", "workflow", "confirmed-service-date"]);
-    const reasons = [...manualReasons(item), ...(item.ManualOverride?.Reasons.filter(reason => !derivedReasons.has(reason)) ?? [])];
+    const explicitOverride = Boolean(item.ManualOverride && !item.ManualOverride.Derived);
+    const reasons = [...manualReasons(item), ...(item.ManualOverride?.Reasons.filter(reason => explicitOverride || !derivedReasons.has(reason)) ?? [])];
     if (state.decisions.some(decision => decision.itemId === item.Id && !decision.undoneAt)) reasons.push("decision-history");
     if (state.matchDecisions.some(decision => decision.expenseId === item.Id || decision.reimbursementId === item.Id)) reasons.push("match-decision");
     if (state.unmatchedDecisions.some(decision => decision.reimbursementId === item.Id)) reasons.push("unmatched-ignore");
     if (state.workflowRecords.some(record => record.ExpenseDocumentId === item.Id && record.ManualStatus)) reasons.push("workflow");
     if (state.confirmedServiceDates?.[item.Id]) reasons.push("confirmed-service-date");
-    const workflowStatus = state.workflowRecords.find(record => record.ExpenseDocumentId === item.Id && record.ManualStatus)?.ManualStatus;
-    const override = reasons.length ? { Version: 1 as const, Reasons: [...new Set(reasons)].sort(), ...(workflowStatus ? { WorkflowStatus: workflowStatus } : {}) } : undefined;
+    const workflowStatus = state.workflowRecords.find(record => record.ExpenseDocumentId === item.Id && record.ManualStatus)?.ManualStatus
+      ?? (explicitOverride ? item.ManualOverride?.WorkflowStatus : undefined);
+    const override = reasons.length ? { Version: 1 as const, Reasons: [...new Set(reasons)].sort(), ...(explicitOverride ? {} : { Derived: true as const }), ...(workflowStatus ? { WorkflowStatus: workflowStatus } : {}) } : undefined;
     if (JSON.stringify(item.ManualOverride) !== JSON.stringify(override)) { item.ManualOverride = override; changed = true; }
     if (!item.SourceIdentity) { item.SourceIdentity = sourceIdentity(item); changed = true; }
     if (!item.IngestedAt) { item.IngestedAt = item.UpdatedAt || item.ReceivedAt; changed = true; }

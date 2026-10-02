@@ -1,7 +1,7 @@
 import type { Invoice } from "./invoice-model.js";
 
 /** Additive authority metadata. Existing IDs, facts and decision histories are never migrated away. */
-export type ManualOverride = { Version: 1; Reasons: string[]; WorkflowStatus?: "open" | "closed" | "ignore" };
+export type ManualOverride = { Version: 1; Reasons: string[]; Derived?: true; WorkflowStatus?: "open" | "closed" | "ignore" };
 
 export function manualReasons(item: Invoice): string[] {
   const reasons: string[] = [];

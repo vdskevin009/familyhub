@@ -150,6 +150,13 @@ function canonicalExpenses(expenses: Invoice[], statements: Invoice[] = [], reje
   const result: CanonicalExpense[] = [];
   for (const item of expenses) {
     const h = healthcareEvidence(item);
+    // An explicit whole-record override may outlive all older extraction provenance.
+    if (item.ManualOverride && !item.ManualOverride.Derived && item.BilledAmount != null
+      && !/manual|user/i.test(h.FieldSources?.OriginalBilledAmount ?? "")) {
+      h.OriginalBilledAmount = item.BilledAmount;
+      h.FieldSources = { ...h.FieldSources, OriginalBilledAmount: "manual" };
+      h.FieldStates = { ...h.FieldStates, OriginalBilledAmount: "confirmed" };
+    }
     const provider = h.Provider || (item.AccountLabel === "Local Desjardins import" || isPatientName(item.Provider) ? "" : item.Provider);
     const key = `${item.Member}|${h.ServiceDate || item.ServiceDate || "unknown"}|${service(item) || serviceKey(h.ServiceType || "") || "unknown"}`;
     const candidates = result.filter(candidate => {
@@ -540,7 +547,7 @@ export function buildReconciliationSnapshot(items: Invoice[], matchDecisions: Ma
     const coordinated = matched.filter(item => (item.StructuredSource || item.AccountLabel === "Local Desjardins import") && submitted(item) != null && item.ReimbursedAmount != null
       && (sameMoney(original, submitted(item)! - item.ReimbursedAmount)
         || sameMoney(residual, submitted(item)! - item.ReimbursedAmount)));
-    const manualFinancialEvidence = Boolean(expense.CorrectedAt || expense.ClassificationSource === "manual"
+    const manualFinancialEvidence = Boolean(expense.CorrectedAt || expense.ClassificationSource === "manual" || expense.ManualOverride && !expense.ManualOverride.Derived
       || Object.entries(expense.Healthcare?.FieldSources || {}).some(([field, source]) => /amount|balance|payment/i.test(field) && /manual|user/i.test(source)));
     if (coordinated.length === 1 && !manualFinancialEvidence) original = submitted(coordinated[0]);
     const member = expense.Member || "unknown";

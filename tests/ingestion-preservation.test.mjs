@@ -117,6 +117,14 @@ test('legacy migration is additive, repeatable and read-only initialization neve
   assert.deepEqual(migrated.items[0].Healthcare, item.Healthcare); assert.equal(migrated.items[0].Id, item.Id);
 });
 
+test('an explicit override stays authoritative without surviving legacy provenance markers', async () => {
+  const chosen = invoice('invoice-one', { ManualOverride: { Version: 1, Reasons: ['classification'] }, DocumentType: 'bill', BilledAmount: 17 });
+  await seed([chosen], { accounts: {} }); const before = (await read()).items[0];
+  for (let i = 0; i < 2; i++) { await api.initializeInvoices(); await api.collectInvoices(gmailDeps(['invoice-one'])); }
+  assert.deepEqual((await read()).items[0], before); assert.equal(before.ManualOverride.Derived, undefined);
+  assert.equal(buildReconciliationSnapshot([before]).cases[0].OriginalAmount, 17);
+});
+
 test('undoing one choice retains earlier authority and automatic replacement cannot erase extension fields', async () => {
   const item = invoice(); await seed([item]); const classified = await api.correctInvoice(item.Id, 'bill');
   const classifiedId = classified.LastDecisionId;
