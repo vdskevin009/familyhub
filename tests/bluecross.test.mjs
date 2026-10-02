@@ -123,16 +123,16 @@ test('exact complementary trusted payments match one expense despite conflicting
   assert.match(result.MatchAssignments.find(item => item.ReimbursementDocumentId === blueCross.Id).Evidence.join(' '), /conflicting service labels/);
 
   const shortPayment = buildReconciliationSnapshot([source, desjardins, { ...blueCross, ReimbursedAmount: 135, DetectedAmount: 135 }]);
-  assert.deepEqual(shortPayment.unmatched, [{ DocumentId: blueCross.Id, Reason: 'no-expense-match' }]);
+  assert.deepEqual(shortPayment.unmatched.map(({ DocumentId, Reason }) => ({ DocumentId, Reason })), [{ DocumentId: blueCross.Id, Reason: 'no-expense-match' }]);
   assert.equal(shortPayment.cases[0].ReimbursedAmount, 34);
 
   const noOtherInsurer = buildReconciliationSnapshot([source, blueCross]);
-  assert.deepEqual(noOtherInsurer.unmatched, [{ DocumentId: blueCross.Id, Reason: 'no-expense-match' }]);
+  assert.deepEqual(noOtherInsurer.unmatched.map(({ DocumentId, Reason }) => ({ DocumentId, Reason })), [{ DocumentId: blueCross.Id, Reason: 'no-expense-match' }]);
 
   const duplicate = { ...source, Id: 'same-date-same-gross-other-service', Provider: 'Massage therapy' };
   const ambiguous = buildReconciliationSnapshot([source, duplicate, desjardins, blueCross]);
   assert.equal(ambiguous.cases.length, 2);
-  assert.deepEqual(ambiguous.unmatched, [{ DocumentId: blueCross.Id, Reason: 'ambiguous-match' }]);
+  assert.deepEqual(ambiguous.unmatched.map(({ DocumentId, Reason }) => ({ DocumentId, Reason })), [{ DocumentId: blueCross.Id, Reason: 'ambiguous-match' }]);
 
   const ordinaryExpense = { ...source, Id: 'same-gross-matching-service', Provider: 'Social Worker' };
   const ordinary = buildReconciliationSnapshot([source, ordinaryExpense, desjardins, blueCross]);
@@ -150,7 +150,7 @@ test('exact complementary trusted payments match one expense despite conflicting
   const rejected = buildReconciliationSnapshot([source, desjardins, blueCross], [
     { reimbursementId: blueCross.Id, expenseId: source.Id, decision: 'rejected', at: '2026-03-13T00:00:00Z' }
   ]);
-  assert.deepEqual(rejected.unmatched, [{ DocumentId: blueCross.Id, Reason: 'no-expense-match' }]);
+  assert.deepEqual(rejected.unmatched.map(({ DocumentId, Reason }) => ({ DocumentId, Reason })), [{ DocumentId: blueCross.Id, Reason: 'no-expense-match' }]);
 });
 test('provider residual and legacy insurer-derived gross expense collapse into one canonical case', () => {
   const receipt = expense({
@@ -227,7 +227,7 @@ test('RMT receipts and a unique massage report form one case, while duplicate re
   for (const inputs of [[receipt, report, anotherReport], [report, anotherReport, receipt]]) {
     const ambiguous = buildReconciliationSnapshot([...inputs, statement]);
     assert.equal(ambiguous.cases.length, 3, 'an equal date, service and gross cannot choose one of two reports');
-    assert.deepEqual(ambiguous.unmatched, [{ DocumentId: statement.Id, Reason: 'ambiguous-match' }]);
+    assert.deepEqual(ambiguous.unmatched.map(({ DocumentId, Reason }) => ({ DocumentId, Reason })), [{ DocumentId: statement.Id, Reason: 'ambiguous-match' }]);
   }
 });
 

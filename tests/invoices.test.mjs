@@ -61,14 +61,14 @@ test('final Unmatched projection excludes every active assignment across auto, r
   const rejected = buildReconciliationSnapshot([expense, statement], [{ ...decision, decision: 'rejected' }]);
   assertExclusive(rejected);
   assert.equal(rejected.cases[0].MatchAssignments.length, 0);
-  assert.deepEqual(rejected.unmatched, [{ DocumentId: statement.Id, Reason: 'no-expense-match' }]);
+  assert.deepEqual(rejected.unmatched.map(({ DocumentId, Reason }) => ({ DocumentId, Reason })), [{ DocumentId: statement.Id, Reason: 'no-expense-match' }]);
 
   const ambiguous = buildReconciliationSnapshot([expense, { ...expense, Id: 'another-expense' }, statement]);
   assertExclusive(ambiguous);
-  assert.deepEqual(ambiguous.unmatched, [{ DocumentId: statement.Id, Reason: 'ambiguous-match' }]);
+  assert.deepEqual(ambiguous.unmatched.map(({ DocumentId, Reason }) => ({ DocumentId, Reason })), [{ DocumentId: statement.Id, Reason: 'ambiguous-match' }]);
   const noMatch = buildReconciliationSnapshot([expense, { ...statement, ServiceDate: '2026-04-08', Healthcare: { ...statement.Healthcare, ServiceDate: '2026-04-08' } }]);
   assertExclusive(noMatch);
-  assert.deepEqual(noMatch.unmatched, [{ DocumentId: statement.Id, Reason: 'no-expense-match' }]);
+  assert.deepEqual(noMatch.unmatched.map(({ DocumentId, Reason }) => ({ DocumentId, Reason })), [{ DocumentId: statement.Id, Reason: 'no-expense-match' }]);
 });
 
 test('forwarded invoice copies form one expense; only the corroborated insurer payment is linked', () => {
@@ -93,14 +93,14 @@ test('forwarded invoice copies form one expense; only the corroborated insurer p
   assert.equal(snapshot.cases[0].ReimbursedAmount, 120);
   assert.equal(snapshot.cases[0].PotentialRemaining, 60);
   assert.deepEqual(snapshot.cases[0].MatchAssignments.map(x => x.ReimbursementDocumentId), [paid.Id]);
-  assert.deepEqual(snapshot.unmatched, [{ DocumentId: zero.Id, Reason: 'needs-review' }]);
+  assert.deepEqual(snapshot.unmatched.map(({ DocumentId, Reason }) => ({ DocumentId, Reason })), [{ DocumentId: zero.Id, Reason: 'needs-review' }]);
 
   const conflictingCopy = { ...forwarded, Healthcare: { ...forwarded.Healthcare,
     InsurerPayments: { 'blue-cross': 100 } } };
   const conflicted = buildReconciliationSnapshot([receipt, conflictingCopy, paid]);
   assertExclusive(conflicted);
   assert.equal(conflicted.cases.length, 1);
-  assert.deepEqual(conflicted.unmatched, [{ DocumentId: paid.Id, Reason: 'needs-review' }]);
+  assert.deepEqual(conflicted.unmatched.map(({ DocumentId, Reason }) => ({ DocumentId, Reason })), [{ DocumentId: paid.Id, Reason: 'needs-review' }]);
 });
 
 test('WestJet-style sales language with a price and insurance words is marketing', () => {
@@ -163,7 +163,7 @@ test('reconciliation leaves an ambiguous insurer statement unmatched instead of 
   const result = buildReconciliationSnapshot([first, second, statement]);
   assert.equal(result.cases[0].ReimbursedAmount, 0);
   assert.equal(result.cases[1].ReimbursedAmount, 0);
-  assert.deepEqual(result.unmatched, [{ DocumentId: statement.Id, Reason: 'ambiguous-match' }]);
+  assert.deepEqual(result.unmatched.map(({ DocumentId, Reason }) => ({ DocumentId, Reason })), [{ DocumentId: statement.Id, Reason: 'ambiguous-match' }]);
 });
 test('same-day expenses are not collapsed just because one provider is a patient name', () => {
   const first = toInvoice({ ...mail, id: 'september-15-a', subject: 'Massage receipt', text: 'Massage paid CAD 95.00' }, 'kevin@example.test', 'Kevin',
@@ -248,7 +248,7 @@ test('matched partial insurer evidence is derived from assignments and never rem
   assert.deepEqual(repeated, first, 'rebuilding the snapshot is deterministic');
 
   const removed = buildReconciliationSnapshot([statement]);
-  assert.deepEqual(removed.unmatched, [{ DocumentId: statement.Id, Reason: 'no-expense-match' }]);
+  assert.deepEqual(removed.unmatched.map(({ DocumentId, Reason }) => ({ DocumentId, Reason })), [{ DocumentId: statement.Id, Reason: 'no-expense-match' }]);
   const restored = buildReconciliationSnapshot([expense, statement]);
   assert.equal(restored.unmatched.length, 0);
 });
@@ -282,13 +282,13 @@ test('an 85%-confidence reviewed expense can reconcile only through exact determ
 
   const noExactReceiptPayment = { ...expense, Healthcare: { ...expense.Healthcare, InsurerPayments: {} } };
   const blocked = buildReconciliationSnapshot([noExactReceiptPayment, statement]);
-  assert.deepEqual(blocked.unmatched, [{ DocumentId: statement.Id, Reason: 'no-expense-match' }]);
+  assert.deepEqual(blocked.unmatched.map(({ DocumentId, Reason }) => ({ DocumentId, Reason })), [{ DocumentId: statement.Id, Reason: 'no-expense-match' }]);
   assert.equal(blocked.cases[0].Status, 'needs-attention');
 
   const expenseWithService = { ...expense, Healthcare: { ...expense.Healthcare, ServiceType: 'Massage therapy' } };
   const conflictingService = { ...statement, Id: 'desjardins-reviewed-conflict',
     Provider: 'Desjardins · Physiotherapy', Healthcare: { ...statement.Healthcare, ServiceType: 'Physiotherapy' } };
-  assert.deepEqual(buildReconciliationSnapshot([expenseWithService, conflictingService]).unmatched,
+  assert.deepEqual(buildReconciliationSnapshot([expenseWithService, conflictingService]).unmatched.map(({ DocumentId, Reason }) => ({ DocumentId, Reason })),
     [{ DocumentId: conflictingService.Id, Reason: 'no-expense-match' }]);
 
   const reviewedStatement = { ...statement, Id: 'desjardins-needs-review', NeedsReview: true };
@@ -340,7 +340,7 @@ test('manual match confirmation is authoritative and rejection prevents the same
 
   const rejected = buildReconciliationSnapshot([expense, statement],
     [{ reimbursementId: statement.Id, expenseId: expense.Id, decision: 'rejected', at: '2026-09-27T12:05:00Z', confidence }]);
-  assert.deepEqual(rejected.unmatched, [{ DocumentId: statement.Id, Reason: 'no-expense-match' }]);
+  assert.deepEqual(rejected.unmatched.map(({ DocumentId, Reason }) => ({ DocumentId, Reason })), [{ DocumentId: statement.Id, Reason: 'no-expense-match' }]);
   assert.equal(rejected.cases[0].MatchAssignments.length, 0);
 });
 

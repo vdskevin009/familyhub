@@ -117,11 +117,11 @@ test('manual match confirmation and rejection persist across worker restarts', a
     });
     assert.equal(response.status, 200);
     state = await snapshot();
-    assert.deepEqual(state.unmatchedReimbursements, [{ DocumentId: 'statement-1', Reason: 'no-expense-match' }]);
+    assert.deepEqual(state.unmatchedReimbursements.map(({ DocumentId, Reason }) => ({ DocumentId, Reason })), [{ DocumentId: 'statement-1', Reason: 'no-expense-match' }]);
 
     await stop(); await start();
     state = await snapshot();
-    assert.deepEqual(state.unmatchedReimbursements, [{ DocumentId: 'statement-1', Reason: 'no-expense-match' }], 'rejection survives restart');
+    assert.deepEqual(state.unmatchedReimbursements.map(({ DocumentId, Reason }) => ({ DocumentId, Reason })), [{ DocumentId: 'statement-1', Reason: 'no-expense-match' }], 'rejection survives restart');
   } finally {
     await stop();
     await rm(dir, { recursive: true, force: true });

@@ -45,7 +45,7 @@ test("rejected match pair is not re-proposed by the second reviewer", () => {
   const snapshot = buildReconciliationSnapshot(items, [
     { reimbursementId: "s", expenseId: "a", decision: "rejected", at: "2026-09-27T12:00:00Z", confidence: 88 }
   ]);
-  assert.deepEqual(snapshot.unmatched, [{ DocumentId: "s", Reason: "no-expense-match" }]);
+  assert.deepEqual(snapshot.unmatched.map(({ DocumentId, Reason }) => ({ DocumentId, Reason })), [{ DocumentId: "s", Reason: "no-expense-match" }]);
   const target = reviewTargets(items, snapshot).find(item => item.key === "unmatched:s");
   assert.ok(target);
   assert.deepEqual(target.candidateIds, []);

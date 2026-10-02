@@ -40,6 +40,7 @@ public sealed class ReimbursementItem
     public DateTimeOffset ReceivedAt { get; set; } = DateTimeOffset.UtcNow;
     public ReimbursementCategory Category { get; set; }
     public ReimbursementStatus Status { get; set; } = ReimbursementStatus.ToReview;
+    public bool ManualOverride { get; set; }
     public decimal? DetectedAmount { get; set; }
     public string Currency { get; set; } = "";
     public int Confidence { get; set; }
@@ -68,6 +69,11 @@ public sealed class ReimbursementState
                 continue;
             }
 
+            if (existing.ManualOverride || existing.Status != ReimbursementStatus.ToReview || !string.IsNullOrEmpty(existing.Notes))
+            {
+                updated++; // Existing source observed, with its authoritative facts preserved.
+                continue;
+            }
             existing.AccountLabel = incoming.AccountLabel;
             existing.Subject = incoming.Subject;
             existing.Sender = incoming.Sender;

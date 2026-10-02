@@ -275,6 +275,7 @@
     {
         if (!Enum.TryParse<ReimbursementStatus>(value, out var status)) return;
         item.Status = status;
+        item.ManualOverride = true;
         await Persist();
         message = $"Marked as {StatusLabel(status).ToLowerInvariant()}.";
     }

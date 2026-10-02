@@ -17,6 +17,7 @@ await writeFile(path,JSON.stringify({items:[old('one'),old('two'),ignored],corre
   decisions:[{id:'decision',itemId:'test',type:'status',at:'2026-07-19'}],reviews:[],accounts:{[account]:{
     through:Math.floor(Date.now()/1000),healthReceiptRepairVersion:3,healthReceiptRepairPage:'obsolete',invoiceHistoryVersion:1}}}));
 await initializeInvoices();
+const originalItems=JSON.parse(await readFile(path,'utf8')).items;
 let fail=true,queries=[],reads=[],classified=0;
 const deps={credentials:async()=>({accounts:[{email:account,label:'Test'}]}),accessToken:async()=>'synthetic',
   classify:async()=>{classified++;throw Error('Known expense must not be reclassified');},
@@ -39,10 +40,11 @@ await collectInvoices(deps);
 let s=await invoiceSnapshot();assert.equal(s.progress[account].healthReceiptRepairVersion,3);assert.equal(s.progress[account].healthReceiptRepairPage,'second');
 await initializeInvoices();fail=false;await collectInvoices(deps);s=await invoiceSnapshot();
 assert.equal(s.progress[account].healthReceiptRepairVersion,healthReceiptRepairVersion);assert.equal(s.progress[account].healthReceiptRepairPage,undefined);
-assert.deepEqual(queries,['first','second','second']);assert.deepEqual(reads,['one','two']);assert.equal(classified,0);
-for(const item of s.items.filter(x=>!x.IgnoredAt)){assert.equal(item.Provider,'Example Clinic');assert.equal(item.ServiceDate,'2026-07-16');
-  assert.equal(item.BilledAmount,null);assert.equal(item.CorrectedAt,'2026-07-19');assert.equal(item.LastDecisionId,'decision');}
+assert.deepEqual(queries,['first','second','second']);assert.deepEqual(reads,[]);assert.equal(classified,0);
+for(const item of s.items.filter(x=>!x.IgnoredAt)){assert.equal(item.Provider,'Kevin Vanderstraeten');assert.equal(item.ServiceDate,null);
+  assert.equal(item.BilledAmount,old('one').BilledAmount);assert.equal(item.CorrectedAt,'2026-07-19');assert.equal(item.LastDecisionId,'decision');}
 assert.equal(s.items.find(x=>x.IgnoredAt).Provider,ignored.Provider);
 const persisted=JSON.parse(await readFile(path,'utf8'));assert.equal(persisted.corrections.length,1);assert.equal(persisted.decisions.length,1);
+assert.deepEqual(persisted.items,originalItems, 'Protected source facts are unchanged across both resumable repair passes');
 await collectInvoices(deps);assert.equal(queries.length,3);
-console.log('Forwarded receipt repair resumes, preserves decisions and skips ignored records.');
+console.log('Forwarded receipt traversal resumes and skips every manually controlled record.');

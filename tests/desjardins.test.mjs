@@ -53,12 +53,14 @@ test('new portal rows are additive and an identical second run is idempotent', (
   assert.deepEqual(second.items, []);
 });
 
-test('stable portal ID permits a deterministic change while retaining a manual status', () => {
+test('stable portal ID refuses changed facts on a record with a manual status', () => {
   const current = { ...desjardinsInvoices(collection())[0], Status: 3, LastDecisionId: 'manual-choice' };
   const changed = planDesjardinsUpsert([current], collection([row({ paid: 75 })]));
-  assert.deepEqual([changed.new, changed.changed, changed.ambiguous], [0, 1, 0]);
-  assert.equal(changed.items[0].Status, 3);
-  assert.equal(changed.items[0].LastDecisionId, 'manual-choice');
+  assert.deepEqual([changed.new, changed.changed, changed.ambiguous], [0, 0, 1]);
+  assert.deepEqual(changed.items, []);
+  assert.equal(current.Status, 3);
+  assert.equal(current.ReimbursedAmount, 80);
+  assert.equal(current.LastDecisionId, 'manual-choice');
 });
 
 test('conflicting service, repeated ID, unknown member and unknown payment stay out of apply', () => {

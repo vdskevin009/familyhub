@@ -15,6 +15,8 @@ The architecture optimizes for:
 
 ## Components
 
+Invoice ingestion and reconciliation share explicit manual-authority protection across startup, Gmail repairs and insurer imports. Stable source identity and additive JSON enrichment preserve original references and historical decisions; precise uncertainty is persisted separately. See [FH-REIMB-042 architecture and migration](INGESTION-AUTHORITY.md).
+
 ### 1. React PWA — `apps/web`
 
 The PWA is the user-facing product. It owns navigation, local persistence, deterministic calculations, Google browser integrations, and the HTTP client for the optional local worker.

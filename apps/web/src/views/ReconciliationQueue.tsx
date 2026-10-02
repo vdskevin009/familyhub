@@ -56,6 +56,7 @@ function serviceName(item: ReimbursementItem): string {
 }
 
 function unmatchedReason(item: UnmatchedReimbursement): string {
+  if (item.Explanation) return item.Explanation;
   if (item.Reason === "ambiguous-match") return "Multiple expenses remain plausible.";
   if (item.Reason === "missing-insurer") return "The insurer is not identified confidently.";
   if (item.Reason === "needs-review") return "The source still needs classification review.";

@@ -72,5 +72,13 @@ var rescannedReceipt = ReimbursementDetector.Analyze(receiptEmail, "Person A", "
 var secondMerge = reimbursementState.MergeScan([rescannedReceipt]);
 Check(secondMerge.Updated == 1 && reimbursementState.Items.Count == 1, "Repeat scan does not duplicate");
 Check(reimbursementState.Items[0].Status == ReimbursementStatus.Claimed, "Repeat scan preserves status");
+reimbursementState.Items[0].DetectedAmount = 17m;
+rescannedReceipt.DetectedAmount = 999m;
+reimbursementState.MergeScan([rescannedReceipt]);
+Check(reimbursementState.Items[0].DetectedAmount == 17m, "Repeat scan preserves corrected money on a controlled record");
+reimbursementState.Items[0].Status = ReimbursementStatus.ToReview;
+reimbursementState.Items[0].ManualOverride = true;
+reimbursementState.MergeScan([rescannedReceipt]);
+Check(reimbursementState.Items[0].DetectedAmount == 17m, "Explicit manual Open protects even the default status");
 reimbursementState.Validate();
 Console.WriteLine("PASS: reimbursement detection and merge behavior");
