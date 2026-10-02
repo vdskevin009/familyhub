@@ -1,5 +1,9 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <rect width="512" height="512" rx="128" fill="#173f35"/>
-  <path d="M116 275c0-78 63-141 141-141 57 0 107 34 129 83l-56 25c-12-27-40-46-73-46-44 0-80 36-80 80s36 80 80 80c34 0 63-21 75-50h-82v-58h150v28c0 79-64 143-143 143S116 354 116 275Z" fill="#f5f2e9"/>
-  <circle cx="382" cy="138" r="34" fill="#efb55f"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">FamilyHub</title>
+  <desc id="desc">A home with a verified claim badge</desc>
+  <rect width="512" height="512" rx="116" fill="#163f35"/>
+  <path d="M116 250 256 136l140 114" fill="none" stroke="#f5f2e9" stroke-width="38" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M158 236v122c0 31 25 56 56 56h84c31 0 56-25 56-56V236" fill="none" stroke="#f5f2e9" stroke-width="34" stroke-linecap="round"/>
+  <circle cx="350" cy="348" r="74" fill="#e6b65e" stroke="#163f35" stroke-width="18"/>
+  <path d="m315 349 24 24 49-58" fill="none" stroke="#163f35" stroke-width="22" stroke-linecap="round" stroke-linejoin="round"/>
 </svg>
