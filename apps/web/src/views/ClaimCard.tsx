@@ -103,7 +103,7 @@ export default function ClaimCard({ item, invoiceById, unmatched, paired, manual
     </div>
     {sameDayUnmatched.length > 0 && <button type="button" className="candidate-shortcut" onClick={() => setDetailsOpen(true)}><Link2 size={15} /><span>{sameDayUnmatched.length} same-day reimbursement{sameDayUnmatched.length > 1 ? "s" : ""} to review</span><ChevronRight size={16} /></button>}
     <footer className="claim-footer">
-      {!item.InferredFromInsurer && workflow === "open" && prepareClaim && <button type="button" className="text-action" disabled={!paired || busy || !!pending} onClick={() => prepareClaim(item.ExpenseDocumentId || item.ExpenseDocumentIds?.[0] || item.DocumentIds[0])}>Prepare claim</button>}
+      {!item.InferredFromInsurer && workflow === "open" && prepareClaim && <button type="button" className="text-action" disabled={!paired || busy || !!pending} onClick={() => prepareClaim(item.ExpenseDocumentId || item.ExpenseDocumentIds?.[0] || item.DocumentIds[0])}>{item.NextInsurer === "Blue Cross" ? "Prepare Blue Cross claim" : "Prepare claim"}</button>}
       {invoice && invoicePdfOptions.length === 1 ? invoice.Source === "drive" && invoice.Url
         ? <a className="text-action" href={invoice.Url} target="_blank" rel="noreferrer"><ExternalLink size={15} />Invoice</a>
         : <button type="button" className="text-action" disabled={!paired || !!savingId} onClick={() => void openInvoicePdf(invoice)}><ExternalLink size={15} />{savingId === `pdf:${invoice.ItemId}:${invoice.AttachmentIndex}` ? "Opening…" : "Invoice"}</button>

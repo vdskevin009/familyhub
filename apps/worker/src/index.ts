@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { Codex } from "@openai/codex-sdk";
 import { importConnectorMessage, claimPreparation } from "./invoices.js";
 import { portalReconnectStatus, startPortalReconnect } from "./portal-reconnect.js";
-import { openClaimBrowser, inspectClaimStep, fillClaimStep, claimSessionExpense } from "./claim-browser.js";
+import { openClaimBrowser, inspectClaimStep, fillClaimStep, claimSessionExpense, closeClaimBrowser } from "./claim-browser.js";
 import { initializeInvoices, initializeBlueCrossStatus, getBlueCrossStatus, syncBlueCrossPortal, initializeDesjardinsStatus, getDesjardinsStatus, syncDesjardinsPortal, invoiceSnapshot, collectInvoices, correctInvoice, updateInvoiceStatus, undoInvoiceDecision, invoiceAttachment, importBlueCrossMessages, setDocumentsIgnored, setExpenseIgnored, setManualMatch, setMatchDecision, setReimbursementWorkflowStatus, setUnmatchedIgnored } from "./invoices.js";
 
 type WorkerTaskType = "general" | "meal-plan" | "research" | "financial-review" | "admin-classify";
@@ -34,7 +34,7 @@ type ResearchWatch = {
 };
 type PersistedState = { watches: ResearchWatch[] };
 
-const version = "2.16.1";
+const version = "2.17.0";
 const host = process.env.FAMILYHUB_WORKER_HOST?.trim() || "127.0.0.1";
 const port = Number(process.env.FAMILYHUB_WORKER_PORT || "4713");
 const stateDir = process.env.FAMILYHUB_WORKER_DATA?.trim() || join(homedir(), ".familyhub-worker");
@@ -214,14 +214,16 @@ const server = createServer(async (request, response) => {
   const parts = pathParts(request.url);
   try {
     if (parts[0] === "claim-preparation" && request.method === "POST" && parts.length === 2) {
-      const body = await readJson<{ expenseId?: unknown; insurer?: unknown; historyReviewed?: unknown; sessionId?: unknown; revision?: unknown; values?: unknown; attachment?: unknown }>(request);
+      const body = await readJson<{ expenseId?: unknown; insurer?: unknown; historyReviewed?: unknown; warningsReviewed?: unknown; sessionId?: unknown; revision?: unknown; values?: unknown; attachment?: unknown; uploadConfirmed?: unknown }>(request);
       if (parts[1] === "preview") { json(response, 200, claimPreparation(body.expenseId, body.insurer), origin); return; }
-      if (parts[1] === "open") { json(response, 200, await openClaimBrowser(claimPreparation(body.expenseId, body.insurer), body.historyReviewed), origin); return; }
+      if (parts[1] === "open") { json(response, 200, await openClaimBrowser(claimPreparation(body.expenseId, body.insurer), body.historyReviewed, body.warningsReviewed), origin); return; }
       if (parts[1] === "inspect") { json(response, 200, await inspectClaimStep(body.sessionId), origin); return; }
+      if (parts[1] === "close") { json(response, 200, await closeClaimBrowser(body.sessionId), origin); return; }
       if (parts[1] === "fill") {
         const previous = claimSessionExpense(body.sessionId);
         const fresh = claimPreparation(previous.expenseId, previous.insurer);
-        if (fresh.blocked || JSON.stringify(fresh.fields) !== JSON.stringify(previous.fields)) throw new Error("The invoice or duplicate evidence changed. Prepare the claim again.");
+        if (fresh.blocked || JSON.stringify(fresh.fields) !== JSON.stringify(previous.fields) || JSON.stringify(fresh.conflicts) !== JSON.stringify(previous.conflicts)) throw new Error("The invoice or duplicate evidence changed. Prepare the claim again.");
+        if (body.attachment != null && previous.insurer === "blue-cross" && body.uploadConfirmed !== true) throw new Error("Confirm uploading this original PDF to the permanent Blue Cross claims record.");
         json(response, 200, await fillClaimStep(body.sessionId, body.revision, body.values, body.attachment, invoiceAttachment), origin); return;
       }
       throw new Error("Unknown preparation action. Submission is not supported.");

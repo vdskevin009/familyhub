@@ -4,14 +4,15 @@ export const manualReconciliationWorkerVersion = "2.8.0";
 export const bulkDocumentWorkerVersion = "2.11.0";
 export type ClaimPreparation = {
   expenseId: string; insurer: "blue-cross" | "desjardins"; portalUrl: string; blocked: boolean; submitAllowed: false;
-  fields: { patient: string | null; provider: string | null; practitioner: string | null; serviceDate: string | null; originalAmount: number | null; service: string | null; invoiceNumber: string | null };
+  fields: { patient: string | null; provider: string | null; practitioner: string | null; serviceDate: string | null; originalAmount: number | null; service: string | null; invoiceNumber: string | null; otherInsurance?: string | null; otherInsurancePaid?: number | null };
+  otherInsurer?: string; currency?: string | null; reviewableWarnings?: string[];
   missing: string[]; conflicts: string[];
   attachments: { documentId: string; attachmentId: string; name: string }[];
   sourceEmails: { account: string; messageId: string }[];
   duplicate: { status: string; scope: string; checkedAt: string; records: { id: string; reference: string | null; service: string | null; status: string }[] };
 };
 export type ClaimStep = { status: string; revision: string; submitAllowed: false; fields: { key: string; label: string; type: string; kind: string | null; suggested: string | null; options: { value: string; label: string }[] }[] };
-export function claimAction<T>(config: WorkerConfig, action: "preview" | "open" | "inspect" | "fill", body: object): Promise<T> {
+export function claimAction<T>(config: WorkerConfig, action: "preview" | "open" | "inspect" | "fill" | "close", body: object): Promise<T> {
   return request(config, `/claim-preparation/${action}`, { method: "POST", body: JSON.stringify(body) }, 90_000);
 }
 
@@ -179,7 +180,8 @@ export function setReimbursementWorkflowStatus(config: WorkerConfig, expenseId: 
 export function undoInvoiceDecision(config: WorkerConfig, decisionId: string): Promise<ReimbursementItem> {
   return request(config, "/invoices/decisions/undo", { method: "POST", body: JSON.stringify({ decisionId }) });
 }
-async function workerAttachmentBlob(config: WorkerConfig, item: ReimbursementItem, index: number): Promise<{ blob: Blob; fileName: string }> {
+type AttachmentSource = Pick<ReimbursementItem, "Id" | "Attachments">;
+async function workerAttachmentBlob(config: WorkerConfig, item: AttachmentSource, index: number): Promise<{ blob: Blob; fileName: string }> {
   const attachment = item.Attachments[index];
   if (!attachment) throw new Error("Attachment not found.");
   const response = await fetch(endpoint(config, `/invoices/${encodeURIComponent(item.Id)}/attachments/${encodeURIComponent(attachment.Id)}`), {
@@ -213,7 +215,7 @@ function downloadBlob(blob: Blob, fileName: string): void {
  * do not treat the final PDF navigation as an unsolicited async popup.
  * If the browser blocks the viewer, fall back to a normal download.
  */
-export async function viewWorkerAttachment(config: WorkerConfig, item: ReimbursementItem, index: number): Promise<void> {
+export async function viewWorkerAttachment(config: WorkerConfig, item: AttachmentSource, index: number): Promise<void> {
   const attachment = item.Attachments[index];
   if (!attachment) throw new Error("Attachment not found.");
   const viewer = window.open("", "_blank");
@@ -238,7 +240,7 @@ export async function viewWorkerAttachment(config: WorkerConfig, item: Reimburse
   }
 }
 
-export async function downloadWorkerAttachment(config: WorkerConfig, item: ReimbursementItem, index: number): Promise<void> {
+export async function downloadWorkerAttachment(config: WorkerConfig, item: AttachmentSource, index: number): Promise<void> {
   const { blob, fileName } = await workerAttachmentBlob(config, item, index);
   downloadBlob(blob, fileName);
 }
