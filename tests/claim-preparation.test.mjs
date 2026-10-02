@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { prepareClaim, exactServiceOption } from '../apps/worker/dist/claim-preparation.js';
+import { prepareClaim, exactServiceOption, requireClaimUploadConfirmation } from '../apps/worker/dist/claim-preparation.js';
 import { blueCrossSuggestion, blueCrossTextField } from '../apps/worker/dist/bluecross-claim-form.js';
 
 const expense = { Id:'expense', Category:0, DocumentRole:'expense', Member:'Kevin', ServiceDate:'2026-09-01',
@@ -83,4 +83,12 @@ test('Blue Cross maps only unique observed member/service/provider options and a
  assert.equal(blueCrossTextField('form_txtOtherPlanAmt').kind,'otherInsurancePaid');
  assert.equal(blueCrossTextField('form_txtPublicProvincialAmount'),null);
  assert.equal(blueCrossSuggestion('natureOfIllness',p),null);
+});
+
+test('receipt upload requires explicit confirmation for either insurer, including false/string consent',()=>{
+ for(const insurer of ['desjardins','blue-cross']){
+ for(const confirmed of [undefined,false,'true',1])assert.throws(()=>requireClaimUploadConfirmation(insurer,'expense:pdf',confirmed),/Confirm/);
+ assert.doesNotThrow(()=>requireClaimUploadConfirmation(insurer,'expense:pdf',true));
+ assert.doesNotThrow(()=>requireClaimUploadConfirmation(insurer,null,false));
+ }
 });

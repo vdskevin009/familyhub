@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { dataDirectory, loadPrivate } from "./private-store.js";
 import type { ClaimPreparation } from "./claim-preparation.js";
 import { exactServiceOption } from "./claim-preparation.js";
+import { desjardinsRadioField } from "./desjardins-claim-form.js";
 import { blueCrossComboFields, blueCrossSuggestion, blueCrossTextField } from "./bluecross-claim-form.js";
 import { blueCrossSessionMarker } from "./bluecross-collector.js";
 
@@ -56,15 +57,15 @@ export async function openClaimBrowser(dossier: ClaimPreparation, historyReviewe
   } catch (error) { await browser.close(); throw error; }
 }
 
-function fieldKind(label: string): string | null {
-  const name = label.toLowerCase().replace(/[\s:*]+/g, " ").trim();
-  if (/^(?:patient|claimant|covered person|personne assurée|bénéficiaire|personne concernée)$/.test(name)) return "patient";
+export function fieldKind(label: string): string | null {
+  const name = label.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[\s:*]+/g, " ").trim();
+  if (/^(?:patient|claimant|covered person|personne assuree|beneficiaire|personne concernee)$/.test(name)) return "patient";
   if (/^(?:service date|date of service|date du service|date des soins|date du traitement)$/.test(name)) return "serviceDate";
-  if (/^(?:service|benefit|service type|type of service|type de service|catégorie de soins|type de soins)$/.test(name)) return "service";
-  if (/^(?:amount|amount claimed|amount charged|cost|submitted amount|montant réclamé|montant des frais|coût)$/.test(name)) return "originalAmount";
-  if (/^(?:provider|provider name|clinic|nom du fournisseur|professionnel de la santé)$/.test(name)) return "provider";
+  if (/^(?:service|benefit|service type|type of service|type de service|categorie de soins|type de soins)$/.test(name)) return "service";
+  if (/^(?:amount|amount claimed|amount charged|cost|submitted amount|montant reclame|montant des frais|cout)$/.test(name)) return "originalAmount";
+  if (/^(?:provider|provider name|clinic|nom du fournisseur|professionnel de la sante)$/.test(name)) return "provider";
   if (/^(?:practitioner|practitioner name|nom du professionnel)$/.test(name)) return "practitioner";
-  if (/^(?:invoice number|receipt number|numéro de facture|numéro du reçu)$/.test(name)) return "invoiceNumber";
+  if (/^(?:invoice number|receipt number|numero de facture|numero du recu)$/.test(name)) return "invoiceNumber";
   return null;
 }
 export async function inspectClaimStep(id: unknown) {
@@ -78,9 +79,9 @@ async function inspect(s: Session) {
   const candidates = s.page.context().pages().filter(p => !p.isClosed() && allowed(p.url(), s.dossier.insurer));
   if (candidates.length) s.page = candidates[candidates.length - 1];
   if (!allowed(s.page.url(), s.dossier.insurer) || await s.page.locator('input[type="password"]').isVisible().catch(() => false)) return { status: "login-required", fields: [], revision: "", submitAllowed: false };
-  const body = (await s.page.locator("body").innerText()).slice(0, 30_000);
-  const completed = /your claim has been (?:processed|submitted)|réclamation a été (?:transmise|soumise)/i.test(body);
-  const atReview = completed || /review (?:your )?claim|claim summary|I confirm all the information above is correct and I have read and agree|vérifi(?:ez|cation).*réclamation|résumé de (?:la|votre) réclamation/i.test(body);
+  const body = (await s.page.locator("body").innerText()).slice(0, 30_000).normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  const completed = /your claim has been (?:processed|submitted)|reclamation a ete (?:transmise|soumise)/i.test(body);
+  const atReview = completed || /review (?:your )?claim|claim summary|I confirm all the information above is correct and I have read and agree|verifi(?:ez|cation).*reclamation|resume de (?:la|votre) reclamation/i.test(body);
   s.fields.clear();
   s.revision = randomUUID();
   s.inspectedUrl = s.page.url();
@@ -113,6 +114,18 @@ async function inspect(s: Session) {
       s.fields.set(field.key, { locator: providers.first(), providers, field, signature: JSON.stringify(providerMetadata), initialValue: "" });
     }
   }
+  if (s.dossier.insurer === "desjardins" && !atReview) {
+    const definition = desjardinsRadioField(new URL(s.page.url()).pathname);
+    if (definition) {
+      const choices = s.page.locator(`main input[type="radio"][name="${definition.name}"]`).filter({ visible: true });
+      const metadata = await choices.evaluateAll((els: HTMLInputElement[]) => els.map(el => ({ id: el.id, name: el.name, label: Array.from(el.labels || []).map(l => l.textContent?.trim()).filter(Boolean).join(" "), checked: el.checked })));
+      if (metadata.length && !metadata.some(o => o.checked)) {
+        const options = metadata.filter(o => o.id && o.label).map(o => ({ value: o.id, label: o.label }));
+        const field: Field = { key: randomUUID(), label: definition.label, kind: definition.kind, type: "radio", options, suggested: null };
+        s.fields.set(field.key, { locator: choices.first(), providers: choices, field, signature: JSON.stringify(metadata), initialValue: "" });
+      }
+    }
+  }
   const locators = await s.page.locator("input:not([type=hidden]):not([type=password]):not([type=submit]):not([type=button]):not([type=checkbox]):not([type=radio]), select, textarea").all();
   const fields: Field[] = [];
   for (const locator of locators) {
@@ -125,7 +138,7 @@ async function inspect(s: Session) {
     }));
     // Never overwrite a value the operator already entered, except placeholder selects.
     if (metadata.type !== "select" && metadata.type !== "file" && metadata.value) continue;
-    if (metadata.type === "select" && metadata.value && !/^(?:select|please select|choose|choisir|sélectionnez)/i.test(metadata.options.find(o => o.value === metadata.value)?.label || "")) continue;
+    if (metadata.type === "select" && metadata.value && !/^(?:select|please select|choose|choisir|selectionnez)/i.test((metadata.options.find(o => o.value === metadata.value)?.label || "").normalize("NFD").replace(/[\u0300-\u036f]/g, ""))) continue;
     if (atReview && metadata.type !== "file") continue;
     if ([...s.fields.values()].some(f => f.locator === locator)) continue;
     const id = await locator.getAttribute("id") || "";
@@ -159,22 +172,23 @@ export async function fillClaimStep(id: unknown, revision: unknown, values: unkn
     for (const [key, value] of entries) {
       const target = s.fields.get(key);
       if (!target || !target.field.kind || typeof value !== "string" || value.length > 500 || target.field.type === "file") throw new Error("Invalid reviewed field.");
-      if (["select", "combo", "provider"].includes(target.field.type) && value && !target.field.options.some(o => o.value === value)) throw new Error("The selected portal option is not available.");
+      if (["select", "combo", "provider", "radio"].includes(target.field.type) && value && !target.field.options.some(o => o.value === value)) throw new Error("The selected portal option is not available.");
     }
     let filled = 0;
     // Fill stable text first; each dropdown can replace the form via postback.
     // Stop after one dropdown selection instead of touching stale controls.
-    const order = (key: string) => s.fields.get(key)!.field.type === "combo" ? 2 : s.fields.get(key)!.field.type === "provider" ? 1 : 0;
+    const order = (key: string) => ["combo", "select"].includes(s.fields.get(key)!.field.type) ? 2 : s.fields.get(key)!.field.type === "provider" ? 1 : 0;
     const ordered = entries.slice().sort(([a], [b]) => order(a) - order(b));
     for (const [key, value] of ordered) {
       if (!value) continue;
       const target = s.fields.get(key)!;
       if (target.providers) {
         const now = await target.providers.evaluateAll((els: HTMLInputElement[]) => els.map(el => ({ id: el.id, name: el.name, label: Array.from(el.labels || []).map(l => l.textContent?.trim()).filter(Boolean).join(" "), checked: el.checked })));
-        if (JSON.stringify(now) !== target.signature || s.page.url() !== s.inspectedUrl || !allowed(s.page.url(), s.dossier.insurer)) throw new Error("Provider choices changed. Read the form again.");
+        if (JSON.stringify(now) !== target.signature || s.page.url() !== s.inspectedUrl || !allowed(s.page.url(), s.dossier.insurer)) throw new Error("Portal choices changed. Read the form again.");
         const choice = s.page.locator(`[id="${value}"]`);
-        if (!await choice.isVisible() || !await choice.isEnabled()) throw new Error("The selected provider is unavailable.");
+        if (!await choice.isVisible() || !await choice.isEnabled()) throw new Error("The selected portal choice is unavailable.");
         await choice.check(); filled++;
+        if (target.field.type === "radio") return { status: "filled", filled, message: "Review the selected choice in Desjardins, then choose Continue yourself and read the next step. No claim was submitted by FamilyHub.", submitAllowed: false };
         continue;
       }
       // Refuse to follow postbacks/navigation with stale form locators.
@@ -190,7 +204,10 @@ export async function fillClaimStep(id: unknown, revision: unknown, values: unkn
         if (await option.count() !== 1 || !await option.isVisible()) throw new Error("The portal options changed. Read the form again.");
         await option.click(); filled++;
         return { status: "filled", filled, message: "The selected option updates the Blue Cross form. Read its fields again to prepare the remaining details.", submitAllowed: false };
-      } else if (target.field.type === "select") await target.locator.selectOption(value as string);
+      } else if (target.field.type === "select") {
+        await target.locator.selectOption(value as string); filled++;
+        return { status: "filled", filled, message: "The selected option may update the insurer form. Read its fields again before filling more details or attaching a receipt.", submitAllowed: false };
+      }
       else { await target.locator.fill(value as string); if (target.field.kind === "serviceDate") await target.locator.press("Tab"); }
       filled++;
     }
@@ -201,7 +218,7 @@ export async function fillClaimStep(id: unknown, revision: unknown, values: unkn
       if (!selected || targets.length !== 1) throw new Error("Select the correct supporting-document field in the portal.");
       const file = await loadAttachment(selected.documentId, selected.attachmentId);
       const hash = createHash("sha256").update(file.bytes).digest("hex");
-      if (s.attemptedAttachments.has(hash)) throw new Error("This PDF upload was already attempted. Check its status in Blue Cross; FamilyHub will not repeat an uncertain permanent upload.");
+      if (s.attemptedAttachments.has(hash)) throw new Error("This PDF upload was already attempted. Check its status in the insurer portal; FamilyHub will not repeat an uncertain permanent upload.");
       const target = targets[0];
       const current = await target.locator.evaluate((el: HTMLInputElement) => ({ value: el.value,
         signature: JSON.stringify([el.tagName, el.id, el.getAttribute("name"), el.getAttribute("type"), Array.from(el.labels || []).map(l => l.textContent?.trim()), el.getAttribute("aria-label")]) }));
@@ -212,7 +229,7 @@ export async function fillClaimStep(id: unknown, revision: unknown, values: unkn
       await targets[0].locator.setInputFiles({ name: file.name, mimeType: "application/pdf", buffer: file.bytes });
       filled++;
     }
-    return { status: "filled", filled, message: attachment != null ? "The PDF was placed in the portal's upload field. Verify the successful-upload indicator in Blue Cross before consent or submission." : "Review these fields in the insurer window, then choose Next yourself. FamilyHub never clicks Next or Submit.", submitAllowed: false };
+    return { status: "filled", filled, message: attachment != null ? "The PDF was placed in the portal's upload field. Verify the successful-upload indicator in the insurer portal before consent or submission." : "Review these fields in the insurer window, then choose Next yourself. FamilyHub never clicks Next or Submit.", submitAllowed: false };
   } finally { s.fields.clear(); s.revision = ""; s.busy = false; }
 }
 export function claimSessionExpense(id: unknown) { return current(id).dossier; }

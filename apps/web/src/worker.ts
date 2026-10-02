@@ -15,8 +15,8 @@ export type ClaimStep = { status: string; revision: string; submitAllowed: false
 export async function claimAction<T>(config: WorkerConfig, action: "preview" | "open" | "inspect" | "fill" | "close", body: object): Promise<T> {
   if (action !== "close") {
     const health = await testWorker(config);
-    if (!workerVersionAtLeast(health.version, "2.17.0")) {
-      throw new Error(`Your PC worker is ${health.version || "an older version"}. Claim preparation requires worker 2.17.0 or later. Update and restart the FamilyHub worker on the PC, then reopen this panel.`);
+    if (!workerVersionAtLeast(health.version, "2.17.2")) {
+      throw new Error(`Your PC worker is ${health.version || "an older version"}. Claim preparation requires worker 2.17.2 or later. Update and restart the FamilyHub worker on the PC, then reopen this panel.`);
     }
   }
   return request(config, `/claim-preparation/${action}`, { method: "POST", body: JSON.stringify(body) }, 90_000);

@@ -7,6 +7,7 @@ import { join } from "node:path";
 import { Codex } from "@openai/codex-sdk";
 import { importConnectorMessage, claimPreparation } from "./invoices.js";
 import { portalReconnectStatus, startPortalReconnect } from "./portal-reconnect.js";
+import { requireClaimUploadConfirmation } from "./claim-preparation.js";
 import { openClaimBrowser, inspectClaimStep, fillClaimStep, claimSessionExpense, closeClaimBrowser } from "./claim-browser.js";
 import { initializeInvoices, initializeBlueCrossStatus, getBlueCrossStatus, syncBlueCrossPortal, initializeDesjardinsStatus, getDesjardinsStatus, syncDesjardinsPortal, invoiceSnapshot, collectInvoices, correctInvoice, updateInvoiceStatus, undoInvoiceDecision, invoiceAttachment, importBlueCrossMessages, setDocumentsIgnored, setExpenseIgnored, setManualMatch, setMatchDecision, setReimbursementWorkflowStatus, setUnmatchedIgnored } from "./invoices.js";
 
@@ -34,7 +35,7 @@ type ResearchWatch = {
 };
 type PersistedState = { watches: ResearchWatch[] };
 
-const version = "2.17.1";
+const version = "2.17.2";
 const host = process.env.FAMILYHUB_WORKER_HOST?.trim() || "127.0.0.1";
 const port = Number(process.env.FAMILYHUB_WORKER_PORT || "4713");
 const stateDir = process.env.FAMILYHUB_WORKER_DATA?.trim() || join(homedir(), ".familyhub-worker");
@@ -223,7 +224,7 @@ const server = createServer(async (request, response) => {
         const previous = claimSessionExpense(body.sessionId);
         const fresh = claimPreparation(previous.expenseId, previous.insurer);
         if (fresh.blocked || JSON.stringify(fresh.fields) !== JSON.stringify(previous.fields) || JSON.stringify(fresh.conflicts) !== JSON.stringify(previous.conflicts)) throw new Error("The invoice or duplicate evidence changed. Prepare the claim again.");
-        if (body.attachment != null && previous.insurer === "blue-cross" && body.uploadConfirmed !== true) throw new Error("Confirm uploading this original PDF to the permanent Blue Cross claims record.");
+        requireClaimUploadConfirmation(previous.insurer, body.attachment, body.uploadConfirmed);
         json(response, 200, await fillClaimStep(body.sessionId, body.revision, body.values, body.attachment, invoiceAttachment), origin); return;
       }
       throw new Error("Unknown preparation action. Submission is not supported.");

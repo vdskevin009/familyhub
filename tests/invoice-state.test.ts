@@ -40,7 +40,7 @@ test("claim preparation sends the reviewed request to a supported worker", async
   const requests: { url: string; body?: string }[] = [];
   t.mock.method(globalThis, "fetch", async (url: string, init: RequestInit) => {
     requests.push({ url, body: init.body as string | undefined });
-    return Response.json(url.endsWith("/health") ? { version: "2.17.0" } : { submitAllowed: false });
+    return Response.json(url.endsWith("/health") ? { version: "2.17.2" } : { submitAllowed: false });
   });
   const body = { expenseId: "fixture-expense", insurer: "blue-cross" };
   assert.deepEqual(await claimAction({ Endpoint: "http://worker.test", ApiKey: "test-only" }, "preview", body), { submitAllowed: false });
@@ -647,4 +647,11 @@ test("insurer authentication failures give recovery guidance and never expose Ap
     assert.match(insurerSyncMessage(status, null, false), expected);
     assert.equal(applicableInsurerPreview(status, null), false);
   }
+});
+
+test("Desjardins preparation refuses a worker without reviewed-upload guards before sending expense data", async t => {
+ const requests: string[] = [];
+ t.mock.method(globalThis, "fetch", async (url: string) => { requests.push(url); return Response.json({ version: "2.17.1" }); });
+ await assert.rejects(claimAction({ Endpoint: "http://worker.test", ApiKey: "test-only" }, "preview", { expenseId: "fixture-expense", insurer: "desjardins" }), /2\.17\.2/);
+ assert.deepEqual(requests, ["http://worker.test/health"]);
 });
