@@ -18,6 +18,7 @@ async function storedDocument(id: string, blob?: Blob): Promise<Blob | undefined
     tx.onerror = tx.onabort = () => reject(new Error("Could not save/read the document. Check available device storage."));
   }); } finally { db.close(); }
 }
+export async function hasContractDocument(id: string): Promise<boolean> { return Boolean(await storedDocument(id)); }
 export async function saveContractDocument(file: File): Promise<ContractDocument> {
   if (!allowedTypes.has(file.type) || file.size > maxBytes || file.size === 0) throw new Error("Choose a PDF, PNG, JPG or text file up to 5 MB.");
   const document = { id: crypto.randomUUID(), name: file.name, type: file.type, size: file.size, addedAt: new Date().toISOString() };

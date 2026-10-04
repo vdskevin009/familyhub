@@ -18,7 +18,7 @@
     "build": "npm run build:web && npm run build:worker",
     "typecheck": "npm --workspace @familyhub/web run typecheck && npm --workspace @familyhub/worker run typecheck",
     "test:pwa": "node --test tests/pwa-install.test.mjs && tsx --tsconfig apps/web/tsconfig.json --test apps/web/tests/product.test.ts",
-    "test:savings": "node --import tsx --test tests/savings.test.ts",
-    "test:savings:browser": "node apps/web/tests/savings-browser.mjs"
+    "test:savings": "node --import tsx --test tests/savings.test.ts tests/savings-sharing.test.ts",
+    "test:savings:browser": "node apps/web/tests/savings-browser.mjs && node apps/web/tests/savings-sharing-browser.mjs"
   }
 }

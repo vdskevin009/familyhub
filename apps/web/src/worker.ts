@@ -1,5 +1,15 @@
 import { AgentReview, CleanupSuggestion, ReconciliationCase, ReimbursementItem, ReimbursementWorkflowStatus, ResearchWatch, UnmatchedReimbursement, WorkerConfig, WorkerTask, WorkerTaskType } from "./types";
 import type { PublicBaseline, SavingsJob } from "./savings";
+import type { SavingsContract } from "./savings";
+import type { SharedLibrary, SharedDocument } from "../../worker/src/savings-sharing-model";
+export function fetchSharedSavings(config: WorkerConfig): Promise<SharedLibrary> { return request(config, "/savings/contracts"); }
+export function fetchSharedSavingsDocument(config: WorkerConfig, id: string): Promise<SharedDocument> { return request(config, `/savings/documents/${encodeURIComponent(id)}`); }
+export function importSharedSavings(config: WorkerConfig, contracts: SavingsContract[], documents: SharedDocument[]): Promise<SharedLibrary> {
+  return request(config, "/savings/contracts/import", { method: "POST", body: JSON.stringify({ contracts, documents }) });
+}
+export function updateSharedSavings(config: WorkerConfig, contract: SavingsContract, expectedRevision: string, documents: SharedDocument[]): Promise<SharedLibrary> {
+  return request(config, `/savings/contracts/${encodeURIComponent(contract.id)}`, { method: "POST", body: JSON.stringify({ contract, expectedRevision, documents }) });
+}
 
 export async function startSavingsResearch(config: WorkerConfig, body: { contractId: string; baselineKey: string; baseline: PublicBaseline }): Promise<SavingsJob> {
   const health = await testWorker(config);

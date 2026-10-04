@@ -6,6 +6,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { Codex } from "@openai/codex-sdk";
 import { SavingsResearch, codexSavingsRunner } from "./savings-research.js";
+import { SavingsLibrary, SavingsConflict } from "./savings-library.js";
 import { importConnectorMessage, claimPreparation } from "./invoices.js";
 import { portalReconnectStatus, startPortalReconnect } from "./portal-reconnect.js";
 import { openClaimBrowser, inspectClaimStep, fillClaimStep, claimSessionExpense, closeClaimBrowser } from "./claim-browser.js";
@@ -35,7 +36,7 @@ type ResearchWatch = {
 };
 type PersistedState = { watches: ResearchWatch[] };
 
-const version = "2.19.1";
+const version = "2.20.0";
 const host = process.env.FAMILYHUB_WORKER_HOST?.trim() || "127.0.0.1";
 const port = Number(process.env.FAMILYHUB_WORKER_PORT || "4713");
 const stateDir = process.env.FAMILYHUB_WORKER_DATA?.trim() || join(homedir(), ".familyhub-worker");
@@ -52,6 +53,7 @@ const allowedOrigins = new Set(
 const tasks = new Map<string, WorkerTask>();
 const codex = new Codex({ codexPathOverride: process.env.FAMILYHUB_CODEX_PATH || undefined });
 const savingsDirectory = join(stateDir, "savings");
+const savingsLibrary = new SavingsLibrary(join(savingsDirectory, "household-contracts.json"));
 const researchDirectory = join(savingsDirectory, "public-research");
 const savingsResearch = new SavingsResearch(join(savingsDirectory, "jobs"), codexSavingsRunner(codex, researchDirectory));
 let pairingKey = "";
@@ -217,6 +219,15 @@ const server = createServer(async (request, response) => {
 
   const parts = pathParts(request.url);
   try {
+    if (parts[0] === "savings" && parts[1] === "contracts") {
+      if (parts.length === 2 && request.method === "GET") { json(response, 200, await savingsLibrary.list(), origin); return; }
+      if (parts.length === 3 && parts[2] === "import" && request.method === "POST") { json(response, 200, await savingsLibrary.import(await readJson(request, 30_000_000)), origin); return; }
+      if (parts.length === 3 && request.method === "POST") { json(response, 200, await savingsLibrary.update(parts[2], await readJson(request, 30_000_000)), origin); return; }
+    }
+    if (parts[0] === "savings" && parts[1] === "documents" && parts.length === 3 && request.method === "GET") {
+      const document = await savingsLibrary.document(parts[2]);
+      json(response, document ? 200 : 404, document ?? { error: "Shared Savings document not found." }, origin); return;
+    }
     if (parts[0] === "savings" && parts[1] === "research") {
       if (parts.length === 2 && request.method === "POST") {
         json(response, 202, await savingsResearch.start(await readJson(request)), origin); return;
@@ -416,7 +427,7 @@ const server = createServer(async (request, response) => {
 
     json(response, 404, { error: "Endpoint not found." }, origin);
   } catch (error) {
-    json(response, 400, { error: error instanceof Error ? error.message : "Request failed." }, origin);
+    json(response, error instanceof SavingsConflict ? 409 : 400, { error: error instanceof Error ? error.message : "Request failed." }, origin);
   }
 });
 

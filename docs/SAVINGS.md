@@ -1,5 +1,11 @@
 # Savings — issue #141
 
+## Paired phone contracts
+
+Worker 2.20.0 adds private household contract sharing (FH-SAV-005, #144). On the PC, open Savings and choose **Share device contracts with paired devices**. This explicitly copies saved contract details, notes and attached documents to your own paired PC. On the already paired phone, reopen Savings or choose **Refresh shared contracts**. Contracts and documents are cached for offline use. The PC and its existing HTTPS connection must be running for refresh or shared edits.
+
+Different local versions are preserved and flagged; sharing never replaces a conflicting version. Edits from a loaded shared version require its exact revision. An offline or rejected edit remains local and is reported as not shared. No whole-app backup restore, invoice import, provider contact or research schedule is involved. Research still receives only its existing whitelisted public summary.
+
 Implements `FamilyHub_Plan_Savings_2026-10-03.txt`. The main navigation is Claims / Documents / Savings / Other. Claims remains the root; existing `?view=invoices`, `desjardins`, `blue-cross`, `money` and other links remain valid. Documents groups navigation only, retaining three distinct source libraries and every existing claim action, correction and reconciliation.
 
 ## Usage and scope
