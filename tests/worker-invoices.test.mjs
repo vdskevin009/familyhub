@@ -29,6 +29,13 @@ test('invoice endpoints require pairing/origin checks and report unconfigured Gm
     assert.equal((await call('/savings/research', { method: 'POST', headers: { ...headers, Origin: 'https://evil.example' }, body: '{}' })).status, 403);
     assert.equal((await call('/savings/research', { method: 'POST', headers, body: '{}' })).status, 400);
     assert.equal((await call('/savings/research/not-found', { headers })).status, 404);
+    assert.equal((await call('/savings/contracts')).status, 401);
+    assert.equal((await call('/savings/contracts', { headers: { ...headers, Origin: 'https://evil.example' } })).status, 403);
+    assert.equal((await call('/savings/contracts/import', { method: 'POST', body: '{}' })).status, 401);
+    assert.equal((await call('/savings/contracts/import', { method: 'POST', headers, body: '{}' })).status, 400);
+    assert.deepEqual(await (await call('/savings/contracts', { headers })).json(), { records: [] });
+    assert.equal((await call('/savings/documents/11111111-1111-4111-8111-111111111111')).status, 401);
+    assert.equal((await call('/savings/documents/11111111-1111-4111-8111-111111111111', { headers })).status, 404);
     for (const insurer of ['bluecross', 'desjardins']) {
       assert.equal((await call('/'+insurer+'/status')).status,401);
       assert.equal((await (await call('/'+insurer+'/status',{headers})).json()).loginConfigured,false);
