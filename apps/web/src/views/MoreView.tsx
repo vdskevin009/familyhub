@@ -11,6 +11,7 @@ import type {
 } from "../types";
 import { downloadJson, readJsonFile, uid } from "../storage";
 import { runResearchWatch, syncResearchWatch, testWorker } from "../worker";
+import { exportContractDocuments, restoreContractDocuments, type DocumentBackup } from "../contract-documents";
 
 type Props = { hub: HubState; installAvailable?: boolean; installed?: boolean; onInstall?: () => void };
 
@@ -24,6 +25,7 @@ type Backup = {
   spending: SpendingState;
   research: ResearchState;
   admin: AdminSettings;
+  savingsDocuments?: DocumentBackup[];
 };
 
 export default function MoreView({ hub, installAvailable = false, installed = false, onInstall }: Props) {
@@ -145,7 +147,9 @@ export default function MoreView({ hub, installAvailable = false, installed = fa
     }
   }
 
-  function exportBackup() {
+  async function exportBackup() {
+    setError("");
+    try {
     const backup: Backup = {
       schemaVersion: 2,
       exportedAt: new Date().toISOString(),
@@ -155,9 +159,12 @@ export default function MoreView({ hub, installAvailable = false, installed = fa
       planner: hub.planner,
       spending: hub.spending,
       research: hub.research,
-      admin: hub.admin
+      admin: hub.admin,
+      savingsDocuments: await exportContractDocuments((hub.savings.Contracts ?? []).flatMap(contract => contract.documents))
     };
     downloadJson(`familyhub-backup-${new Date().toISOString().slice(0, 10)}.json`, backup);
+    setMessage("Backup downloaded, including attached Savings documents. Keep this financial backup private.");
+    } catch (err) { setError(err instanceof Error ? err.message : "Could not create a complete backup."); }
   }
 
   async function importBackup(event: ChangeEvent<HTMLInputElement>) {
@@ -171,6 +178,7 @@ export default function MoreView({ hub, installAvailable = false, installed = fa
         throw new Error("That file is not a FamilyHub v2 backup.");
       }
       if (!confirm("Replace this device's FamilyHub data with the selected backup?")) return;
+      if (backup.savingsDocuments) await restoreContractDocuments(backup.savingsDocuments);
       hub.setFamily(backup.family);
       hub.setSavings(backup.savings);
       if (backup.reimbursements) hub.setReimbursements(backup.reimbursements);

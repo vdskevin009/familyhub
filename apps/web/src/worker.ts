@@ -1,4 +1,14 @@
 import { AgentReview, CleanupSuggestion, ReconciliationCase, ReimbursementItem, ReimbursementWorkflowStatus, ResearchWatch, UnmatchedReimbursement, WorkerConfig, WorkerTask, WorkerTaskType } from "./types";
+import type { PublicBaseline, SavingsJob } from "./savings";
+
+export async function startSavingsResearch(config: WorkerConfig, body: { contractId: string; baselineKey: string; baseline: PublicBaseline }): Promise<SavingsJob> {
+  const health = await testWorker(config);
+  if (!workerVersionAtLeast(health.version, "2.19.0")) throw new Error("Savings research needs PC worker 2.19.0 or later. Update and restart the existing PC worker; saved contracts remain available.");
+  return request(config, "/savings/research", { method: "POST", body: JSON.stringify(body) });
+}
+export async function fetchSavingsResearch(config: WorkerConfig, id: string): Promise<SavingsJob> {
+  return request(config, `/savings/research/${encodeURIComponent(id)}`);
+}
 
 export const manualReconciliationWorkerVersion = "2.8.0";
 export const bulkDocumentWorkerVersion = "2.11.0";

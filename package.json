@@ -17,6 +17,8 @@
     "collect:desjardins": "npm run build:worker && npm --workspace @familyhub/worker run collect:desjardins --",
     "build": "npm run build:web && npm run build:worker",
     "typecheck": "npm --workspace @familyhub/web run typecheck && npm --workspace @familyhub/worker run typecheck",
-    "test:pwa": "node --test tests/pwa-install.test.mjs && tsx --tsconfig apps/web/tsconfig.json --test apps/web/tests/product.test.ts"
+    "test:pwa": "node --test tests/pwa-install.test.mjs && tsx --tsconfig apps/web/tsconfig.json --test apps/web/tests/product.test.ts",
+    "test:savings": "node --import tsx --test tests/savings.test.ts",
+    "test:savings:browser": "node apps/web/tests/savings-browser.mjs"
   }
 }

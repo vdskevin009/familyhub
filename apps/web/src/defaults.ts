@@ -11,7 +11,7 @@ const day = (offset: number) => {
 };
 
 export const defaultFamily: FamilyState = { SchemaVersion: 1, Entries: [] };
-export const defaultSavings: SavingsState = { SchemaVersion: 1, Subscriptions: [], Offers: [], Mortgage: emptyMortgage() };
+export const defaultSavings: SavingsState = { SchemaVersion: 1, Subscriptions: [], Offers: [], Mortgage: emptyMortgage(), Contracts: [], Reviews: [] };
 export const defaultReimbursements: ReimbursementState = { SchemaVersion: 2, Items: [], Reconciliations: [], CleanupSuggestions: [], ImportantMail: [], LearningDecisions: 0, UnmatchedReimbursements: [], IgnoredUnmatchedReimbursements: [] };
 export const defaultSpending: SpendingState = { SchemaVersion: 1, Transactions: [] };
 export const defaultResearch: ResearchState = { SchemaVersion: 1, Watches: [] };
