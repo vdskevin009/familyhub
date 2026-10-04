@@ -76,7 +76,7 @@ Rules:
 
 ## Savings and grouped navigation (Issue #141)
 
-Saved plan: `FamilyHub_Plan_Savings_2026-10-03.txt`; implementation branch `feat/savings-contract-research`, worker 2.19.0. No recurring Savings schedule selected or enabled. Release, installed-worker and live-search acceptance are tracked separately; see [scope, calculations and gates](docs/SAVINGS.md).
+Saved plan: `FamilyHub_Plan_Savings_2026-10-03.txt`; [PR #142](https://github.com/vdskevin009/familyhub/pull/142), implementation branch `feat/savings-contract-research`, worker 2.19.0; tested code `4f3e7864fc1bf1d65189dddb785164950571ba74`. [PR CI 37170174149](https://github.com/vdskevin009/familyhub/actions/runs/37170174149) passed typecheck/build, PWA metadata/product, 11 Savings tests, synthetic browser flows at 320/390/768/1440 px including document backup/restore, invoice/worker regressions and retained .NET checks. No recurring Savings schedule selected or enabled. Release, installed-worker, actual public-search output and physical-phone acceptance remain separate unclaimed gates; see [scope, calculations and gates](docs/SAVINGS.md).
 
 | ID | Requirement | Status | Implementation notes |
 |---|---|---|---|
