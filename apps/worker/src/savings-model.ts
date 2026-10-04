@@ -51,6 +51,10 @@ export const publicProviders = ["ICBC", "BCAA", "Family Insurance", "TD Insuranc
   "Public Mobile", "Fizz", "Shaw", "TekSavvy", "Oxio", "Lightspeed", "Novus", "TD", "RBC", "BMO", "CIBC",
   "Scotiabank", "Tangerine", "Simplii", "Vancity", "Coast Capital", "Desjardins", "American Express",
   "Netflix", "Spotify", "Disney+", "Amazon Prime", "Apple", "Google", "Microsoft", "OpenAI", "YouTube"];
+publicProviders.push("Allstate", "CAA", "Sonnet", "belairdirect", "Economical", "Definity", "Square One",
+  "Beneva", "Gore Mutual", "SGI CANADA", "Manulife", "National Bank", "EQ Bank", "MBNA", "Laurentian Bank",
+  "Videotron", "Eastlink", "SaskTel", "Cogeco", "Distributel", "EBOX", "Beanfield", "Tbaytel", "Chatr",
+  "Lucky Mobile", "PC Mobile", "Zoomer Wireless", "Crave", "Paramount+", "Adobe", "Costco");
 
 /** Never send titles, notes, documents, raw transactions, identifiers or free-text requirements. */
 export function publicBaseline(contract: SavingsContract): PublicBaseline {

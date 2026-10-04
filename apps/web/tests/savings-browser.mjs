@@ -65,7 +65,7 @@ try {
     await form.getByLabel("Name", { exact: true }).fill("Synthetic internet");
     await form.getByLabel("Current provider", { exact: true }).fill("TELUS");
     await form.getByLabel("Current price (CAD, all-in)", { exact: true }).fill("100");
-    await form.getByLabel("Price includes taxes and recurring fees?", { exact: true }).selectOption("true");
+    await form.getByLabel("Price includes taxes and recurring fees?").selectOption("true");
     await form.getByLabel("Renewal / review date", { exact: true }).fill("2027-01-01");
     await form.getByLabel("Cancellation / break penalty (CAD)", { exact: true }).fill("40");
     await form.getByLabel("Annual discounts lost if switching (CAD)", { exact: true }).fill("20");

@@ -66,6 +66,9 @@ export function validateReport(value: unknown, contractId: string, now = new Dat
       affectedContractIds: [contractId, ...(strings(offer.affectedContractIds).length ? ["unmodeled-bundle"] : [])]
     } as SavingsOffer;
     for (const key of ["monthlyPrice", "monthlyPriceAfterPromo", "upfrontFees", "annualLostDiscounts", "liabilityLimit", "collisionDeductible", "comprehensiveDeductible", "mortgageRate", "termMonths", "amortizationYears"] as const) output[key] = nonnegative(offer[key]);
+    if (output.mortgageRate !== null && output.mortgageRate > 30) throw new Error("Invalid public mortgage rate.");
+    if (output.termMonths !== null && (!Number.isInteger(output.termMonths) || output.termMonths < 1 || output.termMonths > 120)) throw new Error("Invalid public mortgage term.");
+    if (output.amortizationYears !== null && (output.amortizationYears <= 0 || output.amortizationYears > 40)) throw new Error("Invalid public amortization.");
     output.promoMonths = nonnegative(offer.promoMonths, 120) ?? 0;
     if (!Number.isInteger(output.promoMonths)) throw new Error("Invalid promotion duration.");
     for (const key of ["currentProvider", "taxesIncluded", "comparable"] as const) {

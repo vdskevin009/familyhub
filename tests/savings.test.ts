@@ -67,7 +67,7 @@ test("public summaries and server validation omit names, notes, documents and fr
   assert.throws(() => validateBaseline({ ...publicBaseline(c), price: -1 }));
 });
 test("public report validation rejects quote claims, unsafe URLs and unsourced offers", () => {
-  for (const candidate of [offer({ kind: "personalized-quote" as never }), offer({ sources: [] }), offer({ sources: [{ title: "Bad", url: "javascript:alert(1)" }] }), offer({ sources: [{ title: "Private", url: "https://example.test/offer?email=test@example.test" }] })])
+  for (const candidate of [offer({ mortgageRate: 31 }), offer({ termMonths: 0 }), offer({ amortizationYears: 0 }), offer({ kind: "personalized-quote" as never }), offer({ sources: [] }), offer({ sources: [{ title: "Bad", url: "javascript:alert(1)" }] }), offer({ sources: [{ title: "Private", url: "https://example.test/offer?email=test@example.test" }] })])
     assert.throws(() => validateReport({ summary: "Test", missing: [], offers: [candidate] }, "test"));
   const report = validateReport({ summary: "Test", missing: [], offers: [offer({ affectedContractIds: ["home-policy"] })] }, "test");
   assert.equal(report.offers[0].comparable, false); assert.ok(report.offers[0].affectedContractIds.includes("unmodeled-bundle"));
