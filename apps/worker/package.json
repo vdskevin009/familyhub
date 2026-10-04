@@ -12,7 +12,7 @@
     "collect:desjardins": "node dist/desjardins-cli.js"
   },
   "dependencies": {
-    "@openai/codex-sdk": "0.155.1",
+    "@openai/codex-sdk": "0.159.2",
     "pdf-parse": "2.4.5",
     "playwright": "^1.63.0"
   },
