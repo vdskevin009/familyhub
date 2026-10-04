@@ -34,6 +34,15 @@ jobs:
       - name: Verify PWA installability metadata
         run: npm run test:pwa
 
+      - name: Verify Savings calculations and privacy
+        run: npm run test:savings
+
+      - name: Install browser for Savings acceptance
+        run: npx playwright install --with-deps chromium
+
+      - name: Verify Savings mobile and desktop flows
+        run: npm run test:savings:browser
+
       - name: Verify invoice collection and worker authorization
         run: npm run test:invoices
 

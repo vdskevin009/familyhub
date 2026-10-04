@@ -1,4 +1,4 @@
-const CACHE = "familyhub-v2-shell-6";
+const CACHE = "familyhub-v2-shell-7";
 const SHELL = ["./", "./manifest.webmanifest", "./icon.svg", "./icon-192.png", "./icon-512.png", "./icon-maskable-512.png"];
 
 self.addEventListener("install", event => {

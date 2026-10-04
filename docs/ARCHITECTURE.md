@@ -120,6 +120,12 @@ familyhub.admin.v1
 
 The v2 combined backup exports the household data stores but deliberately excludes Google tokens and the worker pairing key.
 
+Savings adds optional `Contracts` and `Reviews` arrays to `familyhub.savings.v1`, preserving existing subscriptions, grocery offers and mortgage settings. Contract document bytes are in IndexedDB `familyhub.contract-documents.v1`; complete v2 backups include an optional `savingsDocuments` field, while earlier backups remain readable. Names, private requirements, notes, documents and raw spending stay on the device. General Savings synchronization is not implemented.
+
+The paired worker 2.19.0 exposes authenticated `POST /savings/research` and `GET /savings/research/:id` using the existing origin and pairing checks. A public summary is whitelisted again on the server; only its comparison fingerprint, opaque contract ID and structured baseline are persisted under `<FAMILYHUB_WORKER_DATA>/savings/jobs`. Atomic job files survive disconnection. Interrupted jobs become failed after restart, never automatically replayed. Starts are serialized, duplicates coalesced and at most two jobs run concurrently.
+
+Each manually requested comparison starts a new Codex thread with live web search, read-only sandbox, ordinary network access disabled and an empty dedicated working directory. The prompt prohibits private-file/session/integration access and provider submissions; this is an agent instruction boundary, not an OS guarantee that no readable private file exists. The caller supplies no documents, ledger, names, credentials or other private context. Runtime validation admits sourced public estimates only. Coverage/benefits still need local review. No personalized quote, provider contact, purchase, switching endpoint or Savings schedule exists. See [Savings calculations and acceptance](SAVINGS.md).
+
 Local storage is convenient, not an encrypted security boundary. General household sync is not implemented. The optional daily invoice index and its corrections/statuses sync through the paired worker; see [Daily invoices](DAILY-INVOICES.md).
 
 ### 5. Retained .NET code

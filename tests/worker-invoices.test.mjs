@@ -25,6 +25,10 @@ test('invoice endpoints require pairing/origin checks and report unconfigured Gm
     }
     assert.ok(ready, logs);
     assert.equal((await call('/invoices')).status, 401);
+    assert.equal((await call('/savings/research', { method: 'POST', body: '{}' })).status, 401);
+    assert.equal((await call('/savings/research', { method: 'POST', headers: { ...headers, Origin: 'https://evil.example' }, body: '{}' })).status, 403);
+    assert.equal((await call('/savings/research', { method: 'POST', headers, body: '{}' })).status, 400);
+    assert.equal((await call('/savings/research/not-found', { headers })).status, 404);
     for (const insurer of ['bluecross', 'desjardins']) {
       assert.equal((await call('/'+insurer+'/status')).status,401);
       assert.equal((await (await call('/'+insurer+'/status',{headers})).json()).loginConfigured,false);

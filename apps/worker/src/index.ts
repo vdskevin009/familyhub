@@ -5,6 +5,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { Codex } from "@openai/codex-sdk";
+import { SavingsResearch, codexSavingsRunner } from "./savings-research.js";
 import { importConnectorMessage, claimPreparation } from "./invoices.js";
 import { portalReconnectStatus, startPortalReconnect } from "./portal-reconnect.js";
 import { openClaimBrowser, inspectClaimStep, fillClaimStep, claimSessionExpense, closeClaimBrowser } from "./claim-browser.js";
@@ -34,7 +35,7 @@ type ResearchWatch = {
 };
 type PersistedState = { watches: ResearchWatch[] };
 
-const version = "2.18.0";
+const version = "2.19.0";
 const host = process.env.FAMILYHUB_WORKER_HOST?.trim() || "127.0.0.1";
 const port = Number(process.env.FAMILYHUB_WORKER_PORT || "4713");
 const stateDir = process.env.FAMILYHUB_WORKER_DATA?.trim() || join(homedir(), ".familyhub-worker");
@@ -50,6 +51,9 @@ const allowedOrigins = new Set(
 
 const tasks = new Map<string, WorkerTask>();
 const codex = new Codex({ codexPathOverride: process.env.FAMILYHUB_CODEX_PATH || undefined });
+const savingsDirectory = join(stateDir, "savings");
+const researchDirectory = join(savingsDirectory, "public-research");
+const savingsResearch = new SavingsResearch(join(savingsDirectory, "jobs"), codexSavingsRunner(codex, researchDirectory));
 let pairingKey = "";
 let persisted: PersistedState = { watches: [] };
 let schedulerBusy = false;
@@ -213,6 +217,15 @@ const server = createServer(async (request, response) => {
 
   const parts = pathParts(request.url);
   try {
+    if (parts[0] === "savings" && parts[1] === "research") {
+      if (parts.length === 2 && request.method === "POST") {
+        json(response, 202, await savingsResearch.start(await readJson(request)), origin); return;
+      }
+      if (parts.length === 3 && request.method === "GET") {
+        const job = savingsResearch.get(parts[2]);
+        json(response, job ? 200 : 404, job || { error: "Savings comparison not found on this PC." }, origin); return;
+      }
+    }
     if (parts[0] === "claim-preparation" && request.method === "POST" && parts.length === 2) {
       const body = await readJson<{ expenseId?: unknown; insurer?: unknown; historyReviewed?: unknown; warningsReviewed?: unknown; sessionId?: unknown; revision?: unknown; values?: unknown; attachment?: unknown; uploadConfirmed?: unknown }>(request);
       if (parts[1] === "preview") { json(response, 200, claimPreparation(body.expenseId, body.insurer), origin); return; }
@@ -408,6 +421,8 @@ const server = createServer(async (request, response) => {
 });
 
 await ensureState();
+await mkdir(researchDirectory, { recursive: true });
+await savingsResearch.initialize();
 await initializeInvoices();
 await initializeBlueCrossStatus();
 await initializeDesjardinsStatus();

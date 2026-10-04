@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { CalendarDays, CircleDollarSign, Download, FileText, HeartHandshake, Home, Mail, MoreHorizontal, ShieldCheck, ChevronRight, Settings2 } from "lucide-react";
+import { CalendarDays, CircleDollarSign, Download, FileText, HeartHandshake, Home, Mail, MoreHorizontal, ChevronRight, Settings2, TrendingDown } from "lucide-react";
 import { viewFromQuery } from "./domain";
 import { useFamilyHubState } from "./state";
 import type { AppView } from "./types";
@@ -10,6 +10,7 @@ import PlanView from "./views/PlanView";
 import MoneyView from "./views/MoneyView";
 import MoreView from "./views/MoreView";
 import DocumentLibraryView from "./views/DocumentLibraryView";
+import SavingsView from "./views/SavingsView";
 import { PageHeader } from "./ui/primitives";
 
 type BeforeInstallPromptEvent = Event & {
@@ -24,9 +25,8 @@ function runningStandalone(): boolean {
 
 const nav: Array<{ id: AppView; label: string; icon: typeof Home }> = [
   { id: "reimbursements", label: "Claims", icon: HeartHandshake },
-  { id: "invoices", label: "Invoices", icon: FileText },
-  { id: "desjardins", label: "DJ", icon: ShieldCheck },
-  { id: "blue-cross", label: "BC", icon: ShieldCheck },
+  { id: "documents", label: "Documents", icon: FileText },
+  { id: "savings", label: "Savings", icon: TrendingDown },
   { id: "other", label: "Other", icon: MoreHorizontal }
 ];
 const otherViews: Array<{ id: AppView; label: string; description: string; icon: typeof Home }> = [
@@ -47,8 +47,10 @@ export default function App() {
   const scrollPositions = useRef<Partial<Record<AppView, number>>>({});
   const viewRef = useRef(view); viewRef.current = view;
   const mainRef = useRef<HTMLElement>(null);
-  const navigationActive = (id: AppView) => view === id || id === "other" && otherViews.some(other => other.id === view);
-  const pageName = nav.find(item => item.id === view)?.label || otherViews.find(item => item.id === view)?.label || "FamilyHub";
+  const documentViews = [{ id: "invoices", label: "Invoices" }, { id: "desjardins", label: "Desjardins" }, { id: "blue-cross", label: "Blue Cross" }] as const;
+  const documentKind = view === "documents" || view === "invoices" ? "invoices" : view === "desjardins" ? "desjardins" : view === "blue-cross" ? "blue-cross" : null;
+  const navigationActive = (id: AppView) => view === id || id === "documents" && Boolean(documentKind) || id === "other" && otherViews.some(other => other.id === view);
+  const pageName = nav.find(item => item.id === view)?.label || documentViews.find(item => item.id === view)?.label || otherViews.find(item => item.id === view)?.label || "FamilyHub";
   useEffect(() => {
     document.title = `${pageName} · FamilyHub`;
     const frame = requestAnimationFrame(() => window.scrollTo({ top: scrollPositions.current[view] || 0, behavior: "instant" }));
@@ -113,7 +115,7 @@ export default function App() {
             return (
               <button key={item.id} className={navigationActive(item.id) ? "nav-item active" : "nav-item"} onClick={() => navigate(item.id)} aria-current={navigationActive(item.id) ? "page" : undefined}>
                 <Icon size={21} strokeWidth={2} />
-                <span>{item.id === "desjardins" ? "Desjardins" : item.id === "blue-cross" ? "Blue Cross" : item.label}</span>
+                <span>{item.label}</span>
               </button>
             );
           })}
@@ -128,9 +130,10 @@ export default function App() {
           {view === "today" && <TodayView hub={state} onNavigate={navigate} commandOpen={commandOpen} onCommandOpenChange={setCommandOpen} />}
           {view === "inbox" && <InboxView hub={state} />}
           {view === "reimbursements" && <ReimbursementsView hub={state} />}
-          {view === "invoices" && <DocumentLibraryView key="invoices" hub={state} kind="invoices" />}
-          {view === "desjardins" && <DocumentLibraryView key="desjardins" hub={state} kind="desjardins" />}
-          {view === "blue-cross" && <DocumentLibraryView key="blue-cross" hub={state} kind="blue-cross" />}
+          {documentKind && <div className="view-stack"><nav className="segment-tabs document-tabs" aria-label="Document sources">
+            {documentViews.map(item => <button key={item.id} className={documentKind === item.id ? "active" : ""} aria-current={documentKind === item.id ? "page" : undefined} onClick={() => navigate(item.id)}>{item.label}</button>)}
+          </nav><DocumentLibraryView key={documentKind} hub={state} kind={documentKind} /></div>}
+          {view === "savings" && <SavingsView hub={state} onNavigate={navigate} />}
           {view === "other" && <section className="view-stack"><PageHeader title="Your household" subtitle="Everyday tools, in one place">{!installed && installPrompt && <button type="button" className="button secondary" onClick={() => void installApp()}><Download size={15} />Install</button>}</PageHeader><div className="other-grid">{otherViews.map(item => { const Icon = item.icon; return <button key={item.id} className="other-link" onClick={() => navigate(item.id)}><span className="other-icon"><Icon size={22} /></span><span><strong>{item.label}</strong><small>{item.description}</small></span><ChevronRight size={18} /></button>; })}</div></section>}
           {view === "plan" && <PlanView hub={state} />}
           {view === "money" && <MoneyView hub={state} />}
