@@ -7,6 +7,8 @@ import { mkdtemp, readFile, writeFile, rm } from "node:fs/promises";
 import { join, resolve, relative, extname } from "node:path";
 import { tmpdir } from "node:os";
 import { once } from "node:events";
+import { createHash } from "node:crypto";
+import { baselineKey, publicBaseline } from "../../worker/dist/savings-model.js";
 const directory = await mkdtemp(join(tmpdir(), "fh-phone-sharing-"));
 const root = resolve("apps/web/dist");
 const site = createServer(async (request, response) => {
@@ -52,8 +54,18 @@ try {
   await form.getByRole("button", { name: "Save contract", exact: true }).click();
   await pc.getByRole("button", { name: "Share device contracts with paired devices", exact: true }).click();
   await pc.getByText("1 shared contracts available on paired devices.", { exact: true }).waitFor();
+  const headers = { "x-familyhub-key": key };
+  assert.equal((await fetch(endpoint + "/savings/research")).status, 401);
+  assert.deepEqual((await (await fetch(endpoint + "/savings/research", { headers })).json()).jobs, []);
+  const sharedContract = (await (await fetch(endpoint + "/savings/contracts", { headers })).json()).records[0].contract;
+  const dailyJob = { id: "synthetic-daily-job", contractId: sharedContract.id, baselineKey: createHash("sha256").update(baselineKey(sharedContract)).digest("hex"), baseline: publicBaseline(sharedContract), scheduledDate: "2026-10-03", createdAt: "2026-10-03T16:00:00Z", completedAt: "2026-10-03T16:01:00Z", status: "complete", report: { summary: "Synthetic daily comparison loaded from the PC", missing: [], offers: [] } };
+  await phone.route(endpoint + "/savings/research", route => route.fulfill({ json: { jobs: [dailyJob], schedule: { enabled: true, at: "09:00", timeZone: "America/Vancouver" }, daily: { attemptedAt: dailyJob.createdAt, outcome: "complete", results: [{ outcome: "complete" }] } } }));
   await phone.goto(base);
   await phone.getByRole("heading", { name: "Synthetic shared internet", exact: true }).waitFor();
+  await phone.getByText(/Every day at 09:00/).waitFor();
+  await phone.getByRole("button", { name: "Results", exact: true }).click();
+  await phone.getByText("Synthetic daily comparison loaded from the PC", { exact: true }).waitFor();
+  await phone.getByRole("button", { name: "Close Synthetic shared internet: comparison", exact: true }).click();
   assert.equal(await phone.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
   await phone.getByRole("button", { name: "Complete details", exact: true }).click();
   const phoneForm = phone.getByRole("dialog", { name: "Edit contract", exact: true });
@@ -72,11 +84,15 @@ try {
   await phone.getByRole("button", { name: "Refresh shared contracts", exact: true }).click();
   await phone.getByText(/contract versions differ/).waitFor();
   assert.match(await phone.locator(".savings-contract-heading").innerText(), /70\.00/);
+  await phone.getByRole("button", { name: "Results", exact: true }).click();
+  await phone.getByText("Synthetic daily comparison loaded from the PC", { exact: true }).waitFor();
+  await phone.getByText(/Your contract changed after this research/).waitFor();
+  await phone.getByRole("button", { name: "Close Synthetic shared internet: comparison", exact: true }).click();
   await phone.route(endpoint + "/**", route => route.abort());
   await phone.reload(); await phone.getByRole("heading", { name: "Synthetic shared internet", exact: true }).waitFor();
   assert.match(await phone.locator(".savings-contract-heading").innerText(), /70\.00/);
   assert.deepEqual(errors, []); assert.ok(!logs.includes(key));
-  console.log("PASS: two devices, automatic phone load, document bytes, revision conflicts, local-edit preservation and offline cache");
+  console.log("PASS: two devices, daily result load and stale protection, document bytes, revision conflicts, local-edit preservation and offline cache");
 } finally {
   await browser?.close(); worker.kill(); await exited; await new Promise(resolve => site.close(resolve)); await rm(directory, { recursive: true, force: true });
 }

@@ -1,8 +1,8 @@
 import { mkdir, readFile, writeFile, rename } from "node:fs/promises";
 import { join } from "node:path";
-import { randomUUID } from "node:crypto";
+import { randomUUID, createHash } from "node:crypto";
 import { Codex } from "@openai/codex-sdk";
-import { categories, newContract, publicBaseline, type PublicBaseline, type SavingsJob, type SavingsReport, type SavingsOffer } from "./savings-model.js";
+import { categories, newContract, publicBaseline, baselineKey, type SavingsContract, type PublicBaseline, type SavingsJob, type SavingsReport, type SavingsOffer } from "./savings-model.js";
 
 function record(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Invalid Savings object.");
@@ -142,20 +142,40 @@ export class SavingsResearch {
     await writeFile(path + ".tmp", JSON.stringify(job), { mode: 0o600 }); await rename(path + ".tmp", path);
   }
   get(id: string) { return this.jobs.get(id); }
+  latest() {
+    const sorted = [...this.jobs.values()].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+    const selected = new Map<string, SavingsJob>();
+    for (const job of sorted) {
+      selected.set(job.contractId + ":attempt", job);
+      if (job.status === "complete") selected.set(job.contractId + ":success", job);
+    }
+    return [...new Map([...selected.values()].map(job => [job.id, job])).values()].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  }
+  startDaily(contract: SavingsContract, date: string): Promise<SavingsJob> {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return Promise.reject(new Error("Invalid daily date."));
+    const next = this.starts.then(() => {
+      const existing = [...this.jobs.values()].find(job => job.contractId === contract.id && job.scheduledDate === date);
+      if (existing) return existing; // Includes completed, failed and interrupted attempts; no same-day replay.
+      if ([...this.jobs.values()].some(job => job.status === "running" || job.status === "queued")) throw new Error("Research is already active. Wait for the existing comparison.");
+      return this.startValidated({ contractId: contract.id, baselineKey: createHash("sha256").update(baselineKey(contract)).digest("hex"), baseline: publicBaseline(contract) }, date);
+    });
+    this.starts = next.catch(() => undefined);
+    return next;
+  }
   start(input: unknown): Promise<SavingsJob> {
     // Serialize starts across HTTP requests so duplicate clicks/retries cannot race persistence.
     const next = this.starts.then(() => this.startValidated(input));
     this.starts = next.catch(() => undefined);
     return next;
   }
-  private async startValidated(input: unknown): Promise<SavingsJob> {
+  private async startValidated(input: unknown, scheduledDate?: string): Promise<SavingsJob> {
     const body = record(input), baseline = validateBaseline(body.baseline);
     const contractId = shortText(body.contractId, 120), baselineKey = shortText(body.baselineKey, 64);
     if (!/^[a-zA-Z0-9:_-]{1,120}$/.test(contractId) || !/^[a-f0-9]{64}$/.test(baselineKey)) throw new Error("Invalid comparison identity.");
     const existing = [...this.jobs.values()].find(job => job.contractId === contractId && job.baselineKey === baselineKey && (job.status === "queued" || job.status === "running"));
     if (existing) return existing;
     if ([...this.jobs.values()].filter(job => job.status === "running" || job.status === "queued").length >= 2) throw new Error("Two comparisons are already running. Wait before starting another.");
-    const job: SavingsJob = { id: randomUUID(), contractId, baselineKey, baseline, status: "queued", createdAt: new Date().toISOString() };
+    const job: SavingsJob = { id: randomUUID(), contractId, baselineKey, baseline, status: "queued", createdAt: new Date().toISOString(), ...(scheduledDate ? { scheduledDate } : {}) };
     await this.save(job); this.jobs.set(job.id, job);
     void this.execute(job).catch(() => { job.status = "failed"; job.error = "Research result could not be saved. Check available PC storage."; });
     return job;

@@ -36,7 +36,7 @@ type ResearchWatch = {
 };
 type PersistedState = { watches: ResearchWatch[] };
 
-const version = "2.20.0";
+const version = "2.21.0";
 const host = process.env.FAMILYHUB_WORKER_HOST?.trim() || "127.0.0.1";
 const port = Number(process.env.FAMILYHUB_WORKER_PORT || "4713");
 const stateDir = process.env.FAMILYHUB_WORKER_DATA?.trim() || join(homedir(), ".familyhub-worker");
@@ -229,6 +229,21 @@ const server = createServer(async (request, response) => {
       json(response, document ? 200 : 404, document ?? { error: "Shared Savings document not found." }, origin); return;
     }
     if (parts[0] === "savings" && parts[1] === "research") {
+      if (parts.length === 2 && request.method === "GET") {
+        const load = async (name: string) => {
+          try { return JSON.parse(await readFile(join(savingsDirectory, name), "utf8")); }
+          catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return null; return { outcome: "status-unavailable" }; }
+        };
+        json(response, 200, { jobs: savingsResearch.latest(), schedule: await load("schedule.json"), daily: await load("daily-status.json") }, origin); return;
+      }
+      if (parts.length === 3 && parts[2] === "daily" && request.method === "POST") {
+        const body = await readJson<{ contractId?: unknown }>(request);
+        const contract = (await savingsLibrary.list()).records.find(record => record.contract.id === body.contractId)?.contract;
+        if (!contract) throw new Error("Share this contract with the paired PC before daily research.");
+        if ((await invoiceSnapshot()).busy || [getBlueCrossStatus(), getDesjardinsStatus()].some(status => status.state === "syncing") || ["bluecross", "desjardins"].some(name => portalReconnectStatus(name as "bluecross" | "desjardins")?.state === "running")) throw new Error("The PC is collecting documents. Research was not started.");
+        const date = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Vancouver", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+        json(response, 202, await savingsResearch.startDaily(contract, date), origin); return;
+      }
       if (parts.length === 2 && request.method === "POST") {
         json(response, 202, await savingsResearch.start(await readJson(request)), origin); return;
       }
