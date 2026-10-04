@@ -20,6 +20,7 @@ export default function SavingsView({ hub, onNavigate }: { hub: HubState; onNavi
   function openEditor(contract: SavingsContract) { setEditingRevision(sharing.revisionFor(contract)); setEditing(contract); }
   const [researching, setResearching] = useState<SavingsContract | null>(null);
   const [openResult, setOpenResult] = useState<string | null>(null);
+  const [resultJob, setResultJob] = useState<string>("");
   const [error, setError] = useState(""), [message, setMessage] = useState("");
   const [starting, setStarting] = useState(false), startingRef = useRef(false);
   const [filter, setFilter] = useState<SavingsCategory | "all">("all");
@@ -43,7 +44,7 @@ export default function SavingsView({ hub, onNavigate }: { hub: HubState; onNavi
   }, [pending, hub.worker.Endpoint, hub.worker.ApiKey, hub.setSavings]);
   const latest = (id: string) => reviews.filter(review => review.job.contractId === id).at(-1);
   const entries = contracts.flatMap(contract => {
-    const review = latest(contract.id);
+    const review = reviews.filter(review => review.job.contractId === contract.id && Object.values(review.decisions).includes("shortlist")).at(-1);
     if (!review?.job.report || review.localKey !== baselineKey(contract)) return [];
     return review.job.report.offers.flatMap((offer, index) => review.decisions[String(index)] === "shortlist" ? [{ contract, offer, reviewed: true }] : []);
   });
@@ -67,12 +68,13 @@ export default function SavingsView({ hub, onNavigate }: { hub: HubState; onNavi
     finally { startingRef.current = false; setStarting(false); }
   }
   const focusedContract = contracts.find(contract => contract.id === openResult);
-  const focusedReview = focusedContract ? latest(focusedContract.id) : undefined;
+  const focusedReview = focusedContract ? reviews.find(review => review.job.id === resultJob && review.job.contractId === focusedContract.id) ?? latest(focusedContract.id) : undefined;
   const stale = focusedContract && focusedReview && focusedReview.localKey !== baselineKey(focusedContract);
   return <section className="view-stack savings-view">
     <PageHeader title="Savings" subtitle="Find a better deal for the same needs"><button className="button" disabled={sharing.busy} onClick={() => { setError(""); openEditor(newContract("telecom", crypto.randomUUID())); }}><Plus size={17} />Add contract</button></PageHeader>
     <div className="surface view-stack"><p className="muted">{sharing.paired ? sharing.status || "Loading shared contracts from your PC…" : "Connect your PC in Settings & tools to see shared contracts on your phone."}</p>{sharing.error && <Notice error>{sharing.error}</Notice>}{sharing.paired && <div className="row-actions"><button className="button secondary" disabled={sharing.busy} onClick={() => void sharing.refresh()}><RefreshCw size={15} />{sharing.busy ? "Updating contracts…" : "Refresh shared contracts"}</button><button className="button secondary" disabled={sharing.busy || !(hub.savings.Contracts ?? []).length} onClick={() => void sharing.share()}>Share device contracts with paired devices</button></div>}<p className="muted">Sharing copies contract details, notes and attached documents to your own paired PC. Other paired devices can then load them. Different saved versions are preserved.</p></div>
     {error && <Notice error onDismiss={() => setError("")}>{error}</Notice>}
+    {sharing.paired && <div className="surface view-stack"><h2>Daily public research</h2><p>{sharing.research?.schedule?.enabled ? `Every day at ${sharing.research.schedule.at} (${sharing.research.schedule.timeZone}). Your PC must be running with your Windows user signed in.` : "No daily schedule has been confirmed by your paired PC."}</p>{sharing.research?.daily && <p className="muted">Last attempt {sharing.research.daily.attemptedAt ? new Date(sharing.research.daily.attemptedAt).toLocaleString() : "unknown"} · {sharing.research.daily.outcome?.replaceAll("-", " ")} · {sharing.research.daily.results?.filter(result => result.outcome === "complete").length ?? 0} completed comparisons.</p>}{sharing.researchError && <Notice error>{sharing.researchError}</Notice>}<p className="muted">New comparisons load when you open Savings or refresh shared contracts. Public estimates still need your review. Previous decisions are retained in result history.</p></div>}
     {message && <Notice onDismiss={() => setMessage("")}>{message}</Notice>}
     <div className="savings-summary"><div><small>Known recurring costs</small><strong>{currency.format(knownMonthly)}<span>/month</span></strong><small>Entered costs; mortgage shown separately</small></div><div><small>Reviewed shortlist</small><strong>{currency.format(total.firstYear)}<span>/first year</span></strong><small>Estimated, not realized · {total.count} compatible {total.count === 1 ? "option" : "options"}</small></div></div>
     {total.excluded > 0 && <p className="muted">{total.excluded} shortlisted options excluded from totals because costs, requirements or dependencies need review.</p>}
@@ -88,7 +90,7 @@ export default function SavingsView({ hub, onNavigate }: { hub: HubState; onNavi
     })}</div>
     {contracts.length > 0 && !contracts.some(contract => filter === "all" || filter === contract.category) && <p className="muted">No contracts in this category. Add one or choose All contracts.</p>}
     {recurring.length > 0 && <section className="surface"><h2>From your imported spending</h2><p className="muted">Repeating merchants are candidates. Confirm the billing cycle and amount.</p>{recurring.map(item => <div className="savings-candidate" key={item.merchant}><span><strong>{item.merchant}</strong><small>{item.count} charges · average {currency.format(item.average)}</small></span><button className="button secondary" onClick={() => openEditor({ ...newContract("other", crypto.randomUUID()), name: item.merchant, price: Number(item.average.toFixed(2)) })}>Review candidate</button></div>)}</section>}
-    <p className="savings-privacy muted">Contracts are saved on this device. Shared contracts and documents are also saved on your paired PC and loaded when you open Savings. Research runs only when requested. No provider contact, contract change or recurring Savings schedule is enabled.</p>
+    <p className="savings-privacy muted">Contracts are saved on this device and your paired PC after sharing. Public research runs on request or through your explicitly enabled daily PC schedule. Names, notes and documents stay out of research. No provider contact or contract change occurs.</p>
     <Sheet open={Boolean(editing)} onClose={() => setEditing(null)} title={editing?.name ? "Edit contract" : "Add contract"} description="Save what you know. Missing details remain unknown." wide>
       {editing && <SavingsContractForm key={editing.id} initial={editing} onSave={save} onClose={() => setEditing(null)} />}
     </Sheet>
@@ -97,6 +99,7 @@ export default function SavingsView({ hub, onNavigate }: { hub: HubState; onNavi
     </Sheet>
     <Sheet open={Boolean(openResult)} onClose={() => setOpenResult(null)} title={focusedContract ? focusedContract.name + ": comparison" : "Comparison"} wide>
       {focusedReview && focusedContract && <div className="view-stack">
+        <label>Result history<select value={focusedReview.job.id} onChange={event => setResultJob(event.target.value)}>{reviews.filter(review => review.job.contractId === focusedContract.id).slice().reverse().map(review => <option key={review.job.id} value={review.job.id}>{new Date(review.job.createdAt).toLocaleString()} · {review.job.scheduledDate ? "Daily" : "Requested"} · {review.job.status}</option>)}</select></label>
         {stale && <Notice error>Your contract changed after this research. Results are excluded from totals. Run a new comparison.</Notice>}
         {(focusedReview.job.status === "queued" || focusedReview.job.status === "running") && <Notice>Public research is {focusedReview.job.status}. The job is saved on your PC; returning to Savings resumes checking its status.</Notice>}
         {focusedReview.job.status === "failed" && <Notice error>{focusedReview.job.error || "Research failed."}</Notice>}

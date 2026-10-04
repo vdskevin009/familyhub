@@ -2,6 +2,8 @@ import { AgentReview, CleanupSuggestion, ReconciliationCase, ReimbursementItem, 
 import type { PublicBaseline, SavingsJob } from "./savings";
 import type { SavingsContract } from "./savings";
 import type { SharedLibrary, SharedDocument } from "../../worker/src/savings-sharing-model";
+export type SharedResearch = { jobs: SavingsJob[]; schedule: { enabled?: boolean; at?: string; timeZone?: string } | null; daily: { attemptedAt?: string; completedAt?: string; outcome?: string; results?: { outcome: string }[] } | null };
+export function fetchSharedResearch(config: WorkerConfig): Promise<SharedResearch> { return request(config, "/savings/research"); }
 export function fetchSharedSavings(config: WorkerConfig): Promise<SharedLibrary> { return request(config, "/savings/contracts"); }
 export function fetchSharedSavingsDocument(config: WorkerConfig, id: string): Promise<SharedDocument> { return request(config, `/savings/documents/${encodeURIComponent(id)}`); }
 export function importSharedSavings(config: WorkerConfig, contracts: SavingsContract[], documents: SharedDocument[]): Promise<SharedLibrary> {

@@ -18,7 +18,7 @@ The current default experience is **Claims**. Invoices and insurer source record
 
 - **Claims** — the default healthcare reconciliation experience with its existing alerts and actions.
 - **Documents** — one navigation entry with separate Invoices, Desjardins and Blue Cross libraries. Existing source links, reconciliation and manual choices remain available.
-- **Savings** — household contracts, progressive missing-information checklists, local document attachments and on-demand public market comparisons on the paired PC. Reviewed estimates include promotions, fees and lost discounts; incompatible options do not inflate totals. See [scope and setup](docs/SAVINGS.md).
+- **Savings** — shared household contracts, missing-information checklists, documents and public market comparisons on the paired PC. An explicitly enabled daily agent schedule saves dated results for paired phones; previous review choices are retained. Reviewed estimates include promotions, fees and lost discounts; incompatible options do not inflate totals. See [scope and setup](docs/SAVINGS.md).
 - **Other → Today / Assistant** — prioritized household insights, quick actions, and an optional local AI assistant.
 - **Important Mail** — review time-sensitive and administrative results prepared by the paired PC agent; promotions/newsletters are filtered and uncertain classifications remain reviewable.
 - **Reimbursements** — a healthcare reconciliation screen with paid, primary-insurer, secondary-insurer and outstanding totals; match-specific confidence/evidence; persistent manual confirm/reject decisions; and a dedicated mobile-first **À réconcilier** queue that presents one genuinely unmatched insurer record at a time with ranked expense candidates, in-place search and nearby context.

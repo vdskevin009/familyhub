@@ -28,7 +28,13 @@ test('invoice endpoints require pairing/origin checks and report unconfigured Gm
     assert.equal((await call('/savings/research', { method: 'POST', body: '{}' })).status, 401);
     assert.equal((await call('/savings/research', { method: 'POST', headers: { ...headers, Origin: 'https://evil.example' }, body: '{}' })).status, 403);
     assert.equal((await call('/savings/research', { method: 'POST', headers, body: '{}' })).status, 400);
-    assert.equal((await call('/savings/research/not-found', { headers })).status, 404);
+      assert.equal((await call('/savings/research/not-found', { headers })).status, 404);
+      assert.equal((await call('/savings/research')).status, 401);
+      assert.equal((await call('/savings/research', { headers: { ...headers, Origin: 'https://evil.example' } })).status, 403);
+      assert.deepEqual(await (await call('/savings/research', { headers })).json(), { jobs: [], schedule: null, daily: null });
+      assert.equal((await call('/savings/research/daily', { method: 'POST', body: '{}' })).status, 401);
+      assert.equal((await call('/savings/research/daily', { method: 'POST', headers: { ...headers, Origin: 'https://evil.example' }, body: '{}' })).status, 403);
+      assert.equal((await call('/savings/research/daily', { method: 'POST', headers, body: '{}' })).status, 400);
     assert.equal((await call('/savings/contracts')).status, 401);
     assert.equal((await call('/savings/contracts', { headers: { ...headers, Origin: 'https://evil.example' } })).status, 403);
     assert.equal((await call('/savings/contracts/import', { method: 'POST', body: '{}' })).status, 401);
