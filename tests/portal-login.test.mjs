@@ -127,3 +127,22 @@ test('Windows local setup supports protected set, replace, cancellation and dele
   assert.match(result.stdout,/checks passed/);
   assert.equal(result.stdout.includes('synthetic-password'),false);
 });
+
+test('private diagnostic retains phase but excludes credentials, raw URLs and browser errors', async () => {
+  const f=fixture();const records=[];f.deps.diagnose=async(_,value)=>records.push(value);
+  f.page.url=()=> 'https://id.desjardins.com/login?state=synthetic-secret-token';
+  f.deps.submit=async(_page,_insurer,_credentials,phase)=>{phase('submitting');const error=new Error('synthetic-password at https://id.desjardins.com/login?state=synthetic-secret-token');error.name='TimeoutError';throw error;};
+  assert.equal(await auth.tryPortalLogin(f.page,'desjardins',f.ready,f.deps),'human-required');
+  assert.equal(records[0].phase,'submitting');assert.equal(records[0].errorKind,'timeout');assert.equal(records[0].location,'login-form');assert.equal(records[0].challengeVisible,false);assert.equal(f.state().blocked,true);
+  const encoded=JSON.stringify(records);for(const value of ['synthetic-password','synthetic-user','synthetic-secret-token','https://'])assert.equal(encoded.includes(value),false);
+  assert.equal(await auth.tryPortalLogin(f.page,'desjardins',f.ready,f.deps),'human-required');assert.equal(records.at(-1).phase,'retry-blocked');
+});
+test('unknown ready timeout is distinguished from an observed human challenge without granting a retry', async () => {
+  const f=fixture();const records=[];f.deps.diagnose=async(_,value)=>records.push(value);
+  assert.equal(await auth.tryPortalLogin(f.page,'desjardins',f.ready,f.deps),'human-required');assert.equal(f.count(),1);
+  assert.equal(records[0].phase,'awaiting-history');assert.equal(records[0].challengeVisible,false);assert.equal(records[0].errorKind,undefined);
+  await auth.tryPortalLogin(f.page,'desjardins',f.ready,f.deps);assert.equal(f.count(),1);
+});
+test('diagnostic write failure cannot change authentication success or the retry latch', async () => {
+  for(const succeeds of [true,false]){const f=fixture({succeeds});f.deps.diagnose=async()=>{throw Error('synthetic private path');};assert.equal(await auth.tryPortalLogin(f.page,'desjardins',f.ready,f.deps),succeeds?undefined:'human-required');assert.equal(f.state().blocked,!succeeds);assert.equal(f.count(),1);}
+});
