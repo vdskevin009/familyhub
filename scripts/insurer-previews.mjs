@@ -2,7 +2,7 @@ import { readFile, writeFile, rename } from 'node:fs/promises';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-// This client never applies financial data and never retries a POST.
+// Ordinary collection honors the worker's explicit local automatic-new-payment opt-in. Never retry a POST.
 export async function runPreviews(request) {
   const results = [];
   for (const insurer of ['bluecross', 'desjardins']) {
@@ -26,11 +26,13 @@ export async function runPreviews(request) {
     }
     const status = await request(`/${insurer}/status`);
     const complete = status.latestResult?.complete === true && status.latestResult.errors === 0 && status.latestResult.ambiguous === 0;
-    results.push({ insurer, outcome: complete && !['error', 'login-required', 'syncing'].includes(status.state)
-      ? 'preview-complete' : 'attention-required', state: status.state });
+    const savedNew = status.latestResult?.autoImported;
+    const pending = (status.latestResult?.pendingNew ?? 0) + (status.latestResult?.pendingChanged ?? 0);
+    results.push({ insurer, ...(savedNew != null ? { savedNew, pending } : {}), outcome: complete && !pending && !['error', 'login-required', 'syncing'].includes(status.state)
+      ? savedNew == null ? 'preview-complete' : savedNew ? 'payments-saved' : 'up-to-date' : 'attention-required', state: status.state });
   }
   return { attemptedAt: new Date().toISOString(), apply: false, results,
-    success: results.length === 2 && results.every(result => result.outcome === 'preview-complete') };
+    success: results.length === 2 && results.every(result => ['preview-complete', 'payments-saved', 'up-to-date'].includes(result.outcome)) };
 }
 
 async function main() {
