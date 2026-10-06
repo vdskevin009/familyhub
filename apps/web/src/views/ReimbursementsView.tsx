@@ -13,7 +13,7 @@ import { manualMatchExpenseId, manualMatchUnavailableReason } from "../reconcili
 import ClaimCard from "./ClaimCard";
 import PrepareClaim from "./PrepareClaim";
 import { FilterButton, FilterChips, Notice, PageHeader, SearchField, Sheet, SkeletonList, useSessionValue, type ActiveFilter } from "../ui/primitives";
-import { applicableInsurerPreview, insurerSyncMessage } from "../insurer-sync";
+import { applicableInsurerPreview, insurerSyncMessage, insurerCollectionNeedsRefresh } from "../insurer-sync";
 import { useMutations } from "../ui/use-mutations";
 import { fetchPortalReconnect, reconnectPortal, type PortalReconnect } from "../worker";
 import { requireSaved } from "../ui/mutation-queue";
@@ -147,7 +147,7 @@ export default function ReimbursementsView({ hub }: Props) {
     try {
       const result = await syncBlueCross(hub.worker, apply);
       setBlueCrossResult(result);
-      if (result.status === "success" && apply) await refreshAppliedClaims();
+      if (insurerCollectionNeedsRefresh(result, apply)) await refreshAppliedClaims();
       setBlueCrossStatus(await fetchBlueCrossStatus(hub.worker));
     } catch (err) { setError(err instanceof Error ? err.message : "Blue Cross sync failed."); }
     finally { setBlueCrossBusy(false); }
@@ -159,7 +159,7 @@ export default function ReimbursementsView({ hub }: Props) {
     try {
       const result = await syncDesjardins(hub.worker, apply);
       setDesjardinsResult(result);
-      if (result.status === "success" && apply) await refreshAppliedClaims();
+      if (insurerCollectionNeedsRefresh(result, apply)) await refreshAppliedClaims();
       setDesjardinsStatus(await fetchDesjardinsStatus(hub.worker));
     } catch (err) { setError(err instanceof Error ? err.message : "Desjardins sync failed."); }
     finally { setDesjardinsBusy(false); }
