@@ -1,7 +1,8 @@
 import { acquirePortalLock, authenticatedPortal, tryPortalLogin, type LoginReason } from "./portal-login.js";
 import { desjardinsHistoryReady } from "./desjardins-navigation.js";
+import { continueDesjardinsProfileSelection, isDesjardinsProfileSelection } from "./desjardins-profile-selection.js";
 import { createHash, randomUUID } from "node:crypto";
-import { mkdir, open, readFile } from "node:fs/promises";
+import { mkdir, open, readFile, unlink } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import type { Cookie, Page } from "playwright";
 import { calendarDate, memberName } from "./healthcare-evidence.js";
@@ -12,6 +13,7 @@ export const desjardinsPrivateDirectory = join(dataDirectory, "desjardins");
 export const desjardinsProfileDirectory = join(desjardinsPrivateDirectory, "browser-profile");
 export const desjardinsSnapshotDirectory = join(desjardinsPrivateDirectory, "snapshots");
 export const desjardinsAuthPath = join(desjardinsPrivateDirectory, "auth-state.dpapi");
+export const desjardinsPendingProfilePath = join(desjardinsPrivateDirectory, "pending-profile.dpapi");
 export const desjardinsMemberAliasesPath = join(desjardinsPrivateDirectory, "member-aliases.dpapi");
 export const desjardinsCollectorVersion = 1;
 const origin = "https://www.agea-gbim.dsf-dfs.com";
@@ -249,15 +251,31 @@ async function collectDesjardinsPortalLocked(interactive = false, passes = 1): P
       } catch { /* Missing or expired browser state falls back to the visible login. */ }
     }
     const page = context.pages()[0] ?? await context.newPage();
-    await page.goto(historyUrl, { waitUntil: "domcontentloaded", timeout: 45_000 });
+    let entryUrl = historyUrl;
+    try {
+      const pending = await loadPrivate<{ url: string; savedAt: string }>(desjardinsPendingProfilePath);
+      const age = Date.now() - Date.parse(pending.savedAt);
+      if (Number.isFinite(age) && age >= 0 && age < 30 * 60_000 && isDesjardinsProfileSelection(pending.url)) entryUrl = pending.url;
+    } catch { /* No pending ordinary profile selection; normal session reuse remains authoritative. */ }
+    await page.goto(entryUrl, { waitUntil: "domcontentloaded", timeout: 45_000 });
     const table = page.locator(historyTable);
-    const ready = () => desjardinsHistoryReady(page);
+    const ready = async () => {
+      await continueDesjardinsProfileSelection(page, async () => {
+        try { return (await loadPrivate<{ username?: string }>(join(desjardinsPrivateDirectory, "login.dpapi"))).username; }
+        catch { return undefined; }
+      });
+      return desjardinsHistoryReady(page);
+    };
     const authReason = await tryPortalLogin(page, "desjardins", ready);
     if (interactive && !await ready()) {
       const deadline = Date.now() + 600_000;
       while (!await ready() && Date.now() < deadline) await page.waitForTimeout(2000);
     }
-    if (!await ready()) return { status: "login-required", authReason: authReason || "human-required" };
+    if (!await ready()) {
+      if (isDesjardinsProfileSelection(page.url()) && await page.locator('dsd-form[aria-label="profil-select"]').isVisible().catch(() => false)) await savePrivate(desjardinsPendingProfilePath, { url: page.url(), savedAt: new Date().toISOString() });
+      return { status: "login-required", authReason: authReason || "human-required" };
+    }
+    await unlink(desjardinsPendingProfilePath).catch(() => {});
     await authenticatedPortal("desjardins");
     const authWarning = await saveDesjardinsAuth(context, page);
 
