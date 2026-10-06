@@ -1,6 +1,7 @@
 import { readFile, writeFile, rename } from 'node:fs/promises';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { workerJsonRequest } from './worker-json-request.mjs';
 
 // Ordinary collection honors the worker's explicit local automatic-new-payment opt-in. Never retry a POST.
 export async function runPreviews(request) {
@@ -40,16 +41,7 @@ async function main() {
   const port = Number(process.env.FAMILYHUB_WORKER_PORT || 4713);
   if (!data || !Number.isInteger(port) || port < 1 || port > 65535) throw new Error('Invalid runner configuration.');
   const key = (await readFile(join(data, 'pairing-key.txt'), 'utf8')).trim();
-  const request = async (path, body) => {
-    const response = await fetch(`http://127.0.0.1:${port}${path}`, {
-      method: body ? 'POST' : 'GET',
-      headers: { 'x-familyhub-key': key, 'content-type': 'application/json' },
-      body: body ? JSON.stringify(body) : undefined,
-      signal: AbortSignal.timeout(body ? 15 * 60 * 1000 : 10000)
-    });
-    if (!response.ok) throw new Error('Worker request failed.');
-    return response.json();
-  };
+  const request = (path, body) => workerJsonRequest(port, key, path, body);
   let report;
   try {
     const health = await request('/health');
