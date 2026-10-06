@@ -21,3 +21,7 @@ test('an ambiguous automatic collection never displays Up to date', () => {
   assert.match(insurerSyncMessage(null, result, false), /Automatic import paused/);
   assert.equal(applicableInsurerPreview(null, result), false);
 });
+
+test('a Desjardins profile choice reports account selection and retains saved claims',()=>{const status={state:'login-required' as const,authReason:'profile-selection-required' as const,found:10};assert.match(insurerSyncMessage(status,null,false),/Choose the Desjardins account profile/);assert.equal(applicableInsurerPreview(status,null),false);});
+
+test('an unknown login outcome never claims that a verification code was requested',()=>{const status={state:'login-required' as const,authReason:'login-incomplete' as const};const message=insurerSyncMessage(status,null,false);assert.match(message,/did not reach claim history/);assert.doesNotMatch(message,/complete verification/);assert.equal(applicableInsurerPreview(status,null),false);});

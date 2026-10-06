@@ -6,11 +6,13 @@ export function insurerSyncMessage(status: BlueCrossSyncStatus | null, result: B
   if (status?.state === "login-required") {
     switch (status.authReason) {
       case "credentials-rejected": return "Sign-in was refused. Automatic retries are paused. Replace the saved login on the PC or use Reconnect.";
+      case "login-incomplete": return "Sign-in did not reach claim history. Automatic retries are paused. Use Reconnect on PC to start a fresh session.";
       case "human-required": return "Sign-in needs your attention. Use Reconnect on PC to complete verification; collection then resumes.";
       case "not-configured": return "Session expired. Set up automatic login on the PC, or use Reconnect to sign in.";
       case "credentials-unavailable": return "Saved login cannot be unlocked. Configure it again as the Windows user running the worker, or use Reconnect.";
       case "layout-changed": return "The sign-in page was not recognized. Use Reconnect on PC to continue manually.";
       case "cooldown": return "Automatic sign-in is cooling down for 30 minutes. You can use Reconnect on PC now.";
+      case "profile-selection-required": return "Choose the Desjardins account profile on the PC. This is an account choice; collection resumes after selection.";
       case "profile-busy": return "This insurer is already open in another collection. Wait for it to finish; recover an interrupted lock on the PC if needed.";
       default: return "Session expired. Reconnect on PC to sign in again.";
     }

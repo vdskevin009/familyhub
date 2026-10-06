@@ -1,6 +1,6 @@
 # Secure insurer login
 
-Worker 2.16.0 adds optional automatic password login for Pacific Blue Cross and Desjardins after their existing private session expires. Collection remains a preview. Apply remains explicit. No recurring task is created.
+Worker 2.16.0 adds optional automatic password login for Pacific Blue Cross and Desjardins after their existing private session expires. That original release kept collection in preview mode and created no recurring task. FH-REIMB-043 now permits an explicit local opt-in for automatically saving validated new payments; existing changes and ambiguous records remain reviewable. Authentication changes never enable a schedule.
 
 ## Configure locally
 
@@ -28,10 +28,18 @@ A rejected password or unknown submission outcome disables further automatic att
 
 The collector, CLI and setup command hold the same per-insurer lock. If a process crashes, automatic retries do not steal its lock. After closing any leftover insurer browser, use -Action RecoverLock; recovery refuses a live owner/browser and preserves the retry latch. If the owner record is invalid, inspect locally instead of deleting a guessed profile path.
 
+## Desjardins account-profile selection
+
+Worker 2.22.1 follows the observed trusted post-password account-profile form through its visible controls. A single profile may continue when there is no explicit preference. With a locally saved operator-approved DPAPI preference, only that exact profile may continue, even if another profile is the only option. Multiple unmatched profiles report an account choice instead of a verification challenge; an unavailable or unreadable preference cannot select a different account. The HTTP API accepts and returns no account identifier or credential.
+
+An interrupted, unconsumed profile selection may be held under Windows CurrentUser DPAPI for at most 30 minutes. The portal may expire its transaction sooner; successful continuation is not guaranteed. Each selection transaction is recorded before submission and is never replayed after an uncertain outcome, including across worker restarts. A consumed pending transaction is skipped on the next ordinary session check. No hidden authentication API or MFA code is used.
+
+Unknown failed submissions or history timeouts report login-incomplete and preserve the retry stop; human-required is reserved for an observed challenge. Secret-free local diagnostics retain only login phase, coarse trusted host/page category, control visibility and allowlisted error kind. They contain no raw URL, token, field value, browser error text or health data.
+
 ## Acceptance boundaries
 
 Synthetic tests cover session reuse without reading secrets, one login, failure latching, timeout, origin/field validation, MFA/rejection, missing/unreadable credentials, cooldown, lock exclusion and financial/status preservation. Windows DPAPI is tested with synthetic Unicode secrets. The public anonymous login forms were inspected to ground selectors. No real credentials or authenticated health data are included in tests or Git.
 
-Still required: local credential setup under the worker account; real login after expiration for both insurers; MFA recovery; installed-worker preservation; paired-phone behavior. Scheduling is a separate undecided product choice. No real claim submission or financial apply is part of authentication validation.
+The installed Desjardins worker has completed a fresh ordinary password login through the operator-selected profile after an expired session, without an observed verification challenge, and read complete history without changing the ledger. Credential/pairing files, existing records, manual decisions, tunnel and task definitions were preserved. Source CI passed including retained .NET checks. Repeated ordinary collections reused the same protected session without another password submission; eligible positive-payment intake succeeded and a repeated run kept the ledger byte-identical. The installed runner now waits with an explicit fifteen-minute total HTTP deadline, including response headers, and completed a real collection lasting more than five minutes without replay. Nonpositive rows remain reviewable under the approved policy. Actual MFA recovery, paired-phone behavior and the first natural schedule trigger with this correction remain separate gates. The owner-approved existing insurer schedule and automatic-new-payment policy are tracked under FH-REIMB-041/043; no schedule is enabled by this authentication correction. No real claim submission or financial apply is part of authentication previews.
 
 For Windows tests, FAMILYHUB_TEST_POWERSHELL may select the installed PowerShell runtime. Tests do not change execution policy. The default Windows PowerShell on some PCs disallows local scripts; use the existing approved PowerShell 7 runtime instead.
