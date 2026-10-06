@@ -4,7 +4,7 @@ import type { Page } from "playwright";
 import { atomicJson, dataDirectory, loadPrivate } from "./private-store.js";
 
 export type Insurer = "bluecross" | "desjardins";
-export type LoginReason = "not-configured" | "credentials-unavailable" | "credentials-rejected" | "human-required" | "layout-changed" | "cooldown" | "profile-busy";
+export type LoginReason = "not-configured" | "credentials-unavailable" | "credentials-rejected" | "human-required" | "layout-changed" | "cooldown" | "profile-busy" | "profile-selection-required";
 export type LoginCredentials = { version: 1; insurer: Insurer; password: string; username?: string; policy?: string; certificate?: string; role?: "member" | "spouse" };
 type LoginControl = { blocked: boolean; reason?: LoginReason; attemptedAt?: string };
 export const loginDirectory = (insurer: Insurer) => join(dataDirectory, insurer);
@@ -35,7 +35,7 @@ export async function hasPortalCredentials(insurer: Insurer): Promise<boolean> {
 export async function readLoginControl(insurer: Insurer): Promise<LoginControl> {
   try {
     const state = JSON.parse(await readFile(controlPath(insurer), "utf8"));
-    if (typeof state.blocked !== "boolean" || (state.reason && !["not-configured", "credentials-unavailable", "credentials-rejected", "human-required", "layout-changed", "cooldown", "profile-busy"].includes(state.reason)) || (state.attemptedAt && !Number.isFinite(Date.parse(state.attemptedAt)))) throw new Error();
+    if (typeof state.blocked !== "boolean" || (state.reason && !["not-configured", "credentials-unavailable", "credentials-rejected", "human-required", "layout-changed", "cooldown", "profile-busy", "profile-selection-required"].includes(state.reason)) || (state.attemptedAt && !Number.isFinite(Date.parse(state.attemptedAt)))) throw new Error();
     return state;
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return { blocked: false };

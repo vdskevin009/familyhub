@@ -261,8 +261,13 @@ async function collectDesjardinsPortalLocked(interactive = false, passes = 1): P
     const table = page.locator(historyTable);
     const ready = async () => {
       await continueDesjardinsProfileSelection(page, async () => {
-        try { return (await loadPrivate<{ username?: string }>(join(desjardinsPrivateDirectory, "login.dpapi"))).username; }
-        catch { return undefined; }
+        try {
+          const preference = await loadPrivate<{ version: number; profile: string }>(join(desjardinsPrivateDirectory, "profile-preference.dpapi"));
+          return preference.version === 1 && typeof preference.profile === "string" && preference.profile.trim() ? preference.profile : undefined;
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code !== "ENOENT") return undefined;
+          try { return (await loadPrivate<{ username?: string }>(join(desjardinsPrivateDirectory, "login.dpapi"))).username; } catch { return undefined; }
+        }
       });
       return desjardinsHistoryReady(page);
     };
@@ -272,7 +277,10 @@ async function collectDesjardinsPortalLocked(interactive = false, passes = 1): P
       while (!await ready() && Date.now() < deadline) await page.waitForTimeout(2000);
     }
     if (!await ready()) {
-      if (isDesjardinsProfileSelection(page.url()) && await page.locator('dsd-form[aria-label="profil-select"]').isVisible().catch(() => false)) await savePrivate(desjardinsPendingProfilePath, { url: page.url(), savedAt: new Date().toISOString() });
+      if (isDesjardinsProfileSelection(page.url()) && await page.locator('dsd-form[aria-label="profil-select"]').isVisible().catch(() => false)) {
+        await savePrivate(desjardinsPendingProfilePath, { url: page.url(), savedAt: new Date().toISOString() });
+        return { status: "login-required", authReason: "profile-selection-required" };
+      }
       return { status: "login-required", authReason: authReason || "human-required" };
     }
     await unlink(desjardinsPendingProfilePath).catch(() => {});
