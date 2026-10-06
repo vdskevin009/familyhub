@@ -16,7 +16,7 @@ export function isDesjardinsProfileSelection(url: string): boolean {
 export function uniqueDesjardinsProfile(labels: string[], preferred?: string): number | undefined {
   const normalize = (value: string) => value.normalize("NFKC").trim().toLowerCase();
   if (!labels.length || labels.some(value => !value.trim())) return undefined;
-  if (preferred) { const matches = labels.map((value, index) => normalize(value) === normalize(preferred) ? index : -1).filter(index => index >= 0); if (matches.length === 1) return matches[0]; }
+  if (preferred) { const matches = labels.map((value, index) => normalize(value) === normalize(preferred) ? index : -1).filter(index => index >= 0); return matches.length === 1 ? matches[0] : undefined; }
   return labels.length === 1 ? 0 : undefined;
 }
 export async function claimDesjardinsProfileSelection(url: string): Promise<boolean> {
@@ -41,7 +41,7 @@ export async function continueDesjardinsProfileSelection(page: Page, preferred: 
   const tiles = await form.locator("dsd-select-tile").all();
   if (!tiles.length) return false;
   const labels = await Promise.all(tiles.map(tile => tile.innerText()));
-  const chosen = uniqueDesjardinsProfile(labels, tiles.length > 1 ? await preferred() : undefined);
+  const chosen = uniqueDesjardinsProfile(labels, await preferred());
   if (chosen == null || !await tiles[chosen].isVisible() || !await tiles[chosen].isEnabled()) return false;
   const submit = form.locator('dsd-button[data-testid="primary-button"][type="submit"]');
   if (await submit.count() !== 1 || !await submit.isVisible() || !await submit.isEnabled() || !isDesjardinsProfileSelection(page.url())) return false;

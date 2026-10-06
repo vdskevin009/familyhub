@@ -263,10 +263,11 @@ async function collectDesjardinsPortalLocked(interactive = false, passes = 1): P
       await continueDesjardinsProfileSelection(page, async () => {
         try {
           const preference = await loadPrivate<{ version: number; profile: string }>(join(desjardinsPrivateDirectory, "profile-preference.dpapi"));
-          return preference.version === 1 && typeof preference.profile === "string" && preference.profile.trim() ? preference.profile : undefined;
+          if (preference.version !== 1 || typeof preference.profile !== "string" || !preference.profile.trim()) throw new Error("Invalid private profile preference.");
+          return preference.profile;
         } catch (error) {
-          if ((error as NodeJS.ErrnoException).code !== "ENOENT") return undefined;
-          try { return (await loadPrivate<{ username?: string }>(join(desjardinsPrivateDirectory, "login.dpapi"))).username; } catch { return undefined; }
+          if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
+          throw new Error("Saved Desjardins profile preference cannot be unlocked.");
         }
       });
       return desjardinsHistoryReady(page);
