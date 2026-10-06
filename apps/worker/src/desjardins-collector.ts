@@ -1,4 +1,5 @@
 import { acquirePortalLock, authenticatedPortal, tryPortalLogin, type LoginReason } from "./portal-login.js";
+import { desjardinsHistoryReady } from "./desjardins-navigation.js";
 import { createHash, randomUUID } from "node:crypto";
 import { mkdir, open, readFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
@@ -250,15 +251,7 @@ async function collectDesjardinsPortalLocked(interactive = false, passes = 1): P
     const page = context.pages()[0] ?? await context.newPage();
     await page.goto(historyUrl, { waitUntil: "domcontentloaded", timeout: 45_000 });
     const table = page.locator(historyTable);
-    const ready = async () => {
-      if (new URL(page.url()).origin !== origin) return false;
-      if (!/HistoriqueReclamation_ClaimHistory\.aspx/i.test(page.url())) {
-        const history = page.getByRole("link", { name: /historique des r[ée]clamations|claims history/i }).first();
-        if (await history.isVisible().catch(() => false)) await history.click();
-      }
-      return new URL(page.url()).origin === origin && /HistoriqueReclamation_ClaimHistory\.aspx/i.test(page.url())
-        && await table.isVisible().catch(() => false);
-    };
+    const ready = () => desjardinsHistoryReady(page);
     const authReason = await tryPortalLogin(page, "desjardins", ready);
     if (interactive && !await ready()) {
       const deadline = Date.now() + 600_000;
