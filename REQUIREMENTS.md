@@ -12,6 +12,8 @@
 
 The 2.16.1 follow-up for Issue #36, [PR #128](https://github.com/vdskevin009/familyhub/pull/128) merged at `4f6e3dffbf8f5b38612de382348ff4dfd86e97c6` with green [main build/test/deploy `36950739084`](https://github.com/vdskevin009/familyhub/actions/runs/36950739084), corrects the Blue Cross submit selector to match the observed accessible name `Login` regardless of case, while retaining a complete-name match, the approved origin/form checks and one-attempt protection. The anonymous form and label are verified separately from real expired-session authentication; the latter remains an acceptance gate.
 
+The Issue #36 navigation follow-up recognizes the authenticated French `Historique` menu and `Réclamations traitées` submenu, plus the English equivalents, before considering claim history ready. The exact insurer origin, history URL and visible table remain required; identity-provider pages and foreign redirects never establish authentication. This changes authenticated navigation only and preserves bounded credential submission, persistent retry protection, the 30-minute cooldown and explicit financial apply. Six navigation regressions and the existing authentication/Desjardins workflow tests pass locally. The approved local worker hotfix is installed; expired-session portal acceptance and paired-phone acceptance remain pending, independently of PR CI or merge.
+
 ## Baseline
 
 ### Readable clinic receipt fallback — FH-REIMB-013 / issue #28
