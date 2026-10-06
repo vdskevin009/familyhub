@@ -1,6 +1,6 @@
 import { acquirePortalLock, authenticatedPortal, tryPortalLogin, type LoginReason } from "./portal-login.js";
 import { desjardinsHistoryReady } from "./desjardins-navigation.js";
-import { continueDesjardinsProfileSelection, isDesjardinsProfileSelection } from "./desjardins-profile-selection.js";
+import { continueDesjardinsProfileSelection, hasAttemptedDesjardinsProfileSelection, isDesjardinsProfileSelection } from "./desjardins-profile-selection.js";
 import { createHash, randomUUID } from "node:crypto";
 import { mkdir, open, readFile, unlink } from "node:fs/promises";
 import { join, resolve } from "node:path";
@@ -255,7 +255,7 @@ async function collectDesjardinsPortalLocked(interactive = false, passes = 1): P
     try {
       const pending = await loadPrivate<{ url: string; savedAt: string }>(desjardinsPendingProfilePath);
       const age = Date.now() - Date.parse(pending.savedAt);
-      if (Number.isFinite(age) && age >= 0 && age < 30 * 60_000 && isDesjardinsProfileSelection(pending.url)) entryUrl = pending.url;
+      if (Number.isFinite(age) && age >= 0 && age < 30 * 60_000 && isDesjardinsProfileSelection(pending.url) && !await hasAttemptedDesjardinsProfileSelection(pending.url)) entryUrl = pending.url;
     } catch { /* No pending ordinary profile selection; normal session reuse remains authoritative. */ }
     await page.goto(entryUrl, { waitUntil: "domcontentloaded", timeout: 45_000 });
     const table = page.locator(historyTable);

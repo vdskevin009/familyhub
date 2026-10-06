@@ -19,17 +19,24 @@ export function uniqueDesjardinsProfile(labels: string[], preferred?: string): n
   if (preferred) { const matches = labels.map((value, index) => normalize(value) === normalize(preferred) ? index : -1).filter(index => index >= 0); return matches.length === 1 ? matches[0] : undefined; }
   return labels.length === 1 ? 0 : undefined;
 }
-export async function claimDesjardinsProfileSelection(url: string): Promise<boolean> {
-  if (!isDesjardinsProfileSelection(url)) return false;
+function profileFingerprint(url: string): string | undefined {
+  if (!isDesjardinsProfileSelection(url)) return undefined;
   const state = new URL(url).searchParams.get("state");
-  if (!state) return false;
-  const fingerprint = createHash("sha256").update(state).digest("hex");
-  const path = join(dataDirectory, "desjardins", "profile-selection-control.json");
+  return state ? createHash("sha256").update(state).digest("hex") : undefined;
+}
+export async function hasAttemptedDesjardinsProfileSelection(url: string): Promise<boolean> {
+  const fingerprint = profileFingerprint(url);
+  if (!fingerprint) return true;
   try {
-    const previous = JSON.parse(await readFile(path, "utf8"));
-    if (previous.version !== 1 || typeof previous.fingerprint !== "string" || previous.fingerprint === fingerprint) return false;
-  } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") return false; }
-  await atomicJson(path, { version: 1, fingerprint, attemptedAt: new Date().toISOString() });
+    const previous = JSON.parse(await readFile(join(dataDirectory, "desjardins", "profile-selection-control.json"), "utf8"));
+    if (previous.version !== 1 || typeof previous.fingerprint !== "string") return true;
+    return previous.fingerprint === fingerprint;
+  } catch (error) { return (error as NodeJS.ErrnoException).code !== "ENOENT"; }
+}
+export async function claimDesjardinsProfileSelection(url: string): Promise<boolean> {
+  const fingerprint = profileFingerprint(url);
+  if (!fingerprint || await hasAttemptedDesjardinsProfileSelection(url)) return false;
+  await atomicJson(join(dataDirectory, "desjardins", "profile-selection-control.json"), { version: 1, fingerprint, attemptedAt: new Date().toISOString() });
   return true;
 }
 /** Ordinary post-password profile selection only. No token/API access, credential submit, consent or verification code. */
