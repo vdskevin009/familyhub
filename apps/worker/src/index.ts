@@ -1,3 +1,4 @@
+import { automaticInsurerPaymentsEnabled, automaticInsurerCollectionRequested } from "./insurer-payment-intake.js";
 import { hasPortalCredentials } from "./portal-login.js";
 import { createServer, IncomingMessage, ServerResponse } from "node:http";
 import { randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
@@ -36,7 +37,7 @@ type ResearchWatch = {
 };
 type PersistedState = { watches: ResearchWatch[] };
 
-const version = "2.21.0";
+const version = "2.22.0";
 const host = process.env.FAMILYHUB_WORKER_HOST?.trim() || "127.0.0.1";
 const port = Number(process.env.FAMILYHUB_WORKER_PORT || "4713");
 const stateDir = process.env.FAMILYHUB_WORKER_DATA?.trim() || join(homedir(), ".familyhub-worker");
@@ -277,29 +278,34 @@ const server = createServer(async (request, response) => {
         if (body.interactive !== true) throw new Error("Confirm opening the insurer sign-in window on the PC.");
         if (getBlueCrossStatus().state === "syncing" || getDesjardinsStatus().state === "syncing")
           throw new Error("An insurer collection is already running.");
+        const autoImportNew = await automaticInsurerPaymentsEnabled();
         json(response, 202, startPortalReconnect(insurer, () => insurer === "desjardins"
-          ? syncDesjardinsPortal(false, true) : syncBlueCrossPortal(false, true)), origin); return;
+          ? syncDesjardinsPortal(false, true, undefined, autoImportNew) : syncBlueCrossPortal(false, true, undefined, autoImportNew)), origin); return;
       }
     }
     if (parts[0] === "desjardins" && parts[1] === "status" && parts.length === 2 && request.method === "GET") {
       const { previewSnapshot: _previewSnapshot, ...status } = getDesjardinsStatus();
-      json(response, 200, { ...status, loginConfigured: await hasPortalCredentials("desjardins") }, origin); return;
+      json(response, 200, { ...status, loginConfigured: await hasPortalCredentials("desjardins"), autoImportNewPaymentsEnabled: await automaticInsurerPaymentsEnabled() }, origin); return;
     }
     if (parts[0] === "desjardins" && parts[1] === "sync" && parts.length === 2 && request.method === "POST") {
-      const body = await readJson<{ apply?: unknown }>(request);
+      const body = await readJson<{ apply?: unknown; autoImportNewPayments?: unknown }>(request);
       if (typeof body.apply !== "boolean") throw new Error("Provide a boolean apply flag.");
-      const result = await syncDesjardinsPortal(body.apply);
+      const autoImportNew = await automaticInsurerCollectionRequested(body.apply, body.autoImportNewPayments);
+      const result = await syncDesjardinsPortal(body.apply, false, undefined, autoImportNew);
+      if (result.status === "login-required") { json(response, 200, result, origin); return; }
       const { snapshotPath: _snapshotPath, backup: _backup, ...publicResult } = result;
       json(response, 200, publicResult, origin); return;
     }
     if (parts[0] === "bluecross" && parts[1] === "status" && parts.length === 2 && request.method === "GET") {
-      json(response, 200, { ...getBlueCrossStatus(), loginConfigured: await hasPortalCredentials("bluecross") }, origin); return;
+      json(response, 200, { ...getBlueCrossStatus(), loginConfigured: await hasPortalCredentials("bluecross"), autoImportNewPaymentsEnabled: await automaticInsurerPaymentsEnabled() }, origin); return;
     }
     if (parts[0] === "bluecross" && parts[1] === "sync" && parts.length === 2 && request.method === "POST") {
-      const body = await readJson<{ apply?: unknown }>(request);
+      const body = await readJson<{ apply?: unknown; autoImportNewPayments?: unknown }>(request);
       if (typeof body.apply !== "boolean") throw new Error("Provide a boolean apply flag.");
-      const result = await syncBlueCrossPortal(body.apply);
+      const autoImportNew = await automaticInsurerCollectionRequested(body.apply, body.autoImportNewPayments);
+      const result = await syncBlueCrossPortal(body.apply, false, undefined, autoImportNew);
       // Private snapshot and backup paths are intentionally never sent to the PWA.
+      if (result.status === "login-required") { json(response, 200, result, origin); return; }
       const { snapshotPath: _snapshotPath, backup: _backup, ...publicResult } = result;
       json(response, 200, publicResult, origin); return;
     }

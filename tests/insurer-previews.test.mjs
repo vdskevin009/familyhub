@@ -87,3 +87,17 @@ test('standalone runner authenticates, saves a safe report and leaves the ledger
     await rm(directory, { recursive: true, force: true });
   }
 });
+
+test('scheduled collection reports saved new payments and pending changes separately', async () => {
+  const { runPreviews } = await import('../scripts/insurer-previews.mjs');
+  const request = async path => path === '/invoices' ? { busy: false } : path.endsWith('/reconnect') ? { state: 'idle' } : path.endsWith('/status') ? {
+    state: 'up-to-date', latestResult: { complete: true, errors: 0, ambiguous: 0, autoImported: 1, pendingNew: 0, pendingChanged: 0 }
+  } : {};
+  const report = await runPreviews(request);
+  assert.equal(report.success, true);
+  assert.deepEqual(report.results.map(x => [x.outcome, x.savedNew, x.pending]), [['payments-saved', 1, 0], ['payments-saved', 1, 0]]);
+  const pending = await runPreviews(async path => path === '/invoices' ? { busy: false } : path.endsWith('/reconnect') ? { state: 'idle' } : path.endsWith('/status') ? {
+    state: 'idle', latestResult: { complete: true, errors: 0, ambiguous: 0, autoImported: 1, pendingNew: 0, pendingChanged: 1 }
+  } : {});
+  assert.equal(pending.success, false); assert.equal(pending.results[0].outcome, 'attention-required');
+});

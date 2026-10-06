@@ -1,3 +1,4 @@
+import { validatedNewInsurerPayments } from "./insurer-payment-intake.js";
 import type { LoginReason } from "./portal-login.js";
 import { automaticReplacement, hasManualAuthority, manualReasons, sourceIdentity } from "./ingestion-policy.js";
 import { mkdir, readFile } from "node:fs/promises";
@@ -48,7 +49,7 @@ let mutation = Promise.resolve();
 let blueCrossBusy = false;
 let desjardinsBusy = false;
 const blueCrossStatusPath = join(blueCrossPrivateDirectory, "status.json");
-type PortalResult = { status: "success"; applied: boolean; found: number; new: number; changed: number; unchanged: number; ambiguous: number; duplicates: number; errors: number; complete: boolean };
+type PortalResult = { autoImported?: number; pendingNew?: number; pendingChanged?: number; status: "success"; applied: boolean; found: number; new: number; changed: number; unchanged: number; ambiguous: number; duplicates: number; errors: number; complete: boolean };
 type BlueCrossStatus = { authReason?: LoginReason; lastAttempt?: string; lastSuccess?: string; lastAppliedAt?: string; latestResult?: PortalResult; found?: number; state: "idle" | "syncing" | "login-required" | "error" | "up-to-date"; error?: string };
 let blueCrossStatus: BlueCrossStatus = { state: "idle" };
 const desjardinsStatusPath = join(desjardinsPrivateDirectory, "status.json");
@@ -139,7 +140,7 @@ export function planBlueCrossUpsert(existing: Invoice[], collection: PortalColle
   return { found: imported.length, new: added, changed, unchanged, ambiguous, duplicates, items: planned };
 }
 
-export async function syncBlueCrossPortal(apply = false, interactive = false, collector = collectBlueCrossPortal) {
+export async function syncBlueCrossPortal(apply = false, interactive = false, collector = collectBlueCrossPortal, autoImportNew = false) {
   if (blueCrossBusy || desjardinsBusy || busy) throw new Error("An insurer or invoice collection is already running.");
   blueCrossBusy = true;
   try {
@@ -161,13 +162,26 @@ export async function syncBlueCrossPortal(apply = false, interactive = false, co
       await atomicJson(join(dataDirectory, backup), state);
       mergeBlueCross(latest.items);
     });
-    await saveBlueCrossStatus({ state: errors ? "error" : !apply && (plan.new || plan.changed || plan.ambiguous) ? "idle" : "up-to-date", lastSuccess: errors ? blueCrossStatus.lastSuccess : collection.collectedAt,
+    let autoImported = 0;
+    if (!apply && autoImportNew && validatedNewInsurerPayments(state.items, collection, plan).length) await edit(async () => {
+      const latest = planBlueCrossUpsert(state.items, collection);
+      const additions = validatedNewInsurerPayments(state.items, collection, latest);
+      if (!additions.length) return;
+      backup = `invoices.pre-bluecross-automatic-new-${Date.now()}-${randomUUID()}.json`;
+      await atomicJson(join(dataDirectory, backup), state);
+      state.items.push(...additions);
+      autoImported = additions.length;
+    });
+    const remaining = autoImported ? planBlueCrossUpsert(state.items, collection) : plan;
+    const automatic = autoImportNew ? { autoImported, pendingNew: remaining.new, pendingChanged: remaining.changed } : {};
+    const applied = apply || autoImported > 0 && !remaining.new && !remaining.changed && !remaining.ambiguous;
+    await saveBlueCrossStatus({ state: errors ? "error" : !apply && (remaining.new || remaining.changed || remaining.ambiguous) ? "idle" : "up-to-date", lastSuccess: errors ? blueCrossStatus.lastSuccess : collection.collectedAt,
       found: plan.found, error: collection.warnings.join(" ") || undefined,
-      lastAppliedAt: apply ? new Date().toISOString() : blueCrossStatus.lastAppliedAt,
-      latestResult: { status: "success", applied: apply, found: plan.found, new: plan.new, changed: plan.changed,
+      lastAppliedAt: apply || autoImported > 0 ? new Date().toISOString() : blueCrossStatus.lastAppliedAt,
+      latestResult: { ...automatic, status: "success", applied, found: plan.found, new: plan.new, changed: plan.changed,
         unchanged: plan.unchanged, ambiguous: plan.ambiguous, duplicates: plan.duplicates, errors, complete: collection.complete } });
-    const reconciliation = apply ? buildReconciliationSnapshot(activeReconciliationItems(), state.matchDecisions) : undefined;
-    return { status: "success" as const, applied: apply, found: plan.found, new: plan.new, changed: plan.changed,
+    const reconciliation = apply || autoImported > 0 ? buildReconciliationSnapshot(activeReconciliationItems(), state.matchDecisions) : undefined;
+    return { ...automatic, status: "success" as const, applied, found: plan.found, new: plan.new, changed: plan.changed,
       unchanged: plan.unchanged, ambiguous: plan.ambiguous, duplicates: plan.duplicates, errors,
       loginRequired: false, complete: collection.complete, warnings: collection.warnings,
       matched: reconciliation?.cases.reduce((sum, entry) => sum + (entry.MatchAssignments?.length ?? 0), 0),
@@ -184,7 +198,7 @@ export async function syncBlueCrossPortal(apply = false, interactive = false, co
   } finally { blueCrossBusy = false; }
 }
 
-export async function syncDesjardinsPortal(apply = false, interactive = false, collector = collectDesjardinsPortal) {
+export async function syncDesjardinsPortal(apply = false, interactive = false, collector = collectDesjardinsPortal, autoImportNew = false) {
   if (desjardinsBusy || blueCrossBusy || busy) throw new Error("An insurer or invoice collection is already running.");
   desjardinsBusy = true;
   try {
@@ -216,18 +230,31 @@ export async function syncDesjardinsPortal(apply = false, interactive = false, c
         else state.items[index] = item;
       }
     });
-    await saveDesjardinsStatus({ state: errors || plan.ambiguous ? "error" : !apply && (plan.new || plan.changed) ? "idle" : "up-to-date",
+    let autoImported = 0;
+    if (!apply && autoImportNew && validatedNewInsurerPayments(state.items, collection, plan).length) await edit(async () => {
+      const latest = planDesjardinsUpsert(state.items, collection);
+      const additions = validatedNewInsurerPayments(state.items, collection, latest);
+      if (!additions.length) return;
+      backup = `invoices.pre-desjardins-automatic-new-${Date.now()}-${randomUUID()}.json`;
+      await atomicJson(join(dataDirectory, backup), state);
+      state.items.push(...additions);
+      autoImported = additions.length;
+    });
+    const remaining = autoImported ? planDesjardinsUpsert(state.items, collection) : plan;
+    const automatic = autoImportNew ? { autoImported, pendingNew: remaining.new, pendingChanged: remaining.changed } : {};
+    const applied = apply || autoImported > 0 && !remaining.new && !remaining.changed && !remaining.ambiguous;
+    await saveDesjardinsStatus({ state: errors || plan.ambiguous ? "error" : !apply && (remaining.new || remaining.changed) ? "idle" : "up-to-date",
       lastSuccess: errors || plan.ambiguous ? desjardinsStatus.lastSuccess : collection.collectedAt,
       found: plan.found, error: errors ? `${errors} claim-detail warnings; inspect the private snapshot before applying.`
         : plan.ambiguous ? `${plan.ambiguous} Desjardins claim rows require review; no data was applied.` : undefined,
       previewSnapshot: apply ? undefined : result.snapshotPath,
       previewAt: apply ? undefined : collection.collectedAt,
       applicable: !apply && collection.complete && plan.ambiguous === 0,
-      lastAppliedAt: apply ? new Date().toISOString() : desjardinsStatus.lastAppliedAt,
-      latestResult: { status: "success", applied: apply, found: plan.found, new: plan.new, changed: plan.changed,
+      lastAppliedAt: apply || autoImported > 0 ? new Date().toISOString() : desjardinsStatus.lastAppliedAt,
+      latestResult: { ...automatic, status: "success", applied, found: plan.found, new: plan.new, changed: plan.changed,
         unchanged: plan.unchanged, ambiguous: plan.ambiguous, duplicates: plan.duplicates, errors, complete: collection.complete } });
-    const reconciliation = apply ? buildReconciliationSnapshot(activeReconciliationItems(), state.matchDecisions) : undefined;
-    return { status: "success" as const, applied: apply, found: plan.found, new: plan.new, changed: plan.changed,
+    const reconciliation = apply || autoImported > 0 ? buildReconciliationSnapshot(activeReconciliationItems(), state.matchDecisions) : undefined;
+    return { ...automatic, status: "success" as const, applied, found: plan.found, new: plan.new, changed: plan.changed,
       unchanged: plan.unchanged, ambiguous: plan.ambiguous, duplicates: plan.duplicates, errors,
       loginRequired: false, complete: collection.complete, warnings: collection.warnings.slice(0, 12),
       matched: reconciliation?.cases.reduce((sum, entry) => sum + (entry.MatchAssignments?.length ?? 0), 0),
