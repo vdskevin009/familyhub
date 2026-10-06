@@ -67,7 +67,7 @@ export function classifyLoginScreen(text: string): LoginReason | undefined {
 // UI values are never returned or logged. The exact HTTPS origins and observed form types
 // are checked before every fill and the single submit. No password-reset or MFA action exists.
 export type LoginPhase = "checking-form" | "filling-username" | "filling-password" | "submitting" | "awaiting-history" | "authenticated" | "retry-blocked";
-export type LoginDiagnostic = { version: 1; observedAt: string; phase: LoginPhase; errorKind?: "timeout" | "form-changed" | "browser-error"; reason?: LoginReason; location: "login-form" | "insurer-portal" | "other"; passwordVisible: boolean; challengeVisible: boolean };
+export type LoginDiagnostic = { version: 1; observedAt: string; phase: LoginPhase; errorKind?: "timeout" | "form-changed" | "browser-error"; reason?: LoginReason; location: "login-form" | "insurer-portal" | "other"; passwordVisible: boolean; challengeVisible: boolean; landingHost: string; browserError: boolean };
 
 export async function submitPortalLogin(page: Page, insurer: Insurer, credentials: LoginCredentials, phase?: (value: LoginPhase) => void): Promise<void> {
   phase?.("checking-form");
@@ -112,9 +112,15 @@ export async function tryPortalLogin(page: Page, insurer: Insurer, ready: () => 
     if (!deps.diagnose) return;
     try {
       let portal = false;
+      let landingHost = "unrecognized", browserError = false;
+      try { const url = new URL(page.url()); browserError = ["chrome-error:", "edge-error:"].includes(url.protocol);
+        if (url.protocol === "https:" && /(?:^|\.)(?:desjardins\.com|dsf-dfs\.com)$/i.test(url.hostname)) landingHost = url.hostname;
+        else if (url.protocol === "about:") landingHost = "blank";
+        else if (browserError) landingHost = "browser-error";
+      } catch {}
       try { portal = new URL(page.url()).origin === (insurer === "desjardins" ? "https://www.agea-gbim.dsf-dfs.com" : "https://service.pac.bluecross.ca"); } catch {}
       const visible = async (selector: string) => page.locator(selector).first().isVisible().catch(() => false);
-      await deps.diagnose(insurer, { version: 1, observedAt: new Date(deps.now()).toISOString(), phase, reason, errorKind,
+      await deps.diagnose(insurer, { version: 1, observedAt: new Date(deps.now()).toISOString(), phase, reason, errorKind, landingHost, browserError,
         location: allowedLoginUrl(insurer, page.url()) ? "login-form" : portal ? "insurer-portal" : "other",
         passwordVisible: await visible(insurer === "desjardins" ? "#Password" : "#password"),
         challengeVisible: classifyLoginScreen(await page.locator("body").innerText().catch(() => "")) === "human-required"
