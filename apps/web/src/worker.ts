@@ -98,7 +98,7 @@ async function request<T>(config: WorkerConfig, path: string, init: RequestInit 
 export type BlueCrossSyncResult = { autoImported?: number; pendingNew?: number; pendingChanged?: number; status: "success" | "login-required"; applied?: boolean; found?: number; new?: number;
   changed?: number; unchanged?: number; ambiguous?: number; duplicates?: number; errors?: number; complete?: boolean;
   loginRequired?: boolean; warnings?: string[]; matched?: number; unmatched?: number };
-export type BlueCrossSyncStatus = { autoImportNewPaymentsEnabled?: boolean; loginConfigured?: boolean; authReason?: "not-configured" | "credentials-unavailable" | "credentials-rejected" | "human-required" | "layout-changed" | "cooldown" | "profile-busy" | "profile-selection-required"; lastAttempt?: string; lastSuccess?: string; lastAppliedAt?: string; latestResult?: BlueCrossSyncResult; found?: number;
+export type BlueCrossSyncStatus = { autoImportNewPaymentsEnabled?: boolean; loginConfigured?: boolean; authReason?: "not-configured" | "credentials-unavailable" | "credentials-rejected" | "human-required" | "layout-changed" | "cooldown" | "profile-busy" | "profile-selection-required" | "login-incomplete"; lastAttempt?: string; lastSuccess?: string; lastAppliedAt?: string; latestResult?: BlueCrossSyncResult; found?: number;
   state: "idle" | "syncing" | "login-required" | "error" | "up-to-date"; error?: string };
 export function fetchBlueCrossStatus(config: WorkerConfig): Promise<BlueCrossSyncStatus> {
   return request(config, "/bluecross/status");

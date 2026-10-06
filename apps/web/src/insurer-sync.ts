@@ -6,6 +6,7 @@ export function insurerSyncMessage(status: BlueCrossSyncStatus | null, result: B
   if (status?.state === "login-required") {
     switch (status.authReason) {
       case "credentials-rejected": return "Sign-in was refused. Automatic retries are paused. Replace the saved login on the PC or use Reconnect.";
+      case "login-incomplete": return "Sign-in did not reach claim history. Automatic retries are paused. Use Reconnect on PC to start a fresh session.";
       case "human-required": return "Sign-in needs your attention. Use Reconnect on PC to complete verification; collection then resumes.";
       case "not-configured": return "Session expired. Set up automatic login on the PC, or use Reconnect to sign in.";
       case "credentials-unavailable": return "Saved login cannot be unlocked. Configure it again as the Windows user running the worker, or use Reconnect.";

@@ -37,11 +37,11 @@ test('expired session logs in once and resumes only on authenticated ready evide
   const f=fixture({succeeds:true}); assert.equal(await auth.tryPortalLogin(f.page,'desjardins',f.ready,f.deps),undefined); assert.equal(f.count(),1); assert.equal(f.state().blocked,false);
 });
 test('ambiguous submit failure is latched across repeated requests without exposing error', async () => {
-  const f=fixture({submissionError:true}); assert.equal(await auth.tryPortalLogin(f.page,'desjardins',f.ready,f.deps),'human-required');
-  assert.equal(await auth.tryPortalLogin(f.page,'desjardins',f.ready,f.deps),'human-required'); assert.equal(f.count(),1); assert.equal(JSON.stringify(f.state()).includes('sensitive'),false);
+  const f=fixture({submissionError:true}); assert.equal(await auth.tryPortalLogin(f.page,'desjardins',f.ready,f.deps),'login-incomplete');
+  assert.equal(await auth.tryPortalLogin(f.page,'desjardins',f.ready,f.deps),'login-incomplete'); assert.equal(f.count(),1); assert.equal(JSON.stringify(f.state()).includes('sensitive'),false);
 });
 test('unresolved login times out after one attempt and persists the stop', async () => {
-  const f=fixture(); assert.equal(await auth.tryPortalLogin(f.page,'desjardins',f.ready,f.deps),'human-required'); assert.equal(f.count(),1); assert.equal(f.state().blocked,true);
+  const f=fixture(); assert.equal(await auth.tryPortalLogin(f.page,'desjardins',f.ready,f.deps),'login-incomplete'); assert.equal(f.count(),1); assert.equal(f.state().blocked,true);
 });
 test('MFA and rejection screens never trigger an automatic credential submission', async () => {
   for (const [text,reason] of [['Enter verification code','human-required'],['Mot de passe incorrect','credentials-rejected']]) {
@@ -132,17 +132,19 @@ test('private diagnostic retains phase but excludes credentials, raw URLs and br
   const f=fixture();const records=[];f.deps.diagnose=async(_,value)=>records.push(value);
   f.page.url=()=> 'https://id.desjardins.com/login?state=synthetic-secret-token';
   f.deps.submit=async(_page,_insurer,_credentials,phase)=>{phase('submitting');const error=new Error('synthetic-password at https://id.desjardins.com/login?state=synthetic-secret-token');error.name='TimeoutError';throw error;};
-  assert.equal(await auth.tryPortalLogin(f.page,'desjardins',f.ready,f.deps),'human-required');
+  assert.equal(await auth.tryPortalLogin(f.page,'desjardins',f.ready,f.deps),'login-incomplete');
   assert.equal(records[0].phase,'submitting');assert.equal(records[0].errorKind,'timeout');assert.equal(records[0].location,'login-form');assert.equal(records[0].challengeVisible,false);assert.equal(f.state().blocked,true);
   const encoded=JSON.stringify(records);for(const value of ['synthetic-password','synthetic-user','synthetic-secret-token','https://'])assert.equal(encoded.includes(value),false);
-  assert.equal(await auth.tryPortalLogin(f.page,'desjardins',f.ready,f.deps),'human-required');assert.equal(records.at(-1).phase,'retry-blocked');
+  assert.equal(await auth.tryPortalLogin(f.page,'desjardins',f.ready,f.deps),'login-incomplete');assert.equal(records.at(-1).phase,'retry-blocked');
 });
 test('unknown ready timeout is distinguished from an observed human challenge without granting a retry', async () => {
   const f=fixture();const records=[];f.deps.diagnose=async(_,value)=>records.push(value);
-  assert.equal(await auth.tryPortalLogin(f.page,'desjardins',f.ready,f.deps),'human-required');assert.equal(f.count(),1);
+  assert.equal(await auth.tryPortalLogin(f.page,'desjardins',f.ready,f.deps),'login-incomplete');assert.equal(f.count(),1);
   assert.equal(records[0].phase,'awaiting-history');assert.equal(records[0].challengeVisible,false);assert.equal(records[0].errorKind,undefined);
   await auth.tryPortalLogin(f.page,'desjardins',f.ready,f.deps);assert.equal(f.count(),1);
 });
 test('diagnostic write failure cannot change authentication success or the retry latch', async () => {
-  for(const succeeds of [true,false]){const f=fixture({succeeds});f.deps.diagnose=async()=>{throw Error('synthetic private path');};assert.equal(await auth.tryPortalLogin(f.page,'desjardins',f.ready,f.deps),succeeds?undefined:'human-required');assert.equal(f.state().blocked,!succeeds);assert.equal(f.count(),1);}
+  for(const succeeds of [true,false]){const f=fixture({succeeds});f.deps.diagnose=async()=>{throw Error('synthetic private path');};assert.equal(await auth.tryPortalLogin(f.page,'desjardins',f.ready,f.deps),succeeds?undefined:'login-incomplete');assert.equal(f.state().blocked,!succeeds);assert.equal(f.count(),1);}
 });
+
+test('an observed challenge after password submit retains the actual human-required reason',async()=>{const f=fixture();let text='';f.page.locator=()=>({innerText:async()=>text,first(){return this},isVisible:async()=>false});const submit=f.deps.submit;f.deps.submit=async(...args)=>{await submit(...args);text='Enter verification code';};assert.equal(await auth.tryPortalLogin(f.page,'desjardins',f.ready,f.deps),'human-required');assert.equal(f.state().blocked,true);assert.equal(f.count(),1);await auth.tryPortalLogin(f.page,'desjardins',f.ready,f.deps);assert.equal(f.count(),1);});

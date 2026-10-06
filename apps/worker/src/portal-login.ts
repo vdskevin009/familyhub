@@ -4,7 +4,7 @@ import type { Page } from "playwright";
 import { atomicJson, dataDirectory, loadPrivate } from "./private-store.js";
 
 export type Insurer = "bluecross" | "desjardins";
-export type LoginReason = "not-configured" | "credentials-unavailable" | "credentials-rejected" | "human-required" | "layout-changed" | "cooldown" | "profile-busy" | "profile-selection-required";
+export type LoginReason = "not-configured" | "credentials-unavailable" | "credentials-rejected" | "human-required" | "layout-changed" | "cooldown" | "profile-busy" | "profile-selection-required" | "login-incomplete";
 export type LoginCredentials = { version: 1; insurer: Insurer; password: string; username?: string; policy?: string; certificate?: string; role?: "member" | "spouse" };
 type LoginControl = { blocked: boolean; reason?: LoginReason; attemptedAt?: string };
 export const loginDirectory = (insurer: Insurer) => join(dataDirectory, insurer);
@@ -35,7 +35,7 @@ export async function hasPortalCredentials(insurer: Insurer): Promise<boolean> {
 export async function readLoginControl(insurer: Insurer): Promise<LoginControl> {
   try {
     const state = JSON.parse(await readFile(controlPath(insurer), "utf8"));
-    if (typeof state.blocked !== "boolean" || (state.reason && !["not-configured", "credentials-unavailable", "credentials-rejected", "human-required", "layout-changed", "cooldown", "profile-busy", "profile-selection-required"].includes(state.reason)) || (state.attemptedAt && !Number.isFinite(Date.parse(state.attemptedAt)))) throw new Error();
+    if (typeof state.blocked !== "boolean" || (state.reason && !["not-configured", "credentials-unavailable", "credentials-rejected", "human-required", "layout-changed", "cooldown", "profile-busy", "profile-selection-required", "login-incomplete"].includes(state.reason)) || (state.attemptedAt && !Number.isFinite(Date.parse(state.attemptedAt)))) throw new Error();
     return state;
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return { blocked: false };
@@ -48,7 +48,7 @@ export async function authenticatedPortal(insurer: Insurer): Promise<void> {
   await atomicJson(controlPath(insurer), { blocked: false, attemptedAt: previous.attemptedAt });
 }
 export function loginGate(state: LoginControl, now = Date.now()): LoginReason | undefined {
-  if (state.blocked) return state.reason || "human-required";
+  if (state.blocked) return state.reason || "login-incomplete";
   if (state.attemptedAt && now - Date.parse(state.attemptedAt) < 30 * 60_000) return "cooldown";
 }
 export function allowedLoginUrl(insurer: Insurer, url: string): boolean {
@@ -153,8 +153,8 @@ export async function tryPortalLogin(page: Page, insurer: Insurer, ready: () => 
   catch (error) { return (error as NodeJS.ErrnoException).code === "ENOENT" ? "not-configured" : "credentials-unavailable"; }
   if (!validCredentials(credentials, insurer)) return "credentials-unavailable";
   const attemptedAt = new Date(deps.now()).toISOString();
-  await deps.save(insurer, { blocked: true, reason: "human-required", attemptedAt });
-  let reason: LoginReason = "human-required";
+  await deps.save(insurer, { blocked: true, reason: "login-incomplete", attemptedAt });
+  let reason: LoginReason = "login-incomplete";
   try {
     await deps.submit(page, insurer, credentials, value => { phase = value; });
     phase = "awaiting-history";
