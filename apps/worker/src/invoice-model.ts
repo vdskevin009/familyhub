@@ -50,6 +50,7 @@ export type Invoice = {
   HistoricalCandidate?: boolean;
   ImportWarning?: string; ClaimedService?: string; StatementDate?: string; StructuredSource?: "blue-cross-portal" | "desjardins-portal"; PortalClaimId?: string;
   PortalClaimStatus?: "pended";
+  PortalEvidenceId?: string;
 };
 export type Correction = { account: string; fingerprint: string; kind: Kind; at: string; confirmations?: number; sender?: string; subject?: string };
 

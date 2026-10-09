@@ -11,7 +11,7 @@ import { SavingsLibrary, SavingsConflict } from "./savings-library.js";
 import { importConnectorMessage, claimPreparation } from "./invoices.js";
 import { portalReconnectStatus, startPortalReconnect } from "./portal-reconnect.js";
 import { openClaimBrowser, inspectClaimStep, fillClaimStep, claimSessionExpense, closeClaimBrowser } from "./claim-browser.js";
-import { initializeInvoices, initializeBlueCrossStatus, getBlueCrossStatus, syncBlueCrossPortal, initializeDesjardinsStatus, getDesjardinsStatus, syncDesjardinsPortal, invoiceSnapshot, collectInvoices, correctInvoice, updateInvoiceStatus, undoInvoiceDecision, invoiceAttachment, importBlueCrossMessages, setDocumentsIgnored, setExpenseIgnored, setManualMatch, setMatchDecision, setReimbursementWorkflowStatus, setUnmatchedIgnored } from "./invoices.js";
+import { initializeInvoices, initializeBlueCrossStatus, getBlueCrossStatus, syncBlueCrossPortal, initializeDesjardinsStatus, getDesjardinsStatus, syncDesjardinsPortal, backfillDesjardinsPayments, invoiceSnapshot, collectInvoices, correctInvoice, updateInvoiceStatus, undoInvoiceDecision, invoiceAttachment, importBlueCrossMessages, setDocumentsIgnored, setExpenseIgnored, setManualMatch, setMatchDecision, setReimbursementWorkflowStatus, setUnmatchedIgnored } from "./invoices.js";
 
 type WorkerTaskType = "general" | "meal-plan" | "research" | "financial-review" | "admin-classify";
 type WorkerTask = {
@@ -37,7 +37,7 @@ type ResearchWatch = {
 };
 type PersistedState = { watches: ResearchWatch[] };
 
-const version = "2.22.0";
+const version = "2.22.2";
 const host = process.env.FAMILYHUB_WORKER_HOST?.trim() || "127.0.0.1";
 const port = Number(process.env.FAMILYHUB_WORKER_PORT || "4713");
 const stateDir = process.env.FAMILYHUB_WORKER_DATA?.trim() || join(homedir(), ".familyhub-worker");
@@ -295,6 +295,11 @@ const server = createServer(async (request, response) => {
       if (result.status === "login-required") { json(response, 200, result, origin); return; }
       const { snapshotPath: _snapshotPath, backup: _backup, ...publicResult } = result;
       json(response, 200, publicResult, origin); return;
+    }
+    if (parts[0] === "desjardins" && parts[1] === "backfill" && parts.length === 2 && request.method === "POST") {
+      const body = await readJson<{ evidence?: unknown; apply?: unknown }>(request);
+      const { backup: _backup, ...result } = await backfillDesjardinsPayments(body.evidence, body.apply);
+      json(response, 200, result, origin); return;
     }
     if (parts[0] === "bluecross" && parts[1] === "status" && parts.length === 2 && request.method === "GET") {
       json(response, 200, { ...getBlueCrossStatus(), loginConfigured: await hasPortalCredentials("bluecross"), autoImportNewPaymentsEnabled: await automaticInsurerPaymentsEnabled() }, origin); return;
