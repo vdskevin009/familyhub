@@ -4,7 +4,8 @@ import { AlertTriangle, ArrowLeft, ArrowRight, CheckCircle2, ExternalLink, Searc
 import { dateLabel } from "../domain";
 import { googleBridge } from "../google";
 import { healthcareTitle } from "../invoice-state";
-import type { ReimbursementPersonScope } from "../invoice-state";
+import type { ReimbursementPersonScope, ReimbursementInvoicePdfOption } from "../invoice-state";
+import SourcePdfActions from "./SourcePdfActions";
 import {
   manualMatchExpenseId,
   manualMatchUnavailableReason,
@@ -31,6 +32,7 @@ type Props = {
   onPersonScopeChange: (scope: ReimbursementPersonScope) => void;
   onMatch: (expense: ReconciliationCase, reimbursementId: string) => Promise<boolean>;
   onIgnore: (reimbursementId: string, ignored: boolean) => Promise<boolean>;
+  openPdf: (option: ReimbursementInvoicePdfOption) => Promise<void>;
 };
 
 type Sheet = "search" | "context" | null;
@@ -88,7 +90,8 @@ export default function ReconciliationQueue({
   operationError, operationMessage,
   onPersonScopeChange,
   onMatch,
-  onIgnore
+  onIgnore,
+  openPdf
 }: Props) {
   const [index, setIndex] = useState(0);
   const [sessionTotal, setSessionTotal] = useState(unmatched.length);
@@ -280,9 +283,10 @@ export default function ReconciliationQueue({
       </div>}
 
       <div className="reconcile-source-actions">
-        <button type="button" className="mini-button subtle" onClick={() => googleBridge.openMessage(current.item.AccountEmail, current.item.InternetMessageId, current.item.SourceMessageId)}>
+        <SourcePdfActions item={current.item} paired={paired} savingId={savingId} openPdf={openPdf} />
+        {!!current.item.SourceMessageId && current.item.SourceMessageId !== "portal" && <button type="button" className="mini-button subtle" onClick={() => googleBridge.openMessage(current.item.AccountEmail, current.item.InternetMessageId, current.item.SourceMessageId)}>
           <ExternalLink size={14} /> Source email
-        </button>
+        </button>}
         <button type="button" className="mini-button subtle" onClick={() => openSheet("context")}>View in context</button>
         <button type="button" className="mini-button subtle" onClick={() => openSheet("search")}><Search size={14} /> Search another invoice</button>
         <button type="button" className="mini-button subtle danger-text" disabled={actionDisabled}
@@ -317,6 +321,7 @@ export default function ReconciliationQueue({
           {candidate.Reasons.map(reason => <span key={reason}>✓ {reason}</span>)}
         </div>
         <div className="reconcile-candidate-footer">
+          {itemsById.has(candidate.ExpenseDocumentId) && <SourcePdfActions item={itemsById.get(candidate.ExpenseDocumentId)!} paired={paired} savingId={savingId} openPdf={openPdf} label="Open invoice PDF" />}
           <div><small>Remaining</small><strong>{money(candidate.Case.PotentialRemaining, candidate.Case.Currency)}</strong></div>
           {manualMatchUnavailableReason(current.item, candidate.Case) && <small>{manualMatchUnavailableReason(current.item, candidate.Case)}</small>}
           <button type="button" className="mini-button primary" disabled={actionDisabled || !!manualMatchUnavailableReason(current.item, candidate.Case)}
@@ -362,11 +367,12 @@ export default function ReconciliationQueue({
           </div>
           <div className="reconcile-search-results">
             {!searchCases.length && <div className="reconcile-no-candidate"><AlertTriangle size={20} /><div><strong>No invoice in this view</strong><span>Try showing all dates or changing the search text.</span></div></div>}
-            {searchCases.map(({ item, distance }) => <article key={item.Id}>
+            {searchCases.map(({ item, source, distance }) => <article key={item.Id}>
               <div><strong>{healthcareTitle(item)}</strong>
                 <small>{item.ServiceDate ? dateLabel(item.ServiceDate) : "Date missing"}{distance != null ? ` · ${distance} day${distance === 1 ? "" : "s"} away` : ""}{item.ServiceType ? ` · ${item.ServiceType}` : ""}</small>
                 <span>{item.Summary}</span></div>
               <div className="reconcile-search-result-action"><strong>{money(item.OriginalAmount, item.Currency)}</strong>
+                {source && <SourcePdfActions item={source} paired={paired} savingId={savingId} openPdf={openPdf} label="Open invoice PDF" />}
                 {manualMatchUnavailableReason(current.item, item) && <small>{manualMatchUnavailableReason(current.item, item)}</small>}
                 <button type="button" className="mini-button primary" disabled={actionDisabled || !!manualMatchUnavailableReason(current.item, item)}
                   onClick={() => { void onMatch(item, current.item.Id).then(saved => { if (saved) setSheet(null); }); }}>
