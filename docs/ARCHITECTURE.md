@@ -105,6 +105,8 @@ Confirmed beneficiary aliases are stored separately in a DPAPI-protected private
 
 ### 4. Browser-local state
 
+Worker 2.22.2 adds paired `POST /desjardins/backfill` with `{ evidence, apply }` for explicitly reviewed original portal payment tables. Evidence includes the exact Desjardins detail-page URL, a capture timestamp less than 24 hours old, and `payments: [{ history, detail }]` in the collector's existing table schema. Preview returns counts and total cents; explicit apply retains a private content-addressed source snapshot and ledger backup, then uses the normal identity planner and serialized reconciliation. It never advances full-history collection coverage or clears authentication errors. Unknown beneficiaries, partial tables, total mismatches and manual conflicts block the whole recovery. Ordinary collection rereads overlapping history and deduplicates those identities after reconnection. Collection retries happen inside the worker, after the prior read releases its browser/lock, with at most three attempts and 2s/8s delays. Authentication and financial/structural warnings stop retries. The scheduled runner still sends only one request and never replays an uncertain POST.
+
 Existing storage keys remain isolated by feature so earlier data can survive the migration:
 
 ```text

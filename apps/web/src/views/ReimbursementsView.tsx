@@ -13,7 +13,7 @@ import { manualMatchExpenseId, manualMatchUnavailableReason } from "../reconcili
 import ClaimCard from "./ClaimCard";
 import PrepareClaim from "./PrepareClaim";
 import { FilterButton, FilterChips, Notice, PageHeader, SearchField, Sheet, SkeletonList, useSessionValue, type ActiveFilter } from "../ui/primitives";
-import { applicableInsurerPreview, insurerSyncMessage, insurerCollectionNeedsRefresh } from "../insurer-sync";
+import { applicableInsurerPreview, insurerSyncMessage, insurerCollectionNeedsRefresh, insurerCoverageNotice } from "../insurer-sync";
 import { useMutations } from "../ui/use-mutations";
 import { fetchPortalReconnect, reconnectPortal, type PortalReconnect } from "../worker";
 import { requireSaved } from "../ui/mutation-queue";
@@ -92,8 +92,9 @@ export default function ReimbursementsView({ hub }: Props) {
     const epoch = ++refreshEpoch.current;
     if (!quiet) { setBusy(true); setError(""); }
     try {
-      const snapshot = await fetchInvoices(hub.worker);
+      const [snapshot, bc, dj] = await Promise.all([fetchInvoices(hub.worker), fetchBlueCrossStatus(hub.worker).catch(() => null), fetchDesjardinsStatus(hub.worker).catch(() => null)]);
       if (epoch !== refreshEpoch.current) return;
+      setBlueCrossStatus(bc); setDesjardinsStatus(dj);
       hub.setReimbursements(previous => ({
         ...previous,
         SchemaVersion: 2,
@@ -183,16 +184,18 @@ export default function ReimbursementsView({ hub }: Props) {
   }
 
   useEffect(() => {
-    if (!paired || !sourcesOpen || !workerVersionAtLeast(workerVersion, "2.14.0")) return;
+    if (!paired || !workerVersionAtLeast(workerVersion, "2.14.0")) return;
     let stopped = false;
     let timer: ReturnType<typeof setTimeout>;
     const poll = async () => {
+      let collecting = false;
       try {
         const [bc, dj, bcStatus, djStatus] = await Promise.all([
           fetchPortalReconnect(hub.worker, "bluecross"), fetchPortalReconnect(hub.worker, "desjardins"),
           fetchBlueCrossStatus(hub.worker), fetchDesjardinsStatus(hub.worker)
         ]);
         if (stopped) return;
+        collecting = [bc.state, dj.state].includes("running") || [bcStatus.state, djStatus.state].includes("syncing");
         setReconnects({ bluecross: bc, desjardins: dj });
         setBlueCrossStatus(bcStatus); setDesjardinsStatus(djStatus);
         const applied = [bcStatus.lastAppliedAt, djStatus.lastAppliedAt].filter(Boolean).join("|");
@@ -203,11 +206,11 @@ export default function ReimbursementsView({ hub }: Props) {
           } catch (err) { if (!stopped) setError((err as Error).message); }
         }
       } catch { /* Retain the current job until the PC can be reached again. Never resubmit. */ }
-      if (!stopped) timer = setTimeout(() => void poll(), 3000);
+      if (!stopped) timer = setTimeout(() => void poll(), collecting ? 3000 : 30000);
     };
     void poll();
     return () => { stopped = true; clearTimeout(timer); };
-  }, [paired, sourcesOpen, workerVersion, hub.worker.Endpoint, hub.worker.ApiKey]);
+  }, [paired, workerVersion, hub.worker.Endpoint, hub.worker.ApiKey]);
 
   async function decideMatch(assignment: MatchAssignment, decision: "confirmed" | "rejected") {
     await saveChange(`match:${assignment.ReimbursementDocumentId}`, decision === "confirmed" ? "Confirm match" : "Reject match",
@@ -426,6 +429,15 @@ export default function ReimbursementsView({ hub }: Props) {
       <button type="button" className="button secondary" onClick={() => setSourcesOpen(true)} aria-haspopup="dialog">Sources{blueCrossStatus?.state === "error" || desjardinsStatus?.state === "error" || blueCrossStatus?.state === "login-required" || desjardinsStatus?.state === "login-required" ? " · !" : ""}</button>
       <button type="button" className="icon-button" aria-label="Refresh reimbursements" disabled={!paired || busy || pending.length > 0 || bulkIgnoring} onClick={() => void refresh()}><RefreshCw size={18} className={busy ? "spin" : ""} /></button>
     </PageHeader>
+    {paired && <section className="collection-coverage" aria-label="Insurer collection coverage">
+      {([["Desjardins", desjardinsStatus], ["Blue Cross", blueCrossStatus]] as const).map(([name, status]) => {
+        const message = insurerCoverageNotice(status);
+        return message && <div className="collection-warning" key={name} role="status">
+          <div><strong>{name}</strong><p>{message}</p><small>{status?.lastSuccess ? `Last complete read: ${new Date(status.lastSuccess).toLocaleString()}` : "No complete read confirmed"}</small></div>
+          <button type="button" className="button secondary compact-button" onClick={() => setSourcesOpen(true)} aria-haspopup="dialog">Review Sources</button>
+        </div>;
+      })}
+    </section>}
     <Sheet open={sourcesOpen} onClose={() => setSourcesOpen(false)} title="Sources & sync" description="Update collects a preview and uses automatic sign-in when configured. Reconnect opens the PC browser for verification. Review before applying changes.">
       <div className="source-tools">
       {error && <Notice error onDismiss={() => setError("")}>{error}</Notice>}
@@ -437,11 +449,12 @@ export default function ReimbursementsView({ hub }: Props) {
       {reconnects.bluecross?.state === "error" && <small role="alert">{reconnects.bluecross?.error}</small>}
 
       <button type="button" className="button secondary compact-button" disabled={!paired || pending.length > 0 || blueCrossBusy || desjardinsBusy || portalBusy || !!workerVersion && !workerVersionAtLeast(workerVersion, "2.9.0")}
-        onClick={() => void runBlueCrossSync(false)}>{blueCrossBusy ? "Synchronisation Blue Cross…" : "Mettre à jour Blue Cross"}</button>
+        onClick={() => void runBlueCrossSync(false)}>{blueCrossBusy ? "Synchronisation Blue Cross…" : "Retry / update Blue Cross"}</button>
       {applicableInsurerPreview(blueCrossStatus, blueCrossResult) &&
         <button type="button" className="button secondary compact-button" disabled={blueCrossBusy || desjardinsBusy || portalBusy || pending.length > 0} onClick={() => void runBlueCrossSync(true)}>Appliquer Blue Cross</button>}
       <small>{blueCrossStatus?.loginConfigured === true ? "Automatic sign-in configured on PC" : blueCrossStatus?.loginConfigured === false ? "Automatic sign-in not configured" : ""}</small>
       <small role="status">{insurerSyncMessage(blueCrossStatus, blueCrossResult, blueCrossBusy)}</small>
+      {blueCrossStatus?.lastSuccess && <small>Last complete read: {new Date(blueCrossStatus.lastSuccess).toLocaleString()}</small>}
       {blueCrossStatus?.lastAttempt && <small>Dernière tentative : {new Date(blueCrossStatus.lastAttempt).toLocaleString()}</small>}
     </section>
 
@@ -451,11 +464,13 @@ export default function ReimbursementsView({ hub }: Props) {
       {reconnects.desjardins?.state === "error" && <small role="alert">{reconnects.desjardins?.error}</small>}
 
       <button type="button" className="button secondary compact-button" disabled={!paired || pending.length > 0 || blueCrossBusy || desjardinsBusy || portalBusy || !!workerVersion && !workerVersionAtLeast(workerVersion, "2.10.0")}
-        onClick={() => void runDesjardinsSync(false)}>{desjardinsBusy ? "Synchronisation Desjardins…" : "Mettre à jour Desjardins"}</button>
+        onClick={() => void runDesjardinsSync(false)}>{desjardinsBusy ? "Synchronisation Desjardins…" : "Retry / update Desjardins"}</button>
       {desjardinsStatus?.applicable && applicableInsurerPreview(desjardinsStatus, desjardinsResult) && desjardinsStatus.previewAt && Date.now() - Date.parse(desjardinsStatus.previewAt) < 24 * 60 * 60_000 &&
         <button type="button" className="button secondary compact-button" disabled={blueCrossBusy || desjardinsBusy || portalBusy || pending.length > 0} onClick={() => void runDesjardinsSync(true)}>Appliquer Desjardins</button>}
       <small>{desjardinsStatus?.loginConfigured === true ? "Automatic sign-in configured on PC" : desjardinsStatus?.loginConfigured === false ? "Automatic sign-in not configured" : ""}</small>
       <small role="status">{insurerSyncMessage(desjardinsStatus, desjardinsResult, desjardinsBusy)}</small>
+      {desjardinsStatus?.lastSuccess && <small>Last complete read: {new Date(desjardinsStatus.lastSuccess).toLocaleString()}</small>}
+      {desjardinsStatus?.lastRecoveryAt && <small>Selected payments recovered: {desjardinsStatus.recoveredRows} · {new Date(desjardinsStatus.lastRecoveryAt).toLocaleString()}. Full-history coverage remains separate.</small>}
       {desjardinsStatus?.lastAttempt && <small>Dernière tentative : {new Date(desjardinsStatus.lastAttempt).toLocaleString()}</small>}
     </section>
 

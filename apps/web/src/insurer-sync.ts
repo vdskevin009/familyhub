@@ -1,7 +1,8 @@
 import type { BlueCrossSyncResult, BlueCrossSyncStatus } from "./worker";
 
 export function insurerSyncMessage(status: BlueCrossSyncStatus | null, result: BlueCrossSyncResult | null, running: boolean): string {
-  if (running || status?.state === "syncing") return "Reading insurer history… Saved claims remain available.";
+  if (status?.retry?.state === "waiting") return `Collection interrupted. Retrying after a short pause (${status.retry.attempt + 1}/${status.retry.maximum}). Saved claims remain available.`;
+  if (running || status?.state === "syncing") return `Reading insurer history${status?.retry ? ` (${status.retry.attempt}/${status.retry.maximum})` : ""}. Saved claims remain available.`;
   if (status?.state === "error") return status.error || "Collection failed. Previously saved claims are unchanged.";
   if (status?.state === "login-required") {
     switch (status.authReason) {
@@ -46,4 +47,17 @@ export function applicableInsurerPreview(status: BlueCrossSyncStatus | null, res
 
 export function insurerCollectionNeedsRefresh(result: BlueCrossSyncResult, explicitlyApplied = false): boolean {
   return result.status === "success" && (explicitlyApplied || result.applied === true || (result.autoImported ?? 0) > 0);
+}
+
+export function insurerCoverageNotice(status: BlueCrossSyncStatus | null, now = Date.now()): string | null {
+  if (!status) return "Collection status unavailable. Saved claims may be missing recent payments.";
+  if (status.state === "syncing") return insurerSyncMessage(status, null, true);
+  if (status.state === "login-required") return "Sign-in required. Recent payments may be missing; reconnect on PC.";
+  if (status.state === "error" || status.latestResult && (!status.latestResult.complete || status.latestResult.errors || status.latestResult.ambiguous))
+    return status.retry?.state === "exhausted" ? `Collection stopped after ${status.retry.maximum} attempts. Recent payments may be missing; review Sources and retry.` : "Collection incomplete. Recent payments may be missing; review Sources.";
+  if (!status.lastSuccess || !Number.isFinite(Date.parse(status.lastSuccess))) return "No complete insurer collection recorded. Saved claims may be incomplete.";
+  if (now - Date.parse(status.lastSuccess) > 36 * 60 * 60_000) return "Insurer collection is out of date. Recent payments may be missing; update Sources.";
+  if (status.latestResult && !status.latestResult.applied && ((status.latestResult.pendingNew ?? status.latestResult.new ?? 0) + (status.latestResult.pendingChanged ?? status.latestResult.changed ?? 0)))
+    return "Collected payments still need review and Apply before they appear in Claims.";
+  return null;
 }

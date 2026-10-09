@@ -13,7 +13,9 @@ import { automaticWorkflowStatus, type ReimbursementWorkflowRecord, type Reimbur
 import { blueCrossInvoices, type BlueCrossRow } from "./bluecross.js";
 import { blueCrossPrivateDirectory, collectBlueCrossPortal, type PortalCollection } from "./bluecross-collector.js";
 import { desjardinsInvoices, planDesjardinsUpsert } from "./desjardins.js";
-import { collectDesjardinsPortal, desjardinsPrivateDirectory, loadDesjardinsSnapshot } from "./desjardins-collector.js";
+import { collectDesjardinsPortal, desjardinsPrivateDirectory, loadDesjardinsSnapshot, loadMemberAliases } from "./desjardins-collector.js";
+import { parseDesjardinsBackfill } from "./desjardins-backfill.js";
+import { collectWithRetry, type CollectionRetry } from "./collection-retry.js";
 import { reviewReconciliations, reviewTargets, codexReviewer, type AgentReview, type Reviewer } from "./agents.js";
 import { prepareConnectorMessage, saveConnectorFiles, readConnectorFile, invoiceServiceDates } from "./connector-intake.js";
 import { prepareClaim } from "./claim-preparation.js";
@@ -50,10 +52,10 @@ let blueCrossBusy = false;
 let desjardinsBusy = false;
 const blueCrossStatusPath = join(blueCrossPrivateDirectory, "status.json");
 type PortalResult = { autoImported?: number; pendingNew?: number; pendingChanged?: number; status: "success"; applied: boolean; found: number; new: number; changed: number; unchanged: number; ambiguous: number; duplicates: number; errors: number; complete: boolean };
-type BlueCrossStatus = { authReason?: LoginReason; lastAttempt?: string; lastSuccess?: string; lastAppliedAt?: string; latestResult?: PortalResult; found?: number; state: "idle" | "syncing" | "login-required" | "error" | "up-to-date"; error?: string };
+type BlueCrossStatus = { retry?: CollectionRetry; authReason?: LoginReason; lastAttempt?: string; lastSuccess?: string; lastAppliedAt?: string; latestResult?: PortalResult; found?: number; state: "idle" | "syncing" | "login-required" | "error" | "up-to-date"; error?: string };
 let blueCrossStatus: BlueCrossStatus = { state: "idle" };
 const desjardinsStatusPath = join(desjardinsPrivateDirectory, "status.json");
-type DesjardinsStatus = BlueCrossStatus & { previewSnapshot?: string; previewAt?: string; applicable?: boolean };
+type DesjardinsStatus = BlueCrossStatus & { previewSnapshot?: string; previewAt?: string; applicable?: boolean; lastRecoveryAt?: string; recoveredRows?: number };
 let desjardinsStatus: DesjardinsStatus = { state: "idle" };
 export async function initializeDesjardinsStatus(): Promise<void> {
   try { desjardinsStatus = JSON.parse(await readFile(desjardinsStatusPath, "utf8")) as DesjardinsStatus; }
@@ -145,7 +147,7 @@ export async function syncBlueCrossPortal(apply = false, interactive = false, co
   blueCrossBusy = true;
   try {
     await saveBlueCrossStatus({ lastAttempt: new Date().toISOString(), state: "syncing", error: undefined, authReason: undefined, latestResult: undefined });
-    const result = await collector(interactive);
+    const result = await collectWithRetry(() => collector(interactive), retry => saveBlueCrossStatus({ retry }), undefined, interactive ? 1 : 3);
     if (result.status === "login-required") {
       await saveBlueCrossStatus({ state: "login-required", authReason: result.authReason });
       return { status: "login-required" as const, loginRequired: true, authReason: result.authReason };
@@ -208,7 +210,7 @@ export async function syncDesjardinsPortal(apply = false, interactive = false, c
     // challenge for a fresh browser process; never rerun a live collection behind "Apply".
     const result = apply
       ? { status: "success" as const, collection: await loadDesjardinsSnapshot(desjardinsStatus.previewSnapshot, desjardinsStatus.previewAt), snapshotPath: desjardinsStatus.previewSnapshot }
-      : await collector(interactive);
+      : await collectWithRetry(() => collector(interactive), retry => saveDesjardinsStatus({ retry }), undefined, interactive ? 1 : 3);
     if (result.status === "login-required") {
       await saveDesjardinsStatus({ state: "login-required", authReason: result.authReason });
       return { status: "login-required" as const, loginRequired: true, authReason: result.authReason };
@@ -268,6 +270,40 @@ export async function syncDesjardinsPortal(apply = false, interactive = false, c
       : "Desjardins portal collection failed. Check the PC worker log.";
     await saveDesjardinsStatus({ state: "error", error: safeMessage });
     throw new Error(safeMessage);
+  } finally { desjardinsBusy = false; }
+}
+
+/** Paired operator recovery uses the same parser, identity planner and serialized ledger writes as collection. */
+export async function backfillDesjardinsPayments(input: unknown, apply: unknown = false) {
+  if (typeof apply !== "boolean") throw new Error("Provide a boolean apply flag.");
+  if (desjardinsBusy || blueCrossBusy || busy) throw new Error("Collection is running. Retry after it finishes.");
+  desjardinsBusy = true;
+  try {
+    const { collection, evidence, evidenceId, totalCents } = parseDesjardinsBackfill(input, await loadMemberAliases());
+    const plan = planDesjardinsUpsert(state.items, collection);
+    if (plan.ambiguous || plan.duplicates) throw new Error("Payment recovery conflicts with existing evidence or manual decisions; nothing was imported.");
+    let backup: string | undefined;
+    if (apply && plan.items.length) await edit(async () => {
+      const latest = planDesjardinsUpsert(state.items, collection);
+      if (latest.ambiguous || latest.duplicates) throw new Error("Payment recovery conflicts with existing evidence or manual decisions; nothing was imported.");
+      // Preserve the exact original tables privately before writing financial facts.
+      const evidencePath = join(desjardinsPrivateDirectory, "payment-evidence", `${evidenceId}.json`);
+      try { await readFile(evidencePath); } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+        await atomicJson(evidencePath, evidence);
+      }
+      backup = `invoices.pre-desjardins-recovery-${Date.now()}-${randomUUID()}.json`;
+      await atomicJson(join(dataDirectory, backup), state);
+      for (const item of latest.items) {
+        const linked = { ...item, PortalEvidenceId: evidenceId };
+        const index = state.items.findIndex(current => current.Id === item.Id);
+        if (index < 0) state.items.push(linked); else state.items[index] = linked;
+      }
+    });
+    // A selected payment never advances full-history coverage or clears an authentication failure.
+    if (apply && plan.items.length) await saveDesjardinsStatus({ lastAppliedAt: new Date().toISOString(), lastRecoveryAt: new Date().toISOString(), recoveredRows: plan.items.length });
+    return { status: "success" as const, scope: "selected-payments" as const, applied: apply, found: plan.found, new: plan.new,
+      changed: plan.changed, unchanged: plan.unchanged, ambiguous: plan.ambiguous, duplicates: plan.duplicates, totalCents, evidenceId, backup };
   } finally { desjardinsBusy = false; }
 }
 

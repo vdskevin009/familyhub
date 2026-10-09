@@ -36,7 +36,7 @@ export const desjardinsAliasFingerprint = (value: string): string => createHash(
   .update(clean(value).replace(/[,;:]+/g, " ").replace(/\s+/g, " ").trim().toUpperCase()).digest("hex");
 type MemberAliases = Readonly<Record<string, DesjardinsRow["member"]>>;
 
-async function loadMemberAliases(): Promise<MemberAliases> {
+export async function loadMemberAliases(): Promise<MemberAliases> {
   let saved: { version: number; entries: Record<string, string> };
   try { saved = await loadPrivate(desjardinsMemberAliasesPath); }
   catch (error) {
@@ -141,6 +141,8 @@ export function parseDesjardinsPages(pages: Array<{ histories: PortalHistoryRow[
     if (!page.histories.length || page.histories.length !== page.details.length)
       warnings.push(`Claims page ${pageIndex + 1} was incomplete.`);
     for (const [rowIndex, history] of page.histories.entries()) {
+      // Missing navigation evidence is already flagged at page level. Do not turn an unread detail into an amount conflict.
+      if (!page.details[rowIndex]) continue;
       const parsed = parseDesjardinsDetail(history, page.details[rowIndex] ?? [], aliases);
       rows.push(...parsed.rows);
       warnings.push(...parsed.warnings.map(warning => `Page ${pageIndex + 1}, claim ${rowIndex + 1}: ${warning}`));
