@@ -220,6 +220,11 @@ Saved plan: `FamilyHub_Plan_Savings_2026-10-03.txt`; [PR #142](https://github.co
 
 ## Open questions / Needs confirmation
 
+### FH-REIMB-044 — Original PDFs in unmatched reconciliation (issue #157)
+
+Implemented: the unmatched queue, its expense candidates/search results and unmatched same-day records expose original PDF attachments from the exact persisted source. Use the existing authenticated worker attachment route, or an unambiguous archived document reference. Multiple PDFs remain separate choices; missing/non-PDF attachments are explicit. Opening a PDF never confirms a match, changes a payment/workflow status or infers linkage from an amount. Preserve source records, manual decisions and pairing controls. Verification and deployment evidence are recorded in #157; physical-phone acceptance remains separate.
+
+
 - Issue #40: paired-phone visual acceptance remains separate from tests, private-source replay and installed-worker acceptance. Low-confidence or contradictory records remain reviewable.
 - Issues #70/#72/#73/#74: read-only replay and synthetic tests do not verify the installed worker after restart, actual collection/re-ingestion, or the paired PWA. Keep those acceptance gates open.
 - Issue #83: the new source libraries need paired-phone visual/PDF acceptance after deployment. Their indexed record list does not claim complete insurer portal coverage beyond imported sources.

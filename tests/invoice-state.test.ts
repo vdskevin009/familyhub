@@ -11,6 +11,7 @@ import {
   namedInsurerReimbursementAmount,
   reimbursementInvoiceDocument,
   reimbursementInvoicePdfOptions,
+  sourcePdfOptions,
   reimbursementInvoiceUrl,
   reimbursementActionLabel,
   reimbursementEvidenceSources,
@@ -84,6 +85,24 @@ function invoice(id: string, serviceDate: string, overrides: Partial<Reimburseme
     ...overrides
   };
 }
+
+test("unmatched PDF choices preserve exact source and original attachment indexes", () => {
+  const item = invoice("statement", "2026-01-10", { DocumentRole: "insurer-statement", Attachments: [
+    { Id: "logo", FileName: "logo.png", MimeType: "image/png", Size: 12 },
+    { Id: "a", FileName: "first.PDF", MimeType: "application/octet-stream", Size: 30 },
+    { Id: "b", FileName: "second.pdf", MimeType: "application/pdf", Size: 40 }
+  ] });
+  const before = structuredClone(item);
+  assert.deepEqual(sourcePdfOptions(item).map(o => [o.ItemId, o.AttachmentIndex, o.Source]), [
+    ["statement", 1, "worker"], ["statement", 2, "worker"]
+  ]);
+  assert.deepEqual(item, before);
+  assert.deepEqual(sourcePdfOptions(invoice("none", "2026-01-10")), []);
+  assert.deepEqual(sourcePdfOptions(invoice("logo", "2026-01-10", { Attachments: [item.Attachments[0]] })), []);
+  assert.deepEqual(sourcePdfOptions({ ...item, WorkerManaged: false, DriveFileId: "ambiguous" }), []);
+  assert.equal(sourcePdfOptions({ ...item, WorkerManaged: false, DriveFileId: "archive", Attachments: [item.Attachments[1]] })[0].Url,
+    "https://drive.google.com/file/d/archive/view");
+});
 
 function reconciliation(item: ReimbursementItem, overrides: Partial<ReconciliationCase> = {}): ReconciliationCase {
   return {

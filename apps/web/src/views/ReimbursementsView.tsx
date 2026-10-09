@@ -622,6 +622,7 @@ export default function ReimbursementsView({ hub }: Props) {
       onPersonScopeChange={selectScope}
       onMatch={matchUnmatched}
       onIgnore={changeUnmatchedIgnored}
+      openPdf={openInvoicePdf}
     />}
   </div>;
 }

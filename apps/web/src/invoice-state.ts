@@ -260,7 +260,7 @@ export type ReimbursementInvoicePdfOption = {
 function reimbursementPdfAttachmentIndexes(item: ReimbursementItem): number[] {
   return item.Attachments
     .map((attachment, index) => ({ attachment, index }))
-    .filter(({ attachment }) => attachment.MimeType === "application/pdf" || /\.pdf$/i.test(attachment.FileName))
+    .filter(({ attachment }) => attachment.MimeType.toLowerCase() === "application/pdf" || /\.pdf$/i.test(attachment.FileName))
     .map(({ index }) => index);
 }
 
@@ -320,6 +320,20 @@ export function reimbursementInvoicePdfOptions(item: ReconciliationCase,
     }
   }
   return options;
+}
+
+/** Resolve original PDFs of one source, including insurer records in the unmatched queue. */
+export function sourcePdfOptions(source: ReimbursementItem): ReimbursementInvoicePdfOption[] {
+  const indexes = reimbursementPdfAttachmentIndexes(source);
+  if (source.WorkerManaged) return indexes.map(index => ({
+    ItemId: source.Id, AttachmentIndex: index, FileName: source.Attachments[index].FileName, Source: "worker"
+  }));
+  // A document-level Drive reference cannot identify which attachment in a multi-file email it archives.
+  if (source.DriveFileId && source.Attachments.length === 1 && indexes.length === 1) return [{
+    ItemId: source.Id, AttachmentIndex: indexes[0], FileName: source.Attachments[indexes[0]].FileName,
+    Source: "drive", Url: reimbursementInvoiceUrl(source) ?? undefined
+  }];
+  return [];
 }
 
 /** Find an already archived PDF that belongs to the expense represented by a case. */

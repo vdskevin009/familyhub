@@ -3,6 +3,7 @@ import { CheckCircle2, ChevronRight, ExternalLink, Link2, LoaderCircle } from "l
 import { dateLabel } from "../domain";
 import { healthcareTitle, namedInsurerReimbursementAmount, reimbursementActionLabel, reimbursementCaseStatus, reimbursementEvidenceSources, reimbursementInvoicePdfOptions, reimbursementWorkflowStatus } from "../invoice-state";
 import type { ReimbursementInvoicePdfOption } from "../invoice-state";
+import SourcePdfActions from "./SourcePdfActions";
 import type { MatchAssignment, ReconciliationCase, ReimbursementItem, ReimbursementWorkflowStatus, UnmatchedReimbursement } from "../types";
 import { manualMatchExpenseId } from "../reconciliation-triage";
 import type { MutationProgress } from "../ui/mutation-queue";
@@ -147,6 +148,7 @@ export default function ClaimCard({ item, invoiceById, unmatched, paired, manual
                     <strong>{money(reimbursementAmount(candidate), candidate.Currency || item.Currency)}</strong>
                   </div>
                   <div className="match-actions">
+                    <SourcePdfActions item={candidate} paired={paired} savingId={savingId} openPdf={openInvoicePdf} />
                     <button type="button" className="mini-button" disabled={!paired || !manualActionsAvailable || !!savingId || busy}
                       onClick={() => void matchUnmatched(item, candidate.Id)}>{candidateSaving ? "Saving…" : manualActionsAvailable ? "Match to this expense" : "Update PC worker"}</button>
                     <button type="button" className="mini-button subtle" disabled={!paired || !manualActionsAvailable || !!savingId || busy}

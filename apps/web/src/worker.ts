@@ -221,7 +221,7 @@ async function workerAttachmentBlob(config: WorkerConfig, item: AttachmentSource
   }
   const bytes = await response.arrayBuffer();
   return {
-    blob: new Blob([bytes], { type: attachment.MimeType || "application/octet-stream" }),
+    blob: new Blob([bytes], { type: /\.pdf$/i.test(attachment.FileName) ? "application/pdf" : attachment.MimeType || "application/octet-stream" }),
     fileName: attachment.FileName
   };
 }
@@ -248,6 +248,7 @@ export async function viewWorkerAttachment(config: WorkerConfig, item: Attachmen
   if (!attachment) throw new Error("Attachment not found.");
   const viewer = window.open("", "_blank");
   if (viewer) {
+    viewer.opener = null;
     try {
       viewer.document.title = "Loading invoice…";
       viewer.document.body.textContent = "Loading invoice…";
