@@ -8,6 +8,7 @@ import { join } from "node:path";
 import { Codex } from "@openai/codex-sdk";
 import { SavingsResearch, codexSavingsRunner } from "./savings-research.js";
 import { SavingsLibrary, SavingsConflict } from "./savings-library.js";
+import { FinanceLibrary, FinanceConflict } from "./finance-library.js";
 import { importConnectorMessage, claimPreparation } from "./invoices.js";
 import { portalReconnectStatus, startPortalReconnect } from "./portal-reconnect.js";
 import { openClaimBrowser, inspectClaimStep, fillClaimStep, claimSessionExpense, closeClaimBrowser } from "./claim-browser.js";
@@ -37,7 +38,7 @@ type ResearchWatch = {
 };
 type PersistedState = { watches: ResearchWatch[] };
 
-const version = "2.22.3";
+const version = "2.23.0";
 const host = process.env.FAMILYHUB_WORKER_HOST?.trim() || "127.0.0.1";
 const port = Number(process.env.FAMILYHUB_WORKER_PORT || "4713");
 const stateDir = process.env.FAMILYHUB_WORKER_DATA?.trim() || join(homedir(), ".familyhub-worker");
@@ -55,6 +56,7 @@ const tasks = new Map<string, WorkerTask>();
 const codex = new Codex({ codexPathOverride: process.env.FAMILYHUB_CODEX_PATH || undefined });
 const savingsDirectory = join(stateDir, "savings");
 const savingsLibrary = new SavingsLibrary(join(savingsDirectory, "household-contracts.json"));
+const financeLibrary = new FinanceLibrary(join(stateDir, "finances"));
 const researchDirectory = join(savingsDirectory, "public-research");
 const savingsResearch = new SavingsResearch(join(savingsDirectory, "jobs"), codexSavingsRunner(codex, researchDirectory));
 let pairingKey = "";
@@ -220,6 +222,11 @@ const server = createServer(async (request, response) => {
 
   const parts = pathParts(request.url);
   try {
+    if (parts[0] === "finances") {
+      if (parts.length === 1 && request.method === "GET") { json(response, 200, await financeLibrary.read(), origin); return; }
+      if (parts.length === 2 && parts[1] === "import" && request.method === "POST") { json(response, 200, await financeLibrary.import(await readJson(request, 20_000_000)), origin); return; }
+      if (parts.length === 2 && parts[1] === "decision" && request.method === "POST") { json(response, 200, await financeLibrary.decide(await readJson(request)), origin); return; }
+    }
     if (parts[0] === "savings" && parts[1] === "contracts") {
       if (parts.length === 2 && request.method === "GET") { json(response, 200, await savingsLibrary.list(), origin); return; }
       if (parts.length === 3 && parts[2] === "import" && request.method === "POST") { json(response, 200, await savingsLibrary.import(await readJson(request, 30_000_000)), origin); return; }
@@ -453,7 +460,7 @@ const server = createServer(async (request, response) => {
 
     json(response, 404, { error: "Endpoint not found." }, origin);
   } catch (error) {
-    json(response, error instanceof SavingsConflict ? 409 : 400, { error: error instanceof Error ? error.message : "Request failed." }, origin);
+    json(response, error instanceof SavingsConflict || error instanceof FinanceConflict ? 409 : 400, { error: error instanceof Error ? error.message : "Request failed." }, origin);
   }
 });
 

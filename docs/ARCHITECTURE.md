@@ -195,7 +195,7 @@ A result is a research lead, not proof of current stock/price until verified.
 - Worker requests require an unguessable pairing key and allowed Origin.
 - Browser Google tokens are memory-only. Opt-in Windows daily collection separately uses DPAPI-protected offline Gmail credentials. Its index is protected by a private folder ACL. Bounded email text is sent to Codex for classification and may remain in Codex session history.
 - Drive uses `drive.file`, not unrestricted Drive access.
-- Financial imports are local CSV files, not live bank credentials.
+- Financial imports are retrieved local preparations in the private worker, with a separate legacy browser CSV tool; neither accepts live bank credentials. See [finance storage and source-preservation boundaries](FINANCES.md).
 - Sensitive or irreversible external actions require explicit confirmation and a dedicated integration; the current worker is analysis/research only.
 - Do not make a deterministic heuristic appear to be an AI decision, and do not make an AI suggestion appear to be a completed external action.
 
@@ -207,6 +207,8 @@ Pull requests:
 2. typecheck React + worker,
 3. build React + worker,
 4. run retained .NET domain regression harness.
+
+CI also checks private finance import/decision authorization, idempotence, source preservation, amount normalization and synthetic responsive browser flows alongside the existing Savings, invoice and PWA checks. Finance endpoints reuse pairing/origin/no-store protection and never trigger collectors or research. The private finance ledger is independent from reimbursements and contract documents.
 
 Main performs the same build, prepares `apps/web/dist`, and deploys it through GitHub Pages.
 

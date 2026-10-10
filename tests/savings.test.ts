@@ -92,7 +92,9 @@ test("research jobs persist, deduplicate pending starts and mark interrupted wor
     assert.equal(calls, 1);
     release(JSON.stringify({ summary: "Verified synthetic output", missing: [], offers: [offer()] }));
     for (let i = 0; i < 40 && service.get(first.id)?.status !== "complete"; i++) await new Promise(resolve => setTimeout(resolve, 5));
-    const saved = JSON.parse(await readFile(join(dir, first.id + ".json"), "utf8"));
+    let saved = JSON.parse(await readFile(join(dir, first.id + ".json"), "utf8"));
+    // In-memory completion precedes the atomic persistence. Wait for the contract under test.
+    for (let i = 0; i < 100 && saved.status !== "complete"; i++) { await new Promise(resolve => setTimeout(resolve, 10)); saved = JSON.parse(await readFile(join(dir, first.id + ".json"), "utf8")); }
     assert.equal(saved.status, "complete");
     saved.status = "running"; await writeFile(join(dir, saved.id + ".json"), JSON.stringify(saved));
     await writeFile(join(dir, "aaaa.json"), "{malformed");
