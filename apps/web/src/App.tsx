@@ -12,6 +12,7 @@ import MoreView from "./views/MoreView";
 import DocumentLibraryView from "./views/DocumentLibraryView";
 import SavingsView from "./views/SavingsView";
 import FinancesView from "./views/FinancesView";
+import CoursesView from "./views/CoursesView";
 import { PageHeader } from "./ui/primitives";
 
 type BeforeInstallPromptEvent = Event & {
@@ -32,6 +33,7 @@ const nav: Array<{ id: AppView; label: string; icon: typeof Home }> = [
   { id: "other", label: "Other", icon: MoreHorizontal }
 ];
 const otherViews: Array<{ id: AppView; label: string; description: string; icon: typeof Home }> = [
+  { id: "groceries", label: "Courses", description: "Liste habituelle, paniers comparés et tickets", icon: CalendarDays },
   { id: "today", label: "Today & Assistant", description: "Household overview and Ask", icon: Home },
   { id: "inbox", label: "Important mail", description: "Messages and document review", icon: Mail },
   { id: "plan", label: "Plan", description: "Meals, groceries and tasks", icon: CalendarDays },
@@ -137,6 +139,7 @@ export default function App() {
           </nav><DocumentLibraryView key={documentKind} hub={state} kind={documentKind} /></div>}
           {view === "savings" && <SavingsView hub={state} onNavigate={navigate} />}
           {view === "finances" && <FinancesView hub={state} onNavigate={navigate} />}
+          {view === "groceries" && <CoursesView config={state.worker} plannerItems={state.planner.GroceryItems} />}
           {view === "other" && <section className="view-stack"><PageHeader title="Your household" subtitle="Everyday tools, in one place">{!installed && installPrompt && <button type="button" className="button secondary" onClick={() => void installApp()}><Download size={15} />Install</button>}</PageHeader><div className="other-grid">{otherViews.map(item => { const Icon = item.icon; return <button key={item.id} className="other-link" onClick={() => navigate(item.id)}><span className="other-icon"><Icon size={22} /></span><span><strong>{item.label}</strong><small>{item.description}</small></span><ChevronRight size={18} /></button>; })}</div></section>}
           {view === "plan" && <PlanView hub={state} />}
           {view === "money" && <MoneyView hub={state} />}

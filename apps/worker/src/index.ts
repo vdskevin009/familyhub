@@ -9,6 +9,11 @@ import { Codex } from "@openai/codex-sdk";
 import { SavingsResearch, codexSavingsRunner } from "./savings-research.js";
 import { SavingsLibrary, SavingsConflict } from "./savings-library.js";
 import { FinanceLibrary, FinanceConflict } from "./finance-library.js";
+import { GroceryStore, GroceryConflict } from "./grocery-store.js";
+import { GroceryError } from "./grocery-model.js";
+import { extractGrocery } from "./grocery-extraction.js";
+import { GroceryPlanningStore } from "./grocery-planning-store.js";
+import { GroceryResearch } from "./grocery-research.js";
 import { importConnectorMessage, claimPreparation } from "./invoices.js";
 import { parseLoginRecoveryRequest } from "./portal-login-recovery.js";
 import { portalReconnectStatus, startPortalReconnect } from "./portal-reconnect.js";
@@ -39,7 +44,7 @@ type ResearchWatch = {
 };
 type PersistedState = { watches: ResearchWatch[] };
 
-const version = "2.23.3";
+const version = "2.23.4";
 const host = process.env.FAMILYHUB_WORKER_HOST?.trim() || "127.0.0.1";
 const port = Number(process.env.FAMILYHUB_WORKER_PORT || "4713");
 const stateDir = process.env.FAMILYHUB_WORKER_DATA?.trim() || join(homedir(), ".familyhub-worker");
@@ -58,6 +63,9 @@ const codex = new Codex({ codexPathOverride: process.env.FAMILYHUB_CODEX_PATH ||
 const savingsDirectory = join(stateDir, "savings");
 const savingsLibrary = new SavingsLibrary(join(savingsDirectory, "household-contracts.json"));
 const financeLibrary = new FinanceLibrary(join(stateDir, "finances"));
+const groceryStore = new GroceryStore(join(stateDir, "groceries"), extractGrocery);
+const groceryPlanning = new GroceryPlanningStore(join(stateDir, "groceries"));
+const groceryResearch = new GroceryResearch(join(stateDir, "groceries"));
 const researchDirectory = join(savingsDirectory, "public-research");
 const savingsResearch = new SavingsResearch(join(savingsDirectory, "jobs"), codexSavingsRunner(codex, researchDirectory));
 let pairingKey = "";
@@ -223,6 +231,22 @@ const server = createServer(async (request, response) => {
 
   const parts = pathParts(request.url);
   try {
+    if (parts[0] === "groceries") {
+      if (parts.length === 2 && parts[1] === "research" && request.method === "POST") { json(response, 200, await groceryResearch.run(await readJson(request)), origin); return; }
+      if (parts.length === 1 && request.method === "GET") { json(response, 200, await groceryStore.list(), origin); return; }
+      if (parts.length === 2 && parts[1] === "planning") {
+        if (request.method === "GET") { json(response, 200, await groceryPlanning.read(), origin); return; }
+        if (request.method === "POST") { json(response, 200, await groceryPlanning.save(await readJson(request)), origin); return; }
+      }
+      if (parts.length === 2 && parts[1] === "import" && request.method === "POST") { json(response, 200, await groceryStore.import(await readJson(request, 30_000_000)), origin); return; }
+      if (parts.length === 3 && request.method === "POST") {
+        const body = await readJson(request) as Record<string, unknown>;
+        if (parts[2] === "review") { json(response, 200, await groceryStore.review(parts[1], body), origin); return; }
+        if (parts[2] === "extract") { json(response, 200, await groceryStore.extract(parts[1], body), origin); return; }
+        if (parts[2] === "duplicate") { json(response, 200, await groceryStore.linkDuplicate(parts[1], body), origin); return; }
+      }
+      if (parts.length === 4 && parts[2] === "sources" && request.method === "GET") { const source = await groceryStore.source(parts[1], parts[3]); if (!source) { json(response, 404, { error: "Source introuvable." }, origin); return; } json(response, 200, source, origin); return; }
+    }
     if (parts[0] === "finances") {
       if (parts.length === 1 && request.method === "GET") { json(response, 200, await financeLibrary.read(), origin); return; }
       if (parts.length === 2 && parts[1] === "import" && request.method === "POST") { json(response, 200, await financeLibrary.import(await readJson(request, 20_000_000)), origin); return; }
@@ -406,7 +430,7 @@ const server = createServer(async (request, response) => {
       }
     }
     if (request.method === "GET" && parts.length === 1 && parts[0] === "health") {
-      json(response, 200, { status: "ok", codex: "sdk-ready", version }, origin);
+      json(response, 200, { status: "ok", codex: "sdk-ready", version, capabilities: ["grocery-receipts-v1", "grocery-planning-v1"] }, origin);
       return;
     }
 
@@ -473,7 +497,8 @@ const server = createServer(async (request, response) => {
 
     json(response, 404, { error: "Endpoint not found." }, origin);
   } catch (error) {
-    json(response, error instanceof SavingsConflict || error instanceof FinanceConflict ? 409 : 400, { error: error instanceof Error ? error.message : "Request failed." }, origin);
+    const grocery = parts[0] === "groceries";
+    json(response, error instanceof SavingsConflict || error instanceof FinanceConflict || error instanceof GroceryConflict ? 409 : 400, { error: grocery && !(error instanceof GroceryError) ? "Action Courses indisponible. Les données restent conservées ; actualisez avant de réessayer." : error instanceof Error ? error.message : "Request failed." }, origin);
   }
 });
 
