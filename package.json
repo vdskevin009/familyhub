@@ -21,7 +21,7 @@
     "test:savings": "node --import tsx --test tests/savings.test.ts tests/savings-sharing.test.ts tests/savings-daily.test.ts",
     "test:savings:browser": "node apps/web/tests/savings-browser.mjs && node apps/web/tests/savings-sharing-browser.mjs",
     "test:finances": "npm run build:worker && node --test tests/finances.test.mjs tests/worker-finances.test.mjs",
-    "test:finances:browser": "node apps/web/tests/finances-browser.mjs",
+    "test:finances:browser": "node apps/web/tests/finances-browser.mjs && node apps/web/tests/card-payments-browser.mjs",
     "test:groceries": "npm run build:worker && node --test tests/groceries.test.mjs tests/grocery-planning.test.mjs",
     "test:groceries:browser": "node apps/web/tests/groceries-browser.mjs && node apps/web/tests/grocery-planning-browser.mjs"
   }
