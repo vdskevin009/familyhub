@@ -669,7 +669,7 @@ label { font-size: 12px; color: var(--muted); }
 .savings-toolbar { display: flex; align-items: end; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 .savings-toolbar label { display: grid; gap: 6px; font-size: 13px; }
 .savings-contracts { display: grid; gap: 14px; }
-.savings-contract { display: grid; gap: 16px; }
+.savings-contract { display: grid; grid-template-columns: minmax(0,1fr); gap: 16px; overflow-wrap: anywhere; }
 .savings-contract-heading { display: flex; justify-content: space-between; gap: 14px; align-items: start; }
 .savings-contract-heading > div { min-width: 0; }
 .savings-contract-heading h2, .savings-contract-heading h3 { margin: 4px 0 6px; overflow-wrap: anywhere; }
