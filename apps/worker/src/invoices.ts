@@ -142,12 +142,12 @@ export function planBlueCrossUpsert(existing: Invoice[], collection: PortalColle
   return { found: imported.length, new: added, changed, unchanged, ambiguous, duplicates, items: planned };
 }
 
-export async function syncBlueCrossPortal(apply = false, interactive = false, collector = collectBlueCrossPortal, autoImportNew = false) {
+export async function syncBlueCrossPortal(apply = false, interactive = false, collector = collectBlueCrossPortal, autoImportNew = false, recovery?: import("./portal-login-recovery.js").LoginRecoveryRequest) {
   if (blueCrossBusy || desjardinsBusy || busy) throw new Error("An insurer or invoice collection is already running.");
   blueCrossBusy = true;
   try {
     await saveBlueCrossStatus({ lastAttempt: new Date().toISOString(), state: "syncing", error: undefined, authReason: undefined, latestResult: undefined });
-    const result = await collectWithRetry(() => collector(interactive), retry => saveBlueCrossStatus({ retry }), undefined, interactive ? 1 : 3);
+    const result = await collectWithRetry(() => collector(interactive, recovery), retry => saveBlueCrossStatus({ retry }), undefined, interactive || recovery ? 1 : 3);
     if (result.status === "login-required") {
       await saveBlueCrossStatus({ state: "login-required", authReason: result.authReason });
       return { status: "login-required" as const, loginRequired: true, authReason: result.authReason };
@@ -200,7 +200,7 @@ export async function syncBlueCrossPortal(apply = false, interactive = false, co
   } finally { blueCrossBusy = false; }
 }
 
-export async function syncDesjardinsPortal(apply = false, interactive = false, collector = collectDesjardinsPortal, autoImportNew = false) {
+export async function syncDesjardinsPortal(apply = false, interactive = false, collector = collectDesjardinsPortal, autoImportNew = false, recovery?: import("./portal-login-recovery.js").LoginRecoveryRequest) {
   if (desjardinsBusy || blueCrossBusy || busy) throw new Error("An insurer or invoice collection is already running.");
   desjardinsBusy = true;
   try {
@@ -210,7 +210,7 @@ export async function syncDesjardinsPortal(apply = false, interactive = false, c
     // challenge for a fresh browser process; never rerun a live collection behind "Apply".
     const result = apply
       ? { status: "success" as const, collection: await loadDesjardinsSnapshot(desjardinsStatus.previewSnapshot, desjardinsStatus.previewAt), snapshotPath: desjardinsStatus.previewSnapshot }
-      : await collectWithRetry(() => collector(interactive), retry => saveDesjardinsStatus({ retry }), undefined, interactive ? 1 : 3);
+      : await collectWithRetry(() => collector(interactive, 1, recovery), retry => saveDesjardinsStatus({ retry }), undefined, interactive || recovery ? 1 : 3);
     if (result.status === "login-required") {
       await saveDesjardinsStatus({ state: "login-required", authReason: result.authReason });
       return { status: "login-required" as const, loginRequired: true, authReason: result.authReason };

@@ -10,6 +10,7 @@ import { SavingsResearch, codexSavingsRunner } from "./savings-research.js";
 import { SavingsLibrary, SavingsConflict } from "./savings-library.js";
 import { FinanceLibrary, FinanceConflict } from "./finance-library.js";
 import { importConnectorMessage, claimPreparation } from "./invoices.js";
+import { parseLoginRecoveryRequest } from "./portal-login-recovery.js";
 import { portalReconnectStatus, startPortalReconnect } from "./portal-reconnect.js";
 import { openClaimBrowser, inspectClaimStep, fillClaimStep, claimSessionExpense, closeClaimBrowser } from "./claim-browser.js";
 import { initializeInvoices, initializeBlueCrossStatus, getBlueCrossStatus, syncBlueCrossPortal, initializeDesjardinsStatus, getDesjardinsStatus, syncDesjardinsPortal, backfillDesjardinsPayments, invoiceSnapshot, collectInvoices, correctInvoice, updateInvoiceStatus, undoInvoiceDecision, invoiceAttachment, importBlueCrossMessages, setDocumentsIgnored, setExpenseIgnored, setManualMatch, setMatchDecision, setReimbursementWorkflowStatus, setUnmatchedIgnored } from "./invoices.js";
@@ -38,7 +39,7 @@ type ResearchWatch = {
 };
 type PersistedState = { watches: ResearchWatch[] };
 
-const version = "2.23.1";
+const version = "2.23.2";
 const host = process.env.FAMILYHUB_WORKER_HOST?.trim() || "127.0.0.1";
 const port = Number(process.env.FAMILYHUB_WORKER_PORT || "4713");
 const stateDir = process.env.FAMILYHUB_WORKER_DATA?.trim() || join(homedir(), ".familyhub-worker");
@@ -274,6 +275,18 @@ const server = createServer(async (request, response) => {
         json(response, 200, await fillClaimStep(body.sessionId, body.revision, body.values, body.attachment, invoiceAttachment), origin); return;
       }
       throw new Error("Unknown preparation action. Submission is not supported.");
+    }
+    if ((parts[0] === "desjardins" || parts[0] === "bluecross") && parts[1] === "recover-login" && parts.length === 2) {
+      const insurer = parts[0];
+      if (request.method === "GET") { json(response, 200, portalReconnectStatus(insurer) ?? { state: "idle" }, origin); return; }
+      if (request.method === "POST") {
+        const recovery = parseLoginRecoveryRequest(await readJson(request));
+        if (getBlueCrossStatus().state === "syncing" || getDesjardinsStatus().state === "syncing") throw new Error("An insurer collection is already running.");
+        const autoImportNew = await automaticInsurerPaymentsEnabled();
+        json(response, 202, startPortalReconnect(insurer, () => insurer === "desjardins"
+          ? syncDesjardinsPortal(false, false, undefined, autoImportNew, recovery)
+          : syncBlueCrossPortal(false, false, undefined, autoImportNew, recovery)), origin); return;
+      }
     }
     if ((parts[0] === "desjardins" || parts[0] === "bluecross") && parts[1] === "reconnect" && parts.length === 2) {
       const insurer = parts[0];
