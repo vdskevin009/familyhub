@@ -82,15 +82,20 @@ credentials, browser state and audit files stay outside Git and API results.
 
 ### Post-authentication reader follow-up - FH-REIMB-040 / Issue #159
 
-**In progress; synthetic checks prepared, live reader verification pending.**
+**Testing in [PR #175](https://github.com/vdskevin009/familyhub/pull/175); worker 2.23.5 candidate, complete live synchronization pending.**
 Private reader diagnostics identify fixed filter/search/detail/pagination stages
 and coarse failure categories without URLs, option values, names or source rows.
 All three history filters must have unique recognized options before any filter
-event; normalized labels select the observed value without publishing it.
+event; normalized French/English labels select the observed value without publishing it.
+Supported labelled claim headers and unambiguous two-decimal currency formats
+retain the same service identity across portal languages. Existing private
+post-login navigation and single-use profile selection are retained in source;
+an explicit profile preference never falls back to another account.
 Missing/ambiguous options stop as layout drift instead of retrying a network
 timeout. Exact portal location remains mandatory. Session-only inspection never
 loads or submits configured credentials and stops at expired sessions or human
-challenges. It does not import financial records. Successful session restoration
+challenges. Ordinary session renewal keeps the existing durable login gate and
+its cooldown; expiry alone never rearms a prior stop. It does not import financial records. Successful session restoration
 and complete history collection remain separate live acceptance gates.
 
 ### Readable clinic receipt fallback — FH-REIMB-013 / issue #28

@@ -9,7 +9,7 @@ export const desjardinsReaderSelectors = {
 } as const;
 export type ReaderStage = "filters-inspect" | "filter-patient" | "filter-category" | "filter-page-size" | "search-submit" | "search-history" | "history-read" | "detail-open" | "detail-read" | "detail-return" | "pagination";
 type FilterName = "patient" | "category" | "pageSize";
-const expected = { patient: "Tous les patients", category: "Toutes les catégories", pageSize: "100" };
+const expected = { patient: ["Tous les patients", "All Patients"], category: ["Toutes les catégories", "All Services"], pageSize: ["100"] };
 
 /** Only fixed vocabulary and counts leave the DOM; never patient names, IDs or values. */
 export async function inspectDesjardinsFilters(page: Page) {
@@ -21,11 +21,11 @@ export async function inspectDesjardinsFilters(page: Page) {
     result[name] = { controls, ...await control.evaluate((select, args) => {
       const options = Array.from((select as HTMLSelectElement).options);
       const normalize = (text: string) => text.normalize("NFKC").replace(/\s+/g, " ").trim();
-      const matches = options.filter(option => normalize(option.label) === args.label);
-      const vocabulary = ["Tous", "Tous les patients", "Tous les assurés", "Tous les bénéficiaires", "Toutes", "Toutes les catégories", "100"];
+      const matches = options.filter(option => args.labels.includes(normalize(option.label)));
+      const vocabulary = ["Tous", "Tous les patients", "Tous les assurés", "Tous les bénéficiaires", "Toutes", "Toutes les catégories", "100", "All Patients", "All Services"];
       return { options: options.length, expected: matches.length, selectedExpected: matches.length === 1 && matches[0].selected,
         alternatives: vocabulary.filter(label => options.some(option => normalize(option.label) === label)) };
-    }, { label: expected[name] }) };
+    }, { labels: expected[name] }) };
   }
   return result;
 }
@@ -91,9 +91,9 @@ export async function configureDesjardinsFilters(page: Page, stage: ReturnType<t
       guard();
       const control = page.locator(desjardinsReaderSelectors[name]);
       if (await control.count() !== 1) throw new Error(`Processed-claims filter structure changed (${name}).`);
-      const value = await control.evaluate((select, label) => {
+      const value = await control.evaluate((select, labels) => {
         const options = Array.from((select as HTMLSelectElement).options);
-        const matches = options.filter(option => option.label.normalize('NFKC').replace(/\s+/g, ' ').trim() === label && !option.disabled);
+        const matches = options.filter(option => labels.includes(option.label.normalize('NFKC').replace(/\s+/g, ' ').trim()) && !option.disabled);
         return matches.length === 1 && options.filter(option => option.value === matches[0].value).length === 1 ? matches[0].value : null;
       }, expected[name]);
       if (value === null) throw new Error(`Processed-claims filter structure changed (${name}).`);

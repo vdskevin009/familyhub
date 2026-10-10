@@ -39,6 +39,7 @@ test('session-only reader mode cannot be combined with credentials or interactiv
     await assert.rejects(collectDesjardinsPortal(...args), /saved session without credential recovery/);
   const source = await readFile(new URL('../apps/worker/src/desjardins-collector.ts', import.meta.url), 'utf8');
   assert.match(source, /options\.sessionOnly \? \(await observeDesjardinsSession\(/);
+  assert.doesNotMatch(source, /const authReason = await desjardinsSessionExpired/, 'ordinary login remains governed by its existing durable gate');
   assert.ok(source.indexOf('if (options.inspectFiltersOnly) return') < source.indexOf('await authenticatedPortal("desjardins")'));
 });
 
@@ -73,6 +74,12 @@ test('filter selection normalizes labels, validates every option first and never
     assert.equal(await page.locator('#x_cbCategorie').inputValue(), 'all');
     assert.equal(await page.locator('#x_cbNbResltRechr').inputValue(), 'hundred');
     assert.doesNotMatch(JSON.stringify(events), /PRIVATE|hundred/);
+    await page.setContent(fixture('All Services').replace('Tous&nbsp;les patients', 'All Patients'));
+    await configureDesjardinsFilters(page, stage);
+    assert.equal(await page.locator('#x_cbPour').inputValue(), 'all');
+    assert.equal(await page.locator('#x_cbCategorie').inputValue(), 'all');
+    await page.setContent(fixture('Toutes les catégories').replace('</select>', '<option value="second">All Patients</option></select>'));
+    await assert.rejects(configureDesjardinsFilters(page, stage), /structure changed \(patient\)/, 'two broad patient options are ambiguous');
     await page.setContent(fixture('Unsupported category'));
     let attempts = 0;
     await assert.rejects(collectWithRetry(async () => { attempts++; await configureDesjardinsFilters(page, stage); }, async () => {}), /structure changed \(category\)/);

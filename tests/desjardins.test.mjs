@@ -152,3 +152,15 @@ test('health and dental grid variants keep the claimed and reimbursed columns al
   const unclear = [group(11), { cells: ['Service A', 'Service B', '2024‑02‑03', '2024‑02‑03', '75,00', '75,00', '80%', '15,00', '60,00', '5,00', 'CODE'], colspans: Array(11).fill(1) }];
   assert.match(parseDesjardinsDetail({ ...history, paid: '60,00 $' }, unclear).warnings.join(' '), /incomplete or inconsistent/);
 });
+
+// Public synthetic counterparts exercise locale drift without live claim data.
+test('English labelled claim and decimal amounts preserve the same service identity', () => {
+  const english = detail.map(entry => ({ ...entry, cells: entry.cells.map(cell =>
+    cell.replace('Numéro de réclamation', 'Claim number').replace(/(\d+),(\d{2})/g, '$1.$2')) }));
+  const result = parseDesjardinsDetail({ ...history, paid: '60.00 $' }, english);
+  assert.deepEqual(result, parseDesjardinsDetail(history, detail));
+  for (const malformed of ['60.0', '6,0.00', '60,0', '60.00.00', '60,00,00'])
+    assert.ok(parseDesjardinsDetail({ ...history, paid: malformed }, english).warnings.length);
+  const mismatch = parseDesjardinsDetail({ ...history, paid: '61.00 $' }, english);
+  assert.ok(mismatch.warnings.some(warning => warning.includes('does not match')));
+});
