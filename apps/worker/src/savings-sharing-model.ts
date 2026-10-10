@@ -19,6 +19,11 @@ export function validateContract(value: unknown): SavingsContract {
     result[key] = input[key];
   }
   if (!result.name.trim() || !Number.isFinite(Date.parse(result.updatedAt))) return invalid();
+  if (input.promotionEnd !== undefined) {
+    const end = input.promotionEnd as Record<string, unknown>;
+    if (!end || typeof end.date !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(end.date) || !Number.isFinite(Date.parse(end.date)) || new Date(end.date).toISOString().slice(0, 10) !== end.date || typeof end.source !== "string" || !end.source.trim() || end.source.length > 2000) return invalid();
+    result.promotionEnd = { date: end.date, source: end.source.trim() };
+  }
   for (const key of ["renewal", "commitmentEnd"] as const) if (result[key] && !/^\d{4}-\d{2}-\d{2}$/.test(result[key])) return invalid();
   for (const key of ["price", "cancellationFee", "annualLostDiscounts", "priceAfterPromo", "liabilityLimit", "collisionDeductible", "comprehensiveDeductible", "dataGb", "downloadMbps", "mortgageBalance", "mortgageRate", "amortizationYears", "termMonths"] as const) {
     const number = input[key];

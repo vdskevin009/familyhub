@@ -9,6 +9,10 @@ import { Codex } from "@openai/codex-sdk";
 import { SavingsResearch, codexSavingsRunner } from "./savings-research.js";
 import { SavingsLibrary, SavingsConflict } from "./savings-library.js";
 import { FinanceLibrary, FinanceConflict } from "./finance-library.js";
+import { NotificationLibrary, NotificationConflict } from "./notification-library.js";
+import { PushConfiguration, sendPush } from "./notification-push.js";
+import type { NotificationEvidence } from "./notification-model.js";
+
 import { GroceryStore, GroceryConflict } from "./grocery-store.js";
 import { GroceryError } from "./grocery-model.js";
 import { extractGrocery } from "./grocery-extraction.js";
@@ -44,7 +48,7 @@ type ResearchWatch = {
 };
 type PersistedState = { watches: ResearchWatch[] };
 
-const version = "2.23.5";
+const version = "2.24.0";
 const host = process.env.FAMILYHUB_WORKER_HOST?.trim() || "127.0.0.1";
 const port = Number(process.env.FAMILYHUB_WORKER_PORT || "4713");
 const stateDir = process.env.FAMILYHUB_WORKER_DATA?.trim() || join(homedir(), ".familyhub-worker");
@@ -63,6 +67,25 @@ const codex = new Codex({ codexPathOverride: process.env.FAMILYHUB_CODEX_PATH ||
 const savingsDirectory = join(stateDir, "savings");
 const savingsLibrary = new SavingsLibrary(join(savingsDirectory, "household-contracts.json"));
 const financeLibrary = new FinanceLibrary(join(stateDir, "finances"));
+const pushConfiguration = new PushConfiguration(stateDir);
+const notifications = new NotificationLibrary(join(stateDir, "notifications", "history.json"), () => pushConfiguration.read(), sendPush);
+let notificationScan: Promise<unknown> | null = null;
+function scanNotifications() {
+  if (notificationScan) return notificationScan;
+  notificationScan = (async () => {
+    const evidence: NotificationEvidence = {}, errors: string[] = [];
+    const [invoices, finance, contracts] = await Promise.allSettled([invoiceSnapshot(), financeLibrary.read(), savingsLibrary.list()]);
+    if (invoices.status === "fulfilled" && !invoices.value.busy) evidence.invoices = invoices.value;
+    else errors.push("factures et remboursements");
+    if (finance.status === "fulfilled") evidence.finance = finance.value; else errors.push("finances");
+    if (contracts.status === "fulfilled") evidence.contracts = contracts.value.records.map(r => r.contract); else errors.push("contrats");
+    evidence.collections = [{ ...getBlueCrossStatus(), id: "bluecross", label: "Blue Cross" }, { ...getDesjardinsStatus(), id: "desjardins", label: "Desjardins" }];
+    if (invoices.status === "fulfilled" && !invoices.value.setupRequired) evidence.collections.push({ id: "gmail", label: "Factures", state: invoices.value.busy ? "syncing" : invoices.value.error ? "error" : "idle", lastSuccess: invoices.value.lastSuccess, lastAttempt: invoices.value.lastAttempt });
+    return notifications.scan(evidence, errors);
+  })().catch(() => { console.error("Notification scan unavailable; existing records and deduplication preserved."); }).finally(() => { notificationScan = null; });
+  return notificationScan;
+}
+
 const groceryStore = new GroceryStore(join(stateDir, "groceries"), extractGrocery);
 const groceryPlanning = new GroceryPlanningStore(join(stateDir, "groceries"));
 const groceryResearch = new GroceryResearch(join(stateDir, "groceries"));
@@ -231,6 +254,10 @@ const server = createServer(async (request, response) => {
 
   const parts = pathParts(request.url);
   try {
+    if (parts[0] === "notifications" && parts.length === 1) {
+      if (request.method === "GET") { json(response, 200, await notifications.read(), origin); return; }
+      if (request.method === "POST") { json(response, 200, await notifications.mutate(await readJson(request, 12_000)), origin); return; }
+    }
     if (parts[0] === "groceries") {
       if (parts.length === 2 && parts[1] === "research" && request.method === "POST") { json(response, 200, await groceryResearch.run(await readJson(request)), origin); return; }
       if (parts.length === 1 && request.method === "GET") { json(response, 200, await groceryStore.list(), origin); return; }
@@ -498,7 +525,7 @@ const server = createServer(async (request, response) => {
     json(response, 404, { error: "Endpoint not found." }, origin);
   } catch (error) {
     const grocery = parts[0] === "groceries";
-    json(response, error instanceof SavingsConflict || error instanceof FinanceConflict || error instanceof GroceryConflict ? 409 : 400, { error: grocery && !(error instanceof GroceryError) ? "Action Courses indisponible. Les données restent conservées ; actualisez avant de réessayer." : error instanceof Error ? error.message : "Request failed." }, origin);
+    json(response, error instanceof SavingsConflict || error instanceof FinanceConflict || error instanceof NotificationConflict || error instanceof GroceryConflict ? 409 : 400, { error: grocery && !(error instanceof GroceryError) ? "Action Courses indisponible. Les données restent conservées ; actualisez avant de réessayer." : error instanceof Error ? error.message : "Request failed." }, origin);
   }
 });
 
@@ -520,3 +547,5 @@ server.listen(port, host, () => {
 });
 setInterval(() => void runDueWatches(), 15 * 60_000);
 void runDueWatches();
+setInterval(() => void scanNotifications(), 15 * 60_000);
+void scanNotifications();

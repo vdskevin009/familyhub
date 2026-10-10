@@ -20,7 +20,7 @@ import { useSavingsSharing } from "../savings-sharing";
 
 export default function SavingsView({ hub, onNavigate }: { hub: HubState; onNavigate: (view: AppView) => void }) {
   const contracts = effectiveContracts(hub.savings), reviews = hub.savings.Reviews ?? [];
-  const [detailId, setDetailId] = useState<string | null>(null);
+  const [detailId, setDetailId] = useState<string | null>(() => new URLSearchParams(location.search).get("record"));
   const detailTrigger = useRef<HTMLElement | null>(null);
   function openDetails(contract: SavingsContract) { detailTrigger.current = document.activeElement instanceof HTMLElement ? document.activeElement : null; setDetailId(contract.id); }
   function closeDetails() { setDetailId(null); requestAnimationFrame(() => detailTrigger.current?.isConnected && detailTrigger.current.focus()); }
@@ -99,6 +99,7 @@ export default function SavingsView({ hub, onNavigate }: { hub: HubState; onNavi
     {error && <Notice error onDismiss={() => setError("")}>{error}</Notice>}
     {message && <Notice onDismiss={() => setMessage("")}>{message}</Notice>}
     {sharing.error && <Notice error>{sharing.error}</Notice>}
+    {detailId && !detailContract && !sharing.busy && <Notice onDismiss={closeDetails}>Le contrat lié n'est pas présent dans les données chargées. Actualisez les contrats partagés ou consultez la connexion à votre PC.</Notice>}
     {sharing.researchError && <Notice error>{sharing.researchError}</Notice>}
     <details className="surface savings-period"><summary>Période des paiements : {rangeLabel(period)}</summary>
       <PeriodNavigator range={period} onChange={setPeriod} scope={finance?.data?.scope} label="Période des paiements" />

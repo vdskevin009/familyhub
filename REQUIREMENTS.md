@@ -1,5 +1,12 @@
 # FamilyHub — Canonical Requirements
 
+## Private notifications — 2026-10-10
+
+| ID | Requirement | Status | Implementation / validation |
+| --- | --- | --- | --- |
+| FH-NOTIF-001 | Provide a separate notification history with shared preferences, stable deduplication and direct source-record navigation. Detect evidenced blocked/stale collection, confirmed and partial insurer payments, unmatched payments, material recurring-charge review leads, documented contract/promotion/investment dates and source-scoped weekly spending. Preserve financial and manual records and state all data limits. | Implemented; release acceptance tracked in #170 | Private worker library, deterministic evidence model and separate Notifications view; first-source scan establishes a silent baseline; 21 synthetic notification/API checks and four-width browser acceptance pass; Code: [PR #180](https://github.com/vdskevin009/familyhub/pull/180); release/setup tracking: #170. |
+| FH-NOTIF-002 | Offer real opt-in PWA Web Push while the app is closed, with explicit per-device permission/enrollment, revocation and tests. Generic lock-screen text contains no names, medical details or financial amounts; authenticated details use existing pairing. No email. Never claim device receipt from provider acceptance. | Implemented; production setup and device receipt pending | Existing paired PC sends only while online; no new public listener. VAPID keys reuse explicitly configured FamilyHub environment or existing DPAPI store. No automatic key generation: new persistent identity setup requires applicable operator approval. Device permission and actual phone receipt remain separate acceptance gates; Synthetic encryption, permission, revocation and protected setup/concurrency checks pass. Production identity read confirms unconfigured; Code: [PR #180](https://github.com/vdskevin009/familyhub/pull/180); release/setup tracking: #170. |
+
 ## Pet spending category — 2026-10-10
 
 | ID | Requirement | Status | Implementation / validation |

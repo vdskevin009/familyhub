@@ -14,6 +14,8 @@ import SavingsView from "./views/SavingsView";
 import FinancesView from "./views/FinancesView";
 import CoursesView from "./views/CoursesView";
 import { PageHeader } from "./ui/primitives";
+import { Bell } from "lucide-react";
+import NotificationsView from "./views/NotificationsView";
 
 type BeforeInstallPromptEvent = Event & {
   prompt: () => Promise<void>;
@@ -33,6 +35,8 @@ const nav: Array<{ id: AppView; label: string; icon: typeof Home }> = [
   { id: "other", label: "Other", icon: MoreHorizontal }
 ];
 const otherViews: Array<{ id: AppView; label: string; description: string; icon: typeof Home }> = [
+  { id: "notifications", label: "Notifications", description: "Historique, préférences et alertes sur vos appareils", icon: Bell },
+
   { id: "groceries", label: "Courses", description: "Liste habituelle, paniers comparés et tickets", icon: CalendarDays },
   { id: "today", label: "Today & Assistant", description: "Household overview and Ask", icon: Home },
   { id: "inbox", label: "Important mail", description: "Messages and document review", icon: Mail },
@@ -101,6 +105,7 @@ export default function App() {
     if (next === view) { window.scrollTo({ top: 0, behavior: "instant" }); return; }
     scrollPositions.current[view] = window.scrollY;
     const url = new URL(location.href);
+    for (const key of ["record", "notice", "queue", "sources", "tab", "from", "to", "account", "currency"]) url.searchParams.delete(key);
     if (next === "reimbursements") url.searchParams.delete("view");
     else url.searchParams.set("view", next);
     history.pushState({}, "", url);
@@ -130,9 +135,11 @@ export default function App() {
       </aside>
 
       <div className="app-stage">
+        <div className="shell-tools"><button className="text-action" aria-label="Ouvrir les notifications" onClick={() => navigate("notifications")}><Bell size={18} />Notifications</button></div>
         <main className="app-main" id="main-content" tabIndex={-1} ref={mainRef}>
           {view === "today" && <TodayView hub={state} onNavigate={navigate} commandOpen={commandOpen} onCommandOpenChange={setCommandOpen} />}
           {view === "inbox" && <InboxView hub={state} />}
+          {view === "notifications" && <NotificationsView hub={state} onNavigate={navigate} />}
           {view === "reimbursements" && <ReimbursementsView hub={state} />}
           {documentKind && <div className="view-stack"><nav className="segment-tabs document-tabs" aria-label="Document sources">
             {documentViews.map(item => <button key={item.id} className={documentKind === item.id ? "active" : ""} aria-current={documentKind === item.id ? "page" : undefined} onClick={() => navigate(item.id)}>{item.label}</button>)}

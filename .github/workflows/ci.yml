@@ -40,6 +40,9 @@ jobs:
       - name: Verify private finance imports, calculations and authorization
         run: npm run test:finances
 
+      - name: Verify notification evidence, privacy, deduplication and authorization
+        run: npm run test:notifications
+
       - name: Verify Courses persistence, pricing and privacy
         run: npm run test:groceries
 
@@ -51,6 +54,9 @@ jobs:
 
       - name: Verify Finances mobile and desktop flows
         run: npm run test:finances:browser
+
+      - name: Verify notification history, preferences and device enrollment
+        run: npm run test:notifications:browser
 
       - name: Verify Courses mobile receipts and basket planning
         run: npm run test:groceries:browser

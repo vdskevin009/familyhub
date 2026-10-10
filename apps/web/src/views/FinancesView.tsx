@@ -291,6 +291,7 @@ export default function FinancesView({
         > | null>(null),
         [investmentAccount, setInvestmentAccount] = useState("");
     const paired = Boolean(hub.worker.Endpoint && hub.worker.ApiKey);
+    const openedLink = useRef(false);
     const initialize = (s: FinanceState) => {
         setState(s);
         if (s.data && !trendMonth) setTrendMonth(defaultPeriod(s.data.scope).from.slice(0, 7));
@@ -298,9 +299,24 @@ export default function FinancesView({
             const period = defaultPeriod(s.data.scope);
             setFrom(period.from); setTo(period.to);
         }
+        if (!openedLink.current && s.data) {
+            openedLink.current = true;
+            const query = new URLSearchParams(location.search), record = query.get("record");
+            if (record) {
+                const row = s.data.transactions.find(r => r.id === record);
+                if (row) { const period = calendarPeriod(Number(row.date.slice(0, 4)), Number(row.date.slice(5, 7))); setFrom(period.from); setTo(period.to); setCurrency(row.currency); openDecision(record, s); }
+                else setMessage("L’opération liée n’est pas présente dans les sources chargées.");
+            }
+            if (query.get("tab") === "investments") { setTab("investments"); setInvestmentAccount(query.get("account") ?? ""); }
+            const start = query.get("from"), end = query.get("to");
+            if (start && end && /^\d{4}-\d{2}-\d{2}$/.test(start) && /^\d{4}-\d{2}-\d{2}$/.test(end) && start <= end && Date.parse(end) - Date.parse(start) < 366 * 86400000) { setFrom(start); setTo(end); }
+            const linkedCurrency = query.get("currency");
+            if (linkedCurrency && s.data.transactions.some(row => row.currency === linkedCurrency)) setCurrency(linkedCurrency);
+        }
     };
     useEffect(() => {
         let cancelled = false;
+        openedLink.current = false;
         setState(null);
         setError("");
         if (!paired) return;
