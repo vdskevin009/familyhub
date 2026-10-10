@@ -1,0 +1,49 @@
+.finance-tabs { grid-template-columns: 1fr 1.4fr 1fr; width: min(100%, 520px); }
+.finance-tabs button { padding-inline: 6px; }
+.trend-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.trend-heading label { min-width: 140px; max-width: 100%; }
+.trend-months { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px; }
+.trend-months > button { display: flex; flex-direction: column; align-items: center; gap: 5px; min-width: 0; padding: 12px 5px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-sm); font-size: 12px; overflow-wrap: anywhere; }
+.trend-months > button.selected { border-color: var(--green); outline: 2px solid var(--green); outline-offset: -2px; background: var(--mint); }
+.trend-months > button > span { font-weight: 700; font-variant-numeric: tabular-nums; }
+.trend-months small { font-size: 12px; }
+.trend-gauge { width: 72px; height: 72px; max-width: 100%; }
+.trend-navigation { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: end; gap: 8px; }
+.trend-navigation input { min-width: 0; width: 100%; }
+.trend-headline { display: flex; align-items: center; gap: 24px; }
+.trend-headline .trend-gauge { width: 132px; height: 132px; }
+.trend-headline > div { min-width: 0; }
+.trend-total { font-size: 28px; font-weight: 750; color: var(--ink); font-variant-numeric: tabular-nums; }
+.trend-coverage { background: var(--soft); border-left: 3px solid var(--muted); padding: 12px; }
+.trend-coverage ul, .trend-method ul { margin: 8px 0; padding-left: 20px; }
+.trend-method > div { padding-top: 12px; }
+.finance-trends summary { min-height: 44px; padding: 10px 0; font-weight: 650; }
+.trend-legend { display: flex; gap: 16px; flex-wrap: wrap; font-size: 12px; }
+.trend-key { display: inline-flex; align-items: center; gap: 6px; }
+.trend-key::before { content: ""; width: 22px; border-top: 3px solid var(--green); }
+.trend-key.typical::before { border-top: 2px dashed var(--muted); }
+.trend-curve { margin: 0; }
+.trend-plot { display: grid; grid-template-columns: minmax(56px, auto) minmax(0, 1fr); gap: 8px; }
+.trend-y-labels { display: flex; flex-direction: column; justify-content: space-between; align-items: end; padding: 5px 0; font-size: 12px; color: var(--muted); }
+.trend-plot svg { width: 100%; height: 180px; overflow: visible; }
+.trend-x-labels { display: flex; justify-content: space-between; margin: 6px 0 14px 74px; font-size: 12px; color: var(--muted); }
+.trend-table { width: 100%; border-collapse: collapse; font-size: 12px; font-variant-numeric: tabular-nums; }
+.trend-table th, .trend-table td { padding: 8px 4px; text-align: right; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
+.trend-table th:first-child { text-align: left; }
+.trend-table caption { text-align: left; padding: 8px 0; }
+.trend-categories { display: grid; gap: 0; }
+.trend-category { display: grid; gap: 8px; padding: 14px 0; background: transparent; border: 0; border-bottom: 1px solid var(--line); text-align: left; min-width: 0; }
+.trend-category-amounts { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; font-size: 12px; }
+.trend-category-amounts b { display: block; font-size: 14px; font-variant-numeric: tabular-nums; }
+.trend-category svg { width: 100%; height: 26px; }
+@media (max-width: 700px) {
+  .trend-months { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .trend-navigation { grid-template-columns: 1fr 1fr; }
+  .trend-navigation label { grid-column: 1 / -1; grid-row: 1; }
+  .trend-navigation button { padding-inline: 8px; }
+  .trend-headline { gap: 12px; align-items: flex-start; }
+  .trend-headline .trend-gauge { width: 84px; height: 84px; }
+  .trend-total { font-size: 24px; overflow-wrap: anywhere; }
+  .trend-heading { align-items: stretch; }
+  .trend-heading label { width: 100%; }
+}

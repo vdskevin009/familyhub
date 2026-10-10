@@ -6,11 +6,11 @@ Issues [#162](https://github.com/vdskevin009/familyhub/issues/162) and [#163](ht
 
 ## Interface
 
-The existing app gains a primary **Finances** destination with exactly two tabs: **Dépenses** and **Investissements**. The existing Savings destination starts with services and expense items, followed by contracts/packages and public-offer comparison. No new app, cloud database, bank connector or provider permission is required.
+The primary **Finances** destination has **Dépenses**, **Investissements** and **Tendances** tabs. The explicitly requested personal-history tab supersedes the original two-tab limit; its comparison method and coverage rules are in [Personal spending trends](FINANCE-TRENDS.md). The existing Savings destination starts with services and expense items, followed by contracts/packages and public-offer comparison. No new app, cloud database, bank connector or provider permission is required.
 
 ```text
 Finances                           Actualiser
-[ Dépenses ] [ Investissements ]
+[ Dépenses ] [ Investissements ] [ Tendances ]
 Sources et import privé (collapsed)
 Month or year / previous-next / custom dates / account / currency
 Net imported spending + review count

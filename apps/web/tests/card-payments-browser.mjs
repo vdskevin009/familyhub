@@ -58,7 +58,7 @@ try {
         assert.equal(await register.getByRole("button").count(), 2);
         assert.doesNotMatch(await register.innerText(), /PAYMENT-THANKYOU|TFR-TO/);
         assert.match(await page.locator(".finance-totals").first().innerText(), /30,00/);
-        assert.equal(await page.locator(".finance-tabs button").count(), 2);
+        assert.equal(await page.locator(".finance-tabs button").count(), 3);
         const bar = page.locator(".finance-expense-charts > section").first().getByRole("button", { name: /^À catégoriser/ });
         await bar.focus(); await page.keyboard.press("Enter");
         const sheet = page.getByRole("dialog", { name: /^Paiements.*À catégoriser$/ });

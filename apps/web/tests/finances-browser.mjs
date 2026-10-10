@@ -148,7 +148,7 @@ try {
             .getByRole("heading", { name: "Aucun historique importé" })
             .waitFor();
         assert.equal(await page.locator(".bottom-nav button").count(), 5);
-        assert.equal(await page.locator(".finance-tabs button").count(), 2);
+        assert.equal(await page.locator(".finance-tabs button").count(), 3);
         assert.equal(posts, 0);
         await page.locator(".finance-import > summary").click();
         const file = page.locator(".finance-import input[type=file]");
@@ -374,7 +374,7 @@ try {
         const flows = page.getByRole("region", { name: "Épargne et investissements classés", exact: true });
         assert.match(await flows.locator(".finance-totals").innerText(), /Sorties classées.*500,00.*Entrées classées.*500,00/s);
         assert.match(await page.locator(".finance-totals").first().innerText(), /2\s?852/);
-        assert.equal(await page.locator(".finance-tabs button").count(), 2);
+        assert.equal(await page.locator(".finance-tabs button").count(), 3);
         await page.getByLabel("Vue", { exact: true }).selectOption("year");
         await flows.getByText("Flux mois par mois", { exact: true }).click();
         assert.equal(await flows.locator(".finance-bars li").count(), 24);
