@@ -4,6 +4,7 @@ import { mkdtemp, readFile, writeFile, readdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { financeFixture } from "./finance-fixture.mjs";
+import { cardPaymentFixture, cardPaymentDecisions } from "./card-payment-fixture.mjs";
 import { parseFinancePreparation } from "../apps/worker/dist/finance-import.js";
 import { FinanceLibrary } from "../apps/worker/dist/finance-library.js";
 import {
@@ -33,6 +34,24 @@ const state = () => ({
     decisions: {},
     decisionHistory: [],
     imports: [],
+});
+
+test("each card settlement leg stays outside spending independently, including single-account filters", () => {
+    const s = { ...state(), data: parseFinancePreparation(cardPaymentFixture()), decisions: cardPaymentDecisions };
+    const before = JSON.stringify(s);
+    for (const account of ["", "card", "bank"]) {
+        const summary = summarizeSpending(s, "2026-09-01", "2026-09-30", account);
+        const included = summary.included.map(r => r.id);
+        assert.equal(included.includes("fixture-card-repayment"), false);
+        assert.equal(included.includes("fixture-bank-transfer"), false);
+        assert.equal(summary.totalCents, account === "bank" ? 0 : 3000);
+        const other = summary.categories.find(c => c.key === "other");
+        assert.equal(other.cents, summary.totalCents);
+        assert.equal(other.count, account === "bank" ? 0 : 2);
+        if (account !== "bank") assert.equal(summary.rows.find(r => r.id === "fixture-card-repayment").nature, "repayment");
+        if (account !== "card") assert.equal(summary.rows.find(r => r.id === "fixture-bank-transfer").nature, "transfer");
+    }
+    assert.equal(JSON.stringify(s), before, "Display/aggregation must not mutate source facts or decisions");
 });
 
 test("one explicit pets category covers animal care without guessing ambiguous purchases", async () => {
