@@ -6,6 +6,37 @@ import { configureDesjardinsFilters, createReaderStages, desjardinsSessionExpire
 import { collectWithRetry } from '../apps/worker/dist/collection-retry.js';
 import { collectDesjardinsPortal } from '../apps/worker/dist/desjardins-collector.js';
 
+test('normal French control preserves source labels without aliases or confirmation bypass', async () => {
+  const browser = await chromium.launch({ headless: true, ...(process.platform === 'win32' ? { channel: 'msedge' } : {}) });
+  try {
+    const page = await browser.newPage();
+    const url = 'https://www.agea-gbim.dsf-dfs.com/AGEA-GBIM/Rclmtn/RclmtnTrt/HistoriqueReclamation_ClaimHistory.aspx';
+    await page.route('**/*', route => route.fulfill({ contentType: 'text/html', body: '<html></html>' }));
+    await page.goto(url);
+    const fixture = `<a href="#" id="header_lnkLangue_btnConfirm" onclick="document.querySelector('#x_cbPour option').textContent='Tous les patients';document.querySelector('#x_cbCategorie option').textContent='Toutes les catégories';return false">Français</a>
+      <select id="x_cbPour"><option value="all">All Patients</option></select>
+      <select id="x_cbCategorie"><option value="all">All Services</option></select>
+      <select id="x_cbNbResltRechr"><option value="100">100</option></select>
+      <input type="button" id="x_btnRechercher"><table class="tableau-donnees"><tbody><tr><td>PRIVATE SERVICE</td></tr></tbody></table>`;
+    await page.setContent(fixture);
+    const events = [];const stage=createReaderStages(async entry=>events.push(entry));
+    await configureDesjardinsFilters(page,stage);
+    assert.equal((await page.locator('#x_cbPour option').innerText()),'Tous les patients');
+    assert.deepEqual(events.slice(0,2),[{stage:'language-select',state:'started'},{stage:'language-select',state:'complete'}]);
+    assert.doesNotMatch(JSON.stringify(events),/PRIVATE/);
+    events.length=0;
+    await configureDesjardinsFilters(page,stage);
+    assert.equal(events.some(x=>x.stage==='language-select'),false,'French history is not toggled back');
+    await page.setContent(fixture.replace('>Français</a>','>Unsupported language</a>'));
+    events.length=0;await configureDesjardinsFilters(page,stage);
+    assert.equal(events.some(x=>x.stage==='language-select'),false,'only the observed exact normal French control is used');
+    assert.equal(await page.locator('#x_cbPour option').innerText(),'All Patients');
+    await page.goto('https://untrusted.invalid/');await page.setContent(fixture);
+    await assert.rejects(configureDesjardinsFilters(page,stage),/structure changed \(location\)/);
+    assert.equal(await page.locator('#x_cbPour option').innerText(),'All Patients','no language event on an untrusted origin');
+  } finally {await browser.close();}
+});
+
 test('filter inspection reports only fixed labels and counts, including missing expected options', async () => {
   const browser = await chromium.launch({ headless: true, ...(process.platform === 'win32' ? { channel: 'msedge' } : {}) });
   try {

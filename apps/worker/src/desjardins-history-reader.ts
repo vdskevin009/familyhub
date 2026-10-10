@@ -7,7 +7,7 @@ export const desjardinsReaderSelectors = {
   pageSize: "select[id$='cbNbResltRechr']",
   search: "input[id$='btnRechercher']"
 } as const;
-export type ReaderStage = "filters-inspect" | "filter-patient" | "filter-category" | "filter-page-size" | "search-submit" | "search-history" | "history-read" | "detail-open" | "detail-read" | "detail-return" | "pagination";
+export type ReaderStage = "language-select" | "filters-inspect" | "filter-patient" | "filter-category" | "filter-page-size" | "search-submit" | "search-history" | "history-read" | "detail-open" | "detail-read" | "detail-return" | "pagination";
 type FilterName = "patient" | "category" | "pageSize";
 const expected = { patient: ["Tous les patients", "All Patients"], category: ["Toutes les catégories", "All Services"], pageSize: ["100"] };
 
@@ -85,6 +85,28 @@ export async function configureDesjardinsFilters(page: Page, stage: ReturnType<t
       throw new Error('Processed-claims filter structure changed (location).');
   };
   guard();
+  // Preserve the language of historical source evidence through the portal's own
+  // normal control. Never translate service labels or loosen reconciliation.
+  const patient = page.locator(desjardinsReaderSelectors.patient);
+  if (await patient.count() === 1 && await patient.evaluate(select =>
+    Array.from((select as HTMLSelectElement).options).some(option => option.label.trim() === "All Patients"))) {
+    const language = page.locator("a[id$='lnkLangue_btnConfirm']");
+    if (await language.count() === 1 && await language.isVisible()
+      && (await language.innerText()).normalize("NFKC").trim() === "Français") {
+      await stage("language-select", async () => {
+        guard();
+        await language.click({ timeout: 10_000 });
+        // A confirmation, challenge or unsupported destination is a bounded
+        // failure. No automatic acceptance or invented language URL.
+        await page.waitForFunction(selector => {
+          const controls = document.querySelectorAll(selector);
+          return controls.length === 1 && Array.from((controls[0] as HTMLSelectElement).options)
+            .some(option => option.label.normalize("NFKC").replace(/\s+/g, " ").trim() === "Tous les patients");
+        }, desjardinsReaderSelectors.patient, { timeout: 15_000 });
+        guard();
+      });
+    }
+  }
   const values = await stage('filters-inspect', async () => {
     const values = {} as Record<FilterName, string>;
     for (const name of ['patient', 'category', 'pageSize'] as const) {
