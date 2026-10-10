@@ -1,9 +1,10 @@
+import { findPortalHistoryPage, isInsurerPortalPage } from "./portal-history-page.js";
 import { acquirePortalLock, authenticatedPortal, tryPortalLogin, type LoginReason } from "./portal-login.js";
 import { mkdir, open } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import type { Cookie } from "playwright";
-import { dataDirectory, loadPrivate, savePrivate } from "./private-store.js";
+import { atomicJson, dataDirectory, loadPrivate, savePrivate } from "./private-store.js";
 import { parseBlueCrossExport, type BlueCrossRow } from "./bluecross.js";
 
 export const blueCrossPrivateDirectory = join(dataDirectory, "bluecross");
@@ -106,27 +107,47 @@ async function collectBlueCrossPortalLocked(interactive = false): Promise<{ stat
         }, { origin: sessionOrigin, key: sessionKey, value: marker });
       } catch { /* A missing or expired session falls back to the normal login flow. */ }
     }
-    const page = context.pages()[0] ?? await context.newPage();
+    let page = context.pages()[0] ?? await context.newPage();
     await page.goto(memberUrl, { waitUntil: "domcontentloaded", timeout: 45_000 });
-    const claims = page.locator("table[id*='grdClaimsGrid']");
+    let claims = page.locator("table[id*='grdClaimsGrid']");
     const openHistory = async () => {
-      if (new URL(page.url()).origin !== sessionOrigin) return false;
+      if (!isInsurerPortalPage(page, 'bluecross')) return false;
       const link = page.getByRole("link", { name: /view more claims|claims history/i }).first();
       const button = page.getByRole("button", { name: /view more claims|claims history/i }).first();
       if (await link.isVisible().catch(() => false)) { await link.click(); return true; }
       if (await button.isVisible().catch(() => false)) { await button.click(); return true; }
       return false;
     };
+    let previousHistoryDiagnostic = "";
+    let historyTabSwitches = 0;
+    const recoverHistoryTab = async () => {
+      const observed = await findPortalHistoryPage(context, page, "bluecross");
+      if (observed.page && observed.page !== page) historyTabSwitches++;
+      const details = { ...observed.diagnostic, tabSwitches: historyTabSwitches };
+      const diagnostic = JSON.stringify(details);
+      if (diagnostic !== previousHistoryDiagnostic) {
+        previousHistoryDiagnostic = diagnostic;
+        await atomicJson(join(blueCrossPrivateDirectory, "history-tab-diagnostic.json"), {
+          version: 1, observedAt: new Date().toISOString(), ...details
+        }).catch(() => { /* Secret-free diagnostics cannot disrupt authentication. */ });
+      }
+      if (!observed.page) return false;
+      page = observed.page;
+      claims = page.locator("table[id*='grdClaimsGrid']");
+      return true;
+    };
     const ready = async () => {
-      if (new URL(page.url()).origin !== sessionOrigin) return false;
+      if (await recoverHistoryTab()) return true;
+      if (page.isClosed()) return false;
+      if (!isInsurerPortalPage(page, 'bluecross')) return false;
       if (!await claims.isVisible().catch(() => false)) await openHistory().catch(() => {});
-      return await claims.isVisible().catch(() => false);
+      return recoverHistoryTab();
     };
     // Give an existing trusted session time to restore before touching credentials.
     const authReason = await tryPortalLogin(page, "bluecross", ready);
     if (interactive && !await ready()) {
       const deadline = Date.now() + 600_000;
-      while (!await ready() && Date.now() < deadline) await page.waitForTimeout(2000);
+      while (!await ready() && Date.now() < deadline) await page.waitForTimeout(2000).catch(() => new Promise(resolve => setTimeout(resolve, 2000)));
     }
     if (!await ready()) return { status: "login-required", authReason: authReason || "human-required" };
     await authenticatedPortal("bluecross");
