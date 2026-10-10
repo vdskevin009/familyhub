@@ -1,0 +1,42 @@
+.grocery-import, .grocery-month { background: var(--surface); border: 1px solid var(--line); padding: 20px; border-radius: var(--radius); display: grid; gap: 14px; }
+.grocery-import h2 { margin: 8px 0; }
+.grocery-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+.grocery-thumbnails { display: flex; gap: 12px; overflow-x: auto; padding: 4px; }
+.grocery-thumbnails > div { position: relative; flex: 0 0 130px; background: var(--soft); padding: 8px; border-radius: var(--radius-sm); }
+.grocery-thumbnails img { width: 114px; height: 130px; object-fit: contain; background: white; }
+.grocery-thumbnails span { display: block; overflow-wrap: anywhere; font-size: 12px; }
+.grocery-thumbnails .icon-button { background: var(--surface); }
+.grocery-section-heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 14px; }
+.grocery-view label, .grocery-review label { display: grid; gap: 5px; font-weight: 600; }
+.grocery-view input:not([type=checkbox]), .grocery-review input:not([type=checkbox]), .grocery-review select { width: 100%; min-height: 44px; min-width: 0; border: 1px solid var(--line); padding: 10px; border-radius: var(--radius-sm); background: white; }
+.grocery-currency { display: grid; gap: 10px; border-top: 1px solid var(--line); padding-top: 16px; }
+.grocery-product { padding: 12px 0; border-bottom: 1px solid var(--line); }
+.grocery-history { display: grid; gap: 8px; margin-top: 14px; }
+.grocery-ticket { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-sm); display: flex; justify-content: space-between; gap: 16px; text-align: left; padding: 14px; min-height: 64px; }
+.grocery-ticket > span { min-width: 0; overflow-wrap: anywhere; }
+.grocery-ticket > span:last-child { text-align: right; flex-shrink: 0; }
+.grocery-ticket small { display: block; margin-top: 4px; }
+.grocery-empty { padding: 18px 0; }
+.grocery-review { display: grid; gap: 16px; }
+.grocery-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.grocery-review fieldset { border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 14px; margin: 0; min-width: 0; }
+.grocery-review legend { padding: 0 5px; font-weight: 700; }
+.grocery-line { display: grid; gap: 12px; }
+.grocery-review .grocery-check { display: flex; align-items: flex-start; font-weight: 500; gap: 10px; padding: 10px 0; min-height: 44px; }
+.grocery-check input { width: 20px; height: 20px; flex-shrink: 0; margin-top: 1px; accent-color: var(--green); }
+.grocery-warning { background: var(--warning-soft); color: var(--warning); padding: 12px; border-radius: var(--radius-sm); }
+.grocery-warning p { color: inherit; }
+.grocery-evidence { font-size: 12px; overflow-wrap: anywhere; }
+.grocery-sources img { width: 100%; height: auto; display: block; margin: 10px 0; }
+.grocery-sources summary { min-height: 44px; padding: 12px 0; overflow-wrap: anywhere; }
+.grocery-sources pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 400px; overflow: auto; }
+@media (max-width: 480px) { .grocery-fields { grid-template-columns: minmax(0, 1fr); } .grocery-import, .grocery-month { padding: 14px; } .grocery-ticket { gap: 8px; } }
+.grocery-planning-controls { border: 0; margin: 0; padding: 0; min-width: 0; display: grid; gap: 18px; }
+.grocery-planning select { width: 100%; min-height: 44px; min-width: 0; border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 10px; background: var(--surface); }
+.grocery-basket { display: grid; gap: 10px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; min-width: 0; overflow-wrap: anywhere; }
+.grocery-basket summary, .grocery-planning summary { min-height: 44px; padding: 12px 0; }
+.grocery-planning .grocery-check { display: flex; align-items: flex-start; gap: 10px; min-height: 44px; padding: 10px 0; font-weight: 500; }
+.grocery-missing { margin: 0; padding-left: 22px; color: var(--warning); }
+.grocery-planning pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+.grocery-view .segment-tabs { flex-wrap: wrap; }
+@media (max-width: 768px) { .grocery-view input, .grocery-view select, .grocery-review input, .grocery-review select { font-size: 16px; } .grocery-ticket { flex-wrap: wrap; } .grocery-ticket > span:last-child { flex-shrink: 1; } }

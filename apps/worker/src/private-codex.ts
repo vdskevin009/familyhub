@@ -26,7 +26,7 @@ export function privateCodexBinary(): string {
 }
 
 /** Email prompts/results stay in memory: no persisted Codex session or raw stderr log. */
-export async function privateCodex(prompt: string, schema: unknown, work: string): Promise<string> {
+export async function privateCodex(prompt: string, schema: unknown, work: string, images: string[] = []): Promise<string> {
   await mkdir(work, { recursive: true });
   const schemaPath = join(work, `schema-${randomUUID()}.json`);
   await writeFile(schemaPath, JSON.stringify(schema), "utf8");
@@ -37,6 +37,7 @@ export async function privateCodex(prompt: string, schema: unknown, work: string
         "-c", 'approval_policy="never"', "-c", "features.shell_tool=false", "-c", "mcp_servers={}",
         "-c", "features.apps=false", "-c", 'history.persistence="none"',
         "-c", 'web_search="disabled"',
+        ...images.flatMap(path => ["--image", path]),
         "--output-schema", schemaPath, "-"], { windowsHide: true, stdio: ["pipe", "pipe", "ignore"],
         signal: AbortSignal.timeout(90_000) });
       let buffer = "", result = "", failed = false;
