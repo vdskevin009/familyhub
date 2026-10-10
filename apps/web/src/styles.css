@@ -722,6 +722,11 @@ label { font-size: 12px; color: var(--muted); }
 .paid-contract-details > div, .payment-reviews > div { padding-top: 14px; }
 .paid-contract-details > div > div, .payment-reviews > div > div { border-top: 1px solid var(--line); padding-top: 14px; }
 .savings-source-price { color: var(--muted); font-size: 13px; }
+.savings-period[open] > .period-navigator, .savings-settings[open] > div, .savings-advice[open] > div, .savings-months[open] > div { margin-top: 16px; }
+.savings-settings .surface { padding: 0; border: 0; box-shadow: none; }
+.savings-observations p, .finance-category-payments p { margin: 0; }
+.finance-category-payments label { display: grid; gap: 6px; }
+.savings-contract + .button { margin-top: 20px; }
 .savings-contract-heading > strong { white-space: normal; overflow-wrap: anywhere; }
 .finance-tabs { width: min(100%, 440px); display: grid; grid-template-columns: 1fr 1fr; }
 .finance-tabs button { min-height: 44px; }
