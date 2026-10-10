@@ -83,7 +83,23 @@ credentials, browser state and audit files stay outside Git and API results.
 
 ### Post-authentication reader follow-up - FH-REIMB-040 / Issue #159
 
-**Testing in [PR #175](https://github.com/vdskevin009/familyhub/pull/175); worker 2.23.5 candidate, complete live synchronization pending.**
+**Reader recovery verified in [PR #175](https://github.com/vdskevin009/familyhub/pull/175),
+main `cca67594ff96385dba195121517c1eb5636ffd30`; worker 2.23.5 installed.**
+Exact PR CI [38089286436](https://github.com/vdskevin009/familyhub/actions/runs/38089286436)
+and main CI/Pages [38089724419](https://github.com/vdskevin009/familyhub/actions/runs/38089724419)
+passed, including retained .NET regressions. An independent complete live read and
+an installed-worker collection agreed, with only unchanged existing evidence and
+no new, changed, ambiguous or duplicate rows. A reconciliation replay was a no-op.
+The installed collection reused the saved session without submitting credentials;
+the normal French-language preference persisted across browser-context restart.
+Protected invoice/source rows, reimbursement decisions and prior finance history
+were preserved, including concurrently appended audited classifications. Pairing,
+origin enforcement, existing auth guards and task definitions remain intact.
+The authenticated deployed Chrome Sources view confirms completed collection.
+Published JS/CSS match the tested build exactly; static text is equivalent after
+platform line-ending/blank-line normalization. Physical-phone and challenged/MFA
+recovery acceptance remain unobserved and separate in Issue #159; the original
+uncertain credential-attempt failure cause remains unknown.
 Private reader diagnostics identify fixed filter/search/detail/pagination stages
 and coarse failure categories without URLs, option values, names or source rows.
 All three history filters must have unique recognized options before any filter
