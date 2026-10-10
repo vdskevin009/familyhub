@@ -152,3 +152,41 @@ test('health and dental grid variants keep the claimed and reimbursed columns al
   const unclear = [group(11), { cells: ['Service A', 'Service B', '2024‑02‑03', '2024‑02‑03', '75,00', '75,00', '80%', '15,00', '60,00', '5,00', 'CODE'], colspans: Array(11).fill(1) }];
   assert.match(parseDesjardinsDetail({ ...history, paid: '60,00 $' }, unclear).warnings.join(' '), /incomplete or inconsistent/);
 });
+
+// Public synthetic counterparts exercise locale drift without live claim data.
+test('English labelled claim and decimal amounts preserve the same service identity', () => {
+  const english = detail.map(entry => ({ ...entry, cells: entry.cells.map(cell =>
+    cell.replace('Numéro de réclamation', 'Claim number').replace(/(\d+),(\d{2})/g, '$1.$2')) }));
+  const result = parseDesjardinsDetail({ ...history, paid: '60.00 $' }, english);
+  assert.deepEqual(result, parseDesjardinsDetail(history, detail));
+  for (const malformed of ['60.0', '6,0.00', '60,0', '60.00.00', '60,00,00'])
+    assert.ok(parseDesjardinsDetail({ ...history, paid: malformed }, english).warnings.length);
+  const mismatch = parseDesjardinsDetail({ ...history, paid: '61.00 $' }, english);
+  assert.ok(mismatch.warnings.some(warning => warning.includes('does not match')));
+});
+
+test('synthetic English seven-column layout retains identity, Unicode dates and exact totals', () => {
+  const date = '2024\u201102\u201103';
+  const english = [
+    { cells: ['Kevin, Claim number: synthetic-language-7'], colspans: [7] },
+    { cells: ['Service Z', date, date, '30.00', '80%', '6.00', '24.00'], colspans: Array(7).fill(1) },
+    { cells: ['Synthetic processing note'], colspans: [7] },
+    { cells: ['Total reimbursement', '24.00 $'], colspans: [6, 1] }
+  ];
+  const englishHistory = { ...history, date, paid: '24.00 $' };
+  const parsed = parseDesjardinsDetail(englishHistory, english);
+  assert.deepEqual(parsed.warnings, []);
+  assert.equal(parsed.rows.length, 1);
+  assert.equal(parsed.rows[0].serviceDate, '2024-02-03');
+  assert.equal(parsed.rows[0].statementDate, '2024-02-03');
+  const french = english.map(entry => ({ ...entry, cells: entry.cells.map(cell =>
+    cell.replace('Claim number', 'Numéro de réclamation').replace(/(\d+)\.(\d{2})/g, '$1,$2')) }));
+  assert.deepEqual(parsed, parseDesjardinsDetail({ ...englishHistory, paid: '24,00 $' }, french));
+  assert.ok(parseDesjardinsDetail({ ...englishHistory, date: '03/02/2024' }, english).warnings.length);
+  assert.ok(parseDesjardinsDetail({ ...englishHistory, paid: '25.00 $' }, english).warnings.some(warning => warning.includes('does not match')));
+  const grouped = english.map(entry => ({ ...entry, cells: [...entry.cells] }));
+  [grouped[1].cells[3], grouped[1].cells[5], grouped[1].cells[6]] = ['1,500.00', '300.00', '1,200.00'];
+  assert.equal(parseDesjardinsDetail({ ...englishHistory, paid: '$1,200.00' }, grouped).rows[0].paid, 1200);
+  grouped[1].cells[3] = '1,500,00';
+  assert.ok(parseDesjardinsDetail({ ...englishHistory, paid: '$1,200.00' }, grouped).warnings.length);
+});

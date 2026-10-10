@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import CategoryPayments from "./CategoryPayments";
+import FinanceTrends from "./FinanceTrends";
+import { spendingTrend } from "../finance-trends";
 import { RefreshCw, Upload } from "lucide-react";
 import type { HubState } from "../state";
 import type { AppView } from "../types";
@@ -247,12 +249,14 @@ export default function FinancesView({
     onNavigate: (view: AppView) => void;
 }) {
     const [state, setState] = useState<FinanceState | null>(null),
-        [tab, setTab] = useState<"expenses" | "investments">("expenses");
+        [tab, setTab] = useState<"expenses" | "investments" | "trends">("expenses");
+    const [trendMonth, setTrendMonth] = useState("");
     const [error, setError] = useState(""),
         [message, setMessage] = useState(""),
         [busy, setBusy] = useState(false),
         [loading, setLoading] = useState(false);
     const [currency, setCurrency] = useState("CAD");
+    const [operationScope, setOperationScope] = useState<"expenses" | "excluded">("expenses");
     const [from, setFrom] = useState(""),
         [to, setTo] = useState(""),
         [account, setAccount] = useState(""),
@@ -278,7 +282,7 @@ export default function FinancesView({
         setCategoryPayments(null);
         requestAnimationFrame(() => {
             if (categoryTrigger.current?.isConnected) categoryTrigger.current.focus();
-            else document.querySelector<HTMLElement>(".finance-expense-charts button")?.focus();
+            else document.querySelector<HTMLElement>(tab === "trends" ? ".trend-months button.selected" : ".finance-expense-charts button")?.focus();
         });
     }
     const [bundle, setBundle] = useState<unknown>(null),
@@ -290,6 +294,7 @@ export default function FinancesView({
     const openedLink = useRef(false);
     const initialize = (s: FinanceState) => {
         setState(s);
+        if (s.data && !trendMonth) setTrendMonth(defaultPeriod(s.data.scope).from.slice(0, 7));
         if (s.data && !from) {
             const period = defaultPeriod(s.data.scope);
             setFrom(period.from); setTo(period.to);
@@ -332,7 +337,7 @@ export default function FinancesView({
     }, [hub.worker.Endpoint, hub.worker.ApiKey]);
     useEffect(
         () => setPage(0),
-        [from, to, account, currency, category, search, reviewOnly],
+        [from, to, account, currency, category, search, reviewOnly, operationScope],
     );
     async function refresh() {
         setLoading(true);
@@ -420,6 +425,7 @@ export default function FinancesView({
         }
     }
     const data = state?.data;
+    const trend = useMemo(() => state?.data && trendMonth ? spendingTrend(state, trendMonth, account, currency) : null, [state, trendMonth, account, currency]);
     const summary = useMemo(
         () =>
             state
@@ -427,8 +433,9 @@ export default function FinancesView({
                 : null,
         [state, from, to, account, currency],
     );
+    const includedIds = new Set(summary?.included.map(r => r.id));
     const rows =
-        summary?.rows
+        ((operationScope === "expenses" ? summary?.included : summary?.rows.filter(r => !includedIds.has(r.id))) ?? [])
             .filter(
                 (r) =>
                     (!category || r.category === category) &&
@@ -502,6 +509,9 @@ export default function FinancesView({
                     onClick={() => setTab("investments")}
                 >
                     Investissements
+                </button>
+                <button aria-current={tab === "trends" ? "page" : undefined} className={tab === "trends" ? "active" : ""} onClick={() => setTab("trends")}>
+                    Tendances
                 </button>
             </nav>
             {error && <Notice error>{error}</Notice>}
@@ -636,13 +646,14 @@ export default function FinancesView({
             )}
             {data && state && summary && (
                 <>
-                    <PeriodNavigator range={{ from, to }} scope={data.scope} onChange={range => { setFrom(range.from); setTo(range.to); }} />
-                    <p className="muted">Totaux par date d’opération. La vue annuelle conserve les mois partiels et les lacunes; elle n’extrapole pas une année complète.</p>
+                    {tab !== "trends" && <><PeriodNavigator range={{ from, to }} scope={data.scope} onChange={range => { setFrom(range.from); setTo(range.to); }} />
+                    <p className="muted">Totaux par date d'opération. La vue annuelle conserve les mois partiels et les lacunes; elle n'extrapole pas une année complète.</p></>}
                     <div className="finance-filters">
-                        {tab === "expenses" && (
+                        {tab !== "investments" && (
                             <label>
                                 Compte
                                 <select
+                                    aria-label="Compte"
                                     value={account}
                                     onChange={(e) => setAccount(e.target.value)}
                                 >
@@ -655,10 +666,11 @@ export default function FinancesView({
                                 </select>
                             </label>
                         )}
-                        {tab === "expenses" && (
+                        {tab !== "investments" && (
                             <label>
                                 Devise
                                 <select
+                                    aria-label="Devise"
                                     value={currency}
                                     onChange={(e) =>
                                         setCurrency(e.target.value)
@@ -678,12 +690,12 @@ export default function FinancesView({
                             </label>
                         )}
                     </div>
-                    {from > to && (
+                    {tab !== "trends" && from > to && (
                         <Notice error>
                             La date de début doit précéder la date de fin.
                         </Notice>
                     )}
-                    {tab === "expenses" ? (
+                    {tab === "trends" && trend ? <FinanceTrends state={state} trend={trend} account={account} currency={currency} onMonth={setTrendMonth} onCategory={openCategory} /> : tab === "expenses" ? (
                         <>
                             <div className="finance-totals surface">
                                 <div>
@@ -781,6 +793,10 @@ export default function FinancesView({
                             </section>
                             <section className="surface view-stack">
                                 <h2>Opérations et catégories</h2>
+                                <label>Opérations affichées<select aria-label="Opérations affichées" value={operationScope} onChange={event => { const next = event.target.value as "expenses" | "excluded"; setOperationScope(next); if (next === "expenses" && category === "savings-investments") setCategory(""); }}>
+                                    <option value="expenses">Dépenses, remboursements déduits</option><option value="excluded">Hors dépenses</option>
+                                </select></label>
+                                {operationScope === "excluded" && <p className="muted">Paiements de carte, transferts, placements et autres opérations exclues des dépenses. Les montants restent séparés. Chaque opération conserve sa source et son classement reste modifiable.</p>}
                                 <button className="button secondary" disabled={!rows.some(r => !r.reviewed)} onClick={() => { const row = rows.find(r => !r.reviewed); if (row) openDecision(row.id); }}>Catégoriser les opérations</button>
                                 <div className="finance-filters">
                                     <label>
@@ -788,9 +804,7 @@ export default function FinancesView({
                                         <select
                                             aria-label="Catégorie"
                                             value={category}
-                                            onChange={(e) =>
-                                                setCategory(e.target.value)
-                                            }
+                                            onChange={(e) => { setCategory(e.target.value); if (e.target.value === "savings-investments") setOperationScope("excluded"); }}
                                         >
                                             <option value="">
                                                 Toutes les catégories
@@ -826,7 +840,7 @@ export default function FinancesView({
                                     Suggestions à confirmer seulement
                                 </label>
                                 <p className="muted">
-                                    {rows.length} opérations. Les règles de
+                                    {rows.length} opération(s) {operationScope === "expenses" ? "dans les dépenses" : "hors dépenses"}. Les règles de
                                     libellé sont des suggestions; les paniers
                                     mixtes demandent une revue.
                                 </p>
@@ -1341,7 +1355,7 @@ export default function FinancesView({
                     )}
                 </>
             )}
-            <CategoryPayments category={categoryPayments} open={Boolean(categoryPayments) && !editing} summary={summary} accounts={data?.accounts ?? []} account={account} currency={currency} from={from} to={to} onClose={closeCategory} onEdit={openDecision} />
+            <CategoryPayments category={categoryPayments} open={Boolean(categoryPayments) && !editing} summary={tab === "trends" ? trend?.summary ?? null : summary} accounts={data?.accounts ?? []} account={account} currency={currency} from={tab === "trends" ? trend?.from ?? "" : from} to={tab === "trends" ? trend?.to ?? "" : to} onClose={closeCategory} onEdit={openDecision} />
             <Sheet
                 open={Boolean(editing)}
                 onClose={() => !busy && setEditing(null)}

@@ -22,7 +22,8 @@
 | ID | Requirement | Status | Implementation |
 | --- | --- | --- | --- |
 | FH-FIN-001 | Verify available source coverage and import state. Import retrieved private financial history through preview/apply with immutable source facts, repeat-import deduplication, protected manual decisions, dated coverage and honest missing/pending data. No complete-history claim from row counts. | Implemented | `finance-import.ts`, `finance-library.ts`, `finance-validation.ts`; paired API and private source archive; issue #162. |
-| FH-FIN-002 | Finances has exactly Dépenses and Investissements tabs. Spending provides understandable categories, separate groceries/restaurants, responsive category/time charts and reviewable classification. Exclude transfers, repayments and investments; net evidenced refunds; preserve exceptional expenses, currencies, partial months and unsplit mortgage payments. Compare only defensible sourced public cohorts and compatible personal scope; averages are not targets. | Implemented | `FinancesView.tsx`, `finance-model.ts`, `finance-benchmarks.ts`; dated source metadata and conservative comparison gates; issue #162. |
+| FH-FIN-002 | Finances has exactly Dépenses and Investissements tabs. Spending provides understandable categories, separate groceries/restaurants, responsive category/time charts and reviewable classification. Exclude transfers, repayments and investments; net evidenced refunds; preserve exceptional expenses, currencies, partial months and unsplit mortgage payments. Compare only defensible sourced public cohorts and compatible personal scope; averages are not targets. | Superseded in part | The exactly-two-tabs constraint is superseded by the explicitly requested Tendances tab in FH-FIN-010. All spending, classification and public-benchmark rules remain implemented in `FinancesView.tsx`, `finance-model.ts`, `finance-benchmarks.ts`; issue #162. |
+| FH-FIN-010 | Add a distinct Tendances tab using the existing ledger and categories. Show year/month navigation, personal observed versus typical spending, cumulative daily and category comparisons with editable payment drill-down. Use sufficiently covered prior months, exclude target/future periods, compare partial months at the same elapsed day and disclose dates/method, missing accounts/history and pending limits. Never copy reference screenshot amounts, treat averages as targets or include transfers/card repayments/investment flows. | Implemented; release verification pending | Web-only personal-history model and view in [PR #178](https://github.com/vdskevin009/familyhub/pull/178); method in `docs/FINANCE-TRENDS.md`, exact CI/public-release tracking in #177. Local calculations, source/edit persistence and four-width browser checks pass. Supersedes only the former two-tab limit. |
 | FH-FIN-003 | Investment accounts retain actual types, source-dated balances, positions, contributions, transfers, grants, fees and maturity evidence. Incomplete sources must not imply zero, synchronized wealth, personal contribution room or fabricated performance. Review leads do not authorize transactions. | Implemented | Private preparation adapter, investment cash-flow model and Investissements tab; issue #162. |
 | FH-SAV-007 | Savings starts with services/expense items linked to their contract, followed by package/contract grouping. Preserve original billing period, actual and historic costs, tax basis and source. Included/shared services have no invented allocation and package totals count once. Unknown current amounts stay unknown; document upload/download and shared-edit persistence continue through existing architecture. | Implemented | Optional `billing`/`services` fields; `RecurringServices.tsx`, `ContractServicesForm.tsx`; issue #163. |
 
@@ -35,7 +36,8 @@ Package/category release verified: [PR #168](https://github.com/vdskevin009/fami
 | ID | Requirement | Status | Implementation |
 | --- | --- | --- | --- |
 | FH-FIN-006 | Clearly expose Courses alimentaires as a selectable category distinct from restaurants, retaining existing grocery mappings and explicit saved decisions in filters and monthly/yearly charts. Mixed supermarket receipts remain suggestions requiring evidence. | Implemented | Reuses the existing `groceries` identity with a clearer display label, including benchmark comparison labels. No duplicate category, migration, bulk classification or change to source benchmark definitions/values. Code: [PR #169](https://github.com/vdskevin009/familyhub/pull/169); exact release tracking: #162. |
-| FH-FIN-007 | Clicking a category opens all its payments in the selected period/account/currency, including already confirmed operations. Allow explicit persistent recategorization, refreshed totals/charts and easy Back/Close without losing caller search or period context. Handle empty categories, repeated actions, refunds, transfers and separate savings/investment flows. | Implemented | Existing revision-protected decisions; all-row category drill-down, persisted edits, context/focus restoration and duplicate-save guard. Synthetic mobile/keyboard, final-item, conflict and persistence acceptance passes. Code: [PR #171](https://github.com/vdskevin009/familyhub/pull/171); exact CI/deployment tracked in #162. |
+| FH-FIN-007 | Clicking a category opens all its payments in the selected period/account/currency, including already confirmed operations. Allow explicit persistent recategorization, refreshed totals/charts and easy Back/Close without losing caller search or period context. Handle empty categories, repeated actions, refunds, transfers and separate savings/investment flows. | Implemented | Existing revision-protected decisions; all source operations remain accessible, with excluded rows separated by FH-FIN-009. Persisted edits, context/focus restoration and duplicate-save guard. Code: [PR #171](https://github.com/vdskevin009/familyhub/pull/171); exact CI/deployment tracked in #162. |
+| FH-FIN-009 | Expense lists and category counts must use the same included rows as spending totals. Keep each repayment, transfer and other excluded operation accessible under Hors dépenses with its source and explicit editor; do not rely on opposite amounts cancelling. Preserve separate savings/investment flow navigation and existing decisions. | Implemented | Web-only list partition in `FinancesView.tsx` and `CategoryPayments.tsx` using existing `summary.included`; no aggregation, worker or ledger change. Synthetic ±1,350 settlement legs tested independently by account; source/edit persistence and keyboard/mobile checks pass at four widths. Code: [PR #176](https://github.com/vdskevin009/familyhub/pull/176); exact CI/public-release verification tracked in #162. |
 | FH-SAV-010 | Name the section Dépenses récurrentes while preserving `?view=savings` links and data identifiers. Focus it on one grouped services/packages list with its truthful selected-period total immediately above. Place meaningful observations/advice above it; open contract evidence, edits, documents and comparisons directly from each service group instead of a duplicate contract view. | Implemented | One primary list, source-linked contract details and per-filter paid totals. Original periods/taxes and unknown/mixed-period limits remain intact; document, sharing/conflict and comparison workflows tested. Code: [PR #171](https://github.com/vdskevin009/familyhub/pull/171); exact CI/deployment tracked in #163. |
 | FH-FIN-004 | Offer month/year selection, previous/next periods and annual/monthly views in the existing two Finances tabs. Make transaction categorization explicit and persist decisions with immediate chart/total updates. Dates mean source transaction dates; partial coverage and undecided rows stay visible. | Implemented | [PR #167](https://github.com/vdskevin009/familyhub/pull/167); release verification tracked in Issues #162/#163. Extends FH-FIN-002 and the existing decision API; no extra tab or source mutation. |
 | FH-FIN-005 | Offer an explicit Épargne / Investissements category with saved transaction decisions and monthly/yearly flow analysis. Keep it outside consumption, show outgoing and incoming movements separately, never add paired transfer sides or brokerage purchases to spending, and never call contributions returns. | Implemented | Extends the existing category/nature model and paired-worker validation (worker 2.23.1). Synthetic persistence, paired-flow, month/year and responsive checks pass; exact CI/deployment are tracked in #162; code in PR #168. No bulk reclassification, transaction execution, third tab or change to historical manual decisions. |
@@ -64,7 +66,10 @@ The 2.16.1 follow-up for Issue #36, [PR #128](https://github.com/vdskevin009/fam
 
 ### Explicit one-attempt recovery - FH-REIMB-040 / Issue #159
 
-**Implemented; aggregate synthetic checks passed, CI/deployment and live acceptance pending.** The owner may explicitly
+**Implemented in [PR #172](https://github.com/vdskevin009/familyhub/pull/172), main
+`55fd1c981fee29578831ae95e4641e994491ac94`; worker 2.23.2 installed.** Exact PR CI
+`38075718598` and main CI/Pages `38076051336` passed. Live collection acceptance
+remains partial and is tracked separately in Issue #159. The owner may explicitly
 acknowledge an old uncertain login attempt and authorize one fresh attempt using
 the configured local credentials. The paired `POST /{insurer}/recover-login`
 requires a UUID request ID, the exact existing attempt timestamp and an explicit
@@ -83,6 +88,44 @@ Ordinary reconciliation and the existing operator-approved new-payment policy
 remain authoritative; recovery does not authorize full financial apply, claim
 submission, password reset or bypassing a portal challenge. Private source facts,
 credentials, browser state and audit files stay outside Git and API results.
+
+### Post-authentication reader follow-up - FH-REIMB-040 / Issue #159
+
+**Reader recovery verified in [PR #175](https://github.com/vdskevin009/familyhub/pull/175),
+main `cca67594ff96385dba195121517c1eb5636ffd30`; worker 2.23.5 installed.**
+Exact PR CI [38089286436](https://github.com/vdskevin009/familyhub/actions/runs/38089286436)
+and main CI/Pages [38089724419](https://github.com/vdskevin009/familyhub/actions/runs/38089724419)
+passed, including retained .NET regressions. An independent complete live read and
+an installed-worker collection agreed, with only unchanged existing evidence and
+no new, changed, ambiguous or duplicate rows. A reconciliation replay was a no-op.
+The installed collection reused the saved session without submitting credentials;
+the normal French-language preference persisted across browser-context restart.
+Protected invoice/source rows, reimbursement decisions and prior finance history
+were preserved, including concurrently appended audited classifications. Pairing,
+origin enforcement, existing auth guards and task definitions remain intact.
+The authenticated deployed Chrome Sources view confirms completed collection.
+Published JS/CSS match the tested build exactly; static text is equivalent after
+platform line-ending/blank-line normalization. Physical-phone and challenged/MFA
+recovery acceptance remain unobserved and separate in Issue #159; the original
+uncertain credential-attempt failure cause remains unknown.
+Private reader diagnostics identify fixed filter/search/detail/pagination stages
+and coarse failure categories without URLs, option values, names or source rows.
+All three history filters must have unique recognized options before any filter
+event; normalized French/English labels select the observed value without publishing it.
+Supported labelled claim headers and unambiguous two-decimal currency formats
+retain the same service identity across portal languages. When English history
+exposes the unique normal French-language control, use it before collecting
+service labels to retain the historical source language. Unexpected confirmation
+or language navigation stops boundedly; never translate service labels or relax
+existing reconciliation to hide a locale mismatch. Existing private
+post-login navigation and single-use profile selection are retained in source;
+an explicit profile preference never falls back to another account.
+Missing/ambiguous options stop as layout drift instead of retrying a network
+timeout. Exact portal location remains mandatory. Session-only inspection never
+loads or submits configured credentials and stops at expired sessions or human
+challenges. Ordinary session renewal keeps the existing durable login gate and
+its cooldown; expiry alone never rearms a prior stop. It does not import financial records. Successful session restoration
+and complete history collection remain separate live acceptance gates.
 
 ### Readable clinic receipt fallback — FH-REIMB-013 / issue #28
 
