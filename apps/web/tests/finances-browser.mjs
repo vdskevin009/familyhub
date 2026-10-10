@@ -330,7 +330,7 @@ try {
         await form.getByLabel("Date du montant").fill("2026-10-01");
         await form
             .getByLabel("Source / période originale")
-            .fill("Synthetic invoice, one month");
+            .fill("Synthetic invoice, one month; SHA256 " + "a1".repeat(32));
         await form.getByRole("button", { name: "Ajouter un service" }).click();
         await form.getByLabel("Nom du service").fill("Synthetic streaming");
         await form.getByLabel("Coût").selectOption("included");
@@ -369,6 +369,7 @@ try {
             .getByRole("heading", { name: "Synthetic package", exact: true })
             .waitFor();
         assert.match(await services.innerText(), /120,00/);
+        assert.ok((await page.locator(".savings-contract").innerText()).includes("a1".repeat(32)), "Long source evidence remains readable");
         assert.equal(
             await page.evaluate(
                 () => document.documentElement.scrollWidth > innerWidth,
