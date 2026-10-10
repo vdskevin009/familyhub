@@ -8,6 +8,7 @@ export const expenseCategories = {
     transport: "Transport",
     childcare: "Garde d’enfants",
     children: "Enfant et famille",
+    pets: "Animaux de compagnie",
     subscriptions: "Abonnements",
     communications: "Téléphone et internet",
     health: "Santé",

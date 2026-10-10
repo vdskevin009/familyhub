@@ -11,6 +11,8 @@ import {
     classifiedRows,
     investmentCashFlows,
     fullObservedMonth,
+    expenseCategories,
+    suggestClassification,
 } from "../apps/worker/dist/finance-model.js";
 import {
     newContract,
@@ -31,6 +33,24 @@ const state = () => ({
     decisions: {},
     decisionHistory: [],
     imports: [],
+});
+
+test("one explicit pets category covers animal care without guessing ambiguous purchases", async () => {
+    assert.equal(expenseCategories.pets, "Animaux de compagnie");
+    assert.equal(Object.values(expenseCategories).filter(label => label === "Animaux de compagnie").length, 1);
+    const s = state(), row = s.data.transactions[0];
+    assert.notEqual(suggestClassification({ ...row, description: "BAKERY SYNTHETIC" }).category, "pets");
+    const before = JSON.stringify(s.data);
+    for (const [index, note] of ["pet food", "veterinary care", "medication", "grooming", "pet insurance"].entries()) {
+        s.data.transactions.push({ ...row, id: "pet-" + index, description: "SYNTHETIC RECEIPT", outflowCents: 1000 });
+        s.decisions["pet-" + index] = { nature: "expense", category: "pets", note, updatedAt: "2026-10-10T12:00:00Z" };
+    }
+    s.decisions.refund = { nature: "refund", category: "pets", note: "Synthetic receipt refund", updatedAt: "" };
+    const summary = summarizeSpending(s, "2026-04-01", "2026-04-30");
+    assert.equal(summary.categories.find(c => c.key === "pets").cents, 2550);
+    assert.equal(summary.categories.find(c => c.key === "pets").count, 6);
+    assert.equal(summary.categories.find(c => c.key === "groceries").cents, 12450);
+    assert.deepEqual(s.data.transactions.slice(0, 13), JSON.parse(before).transactions);
 });
 
 test("explicit savings/investment flows stay outside consumption and never add paired sides or brokerage buys", () => {

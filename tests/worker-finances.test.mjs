@@ -151,6 +151,12 @@ test("private finance HTTP authorization, preview/apply, conflict and restart pr
             ).status,
             409,
         );
+        const sourceFacts = JSON.stringify(changed.data);
+        changed = await (await post("/finances/decision", { id: "restaurant", expectedRevision: changed.revision, decision: { nature: "expense", category: "pets", note: "Explicit synthetic receipt review" } })).json();
+        assert.equal(changed.decisions.restaurant.category, "pets");
+        assert.equal(changed.decisions.childcare.category, "childcare");
+        assert.equal(changed.decisions.transfer.category, "savings-investments");
+        assert.equal(JSON.stringify(changed.data), sourceFacts);
         await stop();
         await start();
         const saved = await (await call("/finances", { headers })).json();
