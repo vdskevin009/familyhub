@@ -264,6 +264,7 @@ export async function syncDesjardinsPortal(apply = false, interactive = false, c
   } catch (error) {
     const message = error instanceof Error ? error.message : "";
     const safeMessage = /^Collection is incomplete or ambiguous|^No recent Desjardins preview/.test(message) ? message
+      : /^Processed-claims filter structure changed \((?:patient|category|pageSize|location)\)\.$/.test(message) ? message
       : /spawn (?:EPERM|UNKNOWN)/i.test(message) ? "Windows blocked the Desjardins browser launch. Check installed Microsoft Edge on this PC."
       : /executable doesn't exist|browser.*not installed/i.test(message) ? "Microsoft Edge or Playwright Chromium is unavailable. Install the browser before syncing."
       : /timeout|net::|network/i.test(message) ? "Desjardins portal navigation timed out or the network is unavailable."
