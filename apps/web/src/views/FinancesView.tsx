@@ -18,6 +18,8 @@ import {
     type FinanceDecision,
 } from "../../../worker/src/finance-model";
 import { benchmarkMeta, benchmarkProfiles } from "../finance-benchmarks";
+import { calendarPeriod, defaultPeriod } from "../finance-periods";
+import PeriodNavigator from "./PeriodNavigator";
 const money = (cents: number, currency = "CAD") =>
     new Intl.NumberFormat("fr-CA", { style: "currency", currency }).format(
         cents / 100,
@@ -272,21 +274,8 @@ export default function FinancesView({
     const initialize = (s: FinanceState) => {
         setState(s);
         if (s.data && !from) {
-            const end = new Date(s.data.scope.to + "T12:00:00Z");
-            end.setUTCDate(0);
-            const start = new Date(end);
-            start.setUTCDate(1);
-            start.setUTCMonth(start.getUTCMonth() - 5);
-            setFrom(
-                start.toISOString().slice(0, 10) > s.data.scope.from
-                    ? start.toISOString().slice(0, 10)
-                    : s.data.scope.from,
-            );
-            setTo(
-                end.toISOString().slice(0, 10) >= s.data.scope.from
-                    ? end.toISOString().slice(0, 10)
-                    : s.data.scope.to,
-            );
+            const period = defaultPeriod(s.data.scope);
+            setFrom(period.from); setTo(period.to);
         }
     };
     useEffect(() => {
@@ -375,20 +364,20 @@ export default function FinancesView({
             setBusy(false);
         }
     }
-    async function saveDecision() {
+    async function saveDecision(next = false) {
         if (!editing || !state) return;
         setBusy(true);
         setError("");
         try {
-            setState(
-                await saveFinanceDecision(
+            const saved = await saveFinanceDecision(
                     hub.worker,
                     editing,
                     state.revision,
                     decision,
-                ),
-            );
-            setEditing(null);
+                );
+            setState(saved);
+            const following = next ? rows.find(r => r.id !== editing && !saved.decisions[r.id]) : undefined;
+            if (following) openDecision(following.id, saved); else setEditing(null);
             setMessage("Décision enregistrée sur le PC.");
         } catch (e) {
             setError((e as Error).message);
@@ -419,6 +408,13 @@ export default function FinancesView({
     const editRow = state
         ? classifiedRows(state).find((r) => r.id === editing)
         : null;
+    function openDecision(id: string, saved = state) {
+        if (!saved) return;
+        const row = classifiedRows(saved).find(r => r.id === id);
+        if (!row) return;
+        setEditing(id); setError("");
+        setDecision({ nature: row.nature, category: row.category, note: saved.decisions[id]?.note ?? "", updatedAt: "" });
+    }
     const investmentAccounts =
         data?.accounts.filter((a) => a.type !== "credit-card") ?? [];
     const selected =
@@ -606,23 +602,9 @@ export default function FinancesView({
             )}
             {data && state && summary && (
                 <>
+                    <PeriodNavigator range={{ from, to }} scope={data.scope} onChange={range => { setFrom(range.from); setTo(range.to); }} />
+                    <p className="muted">Totaux par date d’opération. La vue annuelle conserve les mois partiels et les lacunes; elle n’extrapole pas une année complète.</p>
                     <div className="finance-filters">
-                        <label>
-                            Du
-                            <input
-                                type="date"
-                                value={from}
-                                onChange={(e) => setFrom(e.target.value)}
-                            />
-                        </label>
-                        <label>
-                            Au
-                            <input
-                                type="date"
-                                value={to}
-                                onChange={(e) => setTo(e.target.value)}
-                            />
-                        </label>
                         {tab === "expenses" && (
                             <label>
                                 Compte
@@ -731,6 +713,7 @@ export default function FinancesView({
                                     <h2>Évolution mensuelle</h2>
                                     <Bars
                                         currency={currency}
+                                        onSelect={(month) => { const period = calendarPeriod(Number(month.slice(0, 4)), Number(month.slice(5, 7))); setFrom(period.from); setTo(period.to); }}
                                         values={summary.months.map((m) => ({
                                             id: m.month,
                                             label: m.month,
@@ -749,6 +732,7 @@ export default function FinancesView({
                             </div>
                             <section className="surface view-stack">
                                 <h2>Opérations et catégories</h2>
+                                <button className="button secondary" disabled={!rows.some(r => !r.reviewed)} onClick={() => { const row = rows.find(r => !r.reviewed); if (row) openDecision(row.id); }}>Catégoriser les opérations</button>
                                 <div className="finance-filters">
                                     <label>
                                         Catégorie
@@ -803,18 +787,7 @@ export default function FinancesView({
                                             <button
                                                 className="finance-service"
                                                 key={r.id}
-                                                onClick={() => {
-                                                    setEditing(r.id);
-                                                    setDecision({
-                                                        nature: r.nature,
-                                                        category: r.category,
-                                                        note:
-                                                            state.decisions[
-                                                                r.id
-                                                            ]?.note ?? "",
-                                                        updatedAt: "",
-                                                    });
-                                                }}
+                                                onClick={() => openDecision(r.id)}
                                             >
                                                 <span>
                                                     <strong>
@@ -841,6 +814,7 @@ export default function FinancesView({
                                                             ? "Confirmé"
                                                             : "Suggestion"}
                                                     </small>
+                                                    <small className="finance-edit-label">{r.reviewed ? "Modifier la catégorie" : "Catégoriser"}</small>
                                                 </span>
                                                 <strong>
                                                     {money(
@@ -1343,6 +1317,7 @@ export default function FinancesView({
                         <label>
                             Nature
                             <select
+                                aria-label="Nature"
                                 value={decision.nature}
                                 onChange={(e) =>
                                     setDecision({
@@ -1370,6 +1345,7 @@ export default function FinancesView({
                         <label>
                             Catégorie
                             <select
+                                aria-label="Catégorie"
                                 value={decision.category}
                                 onChange={(e) =>
                                     setDecision({
@@ -1407,6 +1383,7 @@ export default function FinancesView({
                                 ? "Enregistrement…"
                                 : "Enregistrer la décision"}
                         </button>
+                        <button className="button secondary" type="button" disabled={busy} onClick={() => void saveDecision(true)}>Enregistrer et suivante</button>
                         {error && <Notice error>{error}</Notice>}
                     </form>
                 )}

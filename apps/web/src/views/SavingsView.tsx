@@ -6,10 +6,14 @@ import type { HubState } from "../state";
 import type { AppView } from "../types";
 import { categories, newContract, missingInformation, effectiveContracts, monthlyPrice, publicBaseline,
   comparisonFingerprint, baselineKey, shortlistTotal, type SavingsContract, type SavingsCategory } from "../savings";
-import { startSavingsResearch, fetchSavingsResearch } from "../worker";
+import { startSavingsResearch, fetchSavingsResearch, fetchFinances } from "../worker";
 import SavingsContractForm from "./SavingsContractForm";
 import RecurringServices from "./RecurringServices";
-import { contractMonthly } from "../savings";
+import type { FinanceState } from "../../../worker/src/finance-model";
+import { defaultPeriod } from "../finance-periods";
+import { reconcilePayments } from "../savings-payments";
+import PeriodNavigator from "./PeriodNavigator";
+import SavingsPayments, { ContractPaymentDetails } from "./SavingsPayments";
 import SavingsOfferCard from "./SavingsOfferCard";
 import { useSavingsSharing } from "../savings-sharing";
 
@@ -26,6 +30,20 @@ export default function SavingsView({ hub, onNavigate }: { hub: HubState; onNavi
   const [error, setError] = useState(""), [message, setMessage] = useState("");
   const [starting, setStarting] = useState(false), startingRef = useRef(false);
   const [filter, setFilter] = useState<SavingsCategory | "all">("all");
+  const [finance, setFinance] = useState<FinanceState | null>(null), [financeError, setFinanceError] = useState("");
+  const [period, setPeriod] = useState(() => defaultPeriod());
+  useEffect(() => {
+    let cancelled = false;
+    setFinance(null); setFinanceError("");
+    if (hub.worker.Endpoint && hub.worker.ApiKey) void fetchFinances(hub.worker).then(saved => {
+      if (cancelled) return;
+      setFinance(saved?.schema === 1 ? saved : null);
+      if (saved?.data) setPeriod(defaultPeriod(saved.data.scope));
+    }).catch(() => { if (!cancelled) setFinanceError("Historique bancaire indisponible. Les références contractuelles restent visibles; aucun montant payé n’est présumé."); });
+    return () => { cancelled = true; };
+  }, [hub.worker.Endpoint, hub.worker.ApiKey]);
+  const payments = reconcilePayments(contracts, finance, period.from, period.to);
+  const visibleContracts = contracts.filter(c => filter === "all" || filter === c.category);
   const pending = reviews.filter(review => review.job.status === "queued" || review.job.status === "running").map(review => review.job.id).join(",");
   useEffect(() => {
     if (!pending || !hub.worker.Endpoint || !hub.worker.ApiKey) return;
@@ -52,7 +70,6 @@ export default function SavingsView({ hub, onNavigate }: { hub: HubState; onNavi
   });
   const total = shortlistTotal(entries);
   const recurring = recurringCandidates(hub.spending).filter(item => !contracts.some(contract => contract.name.toLowerCase() === item.merchant.toLowerCase())).slice(0, 5);
-  const knownMonthly = contracts.filter(contract => contract.category !== "mortgage" && (!contract.billing || contract.billing.currency === "CAD")).reduce((sum, contract) => sum + (contractMonthly(contract) ?? 0), 0);
   function save(contract: SavingsContract) {
     hub.setSavings(previous => ({ ...previous, Contracts: [...(previous.Contracts ?? []).filter(item => item.id !== contract.id), contract] }));
     setEditing(null); setMessage("Contract saved on this device."); setError("");
@@ -78,16 +95,23 @@ export default function SavingsView({ hub, onNavigate }: { hub: HubState; onNavi
     {error && <Notice error onDismiss={() => setError("")}>{error}</Notice>}
     {sharing.paired && <div className="surface view-stack"><h2>Daily public research</h2><p>{sharing.research?.schedule?.enabled ? `Every day at ${sharing.research.schedule.at} (${sharing.research.schedule.timeZone}). Your PC must be running with your Windows user signed in.` : "No daily schedule has been confirmed by your paired PC."}</p>{sharing.research?.daily && <p className="muted">Last attempt {sharing.research.daily.attemptedAt ? new Date(sharing.research.daily.attemptedAt).toLocaleString() : "unknown"} · {sharing.research.daily.outcome?.replaceAll("-", " ")} · {sharing.research.daily.results?.filter(result => result.outcome === "complete").length ?? 0} completed comparisons.</p>}{sharing.researchError && <Notice error>{sharing.researchError}</Notice>}<p className="muted">New comparisons load when you open Savings or refresh shared contracts. Public estimates still need your review. Previous decisions are retained in result history.</p></div>}
     {message && <Notice onDismiss={() => setMessage("")}>{message}</Notice>}
-    {contracts.length > 0 && <RecurringServices contracts={contracts.filter(c => filter === "all" || filter === c.category)} onOpen={openEditor} />}
-    <div className="savings-summary"><div><small>Known recurring costs</small><strong>{currency.format(knownMonthly)}<span>/month</span></strong><small>Entered costs; mortgage shown separately</small></div><div><small>Reviewed shortlist</small><strong>{currency.format(total.firstYear)}<span>/first year</span></strong><small>Estimated, not realized · {total.count} compatible {total.count === 1 ? "option" : "options"}</small></div></div>
+    <PeriodNavigator range={period} onChange={setPeriod} scope={finance?.data?.scope} label="Période des paiements" />
+    {financeError && <Notice error>{financeError}</Notice>}
+    {!finance?.data && <p className="muted">Ouvrez Finances pour importer l’historique bancaire. Seules les références explicitement TTC peuvent être affichées; les autres montants restent à compléter.</p>}
+    {period.from > period.to && <Notice error>La date de début doit précéder la date de fin.</Notice>}
+    {contracts.length > 0 && <><SavingsPayments result={payments} contracts={visibleContracts} onMonth={setPeriod} onCategorize={() => onNavigate("finances")} /><RecurringServices contracts={visibleContracts} summaries={payments.summaries} onOpen={openEditor} /></>}
+    <div className="savings-summary savings-reviewed-summary"><div><small>Reviewed shortlist</small><strong>{currency.format(total.firstYear)}<span>/first year</span></strong><small>Estimated, not realized · {total.count} compatible {total.count === 1 ? "option" : "options"}</small></div></div>
     {total.excluded > 0 && <p className="muted">{total.excluded} shortlisted options excluded from totals because costs, requirements or dependencies need review.</p>}
     <div className="savings-toolbar"><label>Category<select value={filter} onChange={event => setFilter(event.target.value as typeof filter)}><option value="all">All contracts</option>{Object.entries(categories).map(([key, label]) => <option value={key} key={key}>{label}</option>)}</select></label><button className="button secondary" onClick={() => onNavigate("finances")}>Finances<ChevronRight size={16} /></button></div>
     {!contracts.length && <div className="surface savings-empty"><TrendingDown size={30} /><h2>Start with one recurring cost</h2><p>Phone, insurance, subscriptions, card fees or mortgage. Add what you know; the checklist shows what is still missing.</p><div className="savings-category-picks">{Object.entries(categories).map(([key, label]) => <button className="button secondary" key={key} onClick={() => openEditor(newContract(key as SavingsCategory, crypto.randomUUID()))}>{label}</button>)}</div></div>}
     <h2>Par contrat et forfait</h2><div className="savings-contracts">{contracts.filter(contract => filter === "all" || filter === contract.category).map(contract => {
       const missing = missingInformation(contract), review = latest(contract.id), active = review?.job.status === "queued" || review?.job.status === "running";
+      const paid = payments.summaries.find(s => s.contractId === contract.id)!;
       return <article className="surface savings-contract" key={contract.id}>
-        <div className="savings-contract-heading"><div><small>{categories[contract.category]}</small><h2>{contract.name}</h2><span className="muted">{contract.provider || "Provider missing"}{contract.renewal && " · Review " + contract.renewal}</span></div><strong>{contract.category === "mortgage" ? String(contract.mortgageRate ?? "?") + "%" : price(contractMonthly(contract), contract.billing?.currency ?? "CAD")}<small>{contract.category === "mortgage" ? "current rate" : "/month"}</small></strong></div>
-        {contract.billing && <p className="muted">Facture source : {price(contract.billing.amount,contract.billing.currency)} / {contract.billing.count} {contract.billing.unit} · {contract.billing.asOf || "date à compléter"}. {contract.billing.source}</p>}<details className="savings-checklist"><summary>{missing.length ? missing.length + " details to complete" : "Ready for public comparison"}</summary>{missing.length > 0 ? <ul>{missing.map(item => <li key={item}>{item}</li>)}</ul> : <p>Public offers still need an eligibility and service/coverage check before you change anything.</p>}<p className="muted">Useful document: {contract.category.includes("insurance") ? "policy and renewal package" : contract.category === "mortgage" ? "mortgage statement and renewal terms" : contract.category === "credit-card" ? "fee schedule and benefits" : "recent bill and contract"}. Documents stay within your devices and paired PC after sharing.</p></details>
+        <div className="savings-contract-heading"><div><small>{categories[contract.category]}</small><h2>{contract.name}</h2><span className="muted">{contract.provider || "Provider missing"}{contract.renewal && " · Review " + contract.renewal}</span></div><strong>{paid.cents !== null ? price(paid.cents / 100, contract.billing?.currency ?? "CAD") : paid.referenceMonthly !== null ? price(paid.referenceMonthly, contract.billing?.currency ?? "CAD") : "TTC à compléter"}<small>{paid.cents !== null ? "payé sur la période" : paid.referenceMonthly !== null ? "référence TTC /mois" : "aucun TTC confirmé"}</small></strong></div>
+        <p className="savings-source-price">Prix contractuel source conservé : {price(contract.price)} / {contract.cycle} · {contract.taxesIncluded === true ? "taxes incluses" : contract.taxesIncluded === false ? "avant taxes" : "taxes non confirmées"}. Ce prix historique n’est pas ajouté aux paiements.</p>
+        <ContractPaymentDetails contract={contract} summary={paid} />
+        {contract.billing && <p className="muted">Montant source : {price(contract.billing.amount,contract.billing.currency)} / {contract.billing.count} {contract.billing.unit} · {contract.billing.asOf || "date à compléter"}. {contract.billing.source}</p>}<details className="savings-checklist"><summary>{missing.length ? missing.length + " details to complete" : "Ready for public comparison"}</summary>{missing.length > 0 ? <ul>{missing.map(item => <li key={item}>{item}</li>)}</ul> : <p>Public offers still need an eligibility and service/coverage check before you change anything.</p>}<p className="muted">Useful document: {contract.category.includes("insurance") ? "policy and renewal package" : contract.category === "mortgage" ? "mortgage statement and renewal terms" : contract.category === "credit-card" ? "fee schedule and benefits" : "recent bill and contract"}. Documents stay within your devices and paired PC after sharing.</p></details>
         <div className="row-actions"><button className="button secondary" onClick={() => { setError(""); openEditor(contract); }}><Pencil size={15} />{missing.length ? "Complete details" : "Edit"}</button><button className="button secondary" disabled={active} onClick={() => { setError(""); setResearching(contract); }}><Search size={15} />{active ? "Researching…" : "Compare public offers"}</button>{review && <button className="button secondary" onClick={() => setOpenResult(contract.id)}><FileText size={15} />{active ? "Research status" : "Results"}</button>}</div>
       </article>;
     })}</div>

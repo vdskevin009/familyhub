@@ -1,6 +1,6 @@
 # Private finances and recurring services
 
-Issues [#162](https://github.com/vdskevin009/familyhub/issues/162) and [#163](https://github.com/vdskevin009/familyhub/issues/163). Requirements FH-FIN-001/002/003 and FH-SAV-007.
+Issues [#162](https://github.com/vdskevin009/familyhub/issues/162) and [#163](https://github.com/vdskevin009/familyhub/issues/163). Requirements FH-FIN-001/002/003/004 and FH-SAV-007/008.
 
 ## Interface
 
@@ -10,10 +10,10 @@ The existing app gains a primary **Finances** destination with exactly two tabs:
 Finances                           Actualiser
 [ Dépenses ] [ Investissements ]
 Sources et import privé (collapsed)
-Dates / account / currency
+Month or year / previous-next / custom dates / account / currency
 Net imported spending + review count
 Category bars     |     Monthly trend
-Transactions → classification, evidence, save
+Transactions → classification, evidence, save and next
 Public reference cohorts + methodology
 Repeated-charge observations → contracts
 
@@ -25,7 +25,7 @@ Source value history, annual fees, GIC maturity
 
 Savings
 Services → original contract and attachments
-Known monthly equivalents, per currency
+Actual dated payments, per currency; TTC reference costs separately
 Contracts/packages → existing comparison workflow
 ```
 
@@ -43,7 +43,7 @@ GET `/finances`, POST `/finances/import` and POST `/finances/decision` reuse pai
 
 Descriptions produce **suggestions**, not verified merchant receipts. Groceries and restaurants are separate, as are housing, mortgage payments, utilities, transport, childcare, child/family purchases, subscriptions, communications, health, leisure, clothing, household purchases, travel, fees and exceptional projects. Ambiguous credits and transfer/investment hints remain reviewable. Transfer and card-payment suggestions are excluded; merchant refunds retain the source credit sign and reduce their assigned category. Manual decisions override suggestions without changing amounts, dates or sources.
 
-Mortgage payments remain whole cash outflows. No principal/interest split is inferred. Currencies have separate totals with no assumed exchange rate. Source-window and coverage-limited months are labeled partial, never extrapolated. A full observed calendar window is not proof that all household accounts or expenses are present. The initial view uses the latest six completed calendar months inside the imported window. Earlier retrieved rows remain available through date filters; the coverage panel reports observed dates and source warnings.
+Mortgage payments remain whole cash outflows. No principal/interest split is inferred. Currencies have separate totals with no assumed exchange rate. Source-window and coverage-limited months are labeled partial, never extrapolated. A full observed calendar window is not proof that all household accounts or expenses are present. The initial view uses the latest completed calendar month inside the imported window (or the available partial month if no completed month is available). Both tabs support month/year selection, previous/next navigation and custom dates. Annual views retain all twelve months with partial coverage labels; chart buttons drill into a month. Earlier retrieved rows remain available; the coverage panel reports observed dates and source warnings. The category filter applies to the transaction list; the category chart keeps all categories for the selected period/account/currency. “Catégoriser les opérations” opens the next unconfirmed visible row; “Enregistrer et suivante” persists one explicit decision and advances within that filtered list. No bulk decision is inferred.
 
 Repeated exact account/merchant descriptions among subscriptions, communications and fees show the previous and latest dated charge, count and observed period cost. A difference is a review lead, never a confirmed price increase, duplicated service, cancellation recommendation or projected saving. Existing Savings contract evidence is the next review step.
 
@@ -66,6 +66,10 @@ The 2023 Survey of Household Spending references were retrieved on 2026-10-10 us
 Shelter includes utilities and other accommodation; communications and childcare are nested household operations. These lines must not be summed. Supermarket charges may contain non-food items, restaurant alcohol has a different survey definition, and transport includes net vehicle purchases and travel. Personal comparison stays unavailable for partial windows, individual-account filters, unreviewed/uncertain rows, non-CAD or unmapped/incompatible categories. No overall ratio, income ratio, mortgage-interest estimate or inflation adjustment is fabricated. Category confirmation still requires the operator to reconcile mixed receipts to the displayed definitions.
 
 ## Recurring contracts
+
+Savings uses the same month/year navigator. Paid totals group posted bank rows by a unique provider label, respecting manual finance nature decisions, currencies and duplicate-review flags. This is a proposed provider grouping, not proof of a policy identity, historical package or recurring tariff. Whole debit amounts include any tax/fees actually paid without estimating their components. Merchant refunds reduce totals; transfers, repayments, investments, income and confirmed duplicates are excluded. Ambiguous provider matches, currency differences, unknown credits and direct charges for currently included services remain in a review list. Generic Apple billing does not establish an Apple TV purchase. The original transaction date controls the month; a delayed debit is never moved to the invoice month. Missing payments remain unknown, not zero. Annual totals and bars use the same rules, with no extrapolation.
+
+Contract cards retain the source price, period and tax basis, and expose dated payments plus filename/line/SHA evidence. The latest observed debit is dated; a repeat label requires equal positive payments on the same account in successive months, 20–40 days apart, with only one charge in each month. That observation never creates a guaranteed rate. Equal source/payment amounts are labeled as a coincidence requiring original-reference review, not an independently verified invoice match. Only explicitly tax-inclusive source prices can appear as normalized TTC references. Tax-exclusive or unknown prices are preserved but not uplifted by an assumed tax rate. Included/shared services have no invented individual TTC amount and never add a second package total. No private contract or source record is automatically rewritten by this read-only reconciliation.
 
 Optional `billing` preserves original amount, currency, unit/count, as-of date, source description and tax status independently of the legacy contract price. Missing current amounts can explicitly be null even if a historical price exists. Monthly equivalents use months/count, annual/12, weekly ×52/12 or daily ×365.25/12. An irregular utility bill is an annualized reference, not a prediction. The old promotional price retains its original legacy cycle.
 
