@@ -110,7 +110,8 @@ export async function submitPortalLogin(page: Page, insurer: Insurer, credential
   // An input event can already transmit an identifier/password. Persist the stop
   // before the first fill, not merely before clicking Submit.
   phase?.("transmission-starting");
-  await beforeTransmission?.();
+  if (typeof beforeTransmission !== "function") throw new Error("Login attempt guard is required.");
+  await beforeTransmission();
   for (const [selector, value] of fields) { guard(); phase?.(/password/i.test(selector) ? "filling-password" : "filling-username"); await page.locator(selector).fill(value, { timeout: 5000 }); }
   if (insurer === "bluecross") {
     guard();

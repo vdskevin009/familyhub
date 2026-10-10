@@ -81,7 +81,7 @@ test('observed forms fill only approved fields and submit once for each insurer'
         fill:async value=>calls.push(['fill',selector,value]), check:async()=>calls.push(['check',selector]),click:async()=>calls.push(['submit',selector])}),
       getByRole:(role,options)=>({click:async()=>calls.push(['submit',role,options.name])}) };
     const c=insurer==='desjardins'?credentials:{version:1,insurer,password:'synthetic',policy:'synthetic-policy',certificate:'synthetic-id',role:'spouse'};
-    await auth.submitPortalLogin(page,insurer,c);
+    await auth.submitPortalLogin(page,insurer,c,undefined,async()=>{});
     assert.equal(calls.filter(x=>x[0]==='submit').length,1);
     assert.equal(calls.filter(x=>x[0]==='fill').length,insurer==='desjardins'?2:3);
     if(insurer==='bluecross')assert.deepEqual(calls.find(x=>x[0]==='check'),['check','input[name="spouse"][value="1"]']);
@@ -99,19 +99,19 @@ test('Blue Cross matches the observed Login button without matching other action
       assert.equal(matches('Login help'),false,'Other login-related actions must not match');
       submissions++;
     }})};
-  await auth.submitPortalLogin(page,'bluecross',{version:1,insurer:'bluecross',password:'synthetic',policy:'synthetic-policy',certificate:'synthetic-id',role:'member'});
+  await auth.submitPortalLogin(page,'bluecross',{version:1,insurer:'bluecross',password:'synthetic',policy:'synthetic-policy',certificate:'synthetic-id',role:'member'},undefined,async()=>{});
   assert.equal(submissions,1);
 });
 
 test('navigation away between fills prevents transmitting a password to another origin', async () => {
   let url='https://id.desjardins.com/login';const fills=[];
   const page={url:()=>url,locator:selector=>({count:async()=>1,isVisible:async()=>true,isEditable:async()=>true,getAttribute:async()=>/Password/.test(selector)?'password':'text',fill:async value=>{fills.push(value);url='https://unexpected.test/login';}})};
-  await assert.rejects(auth.submitPortalLogin(page,'desjardins',credentials),/form changed/);
+  await assert.rejects(auth.submitPortalLogin(page,'desjardins',credentials,undefined,async()=>{}),/form changed/);
   assert.deepEqual(fills,['synthetic-user']);
 });
 test('unrecognized form type never receives a secret', async () => {
   let fills=0; const page={url:()=> 'https://id.desjardins.com/login',locator:()=>({count:async()=>1,isVisible:async()=>true,isEditable:async()=>true,getAttribute:async()=> 'text',fill:async()=>{fills++;}})};
-  await assert.rejects(auth.submitPortalLogin(page,'desjardins',credentials),/form changed/);assert.equal(fills,0);
+  await assert.rejects(auth.submitPortalLogin(page,'desjardins',credentials,undefined,async()=>{}),/form changed/);assert.equal(fills,0);
 });
 test('a rejected password after submission remains disabled across later attempts', async () => {
   const f=fixture(); let body=''; const original=f.deps.submit;

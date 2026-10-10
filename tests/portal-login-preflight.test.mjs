@@ -124,3 +124,5 @@ test('legacy file bytes stay identical and invalid new failure evidence is fail-
   await writeFile(path, JSON.stringify({ blocked: false, firstFailure: { observedAt: '2026-01-01', phase: 'checking-form', reason: 'layout-changed', outcome: 'preflight', rawUrl: 'synthetic-private-token' } }));
   assert.deepEqual(await auth.readLoginControl('desjardins'), { blocked: true, reason: 'credentials-unavailable' });
 });
+
+test("the lower-level helper refuses every fill without an explicit durable-guard callback",async()=>{const f=fixture();await assert.rejects(auth.submitPortalLogin(f.page,"desjardins",credentials),/attempt guard is required/);assert.equal(f.events.length,0);assert.equal(f.clicks(),0);});
