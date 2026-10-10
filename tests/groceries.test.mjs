@@ -87,7 +87,10 @@ test("damaged storage fails closed and unrelated ledgers/contracts remain byte-i
   await writeFile(join(directory, "invoices.json"), sentinel); await mkdir(join(directory, "savings")); await writeFile(join(directory, "savings", "household-contracts.json"), sentinel);
   const r = (await store.import({ sources: [source("separate store")] })).record; await saved(r, store);
   assert.equal(await readFile(join(directory, "invoices.json"), "utf8"), sentinel); assert.equal(await readFile(join(directory, "savings", "household-contracts.json"), "utf8"), sentinel);
-  const path = join(directory, "groceries", "purchases.json"); await writeFile(path, "damaged");
+  const path = join(directory, "groceries", "purchases.json"), valid = await readFile(path, "utf8");
+  for (const edit of [s => s.records[0].createdAt = 42, s => s.records[0].reviewedAt = null, s => s.records[0].duplicateOf = "missing"]) { const state = JSON.parse(valid); edit(state); const bytes = JSON.stringify(state); await writeFile(path, bytes); await assert.rejects(store.list(), /préservée/); await assert.rejects(store.import({ sources: [source("new")] }), /préservée/); assert.equal(await readFile(path, "utf8"), bytes); }
+  assert.equal(unitPrice({ ...item, quantity: 1e-300, size: 1e-300 }), null);
+  await writeFile(path, "damaged");
   await assert.rejects(store.list(), /préservée/); await assert.rejects(store.import({ sources: [source("new")] }), /préservée/); assert.equal(await readFile(path, "utf8"), "damaged");
 });
 test("authenticated real-worker API: origin, pairing, no-store, upload/review/source/restart", async t => {

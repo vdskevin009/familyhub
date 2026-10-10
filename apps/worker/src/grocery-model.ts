@@ -32,7 +32,9 @@ export const normalizeProduct = (name: string) => name.normalize("NFKC").toLocal
 export function unitPrice(item: GroceryItem): { price: number; unit: string } | null {
   if (item.amount === null || item.quantity === null || item.size === null || !item.unit) return null;
   const factor = item.unit === "g" || item.unit === "ml" ? .001 : 1;
-  return { price: item.amount / (item.quantity * item.size * factor), unit: item.unit === "g" || item.unit === "kg" ? "kg" : item.unit === "ml" || item.unit === "l" ? "l" : "unité" };
+  const denominator = item.quantity * item.size * factor, price = item.amount / denominator;
+  if (!Number.isFinite(denominator) || denominator <= 0 || !Number.isFinite(price)) return null;
+  return { price, unit: item.unit === "g" || item.unit === "kg" ? "kg" : item.unit === "ml" || item.unit === "l" ? "l" : "unité" };
 }
 export function receiptWarnings(r: GroceryReceipt): string[] {
   const warnings = [...r.warnings];

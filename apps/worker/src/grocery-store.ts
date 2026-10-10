@@ -8,6 +8,7 @@ export type StoredGrocerySource = GrocerySource & { data: string };
 type State = { schema: 1; records: GroceryRecord[]; sources: StoredGrocerySource[] };
 const hashPattern = /^[a-f0-9]{64}$/;
 const idPattern = /^[a-f0-9-]{36}$/;
+const timestamp = (v: unknown) => typeof v === "string" && Number.isFinite(Date.parse(v)) && new Date(v).toISOString() === v;
 export function validateSource(value: unknown): StoredGrocerySource {
   if (!value || typeof value !== "object") throw new GroceryError("Source invalide.");
   const v = value as Record<string, unknown>;
@@ -37,6 +38,8 @@ export class GroceryStore {
       if (new Set(state.records.map(r => r.id)).size !== state.records.length || new Set(state.sources.map(s => s.hash)).size !== state.sources.length) throw new GroceryError();
       for (const r of state.records) {
         if (!idPattern.test(r.id) || !idPattern.test(r.revision) || !["saved", "draft"].includes(r.status) || !["pending", "running", "complete", "failed"].includes(r.extraction)
+          || !timestamp(r.createdAt) || r.reviewedAt !== null && !timestamp(r.reviewedAt) || r.status === "saved" && r.reviewedAt === null
+          || r.duplicateOf !== null && (r.status !== "draft" || r.duplicateOf === r.id || !state.records.some(target => target.id === r.duplicateOf && target.status === "saved"))
           || !Array.isArray(r.sources) || !r.sources.length || r.sources.some(s => !hashPattern.test(s.hash) || typeof s.name !== "string" || !s.name.trim() || s.name.length > 200 || !state.sources.some(other => other.hash === s.hash && other.type === s.type && other.size === s.size))) throw new GroceryError();
         validateReceipt(r.receipt);
       }
