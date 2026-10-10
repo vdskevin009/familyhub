@@ -43,6 +43,23 @@ export function validateContract(value: unknown): SavingsContract {
     ids.add(document.id);
     return { id: document.id, name: document.name, type: document.type, size: document.size, addedAt: document.addedAt };
   });
+  if (input.billing !== undefined) {
+    const b = input.billing as Record<string, unknown>;
+    if (!b || (b.amount !== null && (typeof b.amount !== "number" || !Number.isFinite(b.amount) || b.amount < 0 || b.amount > 1e9)) || typeof b.currency !== "string" || !/^[A-Z]{3}$/.test(b.currency) || !["days","weeks","months","years"].includes(String(b.unit)) || typeof b.count !== "number" || !Number.isFinite(b.count) || b.count <= 0 || b.count > 10000 || typeof b.asOf !== "string" || (b.asOf && !/^\d{4}-\d{2}-\d{2}$/.test(b.asOf)) || typeof b.source !== "string" || b.source.length > 3000) return invalid();
+    result.billing = { amount: b.amount as number | null, currency: b.currency, unit: b.unit as NonNullable<SavingsContract["billing"]>["unit"], count: b.count, asOf: b.asOf, source: b.source };
+    if (b.taxesIncluded !== undefined) {
+      if (b.taxesIncluded !== null && typeof b.taxesIncluded !== "boolean") return invalid();
+      result.billing.taxesIncluded = b.taxesIncluded as boolean | null;
+    }
+  }
+  if (input.services !== undefined) {
+    if (!Array.isArray(input.services) || input.services.length > 30) return invalid();
+    const ids = new Set<string>();
+    result.services = input.services.map(s => {
+      if (!s || typeof s.id !== "string" || !idPattern.test(s.id) || ids.has(s.id) || typeof s.name !== "string" || !s.name.trim() || s.name.length > 150 || !["shared","included","documented"].includes(s.pricing) || (s.monthlyAmount !== null && (typeof s.monthlyAmount !== "number" || !Number.isFinite(s.monthlyAmount) || s.monthlyAmount < 0 || s.monthlyAmount > 1e9)) || (s.pricing !== "documented" && s.monthlyAmount !== null) || (s.taxesIncluded !== null && typeof s.taxesIncluded !== "boolean") || typeof s.source !== "string" || s.source.length > 2000 || (s.pricing === "documented" && !s.source.trim())) return invalid();
+      ids.add(s.id); return { id:s.id,name:s.name,pricing:s.pricing,monthlyAmount:s.monthlyAmount,taxesIncluded:s.taxesIncluded,source:s.source };
+    });
+  }
   return result;
 }
 export function contractSignature(contract: SavingsContract): string { return JSON.stringify(validateContract(contract)); }

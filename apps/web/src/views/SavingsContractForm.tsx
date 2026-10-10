@@ -3,6 +3,8 @@ import { Plus, FileText, Download } from "lucide-react";
 import { Notice } from "../ui/primitives";
 import { categories, publicProviders, type SavingsContract } from "../savings";
 import { saveContractDocument, downloadContractDocument } from "../contract-documents";
+import ContractServicesForm from "./ContractServicesForm";
+import { validateContract } from "../../../worker/src/savings-sharing-model";
 const numericKeys = ["price", "cancellationFee", "annualLostDiscounts", "priceAfterPromo", "currentPromoMonths", "liabilityLimit", "collisionDeductible", "comprehensiveDeductible", "dataGb", "downloadMbps", "lines", "mortgageBalance", "mortgageRate", "amortizationYears", "termMonths"] as const;
 type NumericKey = typeof numericKeys[number];
 
@@ -18,7 +20,8 @@ export default function SavingsContractForm({ initial, onSave, onClose }: {
     event.preventDefault();
     if (!draft.name.trim() || numericKeys.some(key => draft[key] !== null && (!Number.isFinite(draft[key]) || Number(draft[key]) < 0))) { setError("Enter a name and valid nonnegative amounts."); return; }
     if (!Number.isInteger(draft.currentPromoMonths) || draft.currentPromoMonths > 120 || !Number.isInteger(draft.lines) || draft.lines < 1 || draft.lines > 100) { setError("Check the promotion duration and number of lines."); return; }
-    onSave({ ...draft, name: draft.name.trim(), updatedAt: new Date().toISOString() });
+    try { onSave(validateContract({ ...draft, name: draft.name.trim(), updatedAt: new Date().toISOString() })); }
+    catch (e) { setError(e instanceof Error ? e.message : "Vérifiez les services et la période de facturation."); }
   }
   async function upload(file: File | undefined) {
     if (!file) return;
@@ -34,8 +37,8 @@ export default function SavingsContractForm({ initial, onSave, onClose }: {
       <label>Category<select value={draft.category} onChange={event => update("category", event.target.value)}>{Object.entries(categories).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label>
       <label>Current provider<input maxLength={100} list="savings-providers" value={draft.provider} onChange={event => update("provider", event.target.value)} /><datalist id="savings-providers">{publicProviders.map(provider => <option value={provider} key={provider} />)}</datalist></label>
       <label>Province / territory<select value={draft.province} onChange={event => update("province", event.target.value)}>{["BC", "AB", "SK", "MB", "ON", "QC", "NB", "NS", "PE", "NL", "YT", "NT", "NU"].map(province => <option key={province}>{province}</option>)}</select></label>
-      {draft.category !== "mortgage" && <>{numberField("Current price (CAD, all-in)", "price")}
-        <label>Billing cycle<select value={draft.cycle} onChange={event => update("cycle", event.target.value)}><option value="monthly">Monthly</option><option value="annual">Annual</option><option value="weekly">Weekly</option></select></label>
+      {draft.category !== "mortgage" && <>{!draft.billing && numberField("Current price (CAD, all-in)", "price")}
+        <label>{draft.billing ? "Historical comparison cycle" : "Billing cycle"}<select value={draft.cycle} onChange={event => update("cycle", event.target.value)}><option value="monthly">Monthly</option><option value="annual">Annual</option><option value="weekly">Weekly</option></select></label>
         <label className="span-two">Price includes taxes and recurring fees?<select value={draft.taxesIncluded === null ? "unknown" : String(draft.taxesIncluded)} onChange={event => update("taxesIncluded", event.target.value === "unknown" ? null : event.target.value === "true")}><option value="unknown">Not confirmed</option><option value="true">Yes, all-in total</option><option value="false">No, update price before comparing</option></select></label></>}
       <label>Renewal / review date<input type="date" value={draft.renewal} onChange={event => update("renewal", event.target.value)} /></label>
       <label>Commitment ends<input type="date" value={draft.commitmentEnd} onChange={event => update("commitmentEnd", event.target.value)} /></label>
@@ -46,6 +49,7 @@ export default function SavingsContractForm({ initial, onSave, onClose }: {
     {draft.category === "telecom" && <div className="form-grid">{numberField("Mobile data required (GB / line)", "dataGb")}{numberField("Internet speed required (Mbps)", "downloadMbps")}{numberField("Number of lines", "lines", { min: 1, max: 100, step: "1" })}</div>}
     {draft.category === "car-insurance" && <div className="form-grid">{numberField("Liability limit (CAD)", "liabilityLimit")}{numberField("Collision deductible (CAD)", "collisionDeductible")}{numberField("Comprehensive deductible (CAD)", "comprehensiveDeductible")}<p className="muted">Keep every endorsement in your requirements. In BC, note Basic and Optional premiums separately; an Optional discount is not a discount on the full premium.</p></div>}
     {draft.category === "mortgage" && <div className="form-grid">{numberField("Remaining balance (CAD)", "mortgageBalance")}{numberField("Current rate (%)", "mortgageRate", { max: 30 })}{numberField("Remaining amortization (years)", "amortizationYears", { min: 1, max: 40 })}{numberField("Comparison term (months)", "termMonths", { min: 1, max: 120, step: "1" })}<label>Rate type<select value={draft.rateType} onChange={event => update("rateType", event.target.value)}><option value="fixed">Fixed</option><option value="variable">Variable</option></select></label></div>}
+    <ContractServicesForm draft={draft} onChange={setDraft} />
     <details><summary>Promotions, discounts and notes</summary>
       <div className="form-grid">{numberField("Months left on current promotion", "currentPromoMonths", { max: 120, step: "1" })}{numberField("All-in price after promotion (same billing cycle)", "priceAfterPromo")}</div>
       <label>Existing discounts / bundle terms<textarea maxLength={3000} value={draft.discounts} onChange={event => update("discounts", event.target.value)} /></label>

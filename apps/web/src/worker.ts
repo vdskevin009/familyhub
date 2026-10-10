@@ -95,6 +95,10 @@ async function request<T>(config: WorkerConfig, path: string, init: RequestInit 
   return await response.json() as T;
 }
 
+export const fetchFinances = (config: WorkerConfig) => request<import("../../worker/src/finance-model").FinanceState>(config,"/finances");
+export const saveFinanceDecision = (config: WorkerConfig, id: string, expectedRevision: string, decision: import("../../worker/src/finance-model").FinanceDecision) => request<import("../../worker/src/finance-model").FinanceState>(config,"/finances/decision",{ method:"POST",body:JSON.stringify({id,expectedRevision,decision}) });
+export const importFinances = (config: WorkerConfig, bundle: unknown, expectedRevision: string, apply = false) => request<{ state?: import("../../worker/src/finance-model").FinanceState; added:number; possibleDuplicates:number; accounts?:number; from?:string; to?:string; revision?:string; alreadyImported?:boolean }>(config,"/finances/import",{ method:"POST",body:JSON.stringify({bundle,expectedRevision,apply}) },60_000);
+
 export type BlueCrossSyncResult = { autoImported?: number; pendingNew?: number; pendingChanged?: number; status: "success" | "login-required"; applied?: boolean; found?: number; new?: number;
   changed?: number; unchanged?: number; ambiguous?: number; duplicates?: number; errors?: number; complete?: boolean;
   loginRequired?: boolean; warnings?: string[]; matched?: number; unmatched?: number };

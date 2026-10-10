@@ -149,7 +149,9 @@ Detected amounts and document types are heuristics. Review them before filing a 
 
 ## Money data
 
-There is no live bank connection. Transaction CSVs are parsed in the browser and stored in local storage. Recurring merchants are candidates, not confirmed subscriptions. Mortgage comparisons use entered values and are estimates, not lender quotes or financial advice.
+There is no live bank connection. **Finances** has Dépenses and Investissements tabs backed by the paired PC's private history store. Retrieved TD preparation files support preview/apply, source preservation and separate reviewed classifications; the history is not cached in browser local storage. Dates and coverage stay explicit. Public spending references identify their year, population, geography and methodology. Savings lists individual services first, links to their contract/documents and counts packages once. See [Finances and recurring services](docs/FINANCES.md).
+
+The earlier browser CSV tool remains under Other and keeps its existing local-storage data; it is not silently migrated or treated as the current private history. Recurring merchant patterns remain candidates. Mortgage comparisons use entered values and are estimates, not lender quotes; spending history never invents principal/interest splits.
 
 ## Local storage and privacy
 

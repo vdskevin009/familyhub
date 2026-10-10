@@ -3,14 +3,14 @@ import { chromium } from "playwright";
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { readFile, mkdtemp, rm } from "node:fs/promises";
-import { join, resolve, extname } from "node:path";
+import { join, resolve, extname, sep } from "node:path";
 import { tmpdir } from "node:os";
 import { once } from "node:events";
 const root = resolve("apps/web/dist");
 const server = createServer(async (request, response) => {
   const pathname = new URL(request.url, "http://localhost").pathname;
   const file = resolve(root, "." + pathname.replace(/^\/familyhub/, ""));
-  if (file !== root && !file.startsWith(root + "/")) { response.writeHead(403); response.end(); return; }
+  if (file !== root && !file.startsWith(root + sep)) { response.writeHead(403); response.end(); return; }
   try {
     const bytes = await readFile(file === root || pathname.endsWith("/") ? join(root, "index.html") : file);
     response.setHeader("Content-Type", ({ ".js": "text/javascript", ".css": "text/css", ".html": "text/html", ".svg": "image/svg+xml", ".png": "image/png" })[extname(file)] || (file === root ? "text/html" : "application/octet-stream"));
@@ -58,7 +58,7 @@ try {
     });
     await page.goto(base + "?view=savings");
     await page.getByRole("heading", { name: "Savings", exact: true }).waitFor();
-    assert.equal(await page.locator(".bottom-nav button").count(), 4);
+    assert.equal(await page.locator(".bottom-nav button").count(), 5);
     assert.equal(posts.length, 0, "Mount must not start research");
     await page.getByRole("button", { name: "Add contract", exact: true }).click();
     const form = page.getByRole("dialog", { name: "Add contract", exact: true });

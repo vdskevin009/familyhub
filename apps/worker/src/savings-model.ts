@@ -5,6 +5,8 @@ export const categories = {
 } as const;
 export type SavingsCategory = keyof typeof categories;
 export type ContractDocument = { id: string; name: string; type: string; size: number; addedAt: string };
+export type ContractBilling = { amount: number | null; currency: string; unit: "months" | "weeks" | "days" | "years"; count: number; asOf: string; source: string; taxesIncluded?: boolean | null };
+export type ContractService = { id: string; name: string; pricing: "shared" | "included" | "documented"; monthlyAmount: number | null; taxesIncluded: boolean | null; source: string };
 export type SavingsContract = {
   id: string; name: string; category: SavingsCategory; provider: string; price: number | null;
   cycle: "monthly" | "annual" | "weekly"; taxesIncluded: boolean | null;
@@ -16,6 +18,7 @@ export type SavingsContract = {
   mortgageBalance: number | null; mortgageRate: number | null; amortizationYears: number | null;
   termMonths: number | null; rateType: "fixed" | "variable";
   sourceSubscriptionId?: string; updatedAt: string;
+  billing?: ContractBilling; services?: ContractService[];
 };
 export type PublicBaseline = Pick<SavingsContract, "category" | "price" | "cycle" | "taxesIncluded" | "province" |
   "cancellationFee" | "annualLostDiscounts" | "currentPromoMonths" | "priceAfterPromo" |
@@ -62,9 +65,28 @@ export function publicBaseline(contract: SavingsContract): PublicBaseline {
     "currentPromoMonths", "priceAfterPromo", "liabilityLimit", "collisionDeductible", "comprehensiveDeductible",
     "dataGb", "downloadMbps", "lines", "mortgageBalance", "mortgageRate", "amortizationYears", "termMonths", "rateType"] as const;
   const result = Object.fromEntries(keys.map(key => [key, contract[key]])) as unknown as PublicBaseline;
+  if (contract.billing) { result.price = contract.billing.currency === "CAD" ? contractMonthly(contract) : null; result.cycle = "monthly"; result.taxesIncluded = contractTaxes(contract); result.priceAfterPromo = contract.billing.currency === "CAD" ? monthlyPrice(contract.priceAfterPromo,contract.cycle) : null; }
   result.provider = publicProviders.find(provider => provider.toLowerCase() === contract.provider.trim().toLowerCase()) || "Provider not disclosed";
   result.province = ["BC", "AB", "SK", "MB", "ON", "QC", "NB", "NS", "PE", "NL", "YT", "NT", "NU"].includes(contract.province) ? contract.province : "BC";
   return result;
+}
+/** A contract is counted once regardless of its number of services. Non-CAD stays separate. */
+export function contractMonthly(contract: SavingsContract): number | null {
+  const b = contract.billing;
+  if (!b) return monthlyPrice(contract.price, contract.cycle);
+  if (b.amount === null || !Number.isFinite(b.amount) || b.amount < 0 || !Number.isFinite(b.count) || b.count <= 0) return null;
+  return b.amount / b.count * (b.unit === "months" ? 1 : b.unit === "years" ? 1 / 12 : b.unit === "weeks" ? 52 / 12 : 365.25 / 12);
+}
+export function contractTaxes(contract: SavingsContract): boolean | null {
+  return contract.billing && Object.hasOwn(contract.billing,"taxesIncluded") ? contract.billing.taxesIncluded ?? null : contract.taxesIncluded;
+}
+export function recurringTotals(contracts: SavingsContract[]) {
+  return contracts.reduce<Record<string, { amount: number; unknown: number }>>((totals, c) => {
+    const currency = c.billing?.currency ?? "CAD", value = contractMonthly(c);
+    const t = totals[currency] ??= { amount: 0, unknown: 0 };
+    if (value === null) t.unknown++; else t.amount += value;
+    return totals;
+  }, {});
 }
 export function baselineKey(contract: SavingsContract): string {
   // Include local comparison requirements: changing them invalidates a prior result without disclosing them.
@@ -76,8 +98,9 @@ export function monthlyPrice(price: number | null, cycle: SavingsContract["cycle
 export function missingInformation(contract: SavingsContract): string[] {
   const missing: string[] = [];
   if (!contract.provider.trim()) missing.push("Current provider");
-  if (contract.category !== "mortgage" && contract.price === null) missing.push("Current price");
-  if (contract.category !== "mortgage" && contract.taxesIncluded !== true) missing.push("Confirm all-in price including taxes and recurring fees");
+  if (contract.category !== "mortgage" && contractMonthly(contract) === null) missing.push("Current price");
+  if (contract.billing && contract.billing.currency !== "CAD") missing.push("CAD comparison unavailable; no exchange rate assumed");
+  if (contract.category !== "mortgage" && contractTaxes(contract) !== true) missing.push("Confirm all-in price including taxes and recurring fees");
   if (!contract.renewal) missing.push("Renewal or review date");
   if (!contract.needs.trim()) missing.push("Service, coverage and usage requirements");
   if (contract.cancellationFee === null) missing.push("Cancellation penalty (enter 0 if none)");
@@ -148,8 +171,8 @@ export function compareOffer(contract: SavingsContract, offer: SavingsOffer, now
       ongoingAnnual = contract.termMonths >= 24 ? current.next - alternative.next - lost : null;
     }
   } else {
-    const current = monthlyPrice(contract.price, contract.cycle);
-    if (current === null || offer.monthlyPrice === null || contract.taxesIncluded !== true || !offer.taxesIncluded)
+    const current = contract.billing?.currency && contract.billing.currency !== "CAD" ? null : contractMonthly(contract);
+    if (current === null || offer.monthlyPrice === null || contractTaxes(contract) !== true || !offer.taxesIncluded)
       reasons.push("All-in current or alternative price is unknown");
     if ((contract.currentPromoMonths > 0 && contract.priceAfterPromo === null) || (offer.promoMonths > 0 && offer.monthlyPriceAfterPromo === null)) reasons.push("Price after promotion is unknown");
     if (current !== null && offer.monthlyPrice !== null) {
