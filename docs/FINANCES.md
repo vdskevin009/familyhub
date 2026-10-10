@@ -47,6 +47,8 @@ Mortgage payments remain whole cash outflows. No principal/interest split is inf
 
 Repeated exact account/merchant descriptions among subscriptions, communications and fees show the previous and latest dated charge, count and observed period cost. A difference is a review lead, never a confirmed price increase, duplicated service, cancellation recommendation or projected saving. Existing Savings contract evidence is the next review step.
 
+**Épargne / Investissements** is an explicit transaction category. Confirmed transfer or investment decisions display outgoing and incoming bank flows separately for the selected period, account and currency, with monthly detail in annual views. They stay outside consumption and never add both sides of a paired transfer into one total. These gross classified movements are not net household savings, investment returns or a merger with brokerage purchases/contributions. Uncertain and duplicate decisions remain outside these flows. There is no automatic reclassification; prior manual decisions, original facts and the two-tab navigation remain intact. Saving this category requires paired worker 2.23.1 or later.
+
 ## Investments
 
 The account registry supplies names and types, including registered plans and deposits where present in the source. Each balance keeps its as-of date. There is no sum of unsynchronized account snapshots and no fabricated current market value. Latest source positions and cash form the allocation; title-based asset classifications are not invented. Portal value history is labeled as balance history, including contributions and withdrawals, not investment performance calculated from incomplete flows.
@@ -74,6 +76,8 @@ Contract cards retain the source price, period and tax basis, and expose dated p
 Optional `billing` preserves original amount, currency, unit/count, as-of date, source description and tax status independently of the legacy contract price. Missing current amounts can explicitly be null even if a historical price exists. Monthly equivalents use months/count, annual/12, weekly ×52/12 or daily ×365.25/12. An irregular utility bill is an annualized reference, not a prediction. The old promotional price retains its original legacy cycle.
 
 Optional `services` hold names, source and `included`, `shared` or `documented` pricing. Included/shared items cannot carry an individual amount. Documented individual monthly amounts require a source and their own tax status. Totals count each contract once, separate currencies and show unknown counts. No equal allocation of a multi-line plan or bundle is assumed. Service rows open the existing editor and its PDF/image/text attachments; attachment, download, backup, sharing/conflict and public-summary privacy rules remain in force. Billing/service source text and documents never enter public-offer research.
+
+The service-first list groups each contract once: its principal service (or package name when several services share the price) and supported package amount appear on the first line. Included services have subordinate lines marked **Inclus**; multiple shared services have separate **Coût partagé** lines. Each group opens the contract and sources with pointer or keyboard. Price priority is the selected period's paid total, then an explicit TTC monthly reference, then the latest observed debit with its date and **hors période** label. References and out-of-period debits never enter the paid-period total. Unsupported prices remain **À compléter**.
 
 ## Verification and release boundary
 

@@ -32,6 +32,44 @@ const state = () => ({
     decisionHistory: [],
     imports: [],
 });
+
+test("explicit savings/investment flows stay outside consumption and never add paired sides or brokerage buys", () => {
+    const s = state(), base = s.data.transactions.find(r => r.id === "transfer");
+    s.data.transactions.push({ ...base, id: "saving-in", accountId: "rrsp", outflowCents: -50000 }, { ...base, id: "pending-saving", status: "pending", outflowCents: 99900 }, { ...base, id: "duplicate-saving", outflowCents: 50000 });
+    const decision = { nature: "transfer", category: "savings-investments", note: "Explicit synthetic review", updatedAt: "" };
+    s.decisions.transfer = decision; s.decisions["saving-in"] = decision; s.decisions["pending-saving"] = decision;
+    s.decisions["duplicate-saving"] = { ...decision, nature: "duplicate" };
+    const before = JSON.stringify(s), summary = summarizeSpending(s, "2026-01-01", "2026-12-31");
+    assert.equal(summary.savings.outgoingCents, 50000); assert.equal(summary.savings.incomingCents, 50000);
+    assert.equal(summary.savings.count, 2); assert.equal(summary.savings.months.length, 12);
+    assert.equal(summary.savings.months[5].outgoingCents, 50000); assert.equal(summary.savings.months[5].incomingCents, 50000);
+    assert.equal(summary.savings.months[9].full, false);
+    assert.equal(summary.totalCents, 286199, "Source expenses unaffected by a paired savings transfer");
+    assert.equal(summary.categories.find(c => c.key === "savings-investments").count, 0);
+    assert.equal(summarizeSpending(s, "2026-07-01", "2026-07-31").savings.outgoingCents, 0);
+    assert.equal(summarizeSpending(s, "2026-01-01", "2026-12-31", "bank").savings.incomingCents, 0);
+    assert.equal(summarizeSpending(s, "2026-01-01", "2026-12-31", "", "USD").savings.outgoingCents, 0);
+    assert.equal(JSON.stringify(s), before);
+});
+
+test("savings category decisions persist across restart/reimport, preserve earlier choices and reject consumption semantics", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "finance-savings-category-"));
+    try {
+        const lib = new FinanceLibrary(dir), bundle = financeFixture();
+        const first = (await lib.import({ bundle, apply: true, expectedRevision: "empty" })).state;
+        const previous = await lib.decide({ id: "groceries", expectedRevision: first.revision, decision: { nature: "expense", category: "groceries", note: "Retain this choice" } });
+        const originalFacts = JSON.stringify(previous.data);
+        const saved = await lib.decide({ id: "transfer", expectedRevision: previous.revision, decision: { nature: "investment", category: "savings-investments", note: "A contribution, never a return" } });
+        assert.deepEqual(saved.decisions.groceries, previous.decisions.groceries);
+        assert.equal(JSON.stringify(saved.data), originalFacts);
+        assert.equal(summarizeSpending(saved, "2026-06-01", "2026-06-30").savings.outgoingCents, 50000);
+        assert.deepEqual(await new FinanceLibrary(dir).read(), saved);
+        const repeat = await lib.import({ bundle, apply: true, expectedRevision: saved.revision });
+        assert.equal(repeat.alreadyImported, true); assert.deepEqual(repeat.state.decisions, saved.decisions);
+        for (const nature of ["expense", "refund", "income", "repayment"]) await assert.rejects(lib.decide({ id: "transfer", expectedRevision: saved.revision, decision: { nature, category: "savings-investments", note: "Invalid mixture" } }), /invalide/);
+        assert.deepEqual(await lib.read(), saved);
+    } finally { await rm(dir, { recursive: true, force: true }); }
+});
 test("adapter preserves signs, multiplicity, dates, fee reports and source references without exposing source paths", () => {
     const d = state().data;
     assert.equal(d.transactions.length, 13);

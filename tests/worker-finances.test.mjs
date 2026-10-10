@@ -121,7 +121,7 @@ test("private finance HTTP authorization, preview/apply, conflict and restart pr
             })
         ).json();
         assert.equal(first.state.data.transactions.length, 13);
-        const changed = await (
+        let changed = await (
             await post("/finances/decision", {
                 id: "childcare",
                 expectedRevision: first.state.revision,
@@ -132,6 +132,10 @@ test("private finance HTTP authorization, preview/apply, conflict and restart pr
                 },
             })
         ).json();
+        assert.equal(changed.decisions.childcare.category, "childcare");
+        assert.equal((await post("/finances/decision", { id: "transfer", expectedRevision: changed.revision, decision: { nature: "expense", category: "savings-investments", note: "Invalid consumption" } })).status, 400);
+        changed = await (await post("/finances/decision", { id: "transfer", expectedRevision: changed.revision, decision: { nature: "investment", category: "savings-investments", note: "Synthetic savings" } })).json();
+        assert.equal(changed.decisions.transfer.category, "savings-investments");
         assert.equal(changed.decisions.childcare.category, "childcare");
         assert.equal(
             (

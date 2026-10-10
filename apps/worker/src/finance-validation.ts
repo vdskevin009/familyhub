@@ -1,5 +1,6 @@
 import {
     expenseCategories,
+    decisionCategoryAllowed,
     natures,
     type FinanceState,
 } from "./finance-model.js";
@@ -126,7 +127,8 @@ export function validateFinanceState(value: unknown): FinanceState {
         if (
             !ids.has(id) ||
             !Object.hasOwn(natures, r.nature) ||
-            !Object.hasOwn(expenseCategories, r.category)
+            !Object.hasOwn(expenseCategories, r.category) ||
+            !decisionCategoryAllowed(r.category, r.nature)
         )
             bad();
         txt(r.note, 1000);

@@ -17,6 +17,7 @@ export const expenseCategories = {
     travel: "Voyages",
     fees: "Frais financiers",
     exceptional: "Projets exceptionnels",
+    "savings-investments": "Épargne / Investissements",
     other: "À catégoriser",
 } as const;
 export type ExpenseCategory = keyof typeof expenseCategories;
@@ -31,6 +32,9 @@ export const natures = {
     review: "À vérifier",
 } as const;
 export type Nature = keyof typeof natures;
+export function decisionCategoryAllowed(category: string, nature: string): boolean {
+    return category !== "savings-investments" || ["transfer", "investment", "review", "duplicate"].includes(nature);
+}
 export type Evidence = {
     name: string;
     sha256?: string;
@@ -316,8 +320,12 @@ export function summarizeSpending(
             r.status === "posted",
     );
     const included = rows.filter(
-        (r) => r.nature === "expense" || r.nature === "refund",
+        (r) => r.category !== "savings-investments" && (r.nature === "expense" || r.nature === "refund"),
     );
+    // Explicit bank decisions only. Incoming transfer sides and brokerage activities
+    // are never added to outgoing flows or treated as consumption/returns.
+    const savingRows = rows.filter(r => r.reviewed && r.category === "savings-investments" && ["transfer", "investment"].includes(r.nature));
+    const flowTotal = (selected: typeof savingRows, outgoing: boolean) => selected.reduce((sum, r) => sum + (outgoing ? Math.max(0, r.outflowCents) : Math.max(0, -r.outflowCents)), 0);
     const categories = Object.keys(expenseCategories).map((key) => ({
         key: key as ExpenseCategory,
         cents: included
@@ -339,6 +347,12 @@ export function summarizeSpending(
         included,
         categories,
         months,
+        savings: {
+            outgoingCents: flowTotal(savingRows, true),
+            incomingCents: flowTotal(savingRows, false),
+            count: savingRows.length,
+            months: months.map(m => ({ ...m, outgoingCents: flowTotal(savingRows.filter(r => r.date.startsWith(m.month)), true), incomingCents: flowTotal(savingRows.filter(r => r.date.startsWith(m.month)), false) })),
+        },
         totalCents: included.reduce((s, r) => s + r.outflowCents, 0),
         reviewCount: rows.filter(
             (r) =>

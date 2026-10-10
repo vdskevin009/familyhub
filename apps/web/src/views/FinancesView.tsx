@@ -6,6 +6,7 @@ import { PageHeader, Notice, Sheet } from "../ui/primitives";
 import { fetchFinances, importFinances, saveFinanceDecision } from "../worker";
 import {
     expenseCategories,
+    decisionCategoryAllowed,
     natures,
     summarizeSpending,
     classifiedRows,
@@ -682,7 +683,7 @@ export default function FinancesView({
                                 à la fois, sans conversion. Les catégories
                                 automatiques restent provisoires.
                             </p>
-                            <div className="finance-chart-grid">
+                            <div className="finance-chart-grid finance-expense-charts">
                                 <section className="surface view-stack">
                                     <h2>Dépenses par catégorie</h2>
                                     {summary.included.length ? (
@@ -730,6 +731,21 @@ export default function FinancesView({
                                     </p>
                                 </section>
                             </div>
+                            <section className="surface view-stack finance-savings-flow" aria-label="Épargne et investissements classés">
+                                <h2>Épargne / Investissements</h2>
+                                {summary.savings.count > 0 ? <>
+                                    <div className="finance-totals">
+                                        <div><small>Sorties classées · {currency}</small><strong>{money(summary.savings.outgoingCents, currency)}</strong></div>
+                                        <div><small>Entrées classées · {currency}</small><strong>{money(summary.savings.incomingCents, currency)}</strong></div>
+                                    </div>
+                                    <p>Flux bancaires explicitement classés, hors dépenses. Les deux côtés d'un transfert ne sont pas additionnés; les activités du courtage restent séparées. Ce ne sont ni une épargne nette du foyer ni un rendement.</p>
+                                    {summary.savings.months.length > 1 && <details><summary>Flux mois par mois</summary><div className="finance-chart-grid">
+                                        <div><h3>Sorties classées</h3><Bars currency={currency} values={summary.savings.months.map(m => ({ id: m.month, label: m.month, cents: m.outgoingCents, note: m.full ? "Fenêtre observée entière" : "Couverture partielle" }))} onSelect={month => { const p = calendarPeriod(Number(month.slice(0, 4)), Number(month.slice(5, 7))); setFrom(p.from); setTo(p.to); }} /></div>
+                                        <div><h3>Entrées classées</h3><Bars currency={currency} values={summary.savings.months.map(m => ({ id: m.month, label: m.month, cents: m.incomingCents, note: m.full ? "Fenêtre observée entière" : "Couverture partielle" }))} onSelect={month => { const p = calendarPeriod(Number(month.slice(0, 4)), Number(month.slice(5, 7))); setFrom(p.from); setTo(p.to); }} /></div>
+                                    </div></details>}
+                                    <button className="button secondary" onClick={() => { setCategory("savings-investments"); setSearch(""); setReviewOnly(false); }}>Voir les opérations classées</button>
+                                </> : <p>Aucun mouvement d'épargne ou de placement explicitement classé dans cette période. Choisissez « Épargne / Investissements » lors de la catégorisation d'une opération; aucune affectation automatique n'est faite.</p>}
+                            </section>
                             <section className="surface view-stack">
                                 <h2>Opérations et catégories</h2>
                                 <button className="button secondary" disabled={!rows.some(r => !r.reviewed)} onClick={() => { const row = rows.find(r => !r.reviewed); if (row) openDecision(row.id); }}>Catégoriser les opérations</button>
@@ -1331,6 +1347,7 @@ export default function FinancesView({
                                         key={k}
                                         value={k}
                                         disabled={
+                                            !decisionCategoryAllowed(decision.category, k) ||
                                             (k === "refund" &&
                                                 editRow.outflowCents >= 0) ||
                                             (k === "expense" &&
@@ -1350,8 +1367,8 @@ export default function FinancesView({
                                 onChange={(e) =>
                                     setDecision({
                                         ...decision,
-                                        category: e.target
-                                            .value as ExpenseCategory,
+                                        category: e.target.value as ExpenseCategory,
+                                        nature: decisionCategoryAllowed(e.target.value, decision.nature) ? decision.nature : "investment",
                                     })
                                 }
                             >
@@ -1364,6 +1381,7 @@ export default function FinancesView({
                                 )}
                             </select>
                         </label>
+                        {decision.category === "savings-investments" && <p className="muted">Hors dépenses. Choisissez Transfert pour un mouvement entre comptes, Placement / cotisation pour un versement, ou À vérifier en cas de doute. Les entrées et sorties restent séparées; aucun rendement n'est calculé.</p>}
                         <label>
                             Note de décision
                             <textarea

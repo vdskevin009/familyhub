@@ -732,6 +732,21 @@ label { font-size: 12px; color: var(--muted); }
 .finance-totals > div { display: grid; gap: 5px; flex: 1 1 190px; min-width: 0; }
 .finance-totals strong { font-size: clamp(22px,3.4vw,30px); letter-spacing: -.025em; font-variant-numeric: tabular-nums; }
 .finance-register { display: grid; min-width: 0; }
+.recurring-packages { display: grid; min-width: 0; }
+.recurring-package { display: grid; gap: 7px; padding: 18px 0; width: 100%; min-width: 0; text-align: left; background: none; border: 0; border-bottom: 1px solid var(--line); }
+.recurring-package:last-child { border-bottom: 0; }
+.recurring-package:hover { background: var(--soft); }
+.recurring-package-heading { display: grid; grid-template-columns: minmax(0,1fr) auto; align-items: start; gap: 16px; }
+.recurring-package-heading > strong:first-child { min-width: 0; overflow-wrap: anywhere; }
+.recurring-package-price { font-size: 18px; line-height: 1.15; font-variant-numeric: tabular-nums; text-align: right; }
+.recurring-package-basis { text-align: right; overflow-wrap: anywhere; }
+.recurring-package-provider { display: block; }
+.recurring-package-services { display: grid; gap: 10px; border-left: 2px solid var(--line); padding: 4px 0 4px 14px; margin-top: 6px; }
+.recurring-package-service { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; font-size: 13px; }
+.recurring-package-service > span:first-child { min-width: 0; overflow-wrap: anywhere; }
+.recurring-package-service > span:last-child { flex-shrink: 0; }
+.recurring-included { color: var(--green); font-weight: 600; }
+.recurring-package-link { display: flex; align-items: center; gap: 4px; color: var(--green); font-size: 12px; margin-top: 5px; }
 .finance-service { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 16px 4px; min-height: 62px; background: none; border: 0; border-bottom: 1px solid var(--line); text-align: left; min-width: 0; width: 100%; }
 .finance-service > span:first-child { flex: 1; min-width: 0; }
 .finance-service > span:last-child, .finance-service > strong { text-align: right; flex-shrink: 0; font-variant-numeric: tabular-nums; }

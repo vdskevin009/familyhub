@@ -5,6 +5,7 @@ import { parseFinancePreparation } from "./finance-import.js";
 import { validateFinanceState } from "./finance-validation.js";
 import {
     expenseCategories,
+    decisionCategoryAllowed,
     natures,
     type FinanceState,
     type FinanceData,
@@ -285,6 +286,7 @@ export class FinanceLibrary {
                 !d ||
                 !Object.hasOwn(natures, d.nature) ||
                 !Object.hasOwn(expenseCategories, d.category) ||
+                !decisionCategoryAllowed(d.category, d.nature) ||
                 typeof d.note !== "string" ||
                 d.note.length > 1000
             )
