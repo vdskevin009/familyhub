@@ -57,7 +57,10 @@ The 2.16.1 follow-up for Issue #36, [PR #128](https://github.com/vdskevin009/fam
 
 ### Explicit one-attempt recovery - FH-REIMB-040 / Issue #159
 
-**Implemented; aggregate synthetic checks passed, CI/deployment and live acceptance pending.** The owner may explicitly
+**Implemented in [PR #172](https://github.com/vdskevin009/familyhub/pull/172), main
+`55fd1c981fee29578831ae95e4641e994491ac94`; worker 2.23.2 installed.** Exact PR CI
+`38075718598` and main CI/Pages `38076051336` passed. Live collection acceptance
+remains partial and is tracked separately in Issue #159. The owner may explicitly
 acknowledge an old uncertain login attempt and authorize one fresh attempt using
 the configured local credentials. The paired `POST /{insurer}/recover-login`
 requires a UUID request ID, the exact existing attempt timestamp and an explicit
@@ -76,6 +79,19 @@ Ordinary reconciliation and the existing operator-approved new-payment policy
 remain authoritative; recovery does not authorize full financial apply, claim
 submission, password reset or bypassing a portal challenge. Private source facts,
 credentials, browser state and audit files stay outside Git and API results.
+
+### Post-authentication reader follow-up - FH-REIMB-040 / Issue #159
+
+**In progress; synthetic checks prepared, live reader verification pending.**
+Private reader diagnostics identify fixed filter/search/detail/pagination stages
+and coarse failure categories without URLs, option values, names or source rows.
+All three history filters must have unique recognized options before any filter
+event; normalized labels select the observed value without publishing it.
+Missing/ambiguous options stop as layout drift instead of retrying a network
+timeout. Exact portal location remains mandatory. Session-only inspection never
+loads or submits configured credentials and stops at expired sessions or human
+challenges. It does not import financial records. Successful session restoration
+and complete history collection remain separate live acceptance gates.
 
 ### Readable clinic receipt fallback — FH-REIMB-013 / issue #28
 

@@ -1,4 +1,5 @@
 import type { LoginRecoveryRequest } from "./portal-login-recovery.js";
+import { configureDesjardinsFilters, createReaderStages, desjardinsSessionExpired, inspectDesjardinsFilters, inspectDesjardinsNavigation, observeDesjardinsSession } from "./desjardins-history-reader.js";
 import { findPortalHistoryPage, isInsurerPortalPage } from "./portal-history-page.js";
 import { acquirePortalLock, authenticatedPortal, tryPortalLogin, type LoginReason } from "./portal-login.js";
 import { createHash, randomUUID } from "node:crypto";
@@ -216,16 +217,21 @@ async function saveDesjardinsAuth(context: import("playwright").BrowserContext, 
 }
 
 /** Reuse the private session, optionally sign in once, then collect read-only history. MFA stays manual. */
-export async function collectDesjardinsPortal(interactive = false, passes = 1, recovery?: LoginRecoveryRequest): ReturnType<typeof collectDesjardinsPortalLocked> {
+export type DesjardinsReadOptions = { sessionOnly?: boolean; inspectFiltersOnly?: boolean };
+export async function collectDesjardinsPortal(interactive = false, passes = 1, recovery?: LoginRecoveryRequest, options: DesjardinsReadOptions = {}): ReturnType<typeof collectDesjardinsPortalLocked> {
+  if (options.inspectFiltersOnly && !options.sessionOnly || options.sessionOnly && (interactive || recovery))
+    throw new Error("Reader inspection requires a non-interactive saved session without credential recovery.");
   let release: () => Promise<void>;
   try { release = await acquirePortalLock("desjardins"); }
   catch { return { status: "login-required", authReason: "profile-busy" }; }
-  try { return await collectDesjardinsPortalLocked(interactive, passes, recovery); }
+  try { return await collectDesjardinsPortalLocked(interactive, passes, recovery, options); }
   finally { await release(); }
 }
 
-async function collectDesjardinsPortalLocked(interactive = false, passes = 1, recovery?: LoginRecoveryRequest): Promise<{
+async function collectDesjardinsPortalLocked(interactive = false, passes = 1, recovery?: LoginRecoveryRequest, options: DesjardinsReadOptions = {}): Promise<{
   status: "success" | "login-required"; authReason?: LoginReason; collection?: DesjardinsCollection; snapshotPath?: string;
+  filterInspection?: Awaited<ReturnType<typeof inspectDesjardinsFilters>>;
+  navigationInspection?: Awaited<ReturnType<typeof inspectDesjardinsNavigation>>;
 }> {
   await mkdir(desjardinsProfileDirectory, { recursive: true, mode: 0o700 });
   const { chromium } = await import("playwright");
@@ -282,12 +288,20 @@ async function collectDesjardinsPortalLocked(interactive = false, passes = 1, re
       }
       return recoverHistoryTab();
     };
-    const authReason = await tryPortalLogin(page, "desjardins", ready, undefined, recovery);
+    const authReason = await desjardinsSessionExpired(page) ? "human-required"
+      : options.sessionOnly ? (await observeDesjardinsSession(() => page, ready) ? undefined : "human-required")
+      : await tryPortalLogin(page, "desjardins", ready, undefined, recovery);
     if (interactive && !await ready()) {
       const deadline = Date.now() + 600_000;
       while (!await ready() && Date.now() < deadline) await page.waitForTimeout(2000).catch(() => new Promise(resolve => setTimeout(resolve, 2000)));
     }
-    if (!await ready()) return { status: "login-required", authReason: authReason || "human-required" };
+    if (!await ready()) return { status: "login-required", authReason: authReason || "human-required",
+      ...(options.inspectFiltersOnly ? { navigationInspection: await inspectDesjardinsNavigation(page) } : {}) };
+    const reader = createReaderStages(entry => atomicJson(join(desjardinsPrivateDirectory, "reader-diagnostic.json"), {
+      version: 1, observedAt: new Date().toISOString(), ...entry
+    }).catch(() => { /* Coarse diagnostics cannot alter collection or authentication authority. */ }));
+    if (options.inspectFiltersOnly) return { status: "success",
+      filterInspection: await reader("filters-inspect", () => inspectDesjardinsFilters(page)) };
     await authenticatedPortal("desjardins");
     const authWarning = await saveDesjardinsAuth(context, page);
 
@@ -298,37 +312,29 @@ async function collectDesjardinsPortalLocked(interactive = false, passes = 1, re
     if (pass) {
       await page.goto(historyUrl, { waitUntil: "domcontentloaded", timeout: 45_000 });
       await table.waitFor({ state: "visible", timeout: 30_000 });
-      if (!page.url().startsWith(origin) || !/HistoriqueReclamation_ClaimHistory\.aspx/i.test(page.url()))
+      if (!isInsurerPortalPage(page, "desjardins") || !/HistoriqueReclamation_ClaimHistory\.aspx/i.test(page.url()))
         throw new Error("Desjardins session expired between preview passes.");
     }
     const warnings: string[] = authWarning ? [authWarning] : [];
-    const patient = page.locator("select[id$='cbPour']");
-    const category = page.locator("select[id$='cbCategorie']");
-    const pageSize = page.locator("select[id$='cbNbResltRechr']");
-    if (await patient.count() !== 1 || await category.count() !== 1 || await pageSize.count() !== 1)
-      warnings.push("Processed-claims filters were not recognized.");
-    else {
-      await patient.selectOption({ label: "Tous les patients" });
-      await category.selectOption({ label: "Toutes les catégories" });
-      await pageSize.selectOption({ label: "100" });
-      await page.locator("input[id$='btnRechercher']").click();
-      await table.waitFor({ state: "visible", timeout: 30_000 });
-      if (!/HistoriqueReclamation_ClaimHistory\.aspx/i.test(page.url())) warnings.push("Search did not return to processed claims.");
-    }
+    await configureDesjardinsFilters(page, reader);
     const pages: Array<{ histories: PortalHistoryRow[]; details: PortalTableRow[][]; hasNext: boolean }> = [];
     for (let pageIndex = 0; pageIndex < 100; pageIndex++) {
-      const visible = await histories(page);
+      const visible = await reader("history-read", () => histories(page));
       const pageSignature = createHash("sha256").update(JSON.stringify(visible)).digest("hex");
       const details: PortalTableRow[][] = [];
       for (let rowIndex = 0; rowIndex < visible.length; rowIndex++) {
         try {
           if (!visible[rowIndex].hasDetail) throw new Error("No detail action");
-          await page.locator(`${historyTable} tbody tr`).nth(rowIndex).getByRole("link", { name: /détails|details/i }).click();
-          await page.waitForURL(/DetailReclamation_ClaimDetails\.aspx/i, { timeout: 30_000 });
-          if (!page.url().startsWith(origin)) throw new Error("Unexpected detail origin");
-          details.push(await tableRows(page));
-          await page.locator("input[id$='btnRetour']").click();
-          await page.waitForURL(/HistoriqueReclamation_ClaimHistory\.aspx/i, { timeout: 30_000 });
+          await reader("detail-open", async () => {
+            await page.locator(`${historyTable} tbody tr`).nth(rowIndex).getByRole("link", { name: /détails|details/i }).click();
+            await page.waitForURL(/DetailReclamation_ClaimDetails\.aspx/i, { timeout: 30_000 });
+          });
+          if (!isInsurerPortalPage(page, "desjardins")) throw new Error("Unexpected detail origin");
+          details.push(await reader("detail-read", () => tableRows(page)));
+          await reader("detail-return", async () => {
+            await page.locator("input[id$='btnRetour']").click();
+            await page.waitForURL(/HistoriqueReclamation_ClaimHistory\.aspx/i, { timeout: 30_000 });
+          });
           const restored = await histories(page);
           if (createHash("sha256").update(JSON.stringify(restored)).digest("hex") !== pageSignature)
             throw new Error("History changed after returning from a claim detail");
@@ -342,12 +348,14 @@ async function collectDesjardinsPortalLocked(interactive = false, passes = 1, re
       pages.push({ histories: visible, details, hasNext });
       if (details.length !== visible.length || !hasNext) break;
       try {
-        const before = (await page.locator(`${historyTable} tbody tr`).allTextContents()).map(clean);
-        await next.click();
-        await page.waitForFunction(previous => {
-          const rows = Array.from(document.querySelectorAll("table.tableau-donnees tbody tr"));
-          return rows.length > 0 && JSON.stringify(rows.map(row => row.textContent?.replace(/\s+/g, " ").trim())) !== previous;
-        }, JSON.stringify(before), { timeout: 30_000 });
+        await reader("pagination", async () => {
+          const before = (await page.locator(`${historyTable} tbody tr`).allTextContents()).map(clean);
+          await next.click();
+          await page.waitForFunction(previous => {
+            const rows = Array.from(document.querySelectorAll("table.tableau-donnees tbody tr"));
+            return rows.length > 0 && JSON.stringify(rows.map(row => row.textContent?.replace(/\s+/g, " ").trim())) !== previous;
+          }, JSON.stringify(before), { timeout: 30_000 });
+        });
       } catch { warnings.push("Claims pagination failed."); break; }
     }
     if (pages.length === 100 && pages.at(-1)?.hasNext) warnings.push("Claims pagination exceeded 100 pages.");
