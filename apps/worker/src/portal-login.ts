@@ -107,7 +107,7 @@ export async function tryPortalLogin(page: Page, insurer: Insurer, ready: () => 
     if (allowedLoginUrl(insurer, page.url()) && await password.isVisible().catch(() => false)) break;
     if (classifyLoginScreen(await page.locator("body").innerText().catch(() => ""))) break;
     if (deps.now() >= restoreDeadline) break;
-    await page.waitForTimeout(1000);
+    await page.waitForTimeout(1000).catch(() => new Promise(resolve => setTimeout(resolve, 1000)));
   }
   if (await ready()) return undefined;
   const previous = await deps.read(insurer);
@@ -135,7 +135,7 @@ export async function tryPortalLogin(page: Page, insurer: Insurer, ready: () => 
       if (await ready()) { await deps.save(insurer, { blocked: false, attemptedAt }); return undefined; }
       const detected = classifyLoginScreen(await page.locator("body").innerText().catch(() => ""));
       if (detected) { reason = detected; break; }
-      await page.waitForTimeout(1000);
+      await page.waitForTimeout(1000).catch(() => new Promise(resolve => setTimeout(resolve, 1000)));
     }
   } catch { /* Unknown outcomes stay latched. Never expose Playwright logs with filled values. */ }
   credentials = undefined;

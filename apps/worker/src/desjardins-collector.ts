@@ -1,10 +1,11 @@
+import { findPortalHistoryPage, isInsurerPortalPage } from "./portal-history-page.js";
 import { acquirePortalLock, authenticatedPortal, tryPortalLogin, type LoginReason } from "./portal-login.js";
 import { createHash, randomUUID } from "node:crypto";
 import { mkdir, open, readFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import type { Cookie, Page } from "playwright";
 import { calendarDate, memberName } from "./healthcare-evidence.js";
-import { dataDirectory, loadPrivate, savePrivate } from "./private-store.js";
+import { atomicJson, dataDirectory, loadPrivate, savePrivate } from "./private-store.js";
 import { desjardinsIdentity, type DesjardinsCollection, type DesjardinsRow } from "./desjardins.js";
 
 export const desjardinsPrivateDirectory = join(dataDirectory, "desjardins");
@@ -249,22 +250,41 @@ async function collectDesjardinsPortalLocked(interactive = false, passes = 1): P
           }, { expectedOrigin: origin, values: saved.session.values });
       } catch { /* Missing or expired browser state falls back to the visible login. */ }
     }
-    const page = context.pages()[0] ?? await context.newPage();
+    let page = context.pages()[0] ?? await context.newPage();
     await page.goto(historyUrl, { waitUntil: "domcontentloaded", timeout: 45_000 });
-    const table = page.locator(historyTable);
+    let table = page.locator(historyTable);
+    let previousHistoryDiagnostic = "";
+    let historyTabSwitches = 0;
+    const recoverHistoryTab = async () => {
+      const observed = await findPortalHistoryPage(context, page, "desjardins");
+      if (observed.page && observed.page !== page) historyTabSwitches++;
+      const details = { ...observed.diagnostic, tabSwitches: historyTabSwitches };
+      const diagnostic = JSON.stringify(details);
+      if (diagnostic !== previousHistoryDiagnostic) {
+        previousHistoryDiagnostic = diagnostic;
+        await atomicJson(join(desjardinsPrivateDirectory, "history-tab-diagnostic.json"), {
+          version: 1, observedAt: new Date().toISOString(), ...details
+        }).catch(() => { /* Secret-free diagnostics cannot disrupt authentication. */ });
+      }
+      if (!observed.page) return false;
+      page = observed.page;
+      table = page.locator(historyTable);
+      return true;
+    };
     const ready = async () => {
-      if (new URL(page.url()).origin !== origin) return false;
+      if (await recoverHistoryTab()) return true;
+      if (page.isClosed()) return false;
+      if (!isInsurerPortalPage(page, 'desjardins')) return false;
       if (!/HistoriqueReclamation_ClaimHistory\.aspx/i.test(page.url())) {
         const history = page.getByRole("link", { name: /historique des r[ée]clamations|claims history/i }).first();
         if (await history.isVisible().catch(() => false)) await history.click();
       }
-      return new URL(page.url()).origin === origin && /HistoriqueReclamation_ClaimHistory\.aspx/i.test(page.url())
-        && await table.isVisible().catch(() => false);
+      return recoverHistoryTab();
     };
     const authReason = await tryPortalLogin(page, "desjardins", ready);
     if (interactive && !await ready()) {
       const deadline = Date.now() + 600_000;
-      while (!await ready() && Date.now() < deadline) await page.waitForTimeout(2000);
+      while (!await ready() && Date.now() < deadline) await page.waitForTimeout(2000).catch(() => new Promise(resolve => setTimeout(resolve, 2000)));
     }
     if (!await ready()) return { status: "login-required", authReason: authReason || "human-required" };
     await authenticatedPortal("desjardins");
