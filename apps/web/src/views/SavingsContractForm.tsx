@@ -52,7 +52,7 @@ export default function SavingsContractForm({ initial, onSave, onClose }: {
     <ContractServicesForm draft={draft} onChange={setDraft} />
     <details><summary>Promotions, discounts and notes</summary>
       <div className="form-grid"><label>Fin de promotion confirmée<input type="date" value={draft.promotionEnd?.date ?? ""} onChange={event => update("promotionEnd", event.target.value ? { date: event.target.value, source: draft.promotionEnd?.source ?? "" } : undefined)} /></label>
-      <label>Source de cette date<input maxLength={2000} value={draft.promotionEnd?.source ?? ""} disabled={!draft.promotionEnd?.date} onChange={event => update("promotionEnd", { ...draft.promotionEnd!, source: event.target.value })} /></label></div>
+      <label>Source de cette date<input maxLength={2000} required={Boolean(draft.promotionEnd?.date)} value={draft.promotionEnd?.source ?? ""} disabled={!draft.promotionEnd?.date} onChange={event => update("promotionEnd", { ...draft.promotionEnd!, source: event.target.value })} /></label></div>
       <p className="muted">Une alerte de fin de promotion exige une date et sa source. Le nombre de mois restants ne permet pas de deviner cette date.</p>
       <div className="form-grid">{numberField("Months left on current promotion", "currentPromoMonths", { max: 120, step: "1" })}{numberField("All-in price after promotion (same billing cycle)", "priceAfterPromo")}</div>
       <label>Existing discounts / bundle terms<textarea maxLength={3000} value={draft.discounts} onChange={event => update("discounts", event.target.value)} /></label>

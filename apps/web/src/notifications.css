@@ -1,5 +1,11 @@
 .shell-tools { display: flex; justify-content: flex-end; max-width: 1280px; margin: auto; padding: 8px 24px 0; }
 .shell-tools button { min-height: 44px; display: inline-flex; align-items: center; gap: 8px; }
+.notifications-view { grid-template-columns: minmax(0, 1fr); }
+.notifications-view .page-heading { flex-wrap: wrap; }
+.notifications-view .page-heading-copy { flex: 1 1 220px; }
+.notifications-view fieldset { min-inline-size: 0; border: 1px solid var(--line); border-radius: 12px; padding: 12px; }
+.notifications-view .sheet-content > label { display: grid; gap: 8px; }
+.notifications-view .sheet-content input:not([type="checkbox"]) { width: 100%; min-width: 0; }
 .notification-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 12px; }
 .notification-card { padding: 20px; display: grid; gap: 10px; overflow-wrap: anywhere; }
 .notification-card.unread { border-left: 4px solid var(--green); }

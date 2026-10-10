@@ -75,6 +75,7 @@ export default function NotificationsView({ hub, onNavigate }: { hub: HubState; 
     </PageHeader>
     {!paired && <Notice>Associez votre PC pour consulter les détails privés.<button className="text-action" onClick={() => onNavigate("more")}>Ouvrir les réglages</button></Notice>}
     {error && <Notice error>{error}</Notice>}{message && <Notice>{message}</Notice>}
+    {busy && !state && <p role="status">Chargement de l'historique depuis votre PC…</p>}
     {state && <>
       <div className="notification-toolbar"><label><input type="checkbox" checked={unreadOnly} onChange={e => setUnreadOnly(e.target.checked)} />Non lues seulement</label><small>{state.scannedAt ? `Vérifié le ${new Date(state.scannedAt).toLocaleString("fr-CA")}` : "Première analyse en attente"}</small></div>
       {state.sourceErrors.length > 0 && <Notice>Sources indisponibles : {state.sourceErrors.join(", ")}. Les anciens résultats sont conservés.</Notice>}
