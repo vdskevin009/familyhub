@@ -13,7 +13,7 @@ export const benchmarkMeta = {
 const definitions = [
     [
         "groceries",
-        "Épicerie",
+        "Courses alimentaires",
         "Food purchased from stores",
         8530,
         12954,

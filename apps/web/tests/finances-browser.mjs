@@ -197,10 +197,13 @@ try {
         assert.equal(await page.getByLabel("Mois", { exact: true }).inputValue(), "8");
         await page.getByRole("button", { name: "Mois suivant", exact: true }).click();
         await page.getByLabel("Vue", { exact: true }).selectOption("year");
+        assert.match(await page.locator(".finance-expense-charts > section").first().innerText(), /Courses alimentaires.*109,99/s);
+        assert.match(await page.locator(".finance-expense-charts > section").first().innerText(), /Restaurants et livraison/);
         assert.equal(await page.locator(".finance-expense-charts > section").last().locator(".finance-bars li").count(), 12);
         assert.match(await page.locator(".finance-expense-charts").innerText(), /Période partielle/);
         await page.locator(".finance-expense-charts > section").last().getByRole("button", { name: /2026-04/ }).click();
         assert.equal(await page.getByLabel("Mois", { exact: true }).inputValue(), "4");
+        assert.match(await page.locator(".finance-expense-charts > section").first().innerText(), /Courses alimentaires.*100,00/s);
         await page.getByLabel("Vue", { exact: true }).selectOption("custom");
         await page.getByLabel("Du", { exact: true }).fill("2026-04-01");
         await page.getByLabel("Au", { exact: true }).fill("2026-09-30");
@@ -235,7 +238,10 @@ try {
             1,
         );
         await page.getByLabel("Devise").selectOption("CAD");
-        await page.getByLabel("Catégorie").selectOption("groceries");
+        await page.getByLabel("Catégorie").selectOption({ label: "Courses alimentaires" });
+        assert.equal(await page.getByLabel("Catégorie").inputValue(), "groceries");
+        assert.equal(await page.getByLabel("Catégorie").locator('option').filter({ hasText: /^Courses alimentaires$/ }).count(), 1);
+        assert.equal(await page.getByLabel("Catégorie").locator('option[value="restaurants"]').innerText(), "Restaurants et livraison");
         await page
             .locator(".finance-register button")
             .filter({ hasText: "SAFEWAY SYNTHETIC" })
@@ -244,6 +250,8 @@ try {
         const sheet = page.getByRole("dialog", {
             name: /Vérifier l.opération/,
         });
+        await sheet.getByLabel("Catégorie", { exact: true }).selectOption({ label: "Courses alimentaires" });
+        assert.match(await sheet.innerText(), /achats mixtes/);
         await sheet
             .getByText("Sources et traçabilité", { exact: true })
             .click();
@@ -272,6 +280,7 @@ try {
             (await finance.read()).decisions.groceries.note,
             "Synthetic reviewed purchase",
         );
+        assert.equal((await finance.read()).decisions.groceries.category, "groceries", "Existing category identity persists under its clearer label");
         assert.ok(
             !(await page.evaluate(() => JSON.stringify(localStorage))).includes(
                 "SAFEWAY SYNTHETIC",

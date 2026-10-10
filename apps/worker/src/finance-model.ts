@@ -1,6 +1,6 @@
 /** Private, deterministic finance model. Money is integer cents; source facts are never decisions. */
 export const expenseCategories = {
-    groceries: "Épicerie",
+    groceries: "Courses alimentaires",
     restaurants: "Restaurants et livraison",
     housing: "Logement",
     mortgage: "Hypothèque (versement)",
