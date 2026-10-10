@@ -708,6 +708,21 @@ label { font-size: 12px; color: var(--muted); }
 /* Finances: readable registers and directly labelled charts share the product tokens. */
 .finance-view { max-width: 1140px; }
 .finance-view .surface, .finance-contract-fields { min-width: 0; }
+.period-navigator { min-width: 0; margin: 0; padding: 16px 20px; border: 1px solid var(--line); border-radius: var(--radius-sm); display: grid; gap: 16px; background: var(--surface); }
+.period-navigator legend { padding: 0 6px; font-weight: 650; }
+.period-controls { display: flex; flex-wrap: wrap; align-items: end; gap: 12px; }
+.period-controls label { display: grid; gap: 6px; flex: 1 1 130px; min-width: 0; }
+.period-controls input, .period-controls select { min-width: 0; width: 100%; min-height: 44px; }
+.period-navigation { display: flex; align-items: center; justify-content: center; gap: 16px; text-align: center; }
+.period-navigation button { min-height: 44px; min-width: 44px; padding: 10px; }
+.period-navigation strong { min-width: 0; flex: 1; font-variant-numeric: tabular-nums; }
+.period-navigator small { color: var(--muted); line-height: 1.5; }
+.finance-edit-label { color: var(--green); text-decoration: underline; text-underline-offset: 3px; }
+.paid-contract-details, .payment-reviews { min-width: 0; overflow-wrap: anywhere; }
+.paid-contract-details > div, .payment-reviews > div { padding-top: 14px; }
+.paid-contract-details > div > div, .payment-reviews > div > div { border-top: 1px solid var(--line); padding-top: 14px; }
+.savings-source-price { color: var(--muted); font-size: 13px; }
+.savings-contract-heading > strong { white-space: normal; overflow-wrap: anywhere; }
 .finance-tabs { width: min(100%, 440px); display: grid; grid-template-columns: 1fr 1fr; }
 .finance-tabs button { min-height: 44px; }
 .finance-filters { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; }
@@ -754,6 +769,7 @@ label { font-size: 12px; color: var(--muted); }
 .finance-activity-list > div { padding: 14px 0; border-bottom: 1px solid var(--line); }
 .finance-maturity { background: var(--info-soft); padding: 16px; border-radius: var(--radius-sm); }
 @media (max-width: 680px) {
+  .period-navigator { padding: 12px; }
   .finance-chart-grid { grid-template-columns: 1fr; }
   .finance-service { flex-wrap: wrap; gap: 8px 12px; }
   .finance-service > span:first-child { flex-basis: 55%; }

@@ -83,14 +83,14 @@ try {
   assert.equal(saved.records[0].contract.price, 65, "stale phone edit must not replace the PC version");
   await phone.getByRole("button", { name: "Refresh shared contracts", exact: true }).click();
   await phone.getByText(/contract versions differ/).waitFor();
-  assert.match(await phone.locator(".savings-contract-heading").innerText(), /70\.00/);
+  assert.match(await phone.locator(".savings-source-price").innerText(), /70\.00/);
   await phone.getByRole("button", { name: "Results", exact: true }).click();
   await phone.getByText("Synthetic daily comparison loaded from the PC", { exact: true }).waitFor();
   await phone.getByText(/Your contract changed after this research/).waitFor();
   await phone.getByRole("button", { name: "Close Synthetic shared internet: comparison", exact: true }).click();
   await phone.route(endpoint + "/**", route => route.abort());
   await phone.reload(); await phone.getByRole("heading", { name: "Synthetic shared internet", exact: true }).waitFor();
-  assert.match(await phone.locator(".savings-contract-heading").innerText(), /70\.00/);
+  assert.match(await phone.locator(".savings-source-price").innerText(), /70\.00/);
   assert.deepEqual(errors, []); assert.ok(!logs.includes(key));
   console.log("PASS: two devices, daily result load and stale protection, document bytes, revision conflicts, local-edit preservation and offline cache");
 } finally {

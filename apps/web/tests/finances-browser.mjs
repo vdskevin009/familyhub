@@ -188,6 +188,18 @@ try {
             .getByRole("heading", { name: "Dépenses par catégorie" })
             .waitFor();
         await page.locator(".finance-import > summary").click();
+        assert.equal(await page.getByLabel("Mois", { exact: true }).inputValue(), "9");
+        await page.getByRole("button", { name: "Mois précédent", exact: true }).click();
+        assert.equal(await page.getByLabel("Mois", { exact: true }).inputValue(), "8");
+        await page.getByRole("button", { name: "Mois suivant", exact: true }).click();
+        await page.getByLabel("Vue", { exact: true }).selectOption("year");
+        assert.equal(await page.locator(".finance-chart-grid > section").last().locator(".finance-bars li").count(), 12);
+        assert.match(await page.locator(".finance-chart-grid").innerText(), /Période partielle/);
+        await page.locator(".finance-chart-grid > section").last().getByRole("button", { name: /2026-04/ }).click();
+        assert.equal(await page.getByLabel("Mois", { exact: true }).inputValue(), "4");
+        await page.getByLabel("Vue", { exact: true }).selectOption("custom");
+        await page.getByLabel("Du", { exact: true }).fill("2026-04-01");
+        await page.getByLabel("Au", { exact: true }).fill("2026-09-30");
         assert.equal(
             await page.getByLabel("Du", { exact: true }).inputValue(),
             "2026-04-01",
@@ -262,12 +274,24 @@ try {
             ),
             "Ledger must not be cached in browser storage",
         );
+        await page.getByLabel("Vue", { exact: true }).selectOption("custom");
         await page.getByLabel("Du", { exact: true }).fill("2026-03-15");
+        await page.getByLabel("Au", { exact: true }).fill("2026-09-30");
         assert.match(
             await page.locator(".finance-chart-grid").innerText(),
             /Période partielle/,
         );
         await page.getByLabel("Du", { exact: true }).fill("2026-04-01");
+        await page.getByLabel("Rechercher", { exact: true }).fill("SPOTIFY");
+        await page.getByRole("button", { name: "Catégoriser les opérations", exact: true }).click();
+        await sheet.getByLabel("Catégorie", { exact: true }).selectOption("recreation");
+        await sheet.getByRole("button", { name: "Enregistrer et suivante", exact: true }).click();
+        await sheet.getByText(/2026-08-10/).waitFor();
+        assert.equal((await finance.read()).decisions.subscription2.category, "recreation");
+        assert.match(await page.locator(".finance-chart-grid > section").first().innerText(), /Loisirs et sport.*20,00/s);
+        await sheet.getByRole("button", { name: "Enregistrer la décision", exact: true }).click();
+        await sheet.waitFor({ state: "hidden" });
+        await page.getByLabel("Rechercher", { exact: true }).fill("");
         await page.getByLabel("Population de référence").selectOption("bc");
         assert.match(await page.locator(".finance-view").innerText(), /2023/);
         assert.equal(
@@ -310,6 +334,11 @@ try {
             path: join(screenshots, "investments-" + width + ".png"),
             fullPage: true,
         });
+        // Add only synthetic bank rows, then exercise read-only contract reconciliation.
+        for (const [id, date, description, cents] of [["paid1", "2026-08-20", "SHAW SYNTHETIC", 12670], ["paid2", "2026-09-20", "SHAW SYNTHETIC", 13770], ["direct", "2026-09-21", "DISNEY PLUS SYNTHETIC", 600]]) {
+            bundle.bankActivities.push({ ...bundle.bankActivities[0], id, sourceRowId: id, matchingFingerprint: id, transactionDate: date, descriptionOriginal: description, debitCents: cents, signedOutflowCents: cents });
+        }
+        await finance.import({ bundle, apply: true, expectedRevision: (await finance.read()).revision });
         await page.goto(base + "?view=savings");
         await page
             .getByRole("button", { name: "Add contract", exact: true })
@@ -321,6 +350,7 @@ try {
         await form
             .getByLabel("Name", { exact: true })
             .fill("Synthetic package");
+        await form.getByLabel("Current provider", { exact: true }).fill("Shaw");
         await form
             .locator("summary")
             .filter({ hasText: /Facture d.origine et services inclus/ })
@@ -332,7 +362,7 @@ try {
             .getByLabel("Source / période originale")
             .fill("Synthetic invoice, one month; SHA256 " + "a1".repeat(32));
         await form.getByRole("button", { name: "Ajouter un service" }).click();
-        await form.getByLabel("Nom du service").fill("Synthetic streaming");
+        await form.getByLabel("Nom du service").fill("Disney+ synthetic streaming");
         await form.getByLabel("Coût").selectOption("included");
         await form
             .getByLabel("Source du service")
@@ -354,9 +384,21 @@ try {
             name: "Services et dépenses récurrentes",
         });
         assert.match(await services.innerText(), /Inclus/);
-        assert.match(await services.innerText(), /120,00/);
+        const paid = page.getByRole("region", { name: "Paiements TTC de la période", exact: true });
+        assert.match(await paid.locator(".finance-totals").innerText(), /137,70/);
+        assert.match(await paid.locator(".payment-reviews").innerText(), /6,00.*service cité comme inclus/s);
+        await page.getByLabel("Vue", { exact: true }).selectOption("year");
+        assert.match(await paid.locator(".finance-totals").innerText(), /264,40/);
+        assert.equal(await paid.locator(".finance-bars li").count(), 12);
+        assert.match(await paid.innerText(), /Couverture partielle/);
+        await paid.getByRole("button", { name: /2026-09/ }).click();
+        assert.equal(await page.getByLabel("Mois", { exact: true }).inputValue(), "9");
+        await page.getByRole("button", { name: "Mois suivant", exact: true }).click();
+        assert.match(await paid.locator(".finance-totals").innerText(), /Non disponible/);
+        assert.match(await page.locator(".savings-contract-heading").innerText(), /120[,.]00.*référence TTC/s);
+        await page.getByRole("button", { name: "Mois précédent", exact: true }).click();
         await services
-            .getByRole("button", { name: /Synthetic streaming/ })
+            .getByRole("button", { name: /synthetic streaming/ })
             .click();
         const edit = page.getByRole("dialog", {
             name: "Edit contract",
@@ -368,7 +410,10 @@ try {
         await page
             .getByRole("heading", { name: "Synthetic package", exact: true })
             .waitFor();
-        assert.match(await services.innerText(), /120,00/);
+        assert.match(await paid.locator(".finance-totals").innerText(), /137,70/);
+        await page.locator(".paid-contract-details > summary").click();
+        await page.locator(".paid-contract-details").getByText("Source du paiement", { exact: true }).click();
+        assert.match(await page.locator(".paid-contract-details").innerText(), /original.csv.*SHA-256/s);
         assert.ok((await page.locator(".savings-contract").innerText()).includes("a1".repeat(32)), "Long source evidence remains readable");
         assert.equal(
             await page.evaluate(

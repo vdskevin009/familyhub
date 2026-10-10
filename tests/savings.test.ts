@@ -7,6 +7,63 @@ import { newContract, compareOffer, publicBaseline, shortlistTotal, missingInfor
 import { SavingsResearch, validateBaseline, validateReport, savingsPrompt } from "../apps/worker/src/savings-research";
 import { effectiveContracts } from "../apps/web/src/savings";
 import { BillingCycle, type SavingsState } from "../apps/web/src/types";
+import { calendarPeriod, periodMode, shiftPeriod, defaultPeriod } from "../apps/web/src/finance-periods";
+import { reconcilePayments, providerMatches } from "../apps/web/src/savings-payments";
+import { parseFinancePreparation } from "../apps/worker/src/finance-import";
+import type { FinanceState, FinanceTransaction, Nature } from "../apps/worker/src/finance-model";
+import { financeFixture } from "./finance-fixture.mjs";
+const paymentState = (): FinanceState => ({ schema: 1, revision: "synthetic", importedAt: null, data: { ...parseFinancePreparation(financeFixture()), transactions: [] }, decisions: {}, decisionHistory: [], imports: [] });
+const payment = (id: string, description: string, date: string, outflowCents: number, extra: Partial<FinanceTransaction> = {}): FinanceTransaction => ({ id, description, date, outflowCents, accountId: "card", status: "posted", currency: "CAD", occurrence: 1, fingerprint: id, hints: [], sources: [{ name: "synthetic.csv", sha256: "a".repeat(64), record: 2 }], ...extra });
+test("calendar filters navigate leap months, year boundaries and incomplete source windows", () => {
+  assert.deepEqual(calendarPeriod(2024, 2), { from: "2024-02-01", to: "2024-02-29" });
+  assert.deepEqual(shiftPeriod(calendarPeriod(2026, 12), 1), calendarPeriod(2027, 1));
+  assert.deepEqual(shiftPeriod(calendarPeriod(2026, 1), -1), calendarPeriod(2025, 12));
+  assert.deepEqual(shiftPeriod(calendarPeriod(2026), -1), calendarPeriod(2025));
+  assert.equal(periodMode(calendarPeriod(2026)), "year");
+  assert.equal(periodMode({ from: "2026-04-15", to: "2026-08-31" }), "custom");
+  assert.deepEqual(defaultPeriod({ from: "2026-04-09", to: "2026-10-09" }), calendarPeriod(2026, 9));
+  assert.deepEqual(defaultPeriod({ from: "2026-04-09", to: "2026-09-30" }), calendarPeriod(2026, 9));
+  assert.deepEqual(defaultPeriod({ from: "2026-10-02", to: "2026-10-09" }), calendarPeriod(2026, 10));
+});
+test("paid bank amounts retain original dates, currency and evidence without uniform tax or monthly inference", () => {
+  const hydro = { ...newContract("other", "hydro"), provider: "BC Hydro", price: 150, taxesIncluded: false, billing: { amount: 150, currency: "CAD", count: 59, unit: "days" as const, asOf: "2026-09-28", source: "Synthetic 59-day invoice", taxesIncluded: true } };
+  const home = { ...newContract("home-insurance", "home"), provider: "TD Insurance", price: 1300, cycle: "annual" as const, taxesIncluded: false };
+  const mortgage = { ...newContract("mortgage", "mortgage"), provider: "TD" };
+  const s = paymentState(); s.data!.transactions = [payment("bill", "B.C. HYDRO-PAP BPY", "2026-10-05", 15000), payment("h1", "TD Ins/TD Assur INS", "2026-09-18", 12000), payment("h2", "TD Ins/TD Assur INS", "2026-08-18", 12000), payment("m", "SYNTHETIC MTG", "2026-09-20", 250000)];
+  const before = JSON.stringify([hydro, home, mortgage, s]), result = reconcilePayments([hydro, home, mortgage], s, "2026-09-01", "2026-09-30");
+  assert.equal(result.summaries[0].cents, null, "October debit must not be moved to September bill date");
+  assert.equal(result.summaries[0].invoiceMatch?.id, "bill");
+  assert.equal(result.summaries[0].referenceMonthly, 150 * 365.25 / 59 / 12);
+  assert.equal(result.summaries[1].cents, 12000); assert.equal(result.summaries[1].referenceMonthly, null);
+  assert.equal(result.summaries[1].repeated, true); assert.equal(result.summaries[2].cents, 250000, "No principal/interest split");
+  assert.equal(result.totals.CAD.cents, 262000);
+  assert.equal(result.summaries[1].rows[0].sources[0].sha256, "a".repeat(64));
+  assert.equal(JSON.stringify([hydro, home, mortgage, s]), before, "Sources and manual ledger remain immutable");
+  assert.equal(providerMatches(home, "TD VISA PAYMENT"), false);
+  assert.equal(providerMatches({ ...home, provider: "Apple" }, "APPLE.COM/BILL"), false);
+});
+test("included service charges, unknown credits, duplicates and ambiguous providers stay reviewable; manual decisions win", () => {
+  const c = { ...newContract("telecom", "package"), provider: "Shaw", services: [{ id: "internet", name: "Internet", pricing: "documented" as const, monthlyAmount: 70, taxesIncluded: false, source: "Synthetic terms" }, ...["Disney+", "Apple TV", "Netflix"].map(name => ({ id: name, name, pricing: "included" as const, monthlyAmount: null, taxesIncluded: null, source: "Synthetic terms" }))] };
+  const s = paymentState(); s.data!.transactions = [payment("a", "SHAW SYNTHETIC", "2026-09-01", 11000), payment("refund", "SHAW REFUND", "2026-09-02", -1000), payment("duplicate", "SHAW SYNTHETIC", "2026-09-01", 11000, { duplicateCandidate: true }), payment("pending", "SHAW SYNTHETIC", "2026-09-03", 9900, { status: "pending" }), payment("included", "DISNEY PLUS", "2026-09-10", 500), payment("apple", "APPLE.COM/BILL", "2026-09-11", 800), payment("credit", "SHAW CREDIT", "2026-09-02", -900, { accountId: "bank" }), ...["transfer", "repayment", "investment", "income", "duplicate"].map((nature, i) => { const id = "manual" + i; s.decisions[id] = { nature: nature as Nature, category: "other", note: "Synthetic manual choice", updatedAt: "" }; return payment(id, "SHAW SYNTHETIC", "2026-09-05", 4500); })];
+  const result = reconcilePayments([c], s, "2026-01-01", "2026-12-31");
+  assert.equal(result.totals.CAD.cents, 10000, "Package debits counted once, refunds netted, services never added");
+  assert.equal(result.reviews.length, 4); assert.equal(result.months.length, 12); assert.equal(result.months[9].full, false);
+  assert.equal(result.summaries[0].repeated, false);
+  s.decisions.duplicate = { nature: "expense", category: "communications", note: "Distinct confirmed occurrence", updatedAt: "" };
+  assert.equal(reconcilePayments([c], s, "2026-09-01", "2026-09-30").totals.CAD.cents, 21000);
+  const ambiguous = reconcilePayments([c, { ...c, id: "second-policy" }], s, "2026-09-01", "2026-09-30");
+  assert.equal(ambiguous.totals.CAD.matched, 0); assert.ok(ambiguous.reviews.some(r => r.reason.includes("Plusieurs contrats")));
+});
+test("payment reconciliation separates currencies and never turns missing or unknown-tax costs into zero TTC", () => {
+  const cad = { ...newContract("subscription", "cad"), provider: "Spotify", price: 15 };
+  const usd = { ...newContract("subscription", "usd"), provider: "Example", billing: { amount: 200, currency: "USD", count: 1, unit: "years" as const, asOf: "2026-01-01", source: "Synthetic annual", taxesIncluded: true } };
+  const s = paymentState(); s.data!.transactions = [payment("cad", "SPOTIFY TEST", "2026-09-01", 1800), payment("usd", "EXAMPLE SUB", "2026-09-01", 20000, { currency: "USD" }), payment("mismatch", "SPOTIFY USD", "2026-09-05", 1300, { currency: "USD" })];
+  const r = reconcilePayments([cad, usd], s, "2026-09-01", "2026-09-30");
+  assert.equal(r.totals.CAD.cents, 1800); assert.equal(r.totals.USD.cents, 20000); assert.equal(r.reviews.length, 1);
+  assert.equal(r.summaries[0].referenceMonthly, null); assert.equal(Math.round(r.summaries[1].referenceMonthly! * 100), 1667);
+  const empty = reconcilePayments([cad], null, "2026-09-01", "2026-09-30");
+  assert.equal(empty.summaries[0].cents, null); assert.equal(empty.totals.CAD.matched, 0); assert.equal(empty.summaries[0].referenceMonthly, null);
+});
 const contract = () => ({ ...newContract("telecom", "synthetic-contract"), name: "Internet", provider: "TELUS", price: 100, taxesIncluded: true, cancellationFee: 40, annualLostDiscounts: 20, needs: "Same service", renewal: "2027-01-01" });
 const offer = (overrides: Partial<SavingsOffer> = {}): SavingsOffer => ({
   provider: "Rogers", title: "Fictitious test offer", kind: "public-estimate", currentProvider: false,
