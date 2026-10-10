@@ -52,6 +52,10 @@ test("bounded search refuses to announce global minimum", () => {
   const p = planningFixture(); p.items = Array.from({ length: 14 }, (_, n) => ({ ...p.items[0], id: `i${n}` })); p.prices = p.items.flatMap(i => ["a", "b"].map(retailerId => ({ ...p.prices[0], id: `${i.id}_${retailerId}`, itemId: i.id, retailerId })));
   const r = compareBaskets(p, now); assert.equal(r.truncated, true); assert.equal(r.examined, 5000); assert.equal(r.best, null);
 });
+test("extreme sizes and overflow cannot create finite-looking free or cheapest baskets", () => {
+  const p = planningFixture(); p.prices.forEach(o => o.size = 1e-300); assert.throws(() => validatePlan(p)); assert.equal(compareBaskets(p, now).best, null);
+  p.prices.forEach(o => { o.size = .000001; o.price = 1_000_000; }); assert.equal(compareBaskets(p, now).best, null);
+});
 test("validation rejects missing sources, invalid dates, references, nonfinite values and unsafe URLs", () => {
   assert.deepEqual(validatePlan(planningFixture()), planningFixture());
   for (const edit of [p => p.prices[0].price = NaN, p => p.prices[0].price = .001, p => p.prices[0].evidence = { ...evidence, date: "2026-02-30" }, p => p.prices[0].itemId = "missing", p => p.prices[0].evidence = { ...evidence, title: "" }, p => p.items.push(p.items[0]), p => p.area = ""]) { const p = planningFixture(); edit(p); assert.throws(() => validatePlan(p)); }

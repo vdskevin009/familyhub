@@ -12,7 +12,7 @@ const object = (v: unknown): Record<string, unknown> => { if (!v || typeof v !==
 const text = (v: unknown, max = 200) => { if (typeof v !== "string" || v.length > max) throw new GroceryError("Texte de liste invalide."); return v.trim(); };
 const id = (v: unknown) => { const s = text(v, 80); if (!/^[a-zA-Z0-9_-]+$/.test(s)) throw new GroceryError("Identifiant de liste invalide."); return s; };
 const flag = (v: unknown) => { if (typeof v !== "boolean") throw new GroceryError("Confirmation invalide."); return v; };
-const number = (v: unknown, nullable = true, max = 1_000_000, positive = false) => { if (nullable && v === null) return null; if (typeof v !== "number" || !Number.isFinite(v) || v < 0 || v > max || positive && v === 0) throw new GroceryError("Quantité, prix ou frais invalide."); return v; };
+const number = (v: unknown, nullable = true, max = 1_000_000, positive = false) => { if (nullable && v === null) return null; if (typeof v !== "number" || !Number.isFinite(v) || v < 0 || v > max || positive && v < .000001) throw new GroceryError("Quantité, prix ou frais invalide (minimum de quantité/format : 0,000001)."); return v; };
 const money = (v: unknown, nullable = true) => { const n = number(v, nullable); if (n !== null && Math.abs(n * 100 - Math.round(n * 100)) > .0001) throw new GroceryError("Utilisez deux décimales pour les montants."); return n; };
 const date = (v: unknown, blank = false) => { const s = text(v, 10); if (blank && !s) return s; if (!/^\d{4}-\d{2}-\d{2}$/.test(s) || !Number.isFinite(Date.parse(s)) || new Date(s).toISOString().slice(0, 10) !== s) throw new GroceryError("Date de source invalide."); return s; };
 export function publicSourceUrl(v: unknown) {
@@ -41,7 +41,10 @@ export function offerQuantity(item: ShoppingItem, offer: GroceryPrice): number |
   if (item.quantity === null || item.size === null || !item.unit) return null;
   const target = normalizedSize(item.quantity * item.size, item.unit), pack = normalizedSize(offer.size, offer.unit);
   if (target.unit !== pack.unit || offer.weighed && pack.unit === "each") return null;
-  return offer.weighed ? target.size / pack.size : Math.ceil(target.size / pack.size - 1e-9);
+  const quantity = offer.weighed ? target.size / pack.size : Math.ceil(target.size / pack.size - 1e-9);
+  // Refuse overflow/unsupported baskets rather than turning nonfinite costs into JSON null/zero.
+  if (!Number.isFinite(quantity) || quantity <= 0 || quantity > 1_000_000 || !Number.isFinite(quantity * offer.price) || quantity * offer.price > 1_000_000) return null;
+  return quantity;
 }
 export type Basket = { key: string; name: string; split: boolean; coverage: number; count: number; subtotal: number; total: number | null; eligible: boolean; missing: string[]; lines: { itemId: string; priceId: string; retailerId: string; quantity: number; cost: number }[]; orders: { retailerId: string; subtotal: number; tax: number | null; delivery: number | null; service: number | null; feesTax: number | null; tip: number; total: number | null }[] };
 function basket(plan: GroceryPlan, prices: GroceryPrice[], now: string, name: string, split: boolean): Basket {
