@@ -1,5 +1,11 @@
 # FamilyHub — Canonical Requirements
 
+## Pet spending category — 2026-10-10
+
+| ID | Requirement | Status | Implementation / validation |
+| --- | --- | --- | --- |
+| FH-FIN-008 | Offer Animaux de compagnie for pet food, veterinary care, medication, grooming and pet insurance in the existing finance selector, filters, category charts and payment drill-down. Persist explicit decisions, retain prior manual classifications and source facts, and never infer an ambiguous purchase from its merchant name alone. | Implemented | Single new `pets` identity in `finance-model.ts` (no existing key/alias found); existing revision-protected API, no migration or automatic reclassification. Worker 2.23.3. Synthetic model, API restart/reimport and 320/390/768/1440px browser acceptance pass; exact CI and deployment tracked separately in #162. |
+
 > **Source of truth for product requirements.** Read this file before changing the product. Update it whenever a requirement, decision, scope boundary, or implementation status changes.
 
 ## Private finances and service-first Savings — issues #162 / #163
