@@ -153,6 +153,8 @@ There is no live bank connection. **Finances** has Dépenses and Investissements
 
 The earlier browser CSV tool remains under Other and keeps its existing local-storage data; it is not silently migrated or treated as the current private history. Recurring merchant patterns remain candidates. Mortgage comparisons use entered values and are estimates, not lender quotes; spending history never invents principal/interest splits.
 
+The explicit **Épargne / Investissements** category keeps reviewed outgoing and incoming flows separate from spending, with monthly and yearly views (paired worker 2.23.1+). Savings shows each package price on the principal service's first line, with included/shared services beneath it and direct access to the contract and sources. Dated references and out-of-period payments never inflate the selected period's paid total.
+
 ## Local storage and privacy
 
 Current household state is browser-local and is not encrypted by FamilyHub. Do not use the app for sensitive production data on a shared browser profile. The optional daily invoice index, corrections and statuses sync through the paired PC while Inbox is open; there is no general household sync.

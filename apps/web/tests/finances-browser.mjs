@@ -9,6 +9,7 @@ import { once } from "node:events";
 import { financeFixture } from "../../../tests/finance-fixture.mjs";
 import { FinanceLibrary } from "../../worker/dist/finance-library.js";
 import { SavingsLibrary } from "../../worker/dist/savings-library.js";
+import { newContract } from "../../worker/dist/savings-model.js";
 const root = resolve("apps/web/dist");
 const server = createServer(async (req, res) => {
     const pathname = new URL(req.url, "http://localhost").pathname;
@@ -161,6 +162,9 @@ try {
             .filter({ hasText: "Format attendu" })
             .waitFor();
         const bundle = financeFixture();
+        bundle.accounts.push({ ...bundle.accounts[0], accountId: "saving", alias: "Épargne de test" });
+        const transfer = bundle.bankActivities.find(r => r.id === "transfer");
+        bundle.bankActivities.push({ ...transfer, id: "saving-in", sourceRowId: "saving-in", matchingFingerprint: "saving-in", accountId: "saving", descriptionOriginal: "SYNTHETIC SAVING RECEIPT", debitCents: null, creditCents: 50000, signedOutflowCents: -50000 });
         bundle.accounts.push({
             ...bundle.accounts[0],
             accountId: "usd",
@@ -193,9 +197,9 @@ try {
         assert.equal(await page.getByLabel("Mois", { exact: true }).inputValue(), "8");
         await page.getByRole("button", { name: "Mois suivant", exact: true }).click();
         await page.getByLabel("Vue", { exact: true }).selectOption("year");
-        assert.equal(await page.locator(".finance-chart-grid > section").last().locator(".finance-bars li").count(), 12);
-        assert.match(await page.locator(".finance-chart-grid").innerText(), /Période partielle/);
-        await page.locator(".finance-chart-grid > section").last().getByRole("button", { name: /2026-04/ }).click();
+        assert.equal(await page.locator(".finance-expense-charts > section").last().locator(".finance-bars li").count(), 12);
+        assert.match(await page.locator(".finance-expense-charts").innerText(), /Période partielle/);
+        await page.locator(".finance-expense-charts > section").last().getByRole("button", { name: /2026-04/ }).click();
         assert.equal(await page.getByLabel("Mois", { exact: true }).inputValue(), "4");
         await page.getByLabel("Vue", { exact: true }).selectOption("custom");
         await page.getByLabel("Du", { exact: true }).fill("2026-04-01");
@@ -278,7 +282,7 @@ try {
         await page.getByLabel("Du", { exact: true }).fill("2026-03-15");
         await page.getByLabel("Au", { exact: true }).fill("2026-09-30");
         assert.match(
-            await page.locator(".finance-chart-grid").innerText(),
+            await page.locator(".finance-expense-charts").innerText(),
             /Période partielle/,
         );
         await page.getByLabel("Du", { exact: true }).fill("2026-04-01");
@@ -288,10 +292,42 @@ try {
         await sheet.getByRole("button", { name: "Enregistrer et suivante", exact: true }).click();
         await sheet.getByText(/2026-08-10/).waitFor();
         assert.equal((await finance.read()).decisions.subscription2.category, "recreation");
-        assert.match(await page.locator(".finance-chart-grid > section").first().innerText(), /Loisirs et sport.*20,00/s);
+        assert.match(await page.locator(".finance-expense-charts > section").first().innerText(), /Loisirs et sport.*20,00/s);
         await sheet.getByRole("button", { name: "Enregistrer la décision", exact: true }).click();
         await sheet.waitFor({ state: "hidden" });
         await page.getByLabel("Rechercher", { exact: true }).fill("");
+        // Explicitly classify both sides; show directions separately, never a 1,000 total.
+        for (const description of ["TRANSFER TO SYNTHETIC", "SYNTHETIC SAVING RECEIPT"]) {
+            await page.locator(".finance-register button").filter({ hasText: description }).click();
+            await sheet.getByLabel("Catégorie", { exact: true }).selectOption("savings-investments");
+            await sheet.getByLabel("Nature", { exact: true }).selectOption("transfer");
+            assert.equal(await sheet.getByLabel("Catégorie", { exact: true }).inputValue(), "savings-investments");
+            assert.equal(await sheet.getByLabel("Nature", { exact: true }).locator('option[value="expense"]').evaluate(el => el.disabled), true);
+            await sheet.getByRole("button", { name: "Enregistrer la décision", exact: true }).click();
+            await sheet.waitFor({ state: "hidden" });
+        }
+        const flows = page.getByRole("region", { name: "Épargne et investissements classés", exact: true });
+        assert.match(await flows.locator(".finance-totals").innerText(), /Sorties classées.*500,00.*Entrées classées.*500,00/s);
+        assert.match(await page.locator(".finance-totals").first().innerText(), /2\s?852/);
+        assert.equal(await page.locator(".finance-tabs button").count(), 2);
+        await page.getByLabel("Vue", { exact: true }).selectOption("year");
+        await flows.getByText("Flux mois par mois", { exact: true }).click();
+        assert.equal(await flows.locator(".finance-bars li").count(), 24);
+        await flows.getByRole("button", { name: /2026-06/ }).first().click();
+        assert.equal(await page.getByLabel("Mois", { exact: true }).inputValue(), "6");
+        assert.match(await flows.locator(".finance-totals").innerText(), /500,00.*500,00/s);
+        await flows.getByRole("button", { name: "Voir les opérations classées", exact: true }).click();
+        assert.equal(await page.locator(".finance-register button").count(), 2);
+        await page.reload();
+        await page.getByRole("heading", { name: "Dépenses par catégorie", exact: true }).waitFor();
+        await page.getByLabel("Mois", { exact: true }).selectOption("6");
+        assert.match(await flows.locator(".finance-totals").innerText(), /500,00.*500,00/s);
+        const decisions = (await finance.read()).decisions;
+        assert.equal(decisions.transfer.category, "savings-investments");
+        assert.equal(decisions["saving-in"].category, "savings-investments");
+        assert.equal(decisions.groceries.note, "Synthetic reviewed purchase");
+        await page.getByLabel("Vue", { exact: true }).selectOption("year");
+        await flows.getByText("Flux mois par mois", { exact: true }).click();
         await page.getByLabel("Population de référence").selectOption("bc");
         assert.match(await page.locator(".finance-view").innerText(), /2023/);
         assert.equal(
@@ -361,12 +397,12 @@ try {
         await form
             .getByLabel("Source / période originale")
             .fill("Synthetic invoice, one month; SHA256 " + "a1".repeat(32));
-        await form.getByRole("button", { name: "Ajouter un service" }).click();
-        await form.getByLabel("Nom du service").fill("Disney+ synthetic streaming");
-        await form.getByLabel("Coût").selectOption("included");
-        await form
-            .getByLabel("Source du service")
-            .fill("Synthetic package terms");
+        for (const [name, cost] of [["Internet résidentiel synthétique", "shared"], ["Disney+ synthetic streaming", "included"], ["Netflix synthetic", "included"], ["Apple TV synthetic", "included"]]) {
+            await form.getByRole("button", { name: "Ajouter un service" }).click();
+            await form.getByLabel("Nom du service").last().fill(name);
+            await form.getByLabel("Coût").last().selectOption(cost);
+            await form.getByLabel("Source du service").last().fill("Synthetic package terms");
+        }
         await form
             .locator("input[type=file]")
             .setInputFiles({
@@ -384,6 +420,19 @@ try {
             name: "Services et dépenses récurrentes",
         });
         assert.match(await services.innerText(), /Inclus/);
+        const group = services.locator(".recurring-package").filter({ hasText: "Internet résidentiel synthétique" });
+        assert.equal(await group.count(), 1);
+        assert.equal(await group.locator(".recurring-package-service").count(), 3);
+        assert.equal(await group.locator(".recurring-included").count(), 3);
+        assert.match(await group.locator(".recurring-package-heading").innerText(), /Internet résidentiel synthétique.*137,70/s);
+        assert.doesNotMatch(await group.innerText(), /Voir le total du contrat/);
+        const titleBounds = await group.locator(".recurring-package-heading strong").first().boundingBox();
+        const priceBounds = await group.locator(".recurring-package-price").boundingBox();
+        assert.ok(Math.abs(titleBounds.y - priceBounds.y) < 2, "Package price starts on the first service line");
+        await group.focus();
+        await page.keyboard.press("Tab");
+        await page.keyboard.press("Shift+Tab");
+        assert.equal(await group.evaluate(el => document.activeElement === el && getComputedStyle(el).outlineStyle !== "none"), true);
         const paid = page.getByRole("region", { name: "Paiements TTC de la période", exact: true });
         assert.match(await paid.locator(".finance-totals").innerText(), /137,70/);
         assert.match(await paid.locator(".payment-reviews").innerText(), /6,00.*service cité comme inclus/s);
@@ -397,9 +446,8 @@ try {
         assert.match(await paid.locator(".finance-totals").innerText(), /Non disponible/);
         assert.match(await page.locator(".savings-contract-heading").innerText(), /120[,.]00.*référence TTC/s);
         await page.getByRole("button", { name: "Mois précédent", exact: true }).click();
-        await services
-            .getByRole("button", { name: /synthetic streaming/ })
-            .click();
+        await group.focus();
+        await page.keyboard.press("Enter");
         const edit = page.getByRole("dialog", {
             name: "Edit contract",
             exact: true,
@@ -415,6 +463,28 @@ try {
         await page.locator(".paid-contract-details").getByText("Source du paiement", { exact: true }).click();
         assert.match(await page.locator(".paid-contract-details").innerText(), /original.csv.*SHA-256/s);
         assert.ok((await page.locator(".savings-contract").innerText()).includes("a1".repeat(32)), "Long source evidence remains readable");
+        // A second bundle retains one reference price, shared lines and a separate currency.
+        const shared = { ...newContract("telecom", "synthetic-shared"), name: "Synthetic two-line package", provider: "Rogers", billing: { amount: 85, currency: "USD", unit: "months", count: 1, taxesIncluded: true, asOf: "2026-09-01", source: "Synthetic invoice" }, services: [1, 2].map(n => ({ id: "synthetic-line-" + n, name: "Ligne synthétique " + n, pricing: "shared", monthlyAmount: null, taxesIncluded: null, source: "Synthetic invoice" })) };
+        const unknown = { ...newContract("subscription", "synthetic-unknown"), name: "Synthetic amount to complete", provider: "Synthetic pending evidence" };
+        await savings.import({ contracts: [shared, unknown].map(c => ({ ...c, updatedAt: "2026-10-10T12:00:00Z" })), documents: [] });
+        await group.click();
+        await edit.locator("summary").filter({ hasText: /Facture d.origine et services inclus/ }).click();
+        await edit.getByLabel("Montant facturé", { exact: true }).fill("");
+        await edit.getByRole("button", { name: "Save contract", exact: true }).click();
+        await edit.waitFor({ state: "hidden" });
+        await page.reload();
+        await services.locator(".recurring-package").filter({ hasText: shared.name }).waitFor();
+        assert.equal(await services.locator(".recurring-package").count(), 3);
+        assert.equal(await services.locator(".recurring-package-service").filter({ hasText: "Coût partagé" }).count(), 2);
+        const sharedGroup = services.locator(".recurring-package").filter({ hasText: shared.name });
+        assert.match(await sharedGroup.locator(".recurring-package-heading").innerText(), /85,00.*US/s);
+        assert.match(await sharedGroup.innerText(), /Référence TTC/);
+        assert.match(await services.locator(".recurring-package").filter({ hasText: unknown.name }).innerText(), /compléter.*Aucun montant TTC confirmé/s);
+        assert.match(await paid.locator(".finance-totals").innerText(), /137,70/);
+        await page.getByRole("button", { name: "Mois suivant", exact: true }).click();
+        assert.match(await group.locator(".recurring-package-heading").innerText(), /137,70/);
+        assert.match(await group.innerText(), /Dernier débit du 2026-09-20.*hors période/s);
+        assert.match(await paid.locator(".finance-totals").innerText(), /Non disponible/);
         assert.equal(
             await page.evaluate(
                 () => document.documentElement.scrollWidth > innerWidth,
