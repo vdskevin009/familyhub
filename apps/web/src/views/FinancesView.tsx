@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import CategoryPayments from "./CategoryPayments";
+import FinanceTrends from "./FinanceTrends";
+import { spendingTrend } from "../finance-trends";
 import { RefreshCw, Upload } from "lucide-react";
 import type { HubState } from "../state";
 import type { AppView } from "../types";
@@ -247,7 +249,8 @@ export default function FinancesView({
     onNavigate: (view: AppView) => void;
 }) {
     const [state, setState] = useState<FinanceState | null>(null),
-        [tab, setTab] = useState<"expenses" | "investments">("expenses");
+        [tab, setTab] = useState<"expenses" | "investments" | "trends">("expenses");
+    const [trendMonth, setTrendMonth] = useState("");
     const [error, setError] = useState(""),
         [message, setMessage] = useState(""),
         [busy, setBusy] = useState(false),
@@ -279,7 +282,7 @@ export default function FinancesView({
         setCategoryPayments(null);
         requestAnimationFrame(() => {
             if (categoryTrigger.current?.isConnected) categoryTrigger.current.focus();
-            else document.querySelector<HTMLElement>(".finance-expense-charts button")?.focus();
+            else document.querySelector<HTMLElement>(tab === "trends" ? ".trend-months button.selected" : ".finance-expense-charts button")?.focus();
         });
     }
     const [bundle, setBundle] = useState<unknown>(null),
@@ -290,6 +293,7 @@ export default function FinancesView({
     const paired = Boolean(hub.worker.Endpoint && hub.worker.ApiKey);
     const initialize = (s: FinanceState) => {
         setState(s);
+        if (s.data && !trendMonth) setTrendMonth(defaultPeriod(s.data.scope).from.slice(0, 7));
         if (s.data && !from) {
             const period = defaultPeriod(s.data.scope);
             setFrom(period.from); setTo(period.to);
@@ -405,6 +409,7 @@ export default function FinancesView({
         }
     }
     const data = state?.data;
+    const trend = useMemo(() => state?.data && trendMonth ? spendingTrend(state, trendMonth, account, currency) : null, [state, trendMonth, account, currency]);
     const summary = useMemo(
         () =>
             state
@@ -488,6 +493,9 @@ export default function FinancesView({
                     onClick={() => setTab("investments")}
                 >
                     Investissements
+                </button>
+                <button aria-current={tab === "trends" ? "page" : undefined} className={tab === "trends" ? "active" : ""} onClick={() => setTab("trends")}>
+                    Tendances
                 </button>
             </nav>
             {error && <Notice error>{error}</Notice>}
@@ -622,10 +630,10 @@ export default function FinancesView({
             )}
             {data && state && summary && (
                 <>
-                    <PeriodNavigator range={{ from, to }} scope={data.scope} onChange={range => { setFrom(range.from); setTo(range.to); }} />
-                    <p className="muted">Totaux par date d’opération. La vue annuelle conserve les mois partiels et les lacunes; elle n’extrapole pas une année complète.</p>
+                    {tab !== "trends" && <><PeriodNavigator range={{ from, to }} scope={data.scope} onChange={range => { setFrom(range.from); setTo(range.to); }} />
+                    <p className="muted">Totaux par date d'opération. La vue annuelle conserve les mois partiels et les lacunes; elle n'extrapole pas une année complète.</p></>}
                     <div className="finance-filters">
-                        {tab === "expenses" && (
+                        {tab !== "investments" && (
                             <label>
                                 Compte
                                 <select
@@ -642,10 +650,11 @@ export default function FinancesView({
                                 </select>
                             </label>
                         )}
-                        {tab === "expenses" && (
+                        {tab !== "investments" && (
                             <label>
                                 Devise
                                 <select
+                                    aria-label="Devise"
                                     value={currency}
                                     onChange={(e) =>
                                         setCurrency(e.target.value)
@@ -665,12 +674,12 @@ export default function FinancesView({
                             </label>
                         )}
                     </div>
-                    {from > to && (
+                    {tab !== "trends" && from > to && (
                         <Notice error>
                             La date de début doit précéder la date de fin.
                         </Notice>
                     )}
-                    {tab === "expenses" ? (
+                    {tab === "trends" && trend ? <FinanceTrends state={state} trend={trend} account={account} currency={currency} onMonth={setTrendMonth} onCategory={openCategory} /> : tab === "expenses" ? (
                         <>
                             <div className="finance-totals surface">
                                 <div>
@@ -1330,7 +1339,7 @@ export default function FinancesView({
                     )}
                 </>
             )}
-            <CategoryPayments category={categoryPayments} open={Boolean(categoryPayments) && !editing} summary={summary} accounts={data?.accounts ?? []} account={account} currency={currency} from={from} to={to} onClose={closeCategory} onEdit={openDecision} />
+            <CategoryPayments category={categoryPayments} open={Boolean(categoryPayments) && !editing} summary={tab === "trends" ? trend?.summary ?? null : summary} accounts={data?.accounts ?? []} account={account} currency={currency} from={tab === "trends" ? trend?.from ?? "" : from} to={tab === "trends" ? trend?.to ?? "" : to} onClose={closeCategory} onEdit={openDecision} />
             <Sheet
                 open={Boolean(editing)}
                 onClose={() => !busy && setEditing(null)}
