@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import CategoryPayments from "./CategoryPayments";
 import { RefreshCw, Upload } from "lucide-react";
 import type { HubState } from "../state";
 import type { AppView } from "../types";
@@ -266,6 +267,20 @@ export default function FinancesView({
             note: "",
             updatedAt: "",
         });
+    const [categoryPayments, setCategoryPayments] = useState<ExpenseCategory | null>(null);
+    const savingDecision = useRef(false);
+    const categoryTrigger = useRef<HTMLElement | null>(null);
+    function openCategory(category: ExpenseCategory) {
+        categoryTrigger.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+        setCategoryPayments(category);
+    }
+    function closeCategory() {
+        setCategoryPayments(null);
+        requestAnimationFrame(() => {
+            if (categoryTrigger.current?.isConnected) categoryTrigger.current.focus();
+            else document.querySelector<HTMLElement>(".finance-expense-charts button")?.focus();
+        });
+    }
     const [bundle, setBundle] = useState<unknown>(null),
         [preview, setPreview] = useState<Awaited<
             ReturnType<typeof importFinances>
@@ -366,7 +381,8 @@ export default function FinancesView({
         }
     }
     async function saveDecision(next = false) {
-        if (!editing || !state) return;
+        if (!editing || !state || savingDecision.current) return;
+        savingDecision.current = true;
         setBusy(true);
         setError("");
         try {
@@ -383,6 +399,7 @@ export default function FinancesView({
         } catch (e) {
             setError((e as Error).message);
         } finally {
+            savingDecision.current = false;
             setBusy(false);
         }
     }
@@ -701,7 +718,7 @@ export default function FinancesView({
                                                     ],
                                                     cents: c.cents,
                                                 }))}
-                                            onSelect={setCategory}
+                                            onSelect={key => openCategory(key as ExpenseCategory)}
                                         />
                                     ) : (
                                         <p>
@@ -743,7 +760,7 @@ export default function FinancesView({
                                         <div><h3>Sorties classées</h3><Bars currency={currency} values={summary.savings.months.map(m => ({ id: m.month, label: m.month, cents: m.outgoingCents, note: m.full ? "Fenêtre observée entière" : "Couverture partielle" }))} onSelect={month => { const p = calendarPeriod(Number(month.slice(0, 4)), Number(month.slice(5, 7))); setFrom(p.from); setTo(p.to); }} /></div>
                                         <div><h3>Entrées classées</h3><Bars currency={currency} values={summary.savings.months.map(m => ({ id: m.month, label: m.month, cents: m.incomingCents, note: m.full ? "Fenêtre observée entière" : "Couverture partielle" }))} onSelect={month => { const p = calendarPeriod(Number(month.slice(0, 4)), Number(month.slice(5, 7))); setFrom(p.from); setTo(p.to); }} /></div>
                                     </div></details>}
-                                    <button className="button secondary" onClick={() => { setCategory("savings-investments"); setSearch(""); setReviewOnly(false); }}>Voir les opérations classées</button>
+                                    <button className="button secondary" onClick={() => openCategory("savings-investments")}>Voir les opérations classées</button>
                                 </> : <p>Aucun mouvement d'épargne ou de placement explicitement classé dans cette période. Choisissez « Épargne / Investissements » lors de la catégorisation d'une opération; aucune affectation automatique n'est faite.</p>}
                             </section>
                             <section className="surface view-stack">
@@ -753,6 +770,7 @@ export default function FinancesView({
                                     <label>
                                         Catégorie
                                         <select
+                                            aria-label="Catégorie"
                                             value={category}
                                             onChange={(e) =>
                                                 setCategory(e.target.value)
@@ -1307,6 +1325,7 @@ export default function FinancesView({
                     )}
                 </>
             )}
+            <CategoryPayments category={categoryPayments} open={Boolean(categoryPayments) && !editing} summary={summary} accounts={data?.accounts ?? []} account={account} currency={currency} from={from} to={to} onClose={closeCategory} onEdit={openDecision} />
             <Sheet
                 open={Boolean(editing)}
                 onClose={() => !busy && setEditing(null)}
@@ -1402,7 +1421,7 @@ export default function FinancesView({
                                 ? "Enregistrement…"
                                 : "Enregistrer la décision"}
                         </button>
-                        <button className="button secondary" type="button" disabled={busy} onClick={() => void saveDecision(true)}>Enregistrer et suivante</button>
+                        {categoryPayments ? <button className="button secondary" type="button" disabled={busy} onClick={() => setEditing(null)}>Retour aux paiements de la catégorie</button> : <button className="button secondary" type="button" disabled={busy} onClick={() => void saveDecision(true)}>Enregistrer et suivante</button>}
                         {error && <Notice error>{error}</Notice>}
                     </form>
                 )}
