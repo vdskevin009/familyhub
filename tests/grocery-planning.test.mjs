@@ -21,6 +21,8 @@ test("pack sizes round up; compatible mass and volume normalize, weighted goods 
   const p = planningFixture(), item = { ...p.items[0], quantity: 2, size: 400, unit: "g" }, offer = { ...p.prices[0], size: 500, unit: "g" };
   assert.equal(offerQuantity(item, offer), 2); assert.equal(offerQuantity(item, { ...offer, weighed: true }), 1.6);
   assert.equal(offerQuantity(item, { ...offer, unit: "ml" }), null); assert.equal(offerQuantity({ ...item, quantity: null }, offer), null);
+  assert.equal(offerQuantity({ ...item, quantity: .000001, size: .000001 }, offer), 1);
+  assert.equal(offerQuantity({ ...item, quantity: 1.0000000001, size: 500 }, offer), 2);
 });
 test("missing prices, quantity, mandatory fees, taxes and minimums never create a cheapest basket", () => {
   for (const edit of [p => p.prices = p.prices.filter(o => o.itemId !== "milk"), p => p.items[0].quantity = null, p => p.retailers.forEach(r => r.delivery = null), p => p.prices.forEach(o => o.taxPercent = null), p => p.retailers.forEach(r => r.minimum = null), p => p.retailers.forEach(r => r.otherFeesReviewed = false)]) {

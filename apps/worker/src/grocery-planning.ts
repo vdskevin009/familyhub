@@ -41,7 +41,8 @@ export function offerQuantity(item: ShoppingItem, offer: GroceryPrice): number |
   if (item.quantity === null || item.size === null || !item.unit) return null;
   const target = normalizedSize(item.quantity * item.size, item.unit), pack = normalizedSize(offer.size, offer.unit);
   if (target.unit !== pack.unit || offer.weighed && pack.unit === "each") return null;
-  const quantity = offer.weighed ? target.size / pack.size : Math.ceil(target.size / pack.size - 1e-9);
+  const ratio = target.size / pack.size;
+  const quantity = offer.weighed ? ratio : Math.max(1, Math.ceil(ratio - Number.EPSILON * Math.max(1, ratio) * 4));
   // Refuse overflow/unsupported baskets rather than turning nonfinite costs into JSON null/zero.
   if (!Number.isFinite(quantity) || quantity <= 0 || quantity > 1_000_000 || !Number.isFinite(quantity * offer.price) || quantity * offer.price > 1_000_000) return null;
   return quantity;
