@@ -89,7 +89,11 @@ and coarse failure categories without URLs, option values, names or source rows.
 All three history filters must have unique recognized options before any filter
 event; normalized French/English labels select the observed value without publishing it.
 Supported labelled claim headers and unambiguous two-decimal currency formats
-retain the same service identity across portal languages. Existing private
+retain the same service identity across portal languages. When English history
+exposes the unique normal French-language control, use it before collecting
+service labels to retain the historical source language. Unexpected confirmation
+or language navigation stops boundedly; never translate service labels or relax
+existing reconciliation to hide a locale mismatch. Existing private
 post-login navigation and single-use profile selection are retained in source;
 an explicit profile preference never falls back to another account.
 Missing/ambiguous options stop as layout drift instead of retrying a network
