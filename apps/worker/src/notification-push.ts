@@ -1,4 +1,5 @@
 import { createECDH, ECDH } from "node:crypto";
+import { mkdir, open, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import webpush from "web-push";
 import { loadPrivate, savePrivate } from "./private-store.js";
@@ -18,7 +19,7 @@ export function validateSubscription(value: unknown): PushSubscriptionData {
   if (!input || typeof input.endpoint !== "string" || input.endpoint.length > 4096 || !input.keys) throw new Error("Abonnement Web Push invalide.");
   let url: URL;
   try { url = new URL(input.endpoint); } catch { throw new Error("Destination Web Push invalide."); }
-  const allowed = ["fcm.googleapis.com", "updates.push.services.mozilla.com", "web.push.apple.com"].includes(url.hostname) || /^[a-z0-9-]+\.notify\.windows\.com$/.test(url.hostname);
+  const allowed = ["fcm.googleapis.com", "updates.push.services.mozilla.com"].includes(url.hostname) || /^(?:[a-z0-9-]+\.)+push\.apple\.com$/.test(url.hostname) || /^[a-z0-9-]+\.notify\.windows\.com$/.test(url.hostname);
   if (!allowed || url.protocol !== "https:" || url.port || url.username || url.password || url.hash) throw new Error("Destination Web Push non prise en charge.");
   const point = keyBytes(input.keys.p256dh, 65);
   keyBytes(input.keys.auth, 16);
@@ -42,9 +43,17 @@ export class PushConfiguration {
   }
   /** Explicit operator setup only. Never called by startup, polling or an HTTP request. */
   async createAfterApproval(): Promise<void> {
-    if (await this.read()) throw new Error("Web Push est déjà configuré; aucune clé remplacée.");
-    const keys = webpush.generateVAPIDKeys();
-    await savePrivate(join(this.directory, "notifications-vapid.private.json"), { ...keys, subject });
+    await mkdir(this.directory, { recursive: true });
+    const lockPath = join(this.directory, "notifications-vapid.setup.lock");
+    let lock;
+    try { lock = await open(lockPath, "wx", 0o600); }
+    catch { throw new Error("Configuration Web Push déjà en cours ou verrouillée. Aucune clé remplacée."); }
+    try {
+      // The second check is under an exclusive process lock: concurrent setup cannot rotate identity.
+      if (await this.read()) throw new Error("Web Push est déjà configuré; aucune clé remplacée.");
+      const keys = webpush.generateVAPIDKeys();
+      await savePrivate(join(this.directory, "notifications-vapid.private.json"), { ...keys, subject });
+    } finally { await lock.close(); await unlink(lockPath); }
   }
 }
 export type PushOutcome = "accepted" | "expired" | "failed" | "unconfirmed";

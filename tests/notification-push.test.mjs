@@ -8,8 +8,8 @@ import { validateSubscription, validateVapid, PushConfiguration, sendPush } from
 import { pushFixture } from "./notification-fixture.mjs";
 test("subscription destinations and curve keys reject arbitrary hosts, credentials, invalid encodings and keys", () => {
   const { subscription, config } = pushFixture(); assert.deepEqual(validateSubscription(subscription), subscription); assert.deepEqual(validateVapid(config), config);
-  for (const endpoint of ["http://fcm.googleapis.com/x", "https://127.0.0.1/x", "https://evil.invalid/x", "https://fcm.googleapis.com.evil.invalid/x", "https://user:secret@fcm.googleapis.com/x", "https://fcm.googleapis.com:8080/x", "https://fcm.googleapis.com/x#fragment", "https://a.b.notify.windows.com/x"]) assert.throws(() => validateSubscription({ ...subscription, endpoint }));
-  for (const endpoint of ["https://updates.push.services.mozilla.com/wpush/test", "https://web.push.apple.com/test", "https://wns2.notify.windows.com/test"]) assert.equal(validateSubscription({ ...subscription, endpoint }).endpoint, endpoint);
+  for (const endpoint of ["http://fcm.googleapis.com/x", "https://127.0.0.1/x", "https://evil.invalid/x", "https://fcm.googleapis.com.evil.invalid/x", "https://user:secret@fcm.googleapis.com/x", "https://fcm.googleapis.com:8080/x", "https://fcm.googleapis.com/x#fragment", "https://a.b.notify.windows.com/x", "https://web.push.apple.com.evil.invalid/x", "https://push.apple.com.evil.invalid/x", "https://evilpush.apple.com/x"]) assert.throws(() => validateSubscription({ ...subscription, endpoint }));
+  for (const endpoint of ["https://updates.push.services.mozilla.com/wpush/test", "https://web.push.apple.com/test", "https://region.web.push.apple.com/test", "https://wns2.notify.windows.com/test"]) assert.equal(validateSubscription({ ...subscription, endpoint }).endpoint, endpoint);
   for (const keys of [{ ...subscription.keys, auth: "bad" }, { ...subscription.keys, p256dh: "A".repeat(87) }, { ...subscription.keys, auth: subscription.keys.auth + "=" }]) assert.throws(() => validateSubscription({ ...subscription, keys }));
   assert.throws(() => validateVapid({ ...config, publicKey: pushFixture().config.publicKey }));
 });
@@ -26,6 +26,36 @@ test("unconfigured identity read never creates keys, and corrupt existing state 
   delete process.env.FAMILYHUB_PUSH_PUBLIC_KEY; delete process.env.FAMILYHUB_PUSH_PRIVATE_KEY;
   try { const config = new PushConfiguration(dir), path = join(dir, "notifications-vapid.private.json"); assert.equal(await config.read(), null); await assert.rejects(readFile(path), { code: "ENOENT" }); await writeFile(path, "{invalid"); await assert.rejects(config.read(), /Aucune clé/); assert.equal(await readFile(path, "utf8"), "{invalid"); }
   finally { for (const [key, value] of [["FAMILYHUB_PUSH_PUBLIC_KEY", previous.publicKey], ["FAMILYHUB_PUSH_PRIVATE_KEY", previous.privateKey]]) if (value === undefined) delete process.env[key]; else process.env[key] = value; await rm(dir, { recursive: true, force: true }); }
+});
+test("a competing or interrupted setup lock cannot replace a notification identity", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "familyhub-push-lock-"));
+  try {
+    const config = new PushConfiguration(dir), lock = join(dir, "notifications-vapid.setup.lock");
+    await writeFile(lock, "synthetic existing operator setup");
+    await assert.rejects(config.createAfterApproval(), /verrouillée/);
+    assert.equal(await readFile(lock, "utf8"), "synthetic existing operator setup");
+    await assert.rejects(readFile(join(dir, "notifications-vapid.private.json")), { code: "ENOENT" });
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+test("Windows push identity creation is protected and concurrent setup preserves the winning identity", { skip: process.platform !== "win32" }, async () => {
+  const dir = await mkdtemp(join(tmpdir(), "familyhub-push-setup-"));
+  const previous = [process.env.FAMILYHUB_PUSH_PUBLIC_KEY, process.env.FAMILYHUB_PUSH_PRIVATE_KEY];
+  delete process.env.FAMILYHUB_PUSH_PUBLIC_KEY; delete process.env.FAMILYHUB_PUSH_PRIVATE_KEY;
+  try {
+    const config = new PushConfiguration(dir), path = join(dir, "notifications-vapid.private.json");
+    const attempts = await Promise.allSettled([config.createAfterApproval(), config.createAfterApproval()]);
+    assert.equal(attempts.filter(result => result.status === "fulfilled").length, 1);
+    const stored = await readFile(path, "utf8"), identity = await config.read();
+    assert.equal(stored.includes(identity.privateKey), false);
+    await assert.rejects(config.createAfterApproval(), /déjà configuré/);
+    assert.equal(await readFile(path, "utf8"), stored);
+    assert.deepEqual(await config.read(), identity);
+  } finally {
+    for (const [index, key] of ["FAMILYHUB_PUSH_PUBLIC_KEY", "FAMILYHUB_PUSH_PRIVATE_KEY"].entries()) {
+      if (previous[index] === undefined) delete process.env[key]; else process.env[key] = previous[index];
+    }
+    await rm(dir, { recursive: true, force: true });
+  }
 });
 async function workerHarness(windows = []) {
   const handlers = {}, shown = [], opened = [];
