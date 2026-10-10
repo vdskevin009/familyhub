@@ -2,11 +2,12 @@ import { access, mkdir, readFile, unlink, rmdir, writeFile } from "node:fs/promi
 import { join } from "node:path";
 import type { Page } from "playwright";
 import { atomicJson, dataDirectory, loadPrivate } from "./private-store.js";
+import { eligibleLoginRecovery, parseLoginRecoveryRequest, reserveLoginRecovery, type LoginRecoveryRequest } from "./portal-login-recovery.js";
 
 export type Insurer = "bluecross" | "desjardins";
 export type LoginReason = "not-configured" | "credentials-unavailable" | "credentials-rejected" | "human-required" | "layout-changed" | "cooldown" | "profile-busy" | "profile-selection-required" | "login-incomplete";
 export type LoginCredentials = { version: 1; insurer: Insurer; password: string; username?: string; policy?: string; certificate?: string; role?: "member" | "spouse" };
-type LoginControl = { blocked: boolean; reason?: LoginReason; attemptedAt?: string; firstFailure?: LoginFailure };
+export type LoginControl = { blocked: boolean; reason?: LoginReason; attemptedAt?: string; firstFailure?: LoginFailure };
 type LoginFailure = { observedAt: string; phase: LoginPhase; reason: LoginReason; outcome: "preflight" | "rejection" | "human-required" | "uncertain"; errorKind?: LoginDiagnostic["errorKind"] };
 const phases = ["checking-form", "transmission-starting", "filling-username", "filling-password", "submitting", "awaiting-history", "authenticated", "retry-blocked"];
 function validFailure(value: unknown): value is LoginFailure {
@@ -130,15 +131,19 @@ type LoginDependencies = {
   submit: typeof submitPortalLogin;
   now: () => number;
   diagnose?: (insurer: Insurer, value: LoginDiagnostic) => Promise<void>;
+  reserveRecovery?: typeof reserveLoginRecovery;
 };
 const defaults: LoginDependencies = {
   read: readLoginControl, save: (insurer, value) => atomicJson(controlPath(insurer), value),
   credentials: insurer => loadPrivate(credentialPath(insurer)), submit: submitPortalLogin, now: Date.now,
-  diagnose: (insurer, value) => atomicJson(join(loginDirectory(insurer), "login-diagnostic.json"), value)
+  diagnose: (insurer, value) => atomicJson(join(loginDirectory(insurer), "login-diagnostic.json"), value),
+  reserveRecovery: reserveLoginRecovery
 };
-/** One attempt only; latch before ANY credential fill. Legacy/uncertain stops are never rearmed. Caller owns profile lock. */
-export async function tryPortalLogin(page: Page, insurer: Insurer, ready: () => Promise<boolean>, deps: LoginDependencies = defaults): Promise<LoginReason | undefined> {
+/** One attempt only; latch before ANY credential fill. Ordinary retries never rearm a stop. Caller owns profile lock. */
+export async function tryPortalLogin(page: Page, insurer: Insurer, ready: () => Promise<boolean>, deps: LoginDependencies = defaults, recovery?: LoginRecoveryRequest): Promise<LoginReason | undefined> {
   let phase: LoginPhase = "checking-form";
+  let audit: Awaited<ReturnType<typeof reserveLoginRecovery>> | undefined;
+  const record = async (outcome: Parameters<NonNullable<typeof audit>>[0]) => { if (audit) await audit(outcome, phase); };
   let originalFailure: LoginFailure | undefined;
   let originalFailureUnavailable = false;
   const diagnose = async (reason?: LoginReason, errorKind?: LoginDiagnostic["errorKind"]) => {
@@ -147,7 +152,7 @@ export async function tryPortalLogin(page: Page, insurer: Insurer, ready: () => 
       let portal = false;
       let landingHost = "unrecognized", browserError = false;
       try { const url = new URL(page.url()); browserError = ["chrome-error:", "edge-error:"].includes(url.protocol);
-        if (url.protocol === "https:" && /(?:^|\.)(?:desjardins\.com|dsf-dfs\.com)$/i.test(url.hostname)) landingHost = url.hostname;
+        if (url.protocol === "https:" && (/(?:^|\.)(?:desjardins\.com|dsf-dfs\.com)$/i.test(url.hostname) || url.hostname === "service.pac.bluecross.ca")) landingHost = url.hostname;
         else if (url.protocol === "about:") landingHost = "blank";
         else if (browserError) landingHost = "browser-error";
       } catch {}
@@ -178,23 +183,30 @@ export async function tryPortalLogin(page: Page, insurer: Insurer, ready: () => 
     observedAt: new Date(deps.now()).toISOString(), phase, reason, outcome, ...(kind ? { errorKind: kind } : {})
   });
   const gate = loginGate(previous, deps.now());
-  if (gate) { phase = "retry-blocked"; await diagnose(gate); return gate; }
+  if (recovery) {
+    parseLoginRecoveryRequest(recovery);
+    if (!eligibleLoginRecovery(previous, recovery, deps.now())) { phase = "retry-blocked"; await diagnose(gate || "login-incomplete"); return gate || "login-incomplete"; }
+    if (!deps.reserveRecovery) throw new Error("Recovery audit is unavailable. No credentials were filled.");
+    audit = await deps.reserveRecovery(insurer, recovery, previous, deps.now());
+  } else if (gate) { phase = "retry-blocked"; await diagnose(gate); return gate; }
   const screenReason = classifyLoginScreen(await page.locator("body").innerText().catch(() => ""));
   const captcha = await page.locator('iframe[src*="recaptcha"], iframe[src*="hcaptcha"], input[autocomplete="one-time-code"]').first().isVisible().catch(() => false);
   if (screenReason || captcha) {
     const reason = screenReason || "human-required";
     originalFailure = failure(reason, reason === "credentials-rejected" ? "rejection" : "human-required");
     await deps.save(insurer, { ...previous, blocked: true, reason, firstFailure: originalFailure });
+    await record(reason === "credentials-rejected" ? "rejection" : "human-required");
     await diagnose(reason);
     return reason;
   }
-  if (!allowedLoginUrl(insurer, page.url())) return "layout-changed";
+  if (!allowedLoginUrl(insurer, page.url())) { await record("preflight"); await diagnose("layout-changed"); return "layout-changed"; }
   let credentials: unknown;
   try { credentials = await deps.credentials(insurer); }
-  catch (error) { return (error as NodeJS.ErrnoException).code === "ENOENT" ? "not-configured" : "credentials-unavailable"; }
-  if (!validCredentials(credentials, insurer)) return "credentials-unavailable";
+  catch (error) { await record("credentials-unavailable"); return (error as NodeJS.ErrnoException).code === "ENOENT" ? "not-configured" : "credentials-unavailable"; }
+  if (!validCredentials(credentials, insurer)) { await record("credentials-unavailable"); return "credentials-unavailable"; }
   let attemptedAt: string | undefined;
   let boundaryStarted = false, latchPersisted = false;
+  let authenticationConfirmed = false;
   let reason: LoginReason = "login-incomplete";
   try {
     await deps.submit(page, insurer, credentials, value => { phase = value; }, async () => {
@@ -202,6 +214,7 @@ export async function tryPortalLogin(page: Page, insurer: Insurer, ready: () => 
       phase = "transmission-starting";
       attemptedAt = new Date(deps.now()).toISOString();
       originalFailure = failure("login-incomplete", "uncertain");
+      await record("transmission-starting");
       await deps.save(insurer, { blocked: true, reason: "login-incomplete", attemptedAt, firstFailure: originalFailure });
       latchPersisted = true;
     });
@@ -212,21 +225,25 @@ export async function tryPortalLogin(page: Page, insurer: Insurer, ready: () => 
     const deadline = deps.now() + 30_000;
     while (deps.now() < deadline) {
       if (await ready()) {
+        authenticationConfirmed = true;
         originalFailure = previous.firstFailure;
         await deps.save(insurer, { blocked: false, attemptedAt, ...(originalFailure ? { firstFailure: originalFailure } : {}) });
-        phase = "authenticated"; await diagnose(); return undefined;
+        phase = "authenticated"; await record("authenticated"); await diagnose(); return undefined;
       }
-      const detected = classifyLoginScreen(await page.locator("body").innerText().catch(() => ""));
+      const detected = classifyLoginScreen(await page.locator("body").innerText().catch(() => ""))
+        || (await page.locator('iframe[src*="recaptcha"], iframe[src*="hcaptcha"], input[autocomplete="one-time-code"]').first().isVisible().catch(() => false) ? "human-required" : undefined);
       if (detected) { reason = detected; break; }
       await page.waitForTimeout(1000).catch(() => new Promise(resolve => setTimeout(resolve, 1000)));
     }
   } catch (error) {
     credentials = undefined;
+    if (authenticationConfirmed) throw new Error("Authentication was verified, but its recovery status could not be saved.");
     if (error instanceof PortalLoginPreflightError && !boundaryStarted) {
       // Only this instrumented read-only failure is recoverable. Do not change
       // attemptedAt or clear a legacy stop: legacy stops returned at the gate.
       originalFailure = failure("layout-changed", "preflight", error.errorKind);
-      await deps.save(insurer, { ...previous, firstFailure: originalFailure });
+      if (!recovery) await deps.save(insurer, { ...previous, firstFailure: originalFailure });
+      await record("preflight");
       await diagnose("layout-changed", error.errorKind);
       return "layout-changed";
     }
@@ -238,12 +255,14 @@ export async function tryPortalLogin(page: Page, insurer: Insurer, ready: () => 
     attemptedAt ||= new Date(deps.now()).toISOString();
     originalFailure = failure(reason, "uncertain", errorKind(error));
     await deps.save(insurer, { blocked: true, reason, attemptedAt, firstFailure: originalFailure });
+    await record("uncertain");
     await diagnose(reason, errorKind(error));
     return reason;
   }
   credentials = undefined;
   originalFailure = failure(reason, reason === "credentials-rejected" ? "rejection" : reason === "human-required" ? "human-required" : "uncertain");
   await deps.save(insurer, { blocked: true, reason, attemptedAt, firstFailure: originalFailure });
+  await record(originalFailure.outcome === "rejection" ? "rejection" : originalFailure.outcome === "human-required" ? "human-required" : "uncertain");
   await diagnose(reason);
   return reason;
 }

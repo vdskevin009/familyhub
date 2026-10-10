@@ -1,3 +1,4 @@
+import type { LoginRecoveryRequest } from "./portal-login-recovery.js";
 import { findPortalHistoryPage, isInsurerPortalPage } from "./portal-history-page.js";
 import { acquirePortalLock, authenticatedPortal, tryPortalLogin, type LoginReason } from "./portal-login.js";
 import { createHash, randomUUID } from "node:crypto";
@@ -215,15 +216,15 @@ async function saveDesjardinsAuth(context: import("playwright").BrowserContext, 
 }
 
 /** Reuse the private session, optionally sign in once, then collect read-only history. MFA stays manual. */
-export async function collectDesjardinsPortal(interactive = false, passes = 1): ReturnType<typeof collectDesjardinsPortalLocked> {
+export async function collectDesjardinsPortal(interactive = false, passes = 1, recovery?: LoginRecoveryRequest): ReturnType<typeof collectDesjardinsPortalLocked> {
   let release: () => Promise<void>;
   try { release = await acquirePortalLock("desjardins"); }
   catch { return { status: "login-required", authReason: "profile-busy" }; }
-  try { return await collectDesjardinsPortalLocked(interactive, passes); }
+  try { return await collectDesjardinsPortalLocked(interactive, passes, recovery); }
   finally { await release(); }
 }
 
-async function collectDesjardinsPortalLocked(interactive = false, passes = 1): Promise<{
+async function collectDesjardinsPortalLocked(interactive = false, passes = 1, recovery?: LoginRecoveryRequest): Promise<{
   status: "success" | "login-required"; authReason?: LoginReason; collection?: DesjardinsCollection; snapshotPath?: string;
 }> {
   await mkdir(desjardinsProfileDirectory, { recursive: true, mode: 0o700 });
@@ -281,7 +282,7 @@ async function collectDesjardinsPortalLocked(interactive = false, passes = 1): P
       }
       return recoverHistoryTab();
     };
-    const authReason = await tryPortalLogin(page, "desjardins", ready);
+    const authReason = await tryPortalLogin(page, "desjardins", ready, undefined, recovery);
     if (interactive && !await ready()) {
       const deadline = Date.now() + 600_000;
       while (!await ready() && Date.now() < deadline) await page.waitForTimeout(2000).catch(() => new Promise(resolve => setTimeout(resolve, 2000)));

@@ -65,6 +65,16 @@ Vite is configured for the GitHub Pages base path `/familyhub/`.
 
 ## Run the optional local worker
 
+For an owner-authorized recovery of an old uncertain insurer login, worker 2.23.2
+adds the paired `POST /{desjardins|bluecross}/recover-login` operation. Supply
+`requestId` (a fresh UUID), `expectedAttemptedAt` (the exact old attempt timestamp)
+and `acknowledgeUncertainAttempt: true`. Poll the same endpoint with GET for the
+collection result. Each request is single-use, retains private evidence and makes
+at most one collection attempt; a portal challenge or refusal still stops it.
+Ordinary Reconnect remains available for user-managed sign-in. Recovery keeps the
+existing import policy and does not authorize a full financial apply. Synthetic
+checks and deployment alone do not establish successful live collection.
+
 The worker is deliberately separate from the static PWA process but lives in the same repository.
 
 ```sh

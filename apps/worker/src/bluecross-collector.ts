@@ -1,3 +1,4 @@
+import type { LoginRecoveryRequest } from "./portal-login-recovery.js";
 import { findPortalHistoryPage, isInsurerPortalPage } from "./portal-history-page.js";
 import { acquirePortalLock, authenticatedPortal, tryPortalLogin, type LoginReason } from "./portal-login.js";
 import { mkdir, open } from "node:fs/promises";
@@ -75,15 +76,15 @@ export async function savePortalSnapshot(collection: PortalCollection): Promise<
   return path;
 }
 
-export async function collectBlueCrossPortal(interactive = false): ReturnType<typeof collectBlueCrossPortalLocked> {
+export async function collectBlueCrossPortal(interactive = false, recovery?: LoginRecoveryRequest): ReturnType<typeof collectBlueCrossPortalLocked> {
   let release: () => Promise<void>;
   try { release = await acquirePortalLock("bluecross"); }
   catch { return { status: "login-required", authReason: "profile-busy" }; }
-  try { return await collectBlueCrossPortalLocked(interactive); }
+  try { return await collectBlueCrossPortalLocked(interactive, recovery); }
   finally { await release(); }
 }
 
-async function collectBlueCrossPortalLocked(interactive = false): Promise<{ status: "success" | "login-required"; authReason?: LoginReason; collection?: PortalCollection; snapshotPath?: string }> {
+async function collectBlueCrossPortalLocked(interactive = false, recovery?: LoginRecoveryRequest): Promise<{ status: "success" | "login-required"; authReason?: LoginReason; collection?: PortalCollection; snapshotPath?: string }> {
   await mkdir(blueCrossProfileDirectory, { recursive: true, mode: 0o700 });
   const { chromium } = await import("playwright");
   const context = await chromium.launchPersistentContext(blueCrossProfileDirectory, {
@@ -144,7 +145,7 @@ async function collectBlueCrossPortalLocked(interactive = false): Promise<{ stat
       return recoverHistoryTab();
     };
     // Give an existing trusted session time to restore before touching credentials.
-    const authReason = await tryPortalLogin(page, "bluecross", ready);
+    const authReason = await tryPortalLogin(page, "bluecross", ready, undefined, recovery);
     if (interactive && !await ready()) {
       const deadline = Date.now() + 600_000;
       while (!await ready() && Date.now() < deadline) await page.waitForTimeout(2000).catch(() => new Promise(resolve => setTimeout(resolve, 2000)));

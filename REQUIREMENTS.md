@@ -47,6 +47,28 @@ The 2.16.1 follow-up for Issue #36, [PR #128](https://github.com/vdskevin009/fam
 
 ## Baseline
 
+### Explicit one-attempt recovery - FH-REIMB-040 / Issue #159
+
+**Implemented; aggregate synthetic checks passed, CI/deployment and live acceptance pending.** The owner may explicitly
+acknowledge an old uncertain login attempt and authorize one fresh attempt using
+the configured local credentials. The paired `POST /{insurer}/recover-login`
+requires a UUID request ID, the exact existing attempt timestamp and an explicit
+acknowledgement. This permission applies only to a stale `login-incomplete` stop
+with uncertain or missing original failure evidence. Known credential rejection,
+human challenges, unreadable controls and cooldown remain blocked. Missing logs
+alone never authorize an attempt. Existing automatic schedules remain unchanged.
+
+The collector keeps its ordinary profile lock, isolated browser, exact-origin and
+read-only preflight checks. It retains the original stop in a private single-use
+audit before loading credentials, and durably records transmission before the
+first field fill. It never blanks the old control file. Replayed requests and
+failed audit/guard writes cannot fill credentials; a recovery collection runs once
+without read retries. Only verified authenticated history clears the active stop.
+Ordinary reconciliation and the existing operator-approved new-payment policy
+remain authoritative; recovery does not authorize full financial apply, claim
+submission, password reset or bypassing a portal challenge. Private source facts,
+credentials, browser state and audit files stay outside Git and API results.
+
 ### Readable clinic receipt fallback — FH-REIMB-013 / issue #28
 
 **Implemented in [PR #133](https://github.com/vdskevin009/familyhub/pull/133), merged as `d475b897`; worker 2.17.1. PR and main CI passed; local runtime and normal-retry acceptance are verified. Paired-phone display remains pending.** If optional Codex classification fails or misses a clinic expense, a Jane receipt PDF named either `Invoice` or `Receipt` may remain a reviewable healthcare expense when extracted attachment text independently confirms an invoice number and a supported care service. Filename alone never proves a transaction, billed total, insurance eligibility or insurer payment. Existing unavailable records use the bounded normal daily retry in place, preserving source identity and manual decisions; no new historical traversal is required. Scheduled-task success means collection completed, not that every optional classification succeeded.

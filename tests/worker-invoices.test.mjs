@@ -55,6 +55,11 @@ test('invoice endpoints require pairing/origin checks and report unconfigured Gm
       assert.equal((await call(`/${insurer}/reconnect`, { method: 'POST', headers: { ...headers, Origin: 'https://evil.example' }, body: '{"interactive":true}' })).status, 403);
       assert.equal((await call(`/${insurer}/reconnect`, { method: 'POST', headers, body: '{}' })).status, 400);
       assert.deepEqual(await (await call(`/${insurer}/reconnect`, { headers })).json(), { state: 'idle' });
+      assert.equal((await call(`/${insurer}/recover-login`, { method: 'POST' })).status, 401);
+      assert.equal((await call(`/${insurer}/recover-login`, { method: 'POST', headers: { ...headers, Origin: 'https://evil.example' }, body: '{}' })).status, 403);
+      for (const body of [{}, { acknowledgeUncertainAttempt: true }, { requestId: '../escape', expectedAttemptedAt: '2026-01-01T00:00:00.000Z', acknowledgeUncertainAttempt: true }])
+        assert.equal((await call(`/${insurer}/recover-login`, { method: 'POST', headers, body: JSON.stringify(body) })).status, 400);
+      assert.deepEqual(await (await call(`/${insurer}/recover-login`, { headers })).json(), { state: 'idle' });
     }
     assert.equal((await call('/claim-preparation/preview', { method:'POST' })).status, 401);
     assert.equal((await call('/invoices/import-connector', { method:'POST' })).status, 401);
