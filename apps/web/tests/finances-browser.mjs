@@ -586,6 +586,28 @@ try {
             path: join(screenshots, "services-" + width + ".png"),
             fullPage: true,
         });
+        // A newly available category uses the existing persistent editor, filter and all-row drill-down.
+        await page.goto(base + "?view=finances");
+        await page.getByLabel("Vue", { exact: true }).selectOption("year");
+        await page.locator(".finance-register button").filter({ hasText: "SYNTHETIC RESTAURANT" }).first().click();
+        const petEditor = page.getByRole("dialog", { name: /Vérifier l.opération/ });
+        await petEditor.getByLabel("Catégorie", { exact: true }).selectOption("pets");
+        assert.match(await petEditor.innerText(), /Nourriture, soins vétérinaires, médicaments, toilettage et assurance/);
+        await petEditor.getByRole("button", { name: "Enregistrer la décision", exact: true }).click();
+        await petEditor.waitFor({ state: "hidden" });
+        await page.reload();
+        await page.getByLabel("Vue", { exact: true }).selectOption("year");
+        await page.getByLabel("Catégorie", { exact: true }).selectOption("pets");
+        assert.equal(await page.locator(".finance-register button").filter({ hasText: "SYNTHETIC RESTAURANT" }).count(), 1);
+        assert.equal(await page.locator(".finance-register button").filter({ hasText: "SPOTIFY SYNTHETIC" }).count(), 0);
+        assert.match(await page.locator(".finance-register button").filter({ hasText: "SYNTHETIC RESTAURANT" }).innerText(), /Animaux de compagnie.*Confirmé/s);
+        await page.locator(".finance-expense-charts").getByRole("button", { name: /Animaux de compagnie/ }).click();
+        const petPayments = page.getByRole("dialog", { name: /^Paiements.*Animaux de compagnie$/ });
+        await petPayments.waitFor();
+        assert.match(await petPayments.innerText(), /SYNTHETIC RESTAURANT/);
+        assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+        await page.screenshot({ path: join(screenshots, "pets-" + width + ".png"), fullPage: true });
+        assert.equal((await finance.read()).decisions.restaurant.category, "pets");
         assert.deepEqual(errors, [], "Browser errors at " + width);
         await context.close();
         console.log(

@@ -1,5 +1,7 @@
 # Private finances and recurring services
 
+**Animaux de compagnie** (`pets`, FH-FIN-008) covers animal food, veterinary care, medication, grooming and pet insurance. Select it explicitly when the receipt supports that classification. The same category is used by filters, charts, all-payment drill-down and persisted decisions; existing choices and original facts remain intact. No merchant rule or automatic recategorization is added. Paired worker 2.23.3 accepts and validates the new key across reload, restart and repeat imports.
+
 Issues [#162](https://github.com/vdskevin009/familyhub/issues/162) and [#163](https://github.com/vdskevin009/familyhub/issues/163). Requirements FH-FIN-001/002/003/004 and FH-SAV-007/008.
 
 ## Interface

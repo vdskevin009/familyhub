@@ -43,6 +43,9 @@ jobs:
       - name: Verify notification evidence, privacy, deduplication and authorization
         run: npm run test:notifications
 
+      - name: Verify Courses persistence, pricing and privacy
+        run: npm run test:groceries
+
       - name: Install browser for Savings acceptance
         run: npx playwright install --with-deps chromium
 
@@ -54,6 +57,9 @@ jobs:
 
       - name: Verify notification history, preferences and device enrollment
         run: npm run test:notifications:browser
+
+      - name: Verify Courses mobile receipts and basket planning
+        run: npm run test:groceries:browser
 
       - name: Verify invoice collection and worker authorization
         run: npm run test:invoices

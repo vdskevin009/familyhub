@@ -12,6 +12,12 @@ import { FinanceLibrary, FinanceConflict } from "./finance-library.js";
 import { NotificationLibrary, NotificationConflict } from "./notification-library.js";
 import { PushConfiguration, sendPush } from "./notification-push.js";
 import type { NotificationEvidence } from "./notification-model.js";
+
+import { GroceryStore, GroceryConflict } from "./grocery-store.js";
+import { GroceryError } from "./grocery-model.js";
+import { extractGrocery } from "./grocery-extraction.js";
+import { GroceryPlanningStore } from "./grocery-planning-store.js";
+import { GroceryResearch } from "./grocery-research.js";
 import { importConnectorMessage, claimPreparation } from "./invoices.js";
 import { parseLoginRecoveryRequest } from "./portal-login-recovery.js";
 import { portalReconnectStatus, startPortalReconnect } from "./portal-reconnect.js";
@@ -79,6 +85,10 @@ function scanNotifications() {
   })().catch(() => { console.error("Notification scan unavailable; existing records and deduplication preserved."); }).finally(() => { notificationScan = null; });
   return notificationScan;
 }
+
+const groceryStore = new GroceryStore(join(stateDir, "groceries"), extractGrocery);
+const groceryPlanning = new GroceryPlanningStore(join(stateDir, "groceries"));
+const groceryResearch = new GroceryResearch(join(stateDir, "groceries"));
 const researchDirectory = join(savingsDirectory, "public-research");
 const savingsResearch = new SavingsResearch(join(savingsDirectory, "jobs"), codexSavingsRunner(codex, researchDirectory));
 let pairingKey = "";
@@ -247,6 +257,22 @@ const server = createServer(async (request, response) => {
     if (parts[0] === "notifications" && parts.length === 1) {
       if (request.method === "GET") { json(response, 200, await notifications.read(), origin); return; }
       if (request.method === "POST") { json(response, 200, await notifications.mutate(await readJson(request, 12_000)), origin); return; }
+    }
+    if (parts[0] === "groceries") {
+      if (parts.length === 2 && parts[1] === "research" && request.method === "POST") { json(response, 200, await groceryResearch.run(await readJson(request)), origin); return; }
+      if (parts.length === 1 && request.method === "GET") { json(response, 200, await groceryStore.list(), origin); return; }
+      if (parts.length === 2 && parts[1] === "planning") {
+        if (request.method === "GET") { json(response, 200, await groceryPlanning.read(), origin); return; }
+        if (request.method === "POST") { json(response, 200, await groceryPlanning.save(await readJson(request)), origin); return; }
+      }
+      if (parts.length === 2 && parts[1] === "import" && request.method === "POST") { json(response, 200, await groceryStore.import(await readJson(request, 30_000_000)), origin); return; }
+      if (parts.length === 3 && request.method === "POST") {
+        const body = await readJson(request) as Record<string, unknown>;
+        if (parts[2] === "review") { json(response, 200, await groceryStore.review(parts[1], body), origin); return; }
+        if (parts[2] === "extract") { json(response, 200, await groceryStore.extract(parts[1], body), origin); return; }
+        if (parts[2] === "duplicate") { json(response, 200, await groceryStore.linkDuplicate(parts[1], body), origin); return; }
+      }
+      if (parts.length === 4 && parts[2] === "sources" && request.method === "GET") { const source = await groceryStore.source(parts[1], parts[3]); if (!source) { json(response, 404, { error: "Source introuvable." }, origin); return; } json(response, 200, source, origin); return; }
     }
     if (parts[0] === "finances") {
       if (parts.length === 1 && request.method === "GET") { json(response, 200, await financeLibrary.read(), origin); return; }
@@ -431,7 +457,7 @@ const server = createServer(async (request, response) => {
       }
     }
     if (request.method === "GET" && parts.length === 1 && parts[0] === "health") {
-      json(response, 200, { status: "ok", codex: "sdk-ready", version }, origin);
+      json(response, 200, { status: "ok", codex: "sdk-ready", version, capabilities: ["grocery-receipts-v1", "grocery-planning-v1"] }, origin);
       return;
     }
 
@@ -498,7 +524,8 @@ const server = createServer(async (request, response) => {
 
     json(response, 404, { error: "Endpoint not found." }, origin);
   } catch (error) {
-    json(response, error instanceof SavingsConflict || error instanceof FinanceConflict || error instanceof NotificationConflict ? 409 : 400, { error: error instanceof Error ? error.message : "Request failed." }, origin);
+    const grocery = parts[0] === "groceries";
+    json(response, error instanceof SavingsConflict || error instanceof FinanceConflict || error instanceof NotificationConflict || error instanceof GroceryConflict ? 409 : 400, { error: grocery && !(error instanceof GroceryError) ? "Action Courses indisponible. Les données restent conservées ; actualisez avant de réessayer." : error instanceof Error ? error.message : "Request failed." }, origin);
   }
 });
 

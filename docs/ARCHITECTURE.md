@@ -1,5 +1,7 @@
 # FamilyHub architecture
 
+Courses (#155 / FH-GROCERY-001/002) has independent PC stores `groceries/purchases.json` and `groceries/planning.json`, guarded by existing origin/pairing checks and atomic revision-protected writes. Device IndexedDB holds endpoint-scoped caches and unfinished work. Sources go only through the existing ephemeral private Codex extraction; optional public research receives a separately reviewed generic product and coarse confirmed home area. No household history, credentials, shell, apps or MCP is available to public research. Whole/split basket comparison uses cents, compatible units, pack rounding and per-order fees/tips; unknown costs, validity and availability block recommendations, and truncated search never claims a global optimum. Purchases and bank movements remain separate observations without consumption inference. See `docs/GROCERIES.md`.
+
 ## Product decision
 
 FamilyHub is a **mobile-first, local-first life assistant** rather than a dashboard. The deployed product is a React/TypeScript/Vite PWA. An optional Node worker can run on a household computer and use the Codex SDK for deeper reasoning/research. Both live in this repository so the product remains coherent and manageable.
