@@ -11,8 +11,9 @@ export default function CategoryPayments({ category, open, summary, accounts, ac
     onClose: () => void; onEdit: (id: string) => void;
 }) {
     const [search, setSearch] = useState("");
+    const [excludedOpen, setExcludedOpen] = useState(false);
     const content = useRef<HTMLDivElement>(null), lastRow = useRef<string | null>(null);
-    useEffect(() => { setSearch(""); lastRow.current = null; }, [category]);
+    useEffect(() => { setSearch(""); setExcludedOpen(false); lastRow.current = null; }, [category]);
     useEffect(() => {
         if (!open || !lastRow.current) return;
         const frame = requestAnimationFrame(() => {
@@ -21,11 +22,21 @@ export default function CategoryPayments({ category, open, summary, accounts, ac
         });
         return () => cancelAnimationFrame(frame);
     }, [open]);
-    const all = (summary?.rows ?? []).filter(r => r.category === category)
-        .sort((a, b) => b.date.localeCompare(a.date) || a.id.localeCompare(b.id));
-    const visible = all.filter(r => r.description.toLocaleLowerCase().includes(search.toLocaleLowerCase()));
-    const label = category ? expenseCategories[category] : "Catégorie";
     const savings = category === "savings-investments";
+    const includedIds = new Set(summary?.included.map(r => r.id));
+    const ordered = (summary?.rows ?? []).filter(r => r.category === category)
+        .sort((a, b) => b.date.localeCompare(a.date) || a.id.localeCompare(b.id));
+    const all = savings ? ordered : ordered.filter(r => includedIds.has(r.id));
+    const excluded = savings ? [] : ordered.filter(r => !includedIds.has(r.id));
+    const visible = all.filter(r => r.description.toLocaleLowerCase().includes(search.toLocaleLowerCase()));
+    const visibleExcluded = excluded.filter(r => r.description.toLocaleLowerCase().includes(search.toLocaleLowerCase()));
+    const label = category ? expenseCategories[category] : "Catégorie";
+    const payment = (r: Summary["rows"][number]) => <button className="finance-service" key={r.id} data-payment-id={r.id} onClick={() => { lastRow.current = r.id; onEdit(r.id); }}>
+        <span><strong>{r.description}</strong><small>{r.date} · {accounts.find(a => a.id === r.accountId)?.name}</small>
+            <small>{natures[r.nature]} · {r.reviewed ? "Confirmé" : "Suggestion"}</small>
+            <small className="finance-edit-label">Modifier la catégorie</small></span>
+        <strong>{money(r.outflowCents, r.currency)}</strong>
+    </button>;
     return <Sheet open={open} onClose={onClose} title={"Paiements · " + label} wide>
         <div className="view-stack finance-category-payments" ref={content}>
             <p>{from} — {to} · {account ? accounts.find(a => a.id === account)?.name : "Tous les comptes"} · {currency}</p>
@@ -33,16 +44,19 @@ export default function CategoryPayments({ category, open, summary, accounts, ac
                 <div><small>Sorties classées</small><strong>{money(summary?.savings.outgoingCents ?? 0, currency)}</strong></div>
                 <div><small>Entrées classées</small><strong>{money(summary?.savings.incomingCents ?? 0, currency)}</strong></div>
             </div> : <p><strong>{money(summary?.categories.find(c => c.key === category)?.cents ?? 0, currency)}</strong> de dépenses, remboursements déduits.</p>}
-            <p className="muted">Toutes les opérations de cette catégorie dans la période, confirmées ou suggérées. Les transferts et placements restent hors dépenses; leurs entrées et sorties ne sont pas additionnées. Vos filtres de départ restent disponibles en fermant cette liste.</p>
+            <p className="muted">{savings ? "Opérations d'épargne et de placement classées, hors dépenses. Leurs entrées et sorties ne sont pas additionnées." : "Dépenses et remboursements de cette catégorie, confirmés ou suggérés. Les paiements de carte, transferts et autres opérations exclues sont séparés sous « Hors dépenses »."} Vos filtres de départ restent disponibles en fermant cette liste.</p>
             <label>Rechercher dans cette catégorie<input type="search" value={search} onChange={e => setSearch(e.target.value)} /></label>
-            <p aria-live="polite">{visible.length} opération(s){search ? " sur " + all.length : ""}</p>
-            <div className="finance-register">{visible.map(r => <button className="finance-service" key={r.id} data-payment-id={r.id} onClick={() => { lastRow.current = r.id; onEdit(r.id); }}>
-                <span><strong>{r.description}</strong><small>{r.date} · {accounts.find(a => a.id === r.accountId)?.name}</small>
-                    <small>{natures[r.nature]} · {r.reviewed ? "Confirmé" : "Suggestion"}</small>
-                    <small className="finance-edit-label">Modifier la catégorie</small></span>
-                <strong>{money(r.outflowCents, r.currency)}</strong>
-            </button>)}</div>
+            <p aria-live="polite">{visible.length} opération(s){search ? " sur " + all.length : ""}{savings ? " classée(s), hors dépenses" : " dans les dépenses"}</p>
+            <div className="finance-register" aria-label={savings ? "Opérations d'épargne et de placement" : "Opérations de dépenses"}>{visible.map(payment)}</div>
             {!visible.length && <p>{all.length ? "Aucune opération ne correspond à cette recherche." : "Aucune opération dans cette catégorie pour la période sélectionnée."}</p>}
+            {excluded.length > 0 && <details className="finance-excluded-payments" open={excludedOpen} onToggle={event => setExcludedOpen(event.currentTarget.open)}>
+                <summary>Hors dépenses · {visibleExcluded.length} opération(s){search ? " sur " + excluded.length : ""}</summary>
+                <div className="view-stack">
+                    <p className="muted">Ces opérations ne figurent ni dans le total ni dans la liste des dépenses ci-dessus. Leurs montants ne sont pas additionnés. Vous pouvez consulter leur source et corriger leur classement.</p>
+                    <div className="finance-register" aria-label="Opérations hors dépenses">{visibleExcluded.map(payment)}</div>
+                    {!visibleExcluded.length && <p>Aucune opération hors dépenses ne correspond à cette recherche.</p>}
+                </div>
+            </details>}
             <button className="button secondary" onClick={onClose}>Fermer la catégorie</button>
         </div>
     </Sheet>;

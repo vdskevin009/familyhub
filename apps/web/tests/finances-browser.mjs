@@ -361,6 +361,7 @@ try {
         await sheet.waitFor({ state: "hidden" });
         await page.getByLabel("Rechercher", { exact: true }).fill("");
         // Explicitly classify both sides; show directions separately, never a 1,000 total.
+        await page.getByLabel("Opérations affichées", { exact: true }).selectOption("excluded");
         for (const description of ["TRANSFER TO SYNTHETIC", "SYNTHETIC SAVING RECEIPT"]) {
             await page.locator(".finance-register button").filter({ hasText: description }).click();
             await sheet.getByLabel("Catégorie", { exact: true }).selectOption("savings-investments");

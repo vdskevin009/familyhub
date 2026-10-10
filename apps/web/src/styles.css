@@ -50,6 +50,8 @@ strong { font-weight: 700; }
 .page-heading-copy { min-width: 0; }
 .page-subtitle { color: var(--muted); font-size: 12px; margin-top: 4px; }
 .page-heading-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.finance-excluded-payments { border-top: 1px solid var(--line); padding-top: 12px; }
+.finance-excluded-payments > summary { min-height: 44px; cursor: pointer; font-weight: 700; }
 
 /* Shared components -------------------------------------------------------- */
 .button, .mini-button, .file-button, .ask-form button { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: var(--control); padding: 9px 16px; background: var(--green); color: white; border: 1px solid transparent; border-radius: var(--radius-sm); font-size: 13px; font-weight: 680; text-decoration: none; line-height: 1.2; }

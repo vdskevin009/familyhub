@@ -253,6 +253,7 @@ export default function FinancesView({
         [busy, setBusy] = useState(false),
         [loading, setLoading] = useState(false);
     const [currency, setCurrency] = useState("CAD");
+    const [operationScope, setOperationScope] = useState<"expenses" | "excluded">("expenses");
     const [from, setFrom] = useState(""),
         [to, setTo] = useState(""),
         [account, setAccount] = useState(""),
@@ -316,7 +317,7 @@ export default function FinancesView({
     }, [hub.worker.Endpoint, hub.worker.ApiKey]);
     useEffect(
         () => setPage(0),
-        [from, to, account, currency, category, search, reviewOnly],
+        [from, to, account, currency, category, search, reviewOnly, operationScope],
     );
     async function refresh() {
         setLoading(true);
@@ -411,8 +412,9 @@ export default function FinancesView({
                 : null,
         [state, from, to, account, currency],
     );
+    const includedIds = new Set(summary?.included.map(r => r.id));
     const rows =
-        summary?.rows
+        ((operationScope === "expenses" ? summary?.included : summary?.rows.filter(r => !includedIds.has(r.id))) ?? [])
             .filter(
                 (r) =>
                     (!category || r.category === category) &&
@@ -627,6 +629,7 @@ export default function FinancesView({
                             <label>
                                 Compte
                                 <select
+                                    aria-label="Compte"
                                     value={account}
                                     onChange={(e) => setAccount(e.target.value)}
                                 >
@@ -765,6 +768,10 @@ export default function FinancesView({
                             </section>
                             <section className="surface view-stack">
                                 <h2>Opérations et catégories</h2>
+                                <label>Opérations affichées<select aria-label="Opérations affichées" value={operationScope} onChange={event => { const next = event.target.value as "expenses" | "excluded"; setOperationScope(next); if (next === "expenses" && category === "savings-investments") setCategory(""); }}>
+                                    <option value="expenses">Dépenses, remboursements déduits</option><option value="excluded">Hors dépenses</option>
+                                </select></label>
+                                {operationScope === "excluded" && <p className="muted">Paiements de carte, transferts, placements et autres opérations exclues des dépenses. Les montants restent séparés. Chaque opération conserve sa source et son classement reste modifiable.</p>}
                                 <button className="button secondary" disabled={!rows.some(r => !r.reviewed)} onClick={() => { const row = rows.find(r => !r.reviewed); if (row) openDecision(row.id); }}>Catégoriser les opérations</button>
                                 <div className="finance-filters">
                                     <label>
@@ -772,9 +779,7 @@ export default function FinancesView({
                                         <select
                                             aria-label="Catégorie"
                                             value={category}
-                                            onChange={(e) =>
-                                                setCategory(e.target.value)
-                                            }
+                                            onChange={(e) => { setCategory(e.target.value); if (e.target.value === "savings-investments") setOperationScope("excluded"); }}
                                         >
                                             <option value="">
                                                 Toutes les catégories
@@ -810,7 +815,7 @@ export default function FinancesView({
                                     Suggestions à confirmer seulement
                                 </label>
                                 <p className="muted">
-                                    {rows.length} opérations. Les règles de
+                                    {rows.length} opération(s) {operationScope === "expenses" ? "dans les dépenses" : "hors dépenses"}. Les règles de
                                     libellé sont des suggestions; les paniers
                                     mixtes demandent une revue.
                                 </p>
