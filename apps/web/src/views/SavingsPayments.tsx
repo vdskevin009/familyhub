@@ -1,6 +1,6 @@
 import type { SavingsContract } from "../savings";
 import type { ContractPayments, PaidRow, reconcilePayments } from "../savings-payments";
-import { calendarPeriod, type DateRange } from "../finance-periods";
+import { calendarPeriod, rangeLabel, type DateRange } from "../finance-periods";
 const money = (cents: number, currency: string) => new Intl.NumberFormat("fr-CA", { style: "currency", currency }).format(cents / 100);
 function PaymentSource({ row }: { row: PaidRow }) {
     return <details className="finance-evidence"><summary>Source du paiement</summary>{row.sources.map((s, i) => <p key={i}>{s.name}{s.record ? ` · ligne ${s.record}` : ""}{s.page ? ` · page ${s.page}` : ""}{s.sha256 && <code>SHA-256 : {s.sha256}</code>}</p>)}</details>;
@@ -15,22 +15,32 @@ export function ContractPaymentDetails({ contract, summary }: { contract: Saving
         {summary.rows.map(row => <div key={row.id}><strong>{row.date} · {money(row.outflowCents, row.currency)}</strong><p>{row.description}{row.outflowCents < 0 ? " · remboursement déduit" : ""}</p><PaymentSource row={row} /></div>)}
     </div></details>;
 }
-export default function SavingsPayments({ result, contracts, onMonth, onCategorize }: { result: ReturnType<typeof reconcilePayments>; contracts: SavingsContract[]; onMonth: (range: DateRange) => void; onCategorize: () => void }) {
+export default function SavingsPayments({ result, contracts, range, onMonth }: { result: ReturnType<typeof reconcilePayments>; contracts: SavingsContract[]; range: DateRange; onMonth: (range: DateRange) => void }) {
     const ids = new Set(contracts.map(c => c.id));
     const summaries = result.summaries.filter(s => ids.has(s.contractId));
     const totals: Record<string, { cents: number; matched: number; missing: number }> = {};
     for (const c of contracts) { const s = summaries.find(s => s.contractId === c.id)!; const total = totals[c.billing?.currency ?? "CAD"] ??= { cents: 0, matched: 0, missing: 0 }; if (s.cents === null) total.missing++; else { total.cents += s.cents; total.matched++; } }
-    const reviews = result.reviews.filter(r => r.contractIds.some(id => ids.has(id)));
     return <section className="surface view-stack" aria-label="Paiements TTC de la période">
-        <h2>Payé sur la période</h2>
+        <h2>Payé sur la période</h2><p className="muted">{rangeLabel(range)} · {contracts.length} contrat(s) affiché(s)</p>
         <p>Dates des opérations bancaires, remboursements déduits. Les périodes des factures restent dans les contrats. Un prélèvement décalé n’est pas déplacé vers un autre mois.</p>
         <div className="finance-totals">{Object.entries(totals).map(([currency, t]) => <div key={currency}><small>Paiements rapprochés · {currency}</small><strong>{t.matched ? money(t.cents, currency) : "Non disponible"}</strong><small>{t.matched} contrat(s) rapproché(s) · {t.missing} sans paiement identifié. Totaux partiels, taxes/frais dans le débit sans calcul séparé.</small></div>)}</div>
-        {result.months.length > 1 && Object.keys(totals).map(currency => {
+        {!contracts.length && <p>Aucun contrat dans ce filtre. Aucun total disponible.</p>}
+        {result.months.length > 1 && <details className="savings-months"><summary>Voir les paiements mois par mois</summary>{Object.keys(totals).map(currency => {
             const months = result.months.map(m => { const rows = summaries.flatMap(s => s.rows).filter(r => r.currency === currency && r.date.startsWith(m.month)); return { ...m, count: rows.length, cents: rows.reduce((n, r) => n + r.outflowCents, 0) }; });
             const max = Math.max(1, ...months.map(m => Math.abs(m.cents)));
             return <div key={currency}><h3>Mois par mois · {currency}</h3><ul className="finance-bars">{months.map(m => <li key={m.month}><button onClick={() => onMonth(calendarPeriod(Number(m.month.slice(0, 4)), Number(m.month.slice(5, 7))))}><span className="finance-bar-label"><span>{m.month}<small>{m.full ? "Fenêtre observée entière" : "Couverture partielle"}</small></span><strong>{m.count ? money(m.cents, currency) : "Aucun paiement identifié"}</strong></span><span className="finance-bar-track" aria-hidden="true"><span className={m.cents < 0 ? "negative" : ""} style={{ width: Math.abs(m.cents) / max * 100 + "%" }} /></span></button></li>)}</ul></div>;
-        })}
-        {reviews.length > 0 && <details className="payment-reviews" open><summary>{reviews.length} paiement(s) à vérifier · exclus des totaux rapprochés</summary><div className="view-stack">{reviews.map(({ row, contractIds, reason }) => <div key={row.id}><strong>{row.date} · {money(row.outflowCents, row.currency)}</strong><p>{row.description}</p><p>{reason}</p><small>Contrat(s) concerné(s) : {contracts.filter(c => contractIds.includes(c.id)).map(c => c.name).join(", ")}</small><PaymentSource row={row} /></div>)}</div></details>}
+        })}</details>}
+    </section>;
+}
+
+export function PaymentObservations({ result, contracts, onCategorize }: { result: ReturnType<typeof reconcilePayments>; contracts: SavingsContract[]; onCategorize: () => void }) {
+    const ids = new Set(contracts.map(c => c.id));
+    const reviews = result.reviews.filter(r => r.contractIds.some(id => ids.has(id))).sort((a, b) => b.row.date.localeCompare(a.row.date));
+    if (!reviews.length) return null;
+    return <section className="surface view-stack savings-observations" aria-label="Observations sur les paiements">
+        <h2>Paiements à vérifier</h2>
+        <p>{reviews.length} opération(s) demandent une vérification avant rapprochement. Les services inclus, libellés ambigus et devises différentes ne permettent pas de conclure à une économie.</p>
+        {reviews.length > 0 && <details className="payment-reviews"><summary>{reviews.length} paiement(s) à vérifier · exclus des totaux rapprochés</summary><div className="view-stack">{reviews.map(({ row, contractIds, reason }) => <div key={row.id}><strong>{row.date} · {money(row.outflowCents, row.currency)}</strong><p>{row.description}</p><p>{reason}</p><small>Contrat(s) concerné(s) : {contracts.filter(c => contractIds.includes(c.id)).map(c => c.name).join(", ")}</small><PaymentSource row={row} /></div>)}</div></details>}
         <button className="button secondary" onClick={onCategorize}>Catégoriser dans Finances</button>
     </section>;
 }

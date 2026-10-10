@@ -27,7 +27,7 @@ function runningStandalone(): boolean {
 const nav: Array<{ id: AppView; label: string; icon: typeof Home }> = [
   { id: "reimbursements", label: "Claims", icon: HeartHandshake },
   { id: "documents", label: "Documents", icon: FileText },
-  { id: "savings", label: "Savings", icon: TrendingDown },
+  { id: "savings", label: "Dépenses récurrentes", icon: TrendingDown },
   { id: "finances", label: "Finances", icon: CircleDollarSign },
   { id: "other", label: "Other", icon: MoreHorizontal }
 ];
