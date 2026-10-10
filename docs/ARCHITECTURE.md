@@ -15,6 +15,10 @@ The architecture optimizes for:
 
 ## Components
 
+Notifications use a separate serialized private library under `notifications/history.json`, accessed through the existing key/origin-protected `GET/POST /notifications`. A 15-minute worker scan reads the current invoice, collection, finance and contract snapshots without invoking collectors or modifying their records. Source-derived opaque identities persist before delivery; each newly available source establishes a silent baseline. The 500 most recent events retain authenticated detail and source links; deduplication identities remain stored separately. Concurrent updates require the current revision. Unavailable sources do not resolve prior alerts, and invalid history fails closed without replacement.
+
+The service worker receives only an encrypted opaque event ID and always shows fixed generic text. Clicking opens the same app scope; private details require pairing. Explicit browser permission and registration are per device; sending preferences are shared. Web Push requests use an allowlist of browser push-service hosts, no redirects and an eight-second timeout. A response lost after submission remains unconfirmed and is never automatically replayed. Acceptance by the push service and operator-confirmed receipt are separate states. The worker keeps its existing private network boundary; there is no incoming public push server. See [Notifications](NOTIFICATIONS.md) for optional VAPID setup and acceptance gates.
+
 Invoice ingestion and reconciliation share explicit manual-authority protection across startup, Gmail repairs and insurer imports. Stable source identity and additive JSON enrichment preserve original references and historical decisions; precise uncertainty is persisted separately. See [FH-REIMB-042 architecture and migration](INGESTION-AUTHORITY.md).
 
 ### 1. React PWA — `apps/web`

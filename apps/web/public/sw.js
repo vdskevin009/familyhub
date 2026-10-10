@@ -1,5 +1,27 @@
-const CACHE = "familyhub-v2-shell-9";
+const CACHE = "familyhub-v2-shell-10";
 const SHELL = ["./", "./manifest.webmanifest", "./icon.svg", "./icon-192.png", "./icon-512.png", "./icon-maskable-512.png"];
+
+// Push payloads contain an opaque ID only. Never display remotely supplied title/body/URLs.
+self.addEventListener("push", event => {
+  let eventId = "";
+  try { const value = event.data?.json(); if (/^[a-f0-9]{64}$/.test(value?.eventId)) eventId = value.eventId; } catch { /* Generic center link remains available. */ }
+  event.waitUntil(self.registration.showNotification("FamilyHub", {
+    body: "Une mise à jour est disponible", icon: "./icon-192.png", badge: "./icon-192.png",
+    tag: eventId || "familyhub-update", data: { eventId },
+  }));
+});
+self.addEventListener("notificationclick", event => {
+  event.notification.close();
+  const value = event.notification.data?.eventId;
+  const url = new URL("./?view=notifications", self.registration.scope);
+  if (/^[a-f0-9]{64}$/.test(value)) url.searchParams.set("notice", value);
+  event.waitUntil((async () => {
+    const windows = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+    const existing = windows.find(client => client.url.startsWith(self.registration.scope));
+    if (existing) { const navigated = await existing.navigate(url.href); if (navigated) return navigated.focus(); }
+    return self.clients.openWindow(url.href);
+  })());
+});
 
 self.addEventListener("install", event => {
   event.waitUntil((async () => {

@@ -40,6 +40,9 @@ jobs:
       - name: Verify private finance imports, calculations and authorization
         run: npm run test:finances
 
+      - name: Verify notification evidence, privacy, deduplication and authorization
+        run: npm run test:notifications
+
       - name: Install browser for Savings acceptance
         run: npx playwright install --with-deps chromium
 
@@ -48,6 +51,9 @@ jobs:
 
       - name: Verify Finances mobile and desktop flows
         run: npm run test:finances:browser
+
+      - name: Verify notification history, preferences and device enrollment
+        run: npm run test:notifications:browser
 
       - name: Verify invoice collection and worker authorization
         run: npm run test:invoices

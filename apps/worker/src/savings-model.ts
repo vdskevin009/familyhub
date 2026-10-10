@@ -19,6 +19,7 @@ export type SavingsContract = {
   termMonths: number | null; rateType: "fixed" | "variable";
   sourceSubscriptionId?: string; updatedAt: string;
   billing?: ContractBilling; services?: ContractService[];
+  promotionEnd?: { date: string; source: string };
 };
 export type PublicBaseline = Pick<SavingsContract, "category" | "price" | "cycle" | "taxesIncluded" | "province" |
   "cancellationFee" | "annualLostDiscounts" | "currentPromoMonths" | "priceAfterPromo" |

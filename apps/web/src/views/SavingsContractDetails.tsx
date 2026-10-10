@@ -15,6 +15,7 @@ export default function SavingsContractDetails({ contract, paid, review, onEdit,
         </div>
         <p className="savings-source-price">Prix contractuel source conservé : {price(contract.price)} / {contract.cycle} · {contract.taxesIncluded === true ? "taxes incluses" : contract.taxesIncluded === false ? "avant taxes" : "taxes non confirmées"}. Ce prix historique n'est pas ajouté aux paiements.</p>
         <ContractPaymentDetails contract={contract} summary={paid} />
+        {contract.promotionEnd && <p className="muted">Fin de promotion confirmée : {contract.promotionEnd.date}. Source : {contract.promotionEnd.source}</p>}
         {contract.billing && <p className="muted">Montant source : {price(contract.billing.amount, contract.billing.currency)} / {contract.billing.count} {contract.billing.unit} · {contract.billing.asOf || "date à compléter"}. {contract.billing.source}</p>}
         <details className="savings-checklist"><summary>{missing.length ? missing.length + " détails à compléter" : "Prêt pour une comparaison publique"}</summary>
             {missing.length > 0 ? <ul>{missing.map(item => <li key={item}>{item}</li>)}</ul> : <p>Les offres publiques demandent encore une vérification de l'admissibilité et des services ou garanties.</p>}

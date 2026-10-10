@@ -21,6 +21,8 @@
     "test:savings": "node --import tsx --test tests/savings.test.ts tests/savings-sharing.test.ts tests/savings-daily.test.ts",
     "test:savings:browser": "node apps/web/tests/savings-browser.mjs && node apps/web/tests/savings-sharing-browser.mjs",
     "test:finances": "npm run build:worker && node --test tests/finances.test.mjs tests/worker-finances.test.mjs",
-    "test:finances:browser": "node apps/web/tests/finances-browser.mjs"
+    "test:finances:browser": "node apps/web/tests/finances-browser.mjs",
+    "test:notifications": "npm run build:worker && node --test tests/notifications.test.mjs tests/notification-push.test.mjs tests/worker-notifications.test.mjs",
+    "test:notifications:browser": "node apps/web/tests/notifications-browser.mjs"
   }
 }

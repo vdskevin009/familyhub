@@ -321,7 +321,7 @@ export function buildAssistantContext(
 export const viewFromQuery = (): AppView => {
   const value = new URLSearchParams(location.search).get("view");
   return value === "today" || value === "inbox" || value === "invoices" || value === "desjardins" || value === "blue-cross"
-    || value === "documents" || value === "savings" || value === "finances" || value === "other" || value === "plan" || value === "money" || value === "more" ? value : "reimbursements";
+    || value === "documents" || value === "savings" || value === "finances" || value === "notifications" || value === "other" || value === "plan" || value === "money" || value === "more" ? value : "reimbursements";
 };
 
 export const emptyMortgage = (): MortgageScenario => ({

@@ -16,6 +16,8 @@ The current default experience is **Claims**. Invoices and insurer source record
 
 ## Current experience
 
+- **Notifications** — a separate private history with source links and shared sending preferences. Opt-in PWA Web Push uses generic lock-screen content; details remain behind pairing. The PC must be running. Per-device permission, registration, revocation and an explicit receipt check are separate from service acceptance. See [setup, evidence rules and limitations](docs/NOTIFICATIONS.md).
+
 - **Claims** — the default healthcare reconciliation experience with its existing alerts and actions.
 - **Documents** — one navigation entry with separate Invoices, Desjardins and Blue Cross libraries. Existing source links, reconciliation and manual choices remain available.
 - **Savings** — shared household contracts, missing-information checklists, documents and public market comparisons on the paired PC. An explicitly enabled daily agent schedule saves dated results for paired phones; previous review choices are retained. Reviewed estimates include promotions, fees and lost discounts; incompatible options do not inflate totals. See [scope and setup](docs/SAVINGS.md).

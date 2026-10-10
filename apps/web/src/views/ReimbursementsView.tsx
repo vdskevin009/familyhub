@@ -58,7 +58,9 @@ export default function ReimbursementsView({ hub }: Props) {
   const [savingId, setSavingId] = useState("");
   const [savedMessage, setSavedMessage] = useState("");
   const [selecting, setSelecting] = useState(false);
-  const [sourcesOpen, setSourcesOpen] = useState(false);
+  const [sourcesOpen, setSourcesOpen] = useState(() => new URLSearchParams(location.search).get("sources") === "1");
+  const [linkedRecord, setLinkedRecord] = useState(() => new URLSearchParams(location.search).get("record"));
+  const linkedQueue = new URLSearchParams(location.search).get("queue") === "unmatched";
   const [reconnects, setReconnects] = useState<Partial<Record<"bluecross" | "desjardins", PortalReconnect>>>({});
   const reconnectStarting = useRef(false);
   const refreshedApply = useRef("");
@@ -368,6 +370,7 @@ export default function ReimbursementsView({ hub }: Props) {
         : scopedCases.length;
 
   const filteredCases = useMemo(() => {
+    if (linkedRecord) return model.cases.filter(item => item.Id === linkedRecord || item.DocumentIds.includes(linkedRecord));
     const history = filterInvoiceHistoryCases(workflowScopedCases, filters);
     const source = sourceFilter === "email" ? "Email" : sourceFilter === "blue-cross" ? "Blue Cross" : sourceFilter === "desjardins" ? "Desjardins" : null;
     return history.filter(item => {
@@ -380,7 +383,7 @@ export default function ReimbursementsView({ hub }: Props) {
       if (endDate && (!serviceDay || serviceDay > endDate)) return false;
       return true;
     });
-  }, [endDate, filters, invoiceById, query, sourceFilter, startDate, workflowScopedCases]);
+  }, [endDate, filters, invoiceById, query, sourceFilter, startDate, workflowScopedCases, linkedRecord, linkedQueue, model.cases]);
 
   const selectableVisibleCases = useMemo(() => filteredCases.filter(item =>
     reimbursementWorkflowStatus(item) !== "ignore" && Boolean(workflowExpenseId(item))),
@@ -396,6 +399,7 @@ export default function ReimbursementsView({ hub }: Props) {
   const scopeLabel = personScope === "all" ? "All family" : personScope;
 
   function selectScope(scope: ReimbursementPersonScope) {
+    setLinkedRecord(null);
     setQuery("");
     setPersonScope(scope);
     setWorkflowFilter("open");
@@ -489,16 +493,17 @@ export default function ReimbursementsView({ hub }: Props) {
       {model.warnings.map(warning => <p key={warning}>{warning}</p>)}
     </details>}
 
+    {linkedRecord && <Notice onDismiss={() => setLinkedRecord(null)}>Dossier ouvert depuis une notification. Les filtres précédents sont conservés. {busy ? "Actualisation en cours." : filteredCases.length || model.unmatched.some(entry => entry.item.Id === linkedRecord) ? "" : "Ce dossier n'est plus disponible ou a été rapproché depuis cette notification."}<button type="button" className="button secondary" onClick={() => setLinkedRecord(null)}>Revenir à la liste</button></Notice>}
     <section className="reimbursement-mode-tabs" aria-label="Claims workspace">
-      <button type="button" className={screen === "claims" ? "active" : ""} aria-pressed={screen === "claims"} onClick={() => setScreen("claims")}>
+      <button type="button" className={(linkedRecord ? !linkedQueue || filteredCases.length > 0 : screen === "claims") ? "active" : ""} aria-pressed={linkedRecord ? !linkedQueue || filteredCases.length > 0 : screen === "claims"} onClick={() => { setLinkedRecord(null); setScreen("claims"); }}>
         Claims
       </button>
-      <button type="button" className={screen === "reconcile" ? "active" : ""} aria-pressed={screen === "reconcile"} onClick={() => setScreen("reconcile")}>
+      <button type="button" className={(linkedRecord ? linkedQueue && !filteredCases.length : screen === "reconcile") ? "active" : ""} aria-pressed={linkedRecord ? linkedQueue && !filteredCases.length : screen === "reconcile"} onClick={() => { setLinkedRecord(null); setScreen("reconcile"); }}>
         À réconcilier <span>{model.unmatched.length}</span>
       </button>
     </section>
 
-    {screen === "claims" ? <>
+    {(linkedRecord ? !linkedQueue || filteredCases.length > 0 : screen === "claims") ? <>
     <div className="claim-scope-summary">
     <section className="reimbursement-family-scopes" aria-label="Reimbursements by family member">
       {(["all", "Kevin", "Jasmine", "Nathan"] as ReimbursementPersonScope[]).map(scope => {
@@ -626,9 +631,9 @@ export default function ReimbursementsView({ hub }: Props) {
     </> : <ReconciliationQueue
       items={hub.reimbursements.Items}
       cases={model.cases}
-      unmatched={scopedUnmatched}
-      ignoredUnmatched={scopedIgnoredUnmatched}
-      personScope={personScope}
+      unmatched={linkedRecord ? model.unmatched.filter(entry => entry.item.Id === linkedRecord) : scopedUnmatched}
+      ignoredUnmatched={linkedRecord ? [] : scopedIgnoredUnmatched}
+      personScope={linkedRecord ? "all" : personScope}
       paired={paired}
       manualActionsAvailable={manualActionsAvailable}
       busy={busy || bulkIgnoring}
