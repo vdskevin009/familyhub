@@ -12,6 +12,8 @@ The baseline is the arithmetic mean of these observed months, displayed to the c
 
 Imported date bounds are necessary evidence, not proof that every transaction exists. The UI shows account bounds, original coverage warnings and import limitations. Missing history is null, not an invented zero; a zero baseline is valid only for an eligible observed cohort and does not produce a percentage. Classification remains provisional unless explicitly confirmed. These personal averages are neither targets nor population benchmarks.
 
+When an import derives its bounds from the first and last observed movements, those dates are not certified statement/export boundaries. FH-FIN-011 labels them **Bornes à vérifier**, identifies the affected account and unresolved date interval, and retains the conservative comparison gate. It does not assert that movements are missing after the last observed transaction. Category uncertainty is explained separately; changing a category cannot establish complete history.
+
 Pending-count metadata is labelled as import-wide, with no assumed date/account allocation. Detailed pending rows are shown separately when the ledger actually contains them; neither representation is added to posted totals.
 
 ## Interface
