@@ -48,7 +48,7 @@ type ResearchWatch = {
 };
 type PersistedState = { watches: ResearchWatch[] };
 
-const version = "2.25.1";
+const version = "2.25.2";
 const host = process.env.FAMILYHUB_WORKER_HOST?.trim() || "127.0.0.1";
 const port = Number(process.env.FAMILYHUB_WORKER_PORT || "4713");
 const stateDir = process.env.FAMILYHUB_WORKER_DATA?.trim() || join(homedir(), ".familyhub-worker");
@@ -458,7 +458,7 @@ const server = createServer(async (request, response) => {
       }
     }
     if (request.method === "GET" && parts.length === 1 && parts[0] === "health") {
-      json(response, 200, { status: "ok", codex: "sdk-ready", version, capabilities: ["grocery-receipts-v1", "grocery-planning-v1"] }, origin);
+      json(response, 200, { status: "ok", codex: "sdk-ready", version, capabilities: ["grocery-receipts-v1", "grocery-planning-v1", "grocery-weekly-v1"] }, origin);
       return;
     }
 

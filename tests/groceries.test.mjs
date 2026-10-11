@@ -110,8 +110,10 @@ test("authenticated real-worker API: origin, pairing, no-store, upload/review/so
   assert.equal((await request("/groceries", undefined, { "x-familyhub-key": "wrong" })).status, 401);
   assert.equal((await request("/groceries", undefined, { Origin: "https://untrusted.invalid" })).status, 403);
   const health = await (await request("/health")).json(); assert.ok(health.capabilities.includes("grocery-receipts-v1"));
+  assert.ok(health.capabilities.includes("grocery-weekly-v1"));
   const plan = (await (await request("/groceries/planning")).json()); assert.equal(plan.schema, 1);
   plan.area = "Synthetic city";
+  plan.items = [{ id: "synthetic-month", name: "Synthetic monthly packs", quantity: 3, size: null, unit: null, preference: "Format unknown", substitutions: false, active: false, origin: "", cadence: "month", every: 1, bucket: "household", measure: "pack", provisional: true, basketQuantity: null }];
   const savedPlan = await request("/groceries/planning", { plan, expectedRevision: "" }); assert.equal(savedPlan.status, 200); assert.equal(savedPlan.headers.get("cache-control"), "no-store"); const planningRevision = (await savedPlan.json()).revision;
   assert.equal((await request("/groceries/planning", { plan, expectedRevision: "" })).status, 409);
   assert.equal((await request("/groceries/planning", { plan, expectedRevision: planningRevision }, { "x-familyhub-key": "wrong" })).status, 401);
@@ -123,6 +125,7 @@ test("authenticated real-worker API: origin, pairing, no-store, upload/review/so
   const malformed = await fetch(`http://127.0.0.1:${port}/groceries/import`, { method: "POST", headers: { "x-familyhub-key": key }, body: "{private-source-content" }); assert.equal(malformed.status, 400); assert.ok(!(await malformed.text()).includes("private-source-content"));
   await stop(); await start(); assert.equal((await (await request("/groceries")).json()).records[0].status, "saved");
   assert.equal((await (await request("/groceries/planning")).json()).revision, planningRevision);
+  assert.deepEqual((await (await request("/groceries/planning")).json()).items, plan.items);
   // Startup logs predate this module; never output private source text from a Courses route.
   assert.ok(!logs.includes("Synthetic API receipt")); await stop();
 });

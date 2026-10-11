@@ -8,6 +8,9 @@ import { validateSubscription, validateVapid, PushConfiguration, sendPush } from
 import { pushFixture } from "./notification-fixture.mjs";
 test("subscription destinations and curve keys reject arbitrary hosts, credentials, invalid encodings and keys", () => {
   const { subscription, config } = pushFixture(); assert.deepEqual(validateSubscription(subscription), subscription); assert.deepEqual(validateVapid(config), config);
+  const shortScalar = pushFixture("synthetic-short-scalar", Buffer.from([1])).config;
+  assert.equal(Buffer.from(shortScalar.privateKey, "base64url").length, 32);
+  assert.deepEqual(validateVapid(shortScalar), shortScalar);
   for (const endpoint of ["http://fcm.googleapis.com/x", "https://127.0.0.1/x", "https://evil.invalid/x", "https://fcm.googleapis.com.evil.invalid/x", "https://user:secret@fcm.googleapis.com/x", "https://fcm.googleapis.com:8080/x", "https://fcm.googleapis.com/x#fragment", "https://a.b.notify.windows.com/x", "https://web.push.apple.com.evil.invalid/x", "https://push.apple.com.evil.invalid/x", "https://evilpush.apple.com/x"]) assert.throws(() => validateSubscription({ ...subscription, endpoint }));
   for (const endpoint of ["https://updates.push.services.mozilla.com/wpush/test", "https://web.push.apple.com/test", "https://region.web.push.apple.com/test", "https://wns2.notify.windows.com/test"]) assert.equal(validateSubscription({ ...subscription, endpoint }).endpoint, endpoint);
   for (const keys of [{ ...subscription.keys, auth: "bad" }, { ...subscription.keys, p256dh: "A".repeat(87) }, { ...subscription.keys, auth: subscription.keys.auth + "=" }]) assert.throws(() => validateSubscription({ ...subscription, keys }));
