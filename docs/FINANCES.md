@@ -99,6 +99,8 @@ The service-first list groups each contract once: its principal service (or pack
 
 ## Verification and release boundary
 
+The explicitly requested **Jasmine school** category uses the stable key `jasmine-school` in the shared taxonomy (FH-FIN-016 / #186). It is available to individual and opt-in same-name decisions, summaries and personal Trends. Worker 2.25.1 accepts and persists it through the existing audited revision checks. No merchant rule, automatic migration or public spending benchmark is inferred for this category; existing rows change only after an explicit save.
+
 Run `npm run typecheck`, `npm run build`, `npm run test:finances`, `npm run test:finances:browser`, the existing Savings/PWA/invoice checks and retained .NET regression harness. CI includes the new private finance and responsive checks. Public fixtures and screenshots are synthetic. Existing-worker deployment, the private import, preserved-file audit, exact Pages release and physical-phone acceptance are separate gates; record observed outcomes in the issues rather than assuming merge establishes all of them.
 
 ## Direct category review and recurring-expense navigation

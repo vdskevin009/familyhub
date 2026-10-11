@@ -1,5 +1,11 @@
 # FamilyHub — Canonical Requirements
 
+## Explicit school category - 2026-10-11
+
+| ID | Requirement | Status | Implementation / validation |
+|---|---|---|---|
+| FH-FIN-016 | Offer the exact requested category label **Jasmine school** in explicit individual and same-name finance edits, summaries and personal Trends. Do not infer school payments or reclassify existing data automatically. | Implemented; release verification tracked in #186 | Code: [PR #187](https://github.com/vdskevin009/familyhub/pull/187). Shared `expenseCategories` key `jasmine-school`; worker 2.25.1. Existing revision, audit, undo, refund/exclusion and persistence rules apply. Synthetic model/API and responsive browser checks; exact CI and installed/public acceptance recorded in #186. |
+
 ## Continuous categorization — 2026-10-11
 | FH-FIN-015 | Show **Enregistrer et suivante** next to Save in every Finances category editor, including category-payment drill-down. Persist the current explicit decision before moving to the next item without closing the editor. In the main filtered register, advance through unconfirmed entries; from a category list, follow its visible list in order even if entries are already confirmed. On final item, close the editor and return to the calling list. Preserve search/period context, Back, conflict/retry protections, and mobile layouts. | Implemented; release verification tracked in #184 | React-only change in `FinancesView` and `CategoryPayments`; compact finance actions and four-width browser acceptance. No worker or financial-source migration. |
 
