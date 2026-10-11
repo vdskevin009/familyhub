@@ -141,9 +141,8 @@ try {
     await page.getByRole("button", { name: "Export backup", exact: true }).click();
     const downloaded = await downloadEvent, backup = JSON.parse(await readFile(await downloaded.path(), "utf8"));
     assert.equal(backup.savings.Contracts.length, 2);
-    assert.equal(Buffer.from(backup.savingsDocuments[0].data, "base64").toString(), "PRIVATE-LOCAL-DOCUMENT");
     assert.equal(backup.savingsDocuments.length, 2);
-    assert.equal(Buffer.from(backup.savingsDocuments[1].data, "base64").toString(), "TEST-TD-REFERENCE");
+    assert.deepEqual(backup.savingsDocuments.map(doc => Buffer.from(doc.data, "base64").toString()).sort(), ["PRIVATE-LOCAL-DOCUMENT", "TEST-TD-REFERENCE"].sort());
     assert.ok(!JSON.stringify(backup).includes("synthetic-key"), "Backup must exclude pairing secrets");
     const restore = page.locator(".backup-surface input[type=file]");
     await restore.setInputFiles({ name: "synthetic-backup.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(backup)) });
