@@ -6,7 +6,9 @@ import { RefreshCw, Upload } from "lucide-react";
 import type { HubState } from "../state";
 import type { AppView } from "../types";
 import { PageHeader, Notice, Sheet } from "../ui/primitives";
-import { fetchFinances, importFinances, saveFinanceDecision } from "../worker";
+import { fetchFinances, importFinances, saveFinanceChange } from "../worker";
+import { applyFinanceDelta } from "../finance-edits";
+import { categoryScope, financeUndoOptions } from "../../../worker/src/finance-category-match";
 import {
     expenseCategories,
     decisionCategoryAllowed,
@@ -276,6 +278,8 @@ export default function FinancesView({
         });
     const [categoryPayments, setCategoryPayments] = useState<ExpenseCategory | null>(null);
     const savingDecision = useRef(false);
+    const [allSameName, setAllSameName] = useState(false), [staleDraft, setStaleDraft] = useState(false);
+    const attempt = useRef<{ intent: string; requestId: string } | null>(null);
     const categoryTrigger = useRef<HTMLElement | null>(null);
     function openCategory(category: ExpenseCategory) {
         categoryTrigger.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
@@ -405,36 +409,46 @@ export default function FinancesView({
         }
     }
     async function saveDecision(next = false) {
-        if (!editing || !state || savingDecision.current) return;
+        if (!editing || !state || savingDecision.current || staleDraft) return;
         savingDecision.current = true;
         setBusy(true);
         setError("");
+        let confirmed = false;
         try {
-            const saved = await saveFinanceDecision(
-                    hub.worker,
-                    editing,
-                    state.revision,
-                    decision,
-                );
+            setMessage("");
+            const input = { kind: "decision", id: editing, decision, allSameName, ...(allSameName ? { expectedCount: categoryScope(state, editing, decision, classified).affected.length } : {}) };
+            const intent = JSON.stringify(input);
+            if (attempt.current?.intent !== intent) attempt.current = { intent, requestId: crypto.randomUUID() };
+            const requestId = attempt.current.requestId;
+            const result = await saveFinanceChange(hub.worker, { ...input, requestId, expectedRevision: state.revision });
+            if (result.operation?.id !== requestId || !result.revision || !Array.isArray(result.history)) throw new Error("Enregistrement non confirmé par le PC.");
+            confirmed = true;
+            const saved = result.refreshRequired ? await fetchFinances(hub.worker) : applyFinanceDelta(state, result, requestId);
             setState(saved);
+            attempt.current = null;
             const following = next ? rows.find(r => r.id !== editing && !saved.decisions[r.id]) : undefined;
             if (following) openDecision(following.id, saved); else setEditing(null);
-            setMessage("Décision enregistrée sur le PC.");
+            setMessage(result.operation.count === 1 ? "Décision enregistrée sur le PC." : `${result.operation.count} décisions enregistrées sur le PC.`);
         } catch (e) {
             setError((e as Error).message);
+            if (confirmed || (e as Error & { status?: number }).status === 409) setStaleDraft(true);
+            if (confirmed) setMessage("Décision enregistrée; l’actualisation du PC reste nécessaire.");
         } finally {
             savingDecision.current = false;
             setBusy(false);
         }
     }
     const data = state?.data;
-    const trend = useMemo(() => state?.data && trendMonth ? spendingTrend(state, trendMonth, account, currency) : null, [state, trendMonth, account, currency]);
+    const classified = useMemo(() => state ? classifiedRows(state) : [], [state]);
+    const trend = useMemo(() => tab === "trends" && state?.data && trendMonth ? spendingTrend(state, trendMonth, account, currency) : null, [tab, state, trendMonth, account, currency]);
+    const scope = useMemo(() => state && editing ? categoryScope(state, editing, decision, classified) : null, [state, editing, decision, classified]);
+    const undoOptions = useMemo(() => state ? financeUndoOptions(state) : [], [state]);
     const summary = useMemo(
         () =>
             state
-                ? summarizeSpending(state, from, to, account, currency)
+                ? summarizeSpending(state, from, to, account, currency, classified)
                 : null,
-        [state, from, to, account, currency],
+        [state, from, to, account, currency, classified],
     );
     const includedIds = new Set(summary?.included.map(r => r.id));
     const rows =
@@ -449,15 +463,42 @@ export default function FinancesView({
                 (a, b) =>
                     b.date.localeCompare(a.date) || a.id.localeCompare(b.id),
             ) ?? [];
-    const editRow = state
-        ? classifiedRows(state).find((r) => r.id === editing)
-        : null;
+    const editRow = classified.find((r) => r.id === editing);
     function openDecision(id: string, saved = state) {
         if (!saved) return;
         const row = classifiedRows(saved).find(r => r.id === id);
         if (!row) return;
         setEditing(id); setError("");
+        setAllSameName(false); setStaleDraft(false); attempt.current = null;
         setDecision({ nature: row.nature, category: row.category, note: saved.decisions[id]?.note ?? "", updatedAt: "" });
+    }
+    async function reloadDecision() {
+        if (savingDecision.current || busy) return;
+        setBusy(true);
+        setError("");
+        try { const saved = await fetchFinances(hub.worker); setState(saved); attempt.current = null; if (editing) openDecision(editing, saved); else setStaleDraft(false); setMessage("Données du PC actualisées."); }
+        catch (e) { setError((e as Error).message); }
+        finally { setBusy(false); }
+    }
+    async function undoChange(id: string) {
+        if (!state || savingDecision.current || staleDraft) return;
+        savingDecision.current = true; setBusy(true); setError("");
+        setMessage("");
+        let confirmed = false;
+        try {
+            const intent = JSON.stringify({ kind: "undo", undoOf: id });
+            if (attempt.current?.intent !== intent) attempt.current = { intent, requestId: crypto.randomUUID() };
+            const requestId = attempt.current.requestId;
+            const result = await saveFinanceChange(hub.worker, { kind: "undo", undoOf: id, expectedRevision: state.revision, requestId });
+            if (result.operation?.id !== requestId || !result.revision || !Array.isArray(result.history)) throw new Error("Annulation non confirmée par le PC.");
+            confirmed = true;
+            setState(result.refreshRequired ? await fetchFinances(hub.worker) : applyFinanceDelta(state, result, requestId));
+            attempt.current = null; setMessage(`${result.operation.count} décisions précédentes restaurées.`);
+        } catch (e) {
+            setError((e as Error).message);
+            if (confirmed || (e as Error & { status?: number }).status === 409) setStaleDraft(true);
+            if (confirmed) setMessage("Annulation enregistrée; actualisation encore nécessaire.");
+        } finally { savingDecision.current = false; setBusy(false); }
     }
     const investmentAccounts =
         data?.accounts.filter((a) => a.type !== "credit-card") ?? [];
@@ -522,6 +563,7 @@ export default function FinancesView({
             {message && (
                 <Notice onDismiss={() => setMessage("")}>{message}</Notice>
             )}
+            {staleDraft && !editing && <button className="button secondary" disabled={busy} onClick={() => void reloadDecision()}>Actualiser les décisions du PC</button>}
             {!paired && (
                 <div className="surface view-stack">
                     <h2>Retrouver vos finances sur le PC</h2>
@@ -570,23 +612,12 @@ export default function FinancesView({
                                 à la fois, sans conversion. Les catégories
                                 automatiques restent provisoires.
                             </p>
-                                        <p>Totaux par date d’opération. La vue annuelle conserve les mois partiels et les lacunes; elle n’extrapole pas une année complète.</p>
+                                        <p>Remboursements déduits. Totaux par date d’opération. La vue annuelle conserve les mois partiels et les lacunes; elle n’extrapole pas une année complète.</p>
+                                        <p>{summary.reviewCount} opérations à revoir · {summary.unreviewedCount} suggestions non confirmées.</p>
                                     </InfoPopover></div>
                                     <strong>
                                         {money(summary.totalCents, currency)}
                                     </strong>
-                                    <small>
-                                        Remboursements déduits
-                                    </small>
-                                </div>
-                                <div className="finance-review-count">
-                                    <small>Revue restante</small>
-                                    <strong>{summary.reviewCount}</strong>
-                                    <InfoPopover title="Revue des opérations"><p>
-                                        Opérations de nature/catégorie
-                                        incertaine · {summary.unreviewedCount}{" "}
-                                        suggestions non confirmées
-                                    </p></InfoPopover>
                                 </div>
                             </div>
                             <div className="finance-chart-grid finance-expense-charts">
@@ -650,6 +681,15 @@ export default function FinancesView({
                             </section>
                             <section className="surface view-stack">
                                 <h2>Opérations et catégories</h2>
+                                {undoOptions.length > 0 && <details className="finance-edit-history">
+                                    <summary>Modifications récentes</summary>
+                                    <p className="muted">Les 10 dernières modifications. Une annulation restaure les décisions précédentes du groupe entier, seulement si aucune de ses opérations n’a été modifiée depuis.</p>
+                                    <ul>{undoOptions.map(op => <li key={op.id}>
+                                        <span>{op.count} {op.count === 1 ? "opération" : "opérations"} · {new Date(op.at).toLocaleString("fr-CA")}{!op.canUndo && <small>Déjà annulée ou modifiée depuis</small>}</span>
+                                        <button className="button secondary" type="button" disabled={busy || staleDraft || !op.canUndo} onClick={() => void undoChange(op.id)} aria-label={`Annuler la modification de ${op.count} ${op.count === 1 ? "opération" : "opérations"} du ${new Date(op.at).toLocaleString("fr-CA")}`}>Annuler</button>
+                                    </li>)}</ul>
+                                    {busy && <p role="status">Modification en cours…</p>}
+                                </details>}
                                 <label>Opérations affichées<select aria-label="Opérations affichées" value={operationScope} onChange={event => { const next = event.target.value as "expenses" | "excluded"; setOperationScope(next); if (next === "expenses" && category === "savings-investments") setCategory(""); }}>
                                     <option value="expenses">Dépenses, remboursements déduits</option><option value="excluded">Hors dépenses</option>
                                 </select></label>
@@ -1320,7 +1360,7 @@ export default function FinancesView({
             >
                 {editRow && (
                     <form
-                        className="view-stack"
+                        className="view-stack finance-decision-form"
                         onSubmit={(e) => {
                             e.preventDefault();
                             void saveDecision();
@@ -1340,6 +1380,7 @@ export default function FinancesView({
                             Nature
                             <select
                                 aria-label="Nature"
+                                disabled={busy || staleDraft}
                                 value={decision.nature}
                                 onChange={(e) =>
                                     setDecision({
@@ -1369,6 +1410,7 @@ export default function FinancesView({
                             Catégorie
                             <select
                                 aria-label="Catégorie"
+                                disabled={busy || staleDraft}
                                 value={decision.category}
                                 onChange={(e) =>
                                     setDecision({
@@ -1387,6 +1429,12 @@ export default function FinancesView({
                                 )}
                             </select>
                         </label>
+                        {scope && scope.key && scope.matching > 1 && <div className="finance-bulk-choice">
+                            <label><input type="checkbox" checked={allSameName} disabled={busy || staleDraft} onChange={e => setAllSameName(e.target.checked)} />Appliquer la catégorie à toutes les opérations du même nom</label>
+                            <p id="finance-bulk-scope" aria-live="polite">{scope.affected.length} {scope.affected.length === 1 ? "opération" : "opérations"} {allSameName ? "à enregistrer" : "éligibles"} sur {scope.matching} du même nom, dans tout l’historique disponible, tous comptes et devises inclus. Les filtres affichés ne limitent pas cette action.</p>
+                            <details><summary>Portée et protections</summary><p className="muted">Seule la catégorie est copiée aux autres opérations. Leurs natures, notes et montants restent conservés; les transferts et paiements de carte restent exclus des dépenses. Espaces et majuscules sont ignorés; chiffres, accents et ponctuation doivent correspondre. Les décisions déjà confirmées dans cette catégorie sont conservées.</p></details>
+                            {scope.incompatible > 0 && <p>{scope.incompatible} {scope.incompatible === 1 ? "opération exclue" : "opérations exclues"} : cette catégorie est incompatible avec leur nature. Les autres décisions déjà confirmées dans cette catégorie sont conservées.</p>}
+                        </div>}
                         {decision.category === "savings-investments" && <p className="muted">Hors dépenses. Choisissez Transfert pour un mouvement entre comptes, Placement / cotisation pour un versement, ou À vérifier en cas de doute. Les entrées et sorties restent séparées; aucun rendement n'est calculé.</p>}
                         {decision.category === "groceries" && <p className="muted">Vérifiez le ticket pour les achats mixtes (aliments et autres produits). La suggestion du commerçant ne confirme pas tout le contenu.</p>}
                         {decision.category === "pets" && <p className="muted">Nourriture, soins vétérinaires, médicaments, toilettage et assurance pour animaux. Confirmez le type d’achat à partir du justificatif; le nom du commerçant seul ne suffit pas.</p>}
@@ -1394,6 +1442,7 @@ export default function FinancesView({
                             Note de décision
                             <textarea
                                 maxLength={1000}
+                                disabled={busy || staleDraft}
                                 value={decision.note}
                                 onChange={(e) =>
                                     setDecision({
@@ -1404,12 +1453,15 @@ export default function FinancesView({
                             />
                         </label>
                         <Sources sources={editRow.sources} />
-                        <button className="button" disabled={busy}>
+                        <button className="button" disabled={busy || staleDraft} aria-describedby={allSameName ? "finance-bulk-scope" : undefined}>
                             {busy
                                 ? "Enregistrement…"
-                                : "Enregistrer la décision"}
+                                : allSameName ? `Enregistrer ${scope?.affected.length ?? 1} opérations` : "Enregistrer la décision"}
                         </button>
-                        {categoryPayments ? <button className="button secondary" type="button" disabled={busy} onClick={() => setEditing(null)}>Retour aux paiements de la catégorie</button> : <button className="button secondary" type="button" disabled={busy} onClick={() => void saveDecision(true)}>Enregistrer et suivante</button>}
+                        {categoryPayments ? <button className="button secondary" type="button" disabled={busy} onClick={() => setEditing(null)}>Retour aux paiements de la catégorie</button> : <button className="button secondary" type="button" disabled={busy || staleDraft} onClick={() => void saveDecision(true)}>Enregistrer et suivante</button>}
+                        {staleDraft && <button className="button secondary" type="button" disabled={busy} onClick={() => void reloadDecision()}>Recharger la décision du PC et remplacer ce brouillon</button>}
+                        {busy && <p role="status">{staleDraft ? "Actualisation" : "Enregistrement"} en cours sur le PC…</p>}
+                        {message && staleDraft && <Notice>{message}</Notice>}
                         {error && <Notice error>{error}</Notice>}
                     </form>
                 )}

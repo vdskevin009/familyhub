@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { createHash, randomUUID } from "node:crypto";
 import { parseFinancePreparation } from "./finance-import.js";
 import { validateFinanceState } from "./finance-validation.js";
+import { FinanceConflict, prepareFinanceChange, type FinanceChangeInput } from "./finance-changes.js";
 import {
     expenseCategories,
     decisionCategoryAllowed,
@@ -11,7 +12,7 @@ import {
     type FinanceData,
     type FinanceDecision,
 } from "./finance-model.js";
-export class FinanceConflict extends Error {}
+export { FinanceConflict } from "./finance-changes.js";
 const empty = (): FinanceState => ({
     schema: 1,
     revision: "empty",
@@ -263,6 +264,13 @@ export class FinanceLibrary {
                 possibleDuplicates: merged.possibleDuplicates,
                 alreadyImported: false,
             };
+        });
+    }
+    change(value: FinanceChangeInput) {
+        return this.serialized(async () => {
+            const change = prepareFinanceChange(await this.read(), value);
+            if (change.next) await atomic(join(this.directory, "ledger.json"), change.next);
+            return change.response;
         });
     }
     decide(value: {

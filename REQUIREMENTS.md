@@ -1,5 +1,13 @@
 # FamilyHub — Canonical Requirements
 
+## Fast explicit category changes - 2026-10-11
+
+| ID | Requirement | Status | Implementation / validation |
+|---|---|---|---|
+| FH-FIN-012 | Offer an explicit opt-in category action for the same conservatively normalized name across all available history, displaying its affected count and scope. Preserve source facts and each other row's nature/notes; expose incompatible cases. Persist one atomic audited operation with revision checks, idempotent retry and conflict-safe undo. Never run real bulk changes merely for testing. | Implemented; release acceptance tracked in #182 | `finance-category-match`, `finance-changes`, `finance-validation`, `FinanceLibrary.change` and `FinancesView`; worker 2.25.0. Exact normalized matching, all-history counts, preserved natures/notes/source data, atomic audit, durable idempotency and group-conflict undo have synthetic model/API and four-width browser coverage. History before this feature is retained but not retroactively undoable. Deployment evidence belongs to #182. |
+| FH-FIN-013 | Make category changes responsive without silently dropping edits or misreporting unconfirmed writes. Avoid transferring the full ledger and recalculating hidden analytics after each normal save. Preserve drafts on failure and require authoritative reconciliation on conflicts. | Implemented; release acceptance tracked in #182 | `finance-edits`, compact `/finances/changes` response and memoized/on-demand classification/trends. Tests cover rapid duplicate clicks, disabled pending inputs, lost-response retry, confirmed save with failed refresh, stale revisions and persistence. Synthetic 1,823-row benchmark: median response 621,382 to 860 bytes (99.86% reduction); server/disk timings remain separate from unmeasured phone/tunnel latency. |
+| FH-FIN-014 | Show only the top net-spending summary in the main total card. Retain calculation and review details behind Info, without changing the financial calculation. | Implemented; release acceptance tracked in #182 | `FinancesView` and `compact-finances.css`; net-spending total and information control only. Four-width tests enforce compact height and unchanged calculation disclosure. Supersedes the visible lower review-count row of the earlier FH-FIN-011 presentation; its other requirements remain active. |
+
 ## Compact spending presentation - 2026-10-11
 
 | ID | Requirement | Status | Implementation / validation |

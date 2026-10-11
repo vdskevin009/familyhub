@@ -96,12 +96,21 @@ async function request<T>(config: WorkerConfig, path: string, init: RequestInit 
   }
   if (!response.ok) {
     const body = await response.json().catch(() => ({})) as { error?: string };
-    throw new Error(body.error || `Worker request failed (${response.status}).`);
+    throw Object.assign(new Error(body.error || `Worker request failed (${response.status}).`), { status: response.status });
   }
   return await response.json() as T;
 }
 
 export const fetchFinances = (config: WorkerConfig) => request<import("../../worker/src/finance-model").FinanceState>(config,"/finances");
+export async function saveFinanceChange(config: WorkerConfig, body: object) {
+  try { return await request<import("../../worker/src/finance-model").FinanceChangeResult>(config, "/finances/changes", { method: "POST", body: JSON.stringify(body) }); }
+  catch (error) {
+    const status = (error as Error & { status?: number }).status;
+    if (status === 404) throw new Error("La modification rapide nécessite le worker PC 2.25.0 ou ultérieur. Aucune décision n'a été modifiée.");
+    if (status === undefined) throw new Error("Enregistrement non confirmé : connexion au PC interrompue. Votre brouillon est conservé. Réessayez la même action; elle ne sera pas appliquée deux fois.");
+    throw error;
+  }
+}
 export const saveFinanceDecision = (config: WorkerConfig, id: string, expectedRevision: string, decision: import("../../worker/src/finance-model").FinanceDecision) => request<import("../../worker/src/finance-model").FinanceState>(config,"/finances/decision",{ method:"POST",body:JSON.stringify({id,expectedRevision,decision}) });
 export const importFinances = (config: WorkerConfig, bundle: unknown, expectedRevision: string, apply = false) => request<{ state?: import("../../worker/src/finance-model").FinanceState; added:number; possibleDuplicates:number; accounts?:number; from?:string; to?:string; revision?:string; alreadyImported?:boolean }>(config,"/finances/import",{ method:"POST",body:JSON.stringify({bundle,expectedRevision,apply}) },60_000);
 

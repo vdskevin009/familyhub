@@ -52,7 +52,7 @@ try {
                 if (mode === "missing") state.data.accounts.push({ ...state.data.accounts[0], id: "missing", name: "Missing synthetic card", type: "credit-card" });
                 return reply(state);
             }
-            if (path === "/finances/decision") { posts++; return reply(await finance.decide(req.postDataJSON())); }
+            if (path === "/finances/changes") { posts++; return reply(await finance.change(req.postDataJSON())); }
             if (req.method() !== "GET") throw new Error("Unexpected synthetic mutation: " + path);
             if (path === "/health") return reply({ status: "ok", codex: "available", version: "2.23.3" });
             if (path === "/invoices") return reply({ items: [], reconciliations: [], unmatchedReimbursements: [], setupRequired: true, accounts: [] });

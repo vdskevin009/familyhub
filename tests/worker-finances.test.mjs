@@ -68,6 +68,7 @@ test("private finance HTTP authorization, preview/apply, conflict and restart pr
             "/finances",
             "/finances/import",
             "/finances/decision",
+            "/finances/changes",
         ]) {
             assert.equal(
                 (
@@ -152,6 +153,13 @@ test("private finance HTTP authorization, preview/apply, conflict and restart pr
             409,
         );
         const sourceFacts = JSON.stringify(changed.data);
+        const requestId = crypto.randomUUID();
+        const fastInput = { requestId, expectedRevision: changed.revision, kind: "decision", id: "restaurant", decision: { nature: "expense", category: "restaurants", note: "Synthetic delta" } };
+        const fast = await (await post("/finances/changes", fastInput)).json();
+        assert.equal(fast.operation.id, requestId); assert.equal(fast.operation.count, 1); assert.equal(fast.data, undefined);
+        assert.equal((await (await post("/finances/changes", fastInput)).json()).replayed, true);
+        assert.equal((await post("/finances/changes", { ...fastInput, requestId: crypto.randomUUID() })).status, 409);
+        changed = await (await call("/finances", { headers })).json();
         changed = await (await post("/finances/decision", { id: "restaurant", expectedRevision: changed.revision, decision: { nature: "expense", category: "pets", note: "Explicit synthetic receipt review" } })).json();
         assert.equal(changed.decisions.restaurant.category, "pets");
         assert.equal(changed.decisions.childcare.category, "childcare");

@@ -100,7 +100,7 @@ try {
                         posts++;
                         return reply(await finance.import(req.postDataJSON()));
                     }
-                    if (path === "/finances/decision") {
+                    if (path === "/finances/changes") {
                         posts++;
                         if (rejectNext) {
                             rejectNext = false;
@@ -111,7 +111,7 @@ try {
                                 409,
                             );
                         }
-                        return reply(await finance.decide(req.postDataJSON()));
+                        return reply(await finance.change(req.postDataJSON()));
                     }
                     if (path === "/savings/contracts")
                         return reply(await savings.list());
@@ -269,6 +269,9 @@ try {
             .filter({ hasText: "Synthetic conflict" })
             .waitFor();
         assert.equal((await finance.read()).decisions.groceries, undefined);
+        assert.equal(await sheet.getByRole("button", { name: "Enregistrer la décision", exact: true }).isDisabled(), true);
+        await sheet.getByRole("button", { name: "Recharger la décision du PC et remplacer ce brouillon" }).click();
+        await sheet.getByLabel("Note de décision").fill("Synthetic reviewed purchase");
         await sheet
             .getByRole("button", { name: "Enregistrer la décision" })
             .click();
@@ -326,6 +329,8 @@ try {
         await sheet.getByRole("button", { name: "Enregistrer la décision", exact: true }).click();
         await sheet.getByRole("alert").filter({ hasText: "Synthetic conflict" }).waitFor();
         assert.equal(await sheet.getByLabel("Catégorie", { exact: true }).inputValue(), "travel");
+        await sheet.getByRole("button", { name: "Recharger la décision du PC et remplacer ce brouillon" }).click();
+        await sheet.getByLabel("Catégorie", { exact: true }).selectOption("travel");
         const beforeSave = posts;
         await sheet.getByRole("button", { name: "Enregistrer la décision", exact: true }).evaluate(el => { el.click(); el.click(); });
         await sheet.waitFor({ state: "hidden" }); await foodSheet.waitFor();

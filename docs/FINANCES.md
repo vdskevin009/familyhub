@@ -13,7 +13,7 @@ Finances                           Actualiser
 [ Dépenses ] [ Investissements ] [ Tendances ]
 Sources et import privé (collapsed)
 Month or year / previous-next / custom dates / account / currency
-Net imported spending + review count
+Net imported spending; calculation and review details behind Info
 Category bars     |     Monthly trend
 Transactions → classification, evidence, save and next
 Public reference cohorts + methodology
@@ -32,6 +32,16 @@ Contracts/packages → existing comparison workflow
 ```
 
 The visual treatment uses the app's green, neutral surfaces, type scale, native modal and existing controls. Horizontal labeled bars retain exact numeric text; negative refunds have a distinct color and minus sign. Two chart columns become one on phones. Dates, account, currency, category and description filters never mutate sources. Category decisions use the existing modal focus containment, visible errors and explicit Save. Browser acceptance covers 320, 390, 768 and 1440 pixels with synthetic screenshots under ignored `output/playwright/finance/`.
+
+## Faster explicit category changes (worker 2.25.0, #182)
+
+The editor offers an unchecked **Appliquer la catégorie à toutes les opérations du même nom** option when there is another exact normalized name. It shows the eligible count across all available history, accounts and currencies, independently of the visible filters. Matching normalizes Unicode NFC, case and whitespace only; accents, punctuation, digits and location suffixes remain significant. No future merchant rule is created. The selected row's explicit nature/note edits apply only to that row; every other row retains its own nature and note. Incompatible category/nature pairs are excluded and counted. Repayment, transfer, investment, review and duplicate exclusions remain in force.
+
+`POST /finances/changes` shares existing origin/key checks and the serialized finance library. A revision and count check precedes one atomic write containing all decisions, row audit entries and operation metadata. A request UUID plus normalized intent hash makes a retry idempotent, including after worker restart. The normal response contains only changed decisions/audit metadata. A retry after a newer revision requires an authoritative reload, never a stale delta. The old `/finances/decision` endpoint remains compatible.
+
+Controls are disabled while saving; drafts survive transport failures, and conflicts require a clearly labelled reload before another save. **Modifications récentes** exposes the ten latest operations. Undo restores previous decisions (including absence of a manual decision) as a new audited operation; if any group member changed afterward, the whole undo is refused. Unrelated later edits survive. Imports, original sources and old audit entries are retained. Historical edits from before this feature are not retroactively made undoable.
+
+Single saves no longer classify every source row on the worker. The UI memoizes classification and calculates Trends only on its tab, reusing classification within each trend. The total card contains only net spending and its information control. `node tests/finance-edit-performance.mjs` compares full-state and delta saves in two synthetic 1,823-row temporary libraries (4 warm-ups, 20 measured edits). Output separates response bytes, server read/validation/write/serialization and JSON parse time; it does not measure phone or tunnel latency. Model/API/browser tests use synthetic data only.
 
 ## Private import and preservation
 
