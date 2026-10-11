@@ -1,0 +1,11 @@
+/* Source/edit workflows stay intact behind deliberate navigation controls. */
+.finance-journey-disclosure > summary, .finance-journey-controls > summary { min-height: 44px; padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--surface); cursor: pointer; font-weight: 600; overflow-wrap: anywhere; }
+.finance-journey-disclosure[open] > summary, .finance-journey-controls[open] > summary { background: var(--soft); }
+.finance-journey-disclosure > section, .finance-journey-controls > div { margin-top: 8px; }
+.finance-journey-disclosure, .finance-journey-controls { min-width: 0; }
+.investment-summary strong { font-variant-numeric: tabular-nums; }
+.finance-view .compact-heading { min-width: 0; }
+.finance-view .compact-heading h2 { overflow-wrap: anywhere; }
+@media (max-width: 520px) { .finance-journey-controls input, .finance-journey-controls select { font-size: 16px; } }
+
+.finance-more-categories > summary { min-height: 44px; padding-block: 12px; cursor: pointer; font-weight: 600; }
