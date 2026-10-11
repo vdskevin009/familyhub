@@ -1,4 +1,4 @@
-import { openFinanceFilters, selectFinanceFilter } from "./finance-filter-helpers.mjs";
+import { openFinanceRegister, openFinanceFilters, selectFinanceFilter } from "./finance-filter-helpers.mjs";
 /** Synthetic finance acceptance; never connects to the installed worker or a bank. */
 import { chromium } from "playwright";
 import assert from "node:assert/strict";
@@ -54,6 +54,7 @@ try {
         await page.goto(base + "?view=finances");
         await page.getByRole("heading", { name: "Dépenses par catégorie", exact: true }).waitFor();
         const scope = page.getByLabel("Opérations affichées", { exact: true });
+        await openFinanceRegister(page);
         const register = page.getByRole("heading", { name: "Opérations et catégories", exact: true }).locator("..").locator(".finance-register");
         assert.equal(await scope.inputValue(), "expenses");
         assert.equal(await register.getByRole("button").count(), 2);
@@ -122,7 +123,7 @@ try {
         await editor.waitFor({ state: "hidden" });
         assert.equal(posts, 1);
         await page.reload();
-        await scope.waitFor();
+        await openFinanceRegister(page); await scope.waitFor();
         assert.equal(await scope.inputValue(), "expenses");
         assert.doesNotMatch(await register.innerText(), /PAYMENT-THANKYOU|TFR-TO/);
         const saved = await new FinanceLibrary(join(temp, String(width))).read();

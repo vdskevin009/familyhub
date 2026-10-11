@@ -1,3 +1,11 @@
+# FamilyHub - Canonical Requirements
+
+## Compact finance journeys (#191)
+
+| ID | Requirement | Status | Evidence |
+| --- | --- | --- | --- |
+| FH-FIN-018 | Tendances starts with twelve compact month circles and opens a monthly category/payment journey with Back. Observed spending remains visible independently of historical-reference availability; differences require comparable coverage. Dépenses and Investissements prioritize essential amounts, with details behind deliberate controls. Preserve sources, categories, audit, bulk Save & Next and undo. | Implemented; release testing | `FinanceTrends`, `FinancesView`, scoped CSS, synthetic model/browser regressions; docs/FINANCE-MONTH-JOURNEYS.md; #191 |
+
 # FamilyHub — Canonical Requirements
 
 ## Batch categorization and review ordering — 2026-10-11

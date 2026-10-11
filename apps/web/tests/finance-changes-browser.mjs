@@ -8,7 +8,7 @@ import { tmpdir } from "node:os";
 import { once } from "node:events";
 import { FinanceLibrary, FinanceConflict } from "../../worker/dist/finance-library.js";
 import { categoryFixture, categoryDecisions } from "../../../tests/finance-category-fixture.mjs";
-import { openFinanceFilters } from "./finance-filter-helpers.mjs";
+import { openFinanceRegister, openFinanceFilters } from "./finance-filter-helpers.mjs";
 const root = resolve("apps/web/dist"), temp = await mkdtemp(join(tmpdir(), "fh-category-browser-"));
 const output = resolve("output/playwright/finance-changes"); await mkdir(output, { recursive: true });
 const server = createServer(async (req, res) => {
@@ -73,9 +73,10 @@ try {
         await filters.getByLabel("Au", { exact: true }).fill("2026-09-30");
         await filters.getByLabel("Compte", { exact: true }).selectOption("card");
         await filters.getByRole("button", { name: "Voir les résultats" }).click();
+        await openFinanceRegister(page);
         const register = page.getByRole("heading", { name: "Opérations et catégories", exact: true }).locator("..").locator(".finance-register");
         const editor = page.getByRole("dialog", { name: "Vérifier l’opération", exact: true });
-        const open = async () => { await register.getByRole("button").filter({ hasText: /MAPLE MARKET 01/ }).first().click(); await editor.waitFor(); };
+        const open = async () => { await openFinanceRegister(page); await register.getByRole("button").filter({ hasText: /MAPLE MARKET 01/ }).first().click(); await editor.waitFor(); };
         // Financial amounts (signed cents) order the register, even when dates differ.
         assert.match(await register.locator(".finance-service").first().innerText(), /MAPLE MÁRKET 01/);
         const filterOptions = await page.getByLabel("Catégorie", { exact: true }).locator("option").allTextContents();
@@ -117,6 +118,7 @@ try {
             assert.equal(saved.decisions[id].nature, initial.decisions[id].nature); assert.equal(saved.decisions[id].note, initial.decisions[id].note);
         }
         await page.reload(); await page.getByRole("heading", { name: "Dépenses par catégorie", exact: true }).waitFor();
+        await openFinanceRegister(page);
         await page.getByText("Modifications récentes", { exact: true }).click();
         await page.getByRole("button", { name: /^Annuler la modification de 10 opérations/ }).click();
         await page.getByRole("status").filter({ hasText: "10 décisions précédentes restaurées" }).waitFor();
