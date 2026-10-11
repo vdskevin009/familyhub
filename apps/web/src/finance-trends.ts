@@ -47,7 +47,7 @@ export function spendingTrend(state: FinanceState, month: string, accountId = ""
         return reasons;
     }
     const reasons = available ? coverage(from, to) : [future ? "Mois à venir" : "Aucune période importée disponible"];
-    const summary = summarizeSpending(state, from, available ? to : from, accountId, currency);
+    const summary = summarizeSpending(state, from, available ? to : from, accountId, currency, allRows);
     const comparable = available && reasons.length === 0;
     // Missing coverage with no actual expense rows is unknown, not an invented zero.
     const actualCents = available && (comparable || summary.included.length > 0) ? summary.totalCents : null;
@@ -58,7 +58,7 @@ export function spendingTrend(state: FinanceState, month: string, accountId = ""
         if (partial && Number(last.slice(8)) < elapsedDays) problems.push("Mois trop court pour comparer le même nombre de jours");
         const comparisonTo = partial ? `${previous}-${pad(Math.min(elapsedDays, Number(last.slice(8))))}` : last;
         return { month: previous, from: previous + "-01", to: last, comparisonTo, reasons: problems,
-            summary: summarizeSpending(state, previous + "-01", comparisonTo, accountId, currency) };
+            summary: summarizeSpending(state, previous + "-01", comparisonTo, accountId, currency, allRows) };
     });
     const qualified = candidates.filter(c => !c.reasons.length);
     const baselineReady = comparable && qualified.length >= minimumBaselineMonths;

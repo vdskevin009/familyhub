@@ -48,7 +48,7 @@ type ResearchWatch = {
 };
 type PersistedState = { watches: ResearchWatch[] };
 
-const version = "2.24.0";
+const version = "2.25.0";
 const host = process.env.FAMILYHUB_WORKER_HOST?.trim() || "127.0.0.1";
 const port = Number(process.env.FAMILYHUB_WORKER_PORT || "4713");
 const stateDir = process.env.FAMILYHUB_WORKER_DATA?.trim() || join(homedir(), ".familyhub-worker");
@@ -275,6 +275,7 @@ const server = createServer(async (request, response) => {
       if (parts.length === 4 && parts[2] === "sources" && request.method === "GET") { const source = await groceryStore.source(parts[1], parts[3]); if (!source) { json(response, 404, { error: "Source introuvable." }, origin); return; } json(response, 200, source, origin); return; }
     }
     if (parts[0] === "finances") {
+      if (parts.length === 2 && parts[1] === "changes" && request.method === "POST") { json(response, 200, await financeLibrary.change(await readJson(request)), origin); return; }
       if (parts.length === 1 && request.method === "GET") { json(response, 200, await financeLibrary.read(), origin); return; }
       if (parts.length === 2 && parts[1] === "import" && request.method === "POST") { json(response, 200, await financeLibrary.import(await readJson(request, 20_000_000)), origin); return; }
       if (parts.length === 2 && parts[1] === "decision" && request.method === "POST") { json(response, 200, await financeLibrary.decide(await readJson(request)), origin); return; }

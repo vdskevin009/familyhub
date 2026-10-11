@@ -156,13 +156,21 @@ export type FinanceState = {
     importedAt: string | null;
     data: FinanceData | null;
     decisions: Record<string, FinanceDecision>;
-    decisionHistory: {
-        id: string;
-        previous: FinanceDecision | null;
-        decision: FinanceDecision;
-        at: string;
-    }[];
+    decisionHistory: FinanceAuditEvent[];
+    operations?: FinanceOperation[];
     imports: { hash: string; at: string; added: number }[];
+};
+export type FinanceAuditEvent = {
+    id: string; previous: FinanceDecision | null; decision: FinanceDecision | null; at: string; operationId?: string;
+};
+export type FinanceOperation = {
+    id: string; kind: "decision" | "same-name" | "undo"; at: string; count: number;
+    baseRevision: string; revision: string; requestHash: string; undoOf?: string;
+};
+export type FinanceChangeResult = {
+    baseRevision: string; revision: string; operation: FinanceOperation;
+    decisions: Record<string, FinanceDecision | null>; history: FinanceAuditEvent[];
+    replayed: boolean; refreshRequired: boolean;
 };
 
 const categoryRules: [ExpenseCategory, RegExp][] = [
@@ -311,8 +319,9 @@ export function summarizeSpending(
     to: string,
     accountId = "",
     currency = "CAD",
+    preparedRows = classifiedRows(state),
 ) {
-    const rows = classifiedRows(state).filter(
+    const rows = preparedRows.filter(
         (r) =>
             r.date >= from &&
             r.date <= to &&

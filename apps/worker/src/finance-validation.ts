@@ -135,6 +135,35 @@ export function validateFinanceState(value: unknown): FinanceState {
         txt(r.updatedAt, 100);
     }
     array(s.decisionHistory);
+    if (s.operations !== undefined || s.decisionHistory.some((event: any) => event?.operationId !== undefined)) {
+        const operations = new Map<string, any>(), counts = new Map<string, Set<string>>(), undone = new Set<string>();
+        const validDecision = (value: unknown) => {
+            if (value === null) return;
+            const d = object(value);
+            if (!Object.hasOwn(natures, d.nature) || !Object.hasOwn(expenseCategories, d.category) || !decisionCategoryAllowed(d.category, d.nature)) bad();
+            txt(d.note, 1000); txt(d.updatedAt, 100);
+        };
+        for (const raw of array(s.operations)) {
+            const op = object(raw);
+            if (!/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(txt(op.id, 36)) || operations.has(op.id) || !["decision", "same-name", "undo"].includes(op.kind) || !/^[a-f0-9]{64}$/.test(txt(op.requestHash, 64)) || num(op.count) < 1) bad();
+            txt(op.at, 100); txt(op.baseRevision, 100); txt(op.revision, 100);
+            if (op.kind === "undo") {
+                if (!operations.has(op.undoOf) || operations.get(op.undoOf).kind === "undo" || undone.has(op.undoOf)) bad();
+                undone.add(op.undoOf);
+            } else if (op.undoOf !== undefined) bad();
+            operations.set(op.id, op);
+        }
+        for (const raw of s.decisionHistory) {
+            const event = object(raw);
+            if (event.operationId === undefined) continue; // Preserve pre-feature audit entries verbatim.
+            if (!operations.has(event.operationId) || !ids.has(event.id)) bad();
+            validDecision(event.previous); validDecision(event.decision); txt(event.at, 100);
+            const seen = counts.get(event.operationId) ?? new Set<string>();
+            if (seen.has(event.id)) bad();
+            seen.add(event.id); counts.set(event.operationId, seen);
+        }
+        for (const [id, op] of operations) if (counts.get(id)?.size !== op.count) bad();
+    }
     array(s.imports, 10000).forEach((i) => {
         if (!/^[a-f0-9]{64}$/.test(txt(i.hash, 64))) bad();
         num(i.added);
