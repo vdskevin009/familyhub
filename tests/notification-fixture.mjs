@@ -4,9 +4,13 @@ import { financeFixture } from "./finance-fixture.mjs";
 import { parseFinancePreparation } from "../apps/worker/dist/finance-import.js";
 import { newContract } from "../apps/worker/dist/savings-model.js";
 export const now = new Date("2026-10-12T17:00:00Z");
-export function pushFixture(label = "synthetic") {
+export function pushFixture(label = "synthetic", privateScalar) {
   const curve = createECDH("prime256v1"), sender = createECDH("prime256v1"); curve.generateKeys(); sender.generateKeys();
-  return { subscription: { endpoint: `https://fcm.googleapis.com/fcm/send/${label}`, keys: { p256dh: curve.getPublicKey().toString("base64url"), auth: randomBytes(16).toString("base64url") } }, config: { publicKey: sender.getPublicKey().toString("base64url"), privateKey: sender.getPrivateKey().toString("base64url"), subject: "https://vdskevin009.github.io/familyhub/" } };
+  if (privateScalar) sender.setPrivateKey(privateScalar);
+  // Node omits a leading zero for short scalars; VAPID uses the fixed 32-byte encoding.
+  const privateBytes = sender.getPrivateKey(), encodedPrivate = Buffer.alloc(32);
+  privateBytes.copy(encodedPrivate, 32 - privateBytes.length);
+  return { subscription: { endpoint: `https://fcm.googleapis.com/fcm/send/${label}`, keys: { p256dh: curve.getPublicKey().toString("base64url"), auth: randomBytes(16).toString("base64url") } }, config: { publicKey: sender.getPublicKey().toString("base64url"), privateKey: encodedPrivate.toString("base64url"), subject: "https://vdskevin009.github.io/familyhub/" } };
 }
 export function invoiceEvidence() {
   return { setupRequired: false, items: [{ Id: "payment-synthetic", ReimbursedAmount: 80, Currency: "CAD", ReceivedAt: "2026-10-11T12:00:00Z", StatementDate: "2026-10-10", Status: 2, NeedsReview: false }], reconciliations: [{ Id: "claim-synthetic", Currency: "CAD", WorkflowStatus: "open", PotentialRemaining: 20, MatchAssignments: [{ ReimbursementDocumentId: "payment-synthetic", Verification: "confirmed-manually", Confidence: 80 }] }], unmatchedReimbursements: [] };
