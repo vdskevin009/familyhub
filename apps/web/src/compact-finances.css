@@ -1,5 +1,7 @@
 /* Existing FamilyHub tokens; compact controls keep figures and source details distinct. */
-.finance-view > .finance-tabs { width: max-content; max-width: 100%; display: flex; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: thin; }
+/* Keep wide system-font tabs inside the available grid track instead of widening the page. */
+.finance-view { grid-template-columns: minmax(0, 1fr); }
+.finance-view > .finance-tabs { width: max-content; max-width: 100%; min-width: 0; display: flex; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: thin; }
 .finance-view > .finance-tabs button { flex: 0 0 auto; white-space: nowrap; min-height: 44px; padding-inline: 14px; }
 .finance-scope { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-width: 0; }
 .finance-scope-copy { display: grid; gap: 3px; min-width: 0; }

@@ -403,13 +403,21 @@ try {
         await flows.getByText("Flux mois par mois", { exact: true }).click();
         await page.getByLabel("Population de référence").selectOption("bc");
         assert.match(await page.locator(".finance-view").innerText(), /2023/);
-        assert.equal(
-            await page.evaluate(
-                () => document.documentElement.scrollWidth > innerWidth,
-            ),
-            false,
-            "Expense overflow at " + width,
-        );
+        const checkExpenseWidth = async () => {
+            const layout = await page.evaluate(() => ({
+                overflow: document.documentElement.scrollWidth > innerWidth,
+                width: innerWidth,
+                offenders: [...document.querySelectorAll("main *")].filter(el => el.getClientRects().length && el.getBoundingClientRect().right > innerWidth + 1).slice(0, 12).map(el => ({ tag: el.tagName, className: el.className, right: el.getBoundingClientRect().right, scrollWidth: el.scrollWidth })),
+            }));
+            assert.equal(layout.overflow, false, "Expense layout " + JSON.stringify(layout));
+        };
+        await checkExpenseWidth();
+        if (width === 320) {
+            // Wider fallback glyphs exercise intrinsic sizing across host font environments.
+            const fallback = await page.addStyleTag({ content: ':root { font-family: Verdana, sans-serif; }' });
+            await checkExpenseWidth();
+            await fallback.evaluate(el => el.remove());
+        }
         await page.screenshot({
             path: join(screenshots, "expenses-" + width + ".png"),
             fullPage: true,
