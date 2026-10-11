@@ -17,6 +17,9 @@ import SavingsPayments, { PaymentObservations } from "./SavingsPayments";
 import SavingsContractDetails from "./SavingsContractDetails";
 import SavingsOfferCard from "./SavingsOfferCard";
 import { useSavingsSharing } from "../savings-sharing";
+import { comparisonLead } from "../comparison-leads";
+import SourceText from "../ui/SourceText";
+import "../compact-finances.css";
 
 export default function SavingsView({ hub, onNavigate }: { hub: HubState; onNavigate: (view: AppView) => void }) {
   const contracts = effectiveContracts(hub.savings), reviews = hub.savings.Reviews ?? [];
@@ -32,6 +35,24 @@ export default function SavingsView({ hub, onNavigate }: { hub: HubState; onNavi
   const [researching, setResearching] = useState<SavingsContract | null>(null);
   const [openResult, setOpenResult] = useState<string | null>(null);
   const [resultJob, setResultJob] = useState<string>("");
+  const [resultOffer, setResultOffer] = useState<number | null>(null);
+  const resultTrigger = useRef<HTMLElement | null>(null);
+  function openComparison(contract: SavingsContract, jobId = "", offerIndex: number | null = null) {
+    resultTrigger.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    setResultJob(jobId); setResultOffer(offerIndex); setOpenResult(contract.id);
+  }
+  function closeComparison() {
+    setOpenResult(null); setResultOffer(null);
+    requestAnimationFrame(() => resultTrigger.current?.isConnected && resultTrigger.current.focus({ preventScroll: true }));
+  }
+  useEffect(() => {
+    if (!openResult || resultOffer === null) return;
+    const frame = requestAnimationFrame(() => {
+      const row = document.getElementById(`comparison-offer-${resultJob}-${resultOffer}`);
+      row?.scrollIntoView({ block: "start" }); row?.querySelector("summary")?.focus({ preventScroll: true });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [openResult, resultJob, resultOffer]);
   const [error, setError] = useState(""), [message, setMessage] = useState("");
   const [starting, setStarting] = useState(false), startingRef = useRef(false);
   const [filter, setFilter] = useState<SavingsCategory | "all">("all");
@@ -68,6 +89,11 @@ export default function SavingsView({ hub, onNavigate }: { hub: HubState; onNavi
     return () => { cancelled = true; clearTimeout(timer); };
   }, [pending, hub.worker.Endpoint, hub.worker.ApiKey, hub.setSavings]);
   const latest = (id: string) => reviews.filter(review => review.job.contractId === id).at(-1);
+  const savedComparisons = visibleContracts.flatMap(contract => {
+    const review = reviews.filter(r => r.job.contractId === contract.id && r.job.report).at(-1);
+    return review ? [{ contract, review }] : [];
+  });
+  const leads = Object.fromEntries(visibleContracts.map(c => [c.id, comparisonLead(c, latest(c.id))]));
   const entries = visibleContracts.flatMap(contract => {
     const review = reviews.filter(review => review.job.contractId === contract.id && Object.values(review.decisions).includes("shortlist")).at(-1);
     if (!review?.job.report || review.localKey !== baselineKey(contract)) return [];
@@ -110,8 +136,13 @@ export default function SavingsView({ hub, onNavigate }: { hub: HubState; onNavi
     {period.from > period.to && <Notice error>La date de début doit précéder la date de fin.</Notice>}
     <PaymentObservations result={payments} contracts={visibleContracts} onCategorize={() => onNavigate("finances")} />
     {reviews.some(r => visibleContracts.some(c => c.id === r.job.contractId) && Object.values(r.decisions).includes("shortlist")) && <div className="savings-summary savings-reviewed-summary"><div><small>Reviewed shortlist</small><strong>{currency.format(total.firstYear)}<span>/first year</span></strong><small>Estimated, not realized · {total.count} compatible {total.count === 1 ? "option" : "options"}</small>{total.excluded > 0 && <small>{total.excluded} shortlisted options excluded because costs, requirements or dependencies need review.</small>}</div></div>}
-    {visibleContracts.some(c => latest(c.id)?.job.report) && <details className="surface savings-advice"><summary>Comparaisons publiques enregistrées</summary><div className="view-stack">{visibleContracts.filter(c => latest(c.id)?.job.report).map(c => <div key={c.id}><strong>{c.name}</strong><p>{latest(c.id)?.job.report?.summary}</p><button className="button secondary" onClick={() => { openDetails(c); setOpenResult(c.id); }}>Consulter la comparaison</button></div>)}</div></details>}
-    {contracts.length > 0 && <><SavingsPayments result={payments} contracts={visibleContracts} range={period} onMonth={setPeriod} /><RecurringServices contracts={visibleContracts} summaries={payments.summaries} onOpen={openDetails} /></>}
+    {savedComparisons.length > 0 && <details className="saved-comparisons" onKeyDown={e => { if (e.key === "Escape") { e.currentTarget.open = false; e.currentTarget.querySelector("summary")?.focus(); } }}>
+      <summary>Comparaisons enregistrées <span className="count-badge">{savedComparisons.length}</span></summary>
+      <div className="saved-comparison-list">{savedComparisons.map(({ contract, review }) => <button type="button" key={contract.id} onClick={() => openComparison(contract, review.job.id)}>
+        <span><strong>{contract.name}</strong><small>{review.job.report!.offers.length} offre(s) · {new Date(review.job.completedAt ?? review.job.createdAt).toLocaleDateString("fr-CA")}</small></span><ChevronRight size={18} aria-hidden="true" />
+      </button>)}</div>
+    </details>}
+    {contracts.length > 0 && <><SavingsPayments result={payments} contracts={visibleContracts} range={period} onMonth={setPeriod} /><RecurringServices contracts={visibleContracts} summaries={payments.summaries} onOpen={openDetails} leads={leads} onComparison={(c, lead) => openComparison(c, lead.jobId, lead.offerIndex)} /></>}
     {!contracts.length && <div className="surface savings-empty"><TrendingDown size={30} /><h2>Start with one recurring cost</h2><p>Phone, insurance, subscriptions, card fees or mortgage. Add what you know; the checklist shows what is still missing.</p><div className="savings-category-picks">{Object.entries(categories).map(([key, label]) => <button className="button secondary" key={key} onClick={() => openEditor(newContract(key as SavingsCategory, crypto.randomUUID()))}>{label}</button>)}</div></div>}
     {contracts.length > 0 && !contracts.some(contract => filter === "all" || filter === contract.category) && <p className="muted">No contracts in this category. Add one or choose All contracts.</p>}
     {recurring.length > 0 && <section className="surface"><h2>From your imported spending</h2><p className="muted">Repeating merchants are candidates. Confirm the billing cycle and amount.</p>{recurring.map(item => <div className="savings-candidate" key={item.merchant}><span><strong>{item.merchant}</strong><small>{item.count} charges · average {currency.format(item.average)}</small></span><button className="button secondary" onClick={() => openEditor({ ...newContract("other", crypto.randomUUID()), name: item.merchant, price: Number(item.average.toFixed(2)) })}>Review candidate</button></div>)}</section>}
@@ -121,7 +152,7 @@ export default function SavingsView({ hub, onNavigate }: { hub: HubState; onNavi
     <p className="savings-privacy muted">Contracts are saved on this device and your paired PC after sharing. Public research runs on request or through your explicitly enabled daily PC schedule. Names, notes and documents stay out of research. No provider contact or contract change occurs.</p>
     </div></details>
     <Sheet open={Boolean(detailContract) && !editing && !researching && !openResult} onClose={closeDetails} title={detailContract ? "Contrat · " + detailContract.name : "Contrat"} wide>
-      {detailContract && <><SavingsContractDetails contract={detailContract} paid={payments.summaries.find(s => s.contractId === detailContract.id)!} review={latest(detailContract.id)} onEdit={() => { setError(""); openEditor(detailContract); }} onResearch={() => { setError(""); setResearching(detailContract); }} onResults={() => setOpenResult(detailContract.id)} /><button className="button secondary" onClick={closeDetails}>Retour aux services</button></>}
+      {detailContract && <><SavingsContractDetails contract={detailContract} paid={payments.summaries.find(s => s.contractId === detailContract.id)!} review={latest(detailContract.id)} onEdit={() => { setError(""); openEditor(detailContract); }} onResearch={() => { setError(""); setResearching(detailContract); }} onResults={() => openComparison(detailContract)} /><button className="button secondary" onClick={closeDetails}>Retour aux services</button></>}
     </Sheet>
     <Sheet open={Boolean(editing)} onClose={() => setEditing(null)} title={editing?.name ? "Edit contract" : "Add contract"} description="Save what you know. Missing details remain unknown." wide>
       {editing && <SavingsContractForm key={editing.id} initial={editing} onSave={save} onClose={() => setEditing(null)} />}
@@ -129,16 +160,20 @@ export default function SavingsView({ hub, onNavigate }: { hub: HubState; onNavi
     <Sheet open={Boolean(researching)} onClose={() => !starting && setResearching(null)} title="Compare public offers" description="Review the summary sent to your paired PC and Codex for public research.">
       {researching && <div className="view-stack">{error && <Notice error>{error}</Notice>}<p>Only category, recognized provider, province, entered costs and numeric comparison requirements are sent. Names, notes, documents, raw spending and account identifiers are excluded from public research.</p><details open><summary>Summary to analyze</summary><pre className="savings-context">{JSON.stringify(publicBaseline(researching), null, 2)}</pre></details>{publicBaseline(researching).provider === "Provider not disclosed" && <p className="muted">This custom provider name stays private. Current-provider offers cannot be checked until a recognized provider is selected.</p>}<p>Public prices are estimates. No information is submitted to providers, no personalized quotes are requested and no contracts are changed.</p>{!hub.worker.Endpoint || !hub.worker.ApiKey ? <button className="button secondary" onClick={() => { setResearching(null); onNavigate("more"); }}>Connect your PC in Settings & tools</button> : <button className="button" disabled={starting} onClick={() => void startResearch()}><Search size={17} />{starting ? "Starting…" : "Start public comparison"}</button>}</div>}
     </Sheet>
-    <Sheet open={Boolean(openResult)} onClose={() => setOpenResult(null)} title={focusedContract ? focusedContract.name + ": comparison" : "Comparison"} wide>
+    <Sheet open={Boolean(openResult)} onClose={closeComparison} title={focusedContract ? focusedContract.name + " : comparaison" : "Comparaison"} wide className="savings-comparison-dialog">
       {focusedReview && focusedContract && <div className="view-stack">
-        <label>Result history<select value={focusedReview.job.id} onChange={event => setResultJob(event.target.value)}>{reviews.filter(review => review.job.contractId === focusedContract.id).slice().reverse().map(review => <option key={review.job.id} value={review.job.id}>{new Date(review.job.createdAt).toLocaleString()} · {review.job.scheduledDate ? "Daily" : "Requested"} · {review.job.status}</option>)}</select></label>
+        <label>Result history<select value={focusedReview.job.id} onChange={event => { setResultJob(event.target.value); setResultOffer(null); }}>{reviews.filter(review => review.job.contractId === focusedContract.id).slice().reverse().map(review => <option key={review.job.id} value={review.job.id}>{new Date(review.job.createdAt).toLocaleString()} · {review.job.scheduledDate ? "Daily" : "Requested"} · {review.job.status}</option>)}</select></label>
         {stale && <Notice error>Your contract changed after this research. Results are excluded from totals. Run a new comparison.</Notice>}
         {(focusedReview.job.status === "queued" || focusedReview.job.status === "running") && <Notice>Public research is {focusedReview.job.status}. The job is saved on your PC; returning to Savings resumes checking its status.</Notice>}
         {focusedReview.job.status === "failed" && <Notice error>{focusedReview.job.error || "Research failed."}</Notice>}
         <p className="muted">Started {new Date(focusedReview.job.createdAt).toLocaleString()}{focusedReview.job.completedAt && " · Finished " + new Date(focusedReview.job.completedAt).toLocaleString()}</p>
-        {focusedReview.job.report && <><p className="savings-report-summary">{focusedReview.job.report.summary}</p>{focusedReview.job.report.missing.length > 0 && <div className="savings-checklist"><h3>Still needed</h3><ul>{focusedReview.job.report.missing.map((item, index) => <li key={index}>{item}</li>)}</ul></div>}
+        {focusedReview.job.report && <><details className="comparison-context"><summary>Résumé et limites {focusedReview.job.report.missing.length > 0 ? `· ${focusedReview.job.report.missing.length} point(s) à confirmer` : ""}</summary><div className="view-stack"><SourceText text={focusedReview.job.report.summary} />{focusedReview.job.report.missing.length > 0 && <div className="savings-checklist"><h3>Still needed</h3><ul>{focusedReview.job.report.missing.map((item, index) => <li key={index}>{item}</li>)}</ul></div>}</div></details>
           {!focusedReview.job.report.offers.length && <p>No verified public offers were returned. This is not a personalized quote or a completed market comparison.</p>}
-          {focusedReview.job.report.offers.map((offer, index) => <SavingsOfferCard key={focusedReview.job.id + ":" + index} contract={focusedContract} offer={offer} decision={focusedReview.decisions[String(index)] ?? "review"} stale={Boolean(stale)} onDecision={decision => hub.setSavings(previous => ({ ...previous, Reviews: (previous.Reviews ?? []).map(review => review.job.id === focusedReview.job.id ? { ...review, decisions: { ...review.decisions, [String(index)]: decision } } : review) }))} />)}
+          <h3>{focusedReview.job.report.offers.length} offre(s) enregistrée(s)</h3>
+          {focusedReview.job.report.offers.map((offer, index) => <details className="saved-offer" id={`comparison-offer-${focusedReview.job.id}-${index}`} key={focusedReview.job.id + ":" + index} open={resultOffer === index || undefined}>
+            <summary><span>{offer.provider} · {offer.title}</span><strong>{offer.monthlyPrice === null ? "Tarif à confirmer" : currency.format(offer.monthlyPrice) + "/mois"}</strong></summary>
+            <SavingsOfferCard contract={focusedContract} offer={offer} decision={focusedReview.decisions[String(index)] ?? "review"} stale={Boolean(stale)} onDecision={decision => hub.setSavings(previous => ({ ...previous, Reviews: (previous.Reviews ?? []).map(review => review.job.id === focusedReview.job.id ? { ...review, decisions: { ...review.decisions, [String(index)]: decision } } : review) }))} />
+          </details>)}
         </>}
         <div className="row-actions"><button className="button secondary" onClick={() => { openEditor(focusedContract); setOpenResult(null); }}><Pencil size={15} />Edit details</button><button className="button secondary" disabled={focusedReview.job.status === "running" || focusedReview.job.status === "queued"} onClick={() => { setResearching(focusedContract); setOpenResult(null); }}><RefreshCw size={15} />Run new comparison</button></div>
       </div>}

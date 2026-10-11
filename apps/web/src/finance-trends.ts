@@ -33,7 +33,16 @@ export function spendingTrend(state: FinanceState, month: string, accountId = ""
         for (const account of accounts) {
             const bounds = data?.coverage.filter(c => c.accountId === account.id) ?? [];
             // Do not join disconnected source intervals and accidentally fill a gap.
-            if (!bounds.some(c => c.earliest && c.latest && c.earliest <= start && c.latest >= finish)) reasons.push(`${account.name} : dates importées insuffisantes pour cette période`);
+            if (!bounds.some(c => c.earliest && c.latest && c.earliest <= start && c.latest >= finish)) {
+                const first = bounds.map(c => c.earliest).filter((d): d is string => Boolean(d)).sort()[0];
+                const last = bounds.map(c => c.latest).filter((d): d is string => Boolean(d)).sort().at(-1);
+                if (last && last < finish) {
+                    const next = new Date(last + "T12:00:00Z"); next.setUTCDate(next.getUTCDate() + 1);
+                    const uncertainFrom = next.toISOString().slice(0, 10) > start ? next.toISOString().slice(0, 10) : start;
+                    reasons.push(`${account.name} : dernier mouvement importé le ${last}; couverture du ${uncertainFrom} au ${finish} non établie`);
+                } else if (first && first > start) reasons.push(`${account.name} : premier mouvement importé le ${first}; début de période non établi (${start})`);
+                else reasons.push(`${account.name} : aucun intervalle de mouvements importés ne couvre le ${start} au ${finish}`);
+            }
         }
         return reasons;
     }

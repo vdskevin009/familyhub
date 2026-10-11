@@ -1,5 +1,13 @@
 # FamilyHub — Canonical Requirements
 
+## Compact spending presentation - 2026-10-11
+
+| ID | Requirement | Status | Implementation / validation |
+|---|---|---|---|
+| FH-SAV-011 | Emphasize paid amounts and grouped services, with explanatory text behind accessible information controls. Use a compact disclosure with the real saved-comparison count. Make long comparisons readable on mobile and desktop, retaining history, source links, conditions and dates. Only show a potential-saving badge when an applicable saved comparison supports it; use a number only with reviewed comparable taxes, fees, promotion and eligibility facts. Open the specific supporting comparison directly. | In progress | Isolated `feat/compact-recurring`; `SavingsView`, `SavingsPayments`, `RecurringServices`, `comparison-leads`, native compact dialogs. Typecheck passed; synthetic interaction tests and release verification pending. Issue #163. |
+| FH-FIN-011 | Default to a calendar month with spending totals and category charts prominent. Keep Dépenses, Investissements and Tendances on one responsive line, with compact period navigation and a filter dialog for dates/account/currency. Preserve all calculations, explicit classifications and investment workflows. Distinguish observed transaction bounds from proven missing coverage and from classification uncertainty. | In progress | `FinanceScope`, `FinancesView`, `finance-trends`; conservative coverage gate retained with specific source-date explanations. No worker or ledger change. Browser and exact CI/release checks pending. Issues #162/#177. |
+| FH-NAV-007 | Provide direct Courses access in the primary mobile and desktop navigation, preserving `?view=groceries`; remove the duplicate Other entry. Replace the large notification entry with an accessible compact bell. Preserve routes and notification preferences; this change does not certify phone push delivery or real grocery extraction. | In progress | Additive App navigation and presentation CSS; no credential setup, permission grant or device enrollment. Browser checks pending. Issues #155/#170; coordinated release tracked in #163. |
+
 ## Private notifications — 2026-10-10
 
 | ID | Requirement | Status | Implementation / validation |

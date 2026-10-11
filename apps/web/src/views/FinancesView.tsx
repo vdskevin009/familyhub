@@ -24,6 +24,9 @@ import {
 import { benchmarkMeta, benchmarkProfiles } from "../finance-benchmarks";
 import { calendarPeriod, defaultPeriod } from "../finance-periods";
 import PeriodNavigator from "./PeriodNavigator";
+import FinanceScope from "./FinanceScope";
+import InfoPopover from "../ui/InfoPopover";
+import "../compact-finances.css";
 const money = (cents: number, currency = "CAD") =>
     new Intl.NumberFormat("fr-CA", { style: "currency", currency }).format(
         cents / 100,
@@ -535,7 +538,7 @@ export default function FinancesView({
                 </div>
             )}
             {paired && (
-                <details className="surface finance-import">
+                <details className="surface finance-import finance-import-secondary">
                     <summary>
                         Sources et import privé{" "}
                         {data ? `· collecte du ${data.collectedOn}` : ""}
@@ -646,50 +649,8 @@ export default function FinancesView({
             )}
             {data && state && summary && (
                 <>
-                    {tab !== "trends" && <><PeriodNavigator range={{ from, to }} scope={data.scope} onChange={range => { setFrom(range.from); setTo(range.to); }} />
-                    <p className="muted">Totaux par date d'opération. La vue annuelle conserve les mois partiels et les lacunes; elle n'extrapole pas une année complète.</p></>}
-                    <div className="finance-filters">
-                        {tab !== "investments" && (
-                            <label>
-                                Compte
-                                <select
-                                    aria-label="Compte"
-                                    value={account}
-                                    onChange={(e) => setAccount(e.target.value)}
-                                >
-                                    <option value="">Tous les comptes</option>
-                                    {data.accounts.map((a) => (
-                                        <option key={a.id} value={a.id}>
-                                            {a.name}
-                                        </option>
-                                    ))}
-                                </select>
-                            </label>
-                        )}
-                        {tab !== "investments" && (
-                            <label>
-                                Devise
-                                <select
-                                    aria-label="Devise"
-                                    value={currency}
-                                    onChange={(e) =>
-                                        setCurrency(e.target.value)
-                                    }
-                                >
-                                    {[
-                                        ...new Set([
-                                            "CAD",
-                                            ...data.accounts.map(
-                                                (a) => a.currency,
-                                            ),
-                                        ]),
-                                    ].map((c) => (
-                                        <option key={c}>{c}</option>
-                                    ))}
-                                </select>
-                            </label>
-                        )}
-                    </div>
+                    {tab === "investments" ? <PeriodNavigator range={{ from, to }} scope={data.scope} onChange={range => { setFrom(range.from); setTo(range.to); }} /> :
+                        <FinanceScope data={data} range={tab === "expenses" ? { from, to } : undefined} onPeriod={range => { setFrom(range.from); setTo(range.to); }} account={account} currency={currency} onAccount={setAccount} onCurrency={setCurrency} />}
                     {tab !== "trends" && from > to && (
                         <Notice error>
                             La date de début doit précéder la date de fin.
@@ -697,11 +658,19 @@ export default function FinancesView({
                     )}
                     {tab === "trends" && trend ? <FinanceTrends state={state} trend={trend} account={account} currency={currency} onMonth={setTrendMonth} onCategory={openCategory} /> : tab === "expenses" ? (
                         <>
-                            <div className="finance-totals surface">
+                            <div className="finance-totals surface compact-finance-totals">
                                 <div>
-                                    <small>
-                                        Dépenses nettes importées · {currency}
-                                    </small>
+                                    <div className="compact-heading"><small>Dépenses nettes · {currency}</small><InfoPopover title="Calcul des dépenses">
+                                        <p className="muted">
+                                Transferts, paiements de cartes, revenus et
+                                placements sont exclus selon leur nature
+                                proposée ou confirmée. Aucun partage
+                                capital/intérêts n’est estimé. Une seule devise
+                                à la fois, sans conversion. Les catégories
+                                automatiques restent provisoires.
+                            </p>
+                                        <p>Totaux par date d’opération. La vue annuelle conserve les mois partiels et les lacunes; elle n’extrapole pas une année complète.</p>
+                                    </InfoPopover></div>
                                     <strong>
                                         {money(summary.totalCents, currency)}
                                     </strong>
@@ -720,14 +689,6 @@ export default function FinancesView({
                                     </small>
                                 </div>
                             </div>
-                            <p className="muted">
-                                Transferts, paiements de cartes, revenus et
-                                placements sont exclus selon leur nature
-                                proposée ou confirmée. Aucun partage
-                                capital/intérêts n’est estimé. Une seule devise
-                                à la fois, sans conversion. Les catégories
-                                automatiques restent provisoires.
-                            </p>
                             <div className="finance-chart-grid finance-expense-charts">
                                 <section className="surface view-stack">
                                     <h2>Dépenses par catégorie</h2>
@@ -756,7 +717,7 @@ export default function FinancesView({
                                     )}
                                 </section>
                                 <section className="surface view-stack">
-                                    <h2>Évolution mensuelle</h2>
+                                    <div className="compact-heading"><h2>Évolution mensuelle</h2><InfoPopover title="Évolution mensuelle"><p>Un mois partiel n’est pas extrapolé. Une absence de lignes ne prouve pas une absence de dépenses.</p></InfoPopover></div>
                                     <Bars
                                         currency={currency}
                                         onSelect={(month) => { const period = calendarPeriod(Number(month.slice(0, 4)), Number(month.slice(5, 7))); setFrom(period.from); setTo(period.to); }}
@@ -769,11 +730,7 @@ export default function FinancesView({
                                                 : "Période partielle / couverture limitée",
                                         }))}
                                     />
-                                    <p className="muted">
-                                        Un mois partiel n’est pas extrapolé. Une
-                                        absence de lignes ne prouve pas une
-                                        absence de dépenses.
-                                    </p>
+
                                 </section>
                             </div>
                             <section className="surface view-stack finance-savings-flow" aria-label="Épargne et investissements classés">

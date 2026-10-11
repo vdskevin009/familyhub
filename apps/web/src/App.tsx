@@ -32,12 +32,12 @@ const nav: Array<{ id: AppView; label: string; icon: typeof Home }> = [
   { id: "documents", label: "Documents", icon: FileText },
   { id: "savings", label: "Dépenses récurrentes", icon: TrendingDown },
   { id: "finances", label: "Finances", icon: CircleDollarSign },
+  { id: "groceries", label: "Courses", icon: CalendarDays },
   { id: "other", label: "Other", icon: MoreHorizontal }
 ];
 const otherViews: Array<{ id: AppView; label: string; description: string; icon: typeof Home }> = [
   { id: "notifications", label: "Notifications", description: "Historique, préférences et alertes sur vos appareils", icon: Bell },
 
-  { id: "groceries", label: "Courses", description: "Liste habituelle, paniers comparés et tickets", icon: CalendarDays },
   { id: "today", label: "Today & Assistant", description: "Household overview and Ask", icon: Home },
   { id: "inbox", label: "Important mail", description: "Messages and document review", icon: Mail },
   { id: "plan", label: "Plan", description: "Meals, groceries and tasks", icon: CalendarDays },
@@ -135,7 +135,7 @@ export default function App() {
       </aside>
 
       <div className="app-stage">
-        <div className="shell-tools"><button className="text-action" aria-label="Ouvrir les notifications" onClick={() => navigate("notifications")}><Bell size={18} />Notifications</button></div>
+        <div className="shell-tools"><button type="button" className="icon-button" title="Notifications" aria-label="Ouvrir les notifications" onClick={() => navigate("notifications")}><Bell size={19} aria-hidden="true" /></button></div>
         <main className="app-main" id="main-content" tabIndex={-1} ref={mainRef}>
           {view === "today" && <TodayView hub={state} onNavigate={navigate} commandOpen={commandOpen} onCommandOpenChange={setCommandOpen} />}
           {view === "inbox" && <InboxView hub={state} />}

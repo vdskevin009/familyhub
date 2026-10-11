@@ -2,9 +2,9 @@ import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { AlertCircle, CheckCircle2, Search, SlidersHorizontal, X } from "lucide-react";
 
 /** Native modal semantics supply focus containment, Escape and focus restoration. */
-export function Sheet({ open, onClose, title, description, children, footer, wide = false }: {
+export function Sheet({ open, onClose, title, description, children, footer, wide = false, className = "" }: {
   open: boolean; onClose: () => void; title: string; description?: string;
-  children: ReactNode; footer?: ReactNode; wide?: boolean;
+  children: ReactNode; footer?: ReactNode; wide?: boolean; className?: string;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   const titleId = useId();
@@ -18,7 +18,7 @@ export function Sheet({ open, onClose, title, description, children, footer, wid
     document.body.style.overflow = "hidden";
     return () => { if (dialog.open) dialog.close(); document.body.style.overflow = previousOverflow; };
   }, [open]);
-  return <dialog ref={ref} className={`app-sheet${wide ? " wide" : ""}`} aria-labelledby={titleId}
+  return <dialog ref={ref} className={`app-sheet${wide ? " wide" : ""} ${className}`} aria-labelledby={titleId}
     aria-describedby={description ? descriptionId : undefined}
     onCancel={event => { event.preventDefault(); onClose(); }}
     onKeyDown={event => {
