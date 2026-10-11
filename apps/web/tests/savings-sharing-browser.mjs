@@ -67,8 +67,9 @@ try {
   await phone.getByText(/Every day at 09:00/).waitFor();
   await phone.getByRole("button", { name: /Ouvrir le contrat Synthetic shared internet/ }).click();
   await phone.getByRole("button", { name: "Results", exact: true }).click();
+  await phone.getByRole("dialog").locator(".comparison-context > summary").click();
   await phone.getByRole("dialog").getByText("Synthetic daily comparison loaded from the PC", { exact: true }).waitFor();
-  await phone.getByRole("button", { name: "Close Synthetic shared internet: comparison", exact: true }).click();
+  await phone.getByRole("button", { name: "Close Synthetic shared internet : comparaison", exact: true }).click();
   assert.equal(await phone.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
   await phone.getByRole("button", { name: "Complete details", exact: true }).click();
   const phoneForm = phone.getByRole("dialog", { name: "Edit contract", exact: true });
@@ -91,9 +92,10 @@ try {
   await phone.getByRole("button", { name: /Ouvrir le contrat Synthetic shared internet/ }).click();
   assert.match(await phone.locator(".savings-source-price").innerText(), /70[,.]00/);
   await phone.getByRole("button", { name: "Results", exact: true }).click();
+  await phone.getByRole("dialog").locator(".comparison-context > summary").click();
   await phone.getByRole("dialog").getByText("Synthetic daily comparison loaded from the PC", { exact: true }).waitFor();
   await phone.getByText(/Your contract changed after this research/).waitFor();
-  await phone.getByRole("button", { name: "Close Synthetic shared internet: comparison", exact: true }).click();
+  await phone.getByRole("button", { name: "Close Synthetic shared internet : comparaison", exact: true }).click();
   await phone.route(endpoint + "/**", route => route.abort());
   await phone.reload(); await phone.getByRole("button", { name: /Ouvrir le contrat Synthetic shared internet/ }).click();
   assert.match(await phone.locator(".savings-source-price").innerText(), /70[,.]00/);

@@ -24,7 +24,7 @@ export default function SavingsContractDetails({ contract, paid, review, onEdit,
         <div className="row-actions">
             <button className="button secondary" onClick={onEdit}><Pencil size={15} />{missing.length ? "Complete details" : "Edit"}</button>
             <button className="button secondary" disabled={active} onClick={onResearch}><Search size={15} />{active ? "Researching…" : "Compare public offers"}</button>
-            {review && <button className="button secondary" onClick={onResults}><FileText size={15} />{active ? "Research status" : "Results"}</button>}
+            {review && <button className="button secondary" data-savings-results onClick={onResults}><FileText size={15} />{active ? "Research status" : "Results"}</button>}
         </div>
     </article>;
 }

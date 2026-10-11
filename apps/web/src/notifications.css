@@ -1,4 +1,6 @@
-.shell-tools { position: fixed; right: max(12px, env(safe-area-inset-right)); bottom: max(16px, env(safe-area-inset-bottom)); z-index: 34; }
+.app-stage { position: relative; }
+.shell-tools { position: absolute; right: 28px; top: 24px; z-index: 34; }
+.app-main .page-heading { padding-right: 62px; }
 .shell-tools .icon-button { border: 1px solid var(--line); border-radius: 50%; background: var(--surface); box-shadow: var(--shadow); }
 .shell-tools button { min-height: 44px; display: inline-flex; align-items: center; gap: 8px; }
 .notifications-view { grid-template-columns: minmax(0, 1fr); }
@@ -19,5 +21,5 @@
 .notification-actions { padding-top: 6px; }
 .notification-actions a { text-decoration: none; }
 .notification-device { padding: 14px 0; border-bottom: 1px solid var(--line); display: grid; gap: 8px; }
-@media (max-width: 859px) { .shell-tools { bottom: calc(84px + env(safe-area-inset-bottom)); } }
+@media (max-width: 859px) { .shell-tools { right: 16px; top: calc(16px + env(safe-area-inset-top)); } }
 @media (max-width: 480px) { .notification-card { padding: 16px; } .notification-meta { display: grid; gap: 4px; } }

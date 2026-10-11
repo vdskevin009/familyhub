@@ -8,10 +8,11 @@
 .compact-period strong { font-size: 15px; overflow-wrap: anywhere; }
 .compact-period .icon-button { flex-shrink: 0; border: 0; background: var(--soft); }
 .compact-filter-button { flex-shrink: 0; }
-.finance-view > .finance-import-secondary { order: 5; }
 .finance-view .compact-finance-totals { gap: 12px 24px; }
 .compact-finance-totals > div:first-child { flex: 2 1 180px; }
 .compact-finance-totals > div:last-child { flex: 1 1 120px; }
+.compact-finance-totals > .finance-review-count { display: flex; align-items: center; gap: 8px; flex: 1 0 100%; }
+.compact-finance-totals > .finance-review-count strong { font-size: 18px; }
 .compact-finance-totals .compact-heading { justify-content: flex-start; }
 .recurring-paid { gap: 8px; }
 .recurring-paid .finance-totals strong { font-size: clamp(27px, 5vw, 36px); }
@@ -49,6 +50,12 @@
 .saved-offer { border: 1px solid var(--line); border-radius: var(--radius); min-width: 0; }
 .saved-offer > summary { padding: 14px; color: var(--ink); overflow-wrap: anywhere; }
 .saved-offer > summary strong { display: block; margin-top: 4px; font-variant-numeric: tabular-nums; color: var(--green); }
+.finance-view .finance-refresh-label { white-space: nowrap; }
+.finance-view .page-heading-actions, .savings-view .page-heading-actions { align-self: flex-start; }
+@media (max-width: 520px) {
+  .finance-view .finance-refresh-label, .savings-view .savings-add-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  .finance-view .page-heading-actions > button, .savings-view .page-heading-actions > button { min-width: 44px; padding-inline: 12px; }
+}
 .savings-comparison-dialog .toggle-label { display: flex; }
 @media (max-width: 420px) {
   .finance-scope { align-items: flex-start; gap: 6px; }

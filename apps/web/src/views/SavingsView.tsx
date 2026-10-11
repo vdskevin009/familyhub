@@ -43,7 +43,10 @@ export default function SavingsView({ hub, onNavigate }: { hub: HubState; onNavi
   }
   function closeComparison() {
     setOpenResult(null); setResultOffer(null);
-    requestAnimationFrame(() => resultTrigger.current?.isConnected && resultTrigger.current.focus({ preventScroll: true }));
+    requestAnimationFrame(() => {
+      if (resultTrigger.current?.isConnected) resultTrigger.current.focus({ preventScroll: true });
+      else if (detailId) document.querySelector<HTMLElement>('[data-savings-results]')?.focus({ preventScroll: true });
+    });
   }
   useEffect(() => {
     if (!openResult || resultOffer === null) return;
@@ -121,7 +124,7 @@ export default function SavingsView({ hub, onNavigate }: { hub: HubState; onNavi
   const focusedReview = focusedContract ? reviews.find(review => review.job.id === resultJob && review.job.contractId === focusedContract.id) ?? latest(focusedContract.id) : undefined;
   const stale = focusedContract && focusedReview && focusedReview.localKey !== baselineKey(focusedContract);
   return <section className="view-stack savings-view">
-    <PageHeader title="Dépenses récurrentes" subtitle="Vos paiements, services et contrats"><button className="button" disabled={sharing.busy} onClick={() => { setError(""); setDetailId(null); openEditor(newContract("telecom", crypto.randomUUID())); }}><Plus size={17} />Add contract</button></PageHeader>
+    <PageHeader title="Dépenses récurrentes" subtitle="Vos paiements, services et contrats"><button className="button" aria-label="Add contract" title="Add contract" disabled={sharing.busy} onClick={() => { setError(""); setDetailId(null); openEditor(newContract("telecom", crypto.randomUUID())); }}><Plus size={17} aria-hidden="true" /><span className="savings-add-label">Add contract</span></button></PageHeader>
     {error && <Notice error onDismiss={() => setError("")}>{error}</Notice>}
     {message && <Notice onDismiss={() => setMessage("")}>{message}</Notice>}
     {sharing.error && <Notice error>{sharing.error}</Notice>}

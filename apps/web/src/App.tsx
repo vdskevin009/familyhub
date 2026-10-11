@@ -27,10 +27,10 @@ function runningStandalone(): boolean {
     || Boolean((navigator as Navigator & { standalone?: boolean }).standalone);
 }
 
-const nav: Array<{ id: AppView; label: string; icon: typeof Home }> = [
+const nav: Array<{ id: AppView; label: string; shortLabel?: string; icon: typeof Home }> = [
   { id: "reimbursements", label: "Claims", icon: HeartHandshake },
-  { id: "documents", label: "Documents", icon: FileText },
-  { id: "savings", label: "Dépenses récurrentes", icon: TrendingDown },
+  { id: "documents", label: "Documents", shortLabel: "Docs", icon: FileText },
+  { id: "savings", label: "Dépenses récurrentes", shortLabel: "Récurrent", icon: TrendingDown },
   { id: "finances", label: "Finances", icon: CircleDollarSign },
   { id: "groceries", label: "Courses", icon: CalendarDays },
   { id: "other", label: "Other", icon: MoreHorizontal }
@@ -158,9 +158,9 @@ export default function App() {
         {nav.map(item => {
           const Icon = item.icon;
           return (
-            <button key={item.id} className={navigationActive(item.id) ? "active" : ""} onClick={() => navigate(item.id)} aria-current={navigationActive(item.id) ? "page" : undefined}>
+            <button key={item.id} className={navigationActive(item.id) ? "active" : ""} onClick={() => navigate(item.id)} aria-label={item.label} aria-current={navigationActive(item.id) ? "page" : undefined}>
               <Icon size={21} strokeWidth={2} />
-              <span>{item.label}</span>
+              <span>{item.shortLabel ?? item.label}</span>
             </button>
           );
         })}

@@ -1,3 +1,4 @@
+import { openFinanceFilters, selectFinanceFilter } from "./finance-filter-helpers.mjs";
 /** Synthetic finance acceptance; never connects to the installed worker or a bank. */
 import { chromium } from "playwright";
 import assert from "node:assert/strict";
@@ -102,7 +103,7 @@ try {
         await scope.selectOption("excluded");
         assert.equal(await register.getByRole("button").count(), 2);
         for (const [account, visible, absent] of [["card", "PAYMENT-THANKYOU", "TFR-TO"], ["bank", "TFR-TO", "PAYMENT-THANKYOU"]]) {
-            await page.getByLabel("Compte", { exact: true }).selectOption(account);
+            await selectFinanceFilter(page, "Compte", account);
             assert.equal(await register.getByRole("button").count(), 1);
             assert.match(await register.innerText(), new RegExp(visible));
             assert.doesNotMatch(await register.innerText(), new RegExp(absent));
@@ -114,7 +115,7 @@ try {
         }
         assert.equal(posts, 0, "Viewing, filtering and opening sources must not save decisions");
         assert.deepEqual(await finance.read(), initial);
-        await page.getByLabel("Compte", { exact: true }).selectOption("");
+        await selectFinanceFilter(page, "Compte", "");
         await register.getByRole("button").filter({ hasText: "PAYMENT-THANKYOU" }).click();
         await editor.getByLabel("Note de décision", { exact: true }).fill("Synthetic repayment reviewed");
         await editor.getByRole("button", { name: "Enregistrer la décision", exact: true }).click();

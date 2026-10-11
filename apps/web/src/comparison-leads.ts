@@ -20,8 +20,9 @@ export function comparisonLead(contract: SavingsContract, review: LocalReview | 
         if (!(result.firstYear !== null && result.firstYear > 0) && !cheaper) continue;
         // Known non-positive net savings are not promoted merely because the headline monthly price is lower.
         if (result.firstYear !== null && result.firstYear <= 0) continue;
-        const numeric = reviewed && result.reasons.length === 0 && review.job.report.missing.length === 0 && offer.conditions.length === 0;
-        return { jobId: review.job.id, offerIndex: index, firstYear: numeric ? result.firstYear : null };
+        // The saved schema does not confirm personal eligibility. Even an empty conditions array
+        // cannot establish it, so badges remain qualitative; the full dated calculation stays in the comparison.
+        return { jobId: review.job.id, offerIndex: index, firstYear: null };
     }
     return null;
 }
