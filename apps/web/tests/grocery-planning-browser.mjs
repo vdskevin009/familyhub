@@ -10,14 +10,14 @@ import { GroceryPlanningStore } from "../../worker/dist/grocery-planning-store.j
 import { emptyPlan } from "../../worker/dist/grocery-planning.js";
 const dir = await mkdtemp(join(tmpdir(), "fh-grocery-planning-ui-")), store = new GroceryPlanningStore(join(dir, "groceries"));
 const root = resolve("apps/web/dist"), errors = [], key = "synthetic-plan-key";
-let browser, offline = false, failSave = false, researchBody, weeklySupported = true;
+let browser, offline = false, failSave = false, researchBody, weeklySupported = true, malformedRead = false;
 const api = createServer(async (req, res) => {
   res.setHeader("Access-Control-Allow-Origin", req.headers.origin || "*"); res.setHeader("Access-Control-Allow-Headers", "content-type,x-familyhub-key"); res.setHeader("Access-Control-Allow-Methods", "GET,POST,OPTIONS"); if (req.method === "OPTIONS") { res.end(); return; }
   if (offline) { req.socket.destroy(); return; } res.setHeader("Content-Type", "application/json"); if (req.headers["x-familyhub-key"] !== key) { res.writeHead(401); res.end("{}"); return; }
   try { const chunks = []; for await (const c of req) chunks.push(c); const body = chunks.length ? JSON.parse(Buffer.concat(chunks)) : undefined;
     let result;
     if (req.url === "/health") result = { capabilities: ["grocery-planning-v1", "grocery-receipts-v1", ...(weeklySupported ? ["grocery-weekly-v1"] : [])] };
-    else if (req.url === "/groceries/planning") { if (body && failSave) { failSave = false; throw new Error("Échec synthétique de sauvegarde ; brouillon conservé."); } result = body ? await store.save(body) : await store.read(); }
+    else if (req.url === "/groceries/planning") { if (body && failSave) { failSave = false; throw new Error("Échec synthétique de sauvegarde ; brouillon conservé."); } result = body ? await store.save(body) : malformedRead ? { state: "idle" } : await store.read(); }
     else if (req.url === "/groceries/research") { researchBody = body; result = { summary: "Synthetic catalogue only", prices: [] }; }
     else if (req.url === "/groceries") result = { records: [] };
     else throw new Error("Unknown synthetic route"); res.end(JSON.stringify(result));
@@ -99,6 +99,11 @@ try {
   const stores = (await store.read()).retailers; for (const name of ["Walmart", "Superstore", "Costco", "Fresh St. Market"]) assert.equal(stores.filter(r => r.name === name).length, 1);
   await page.getByRole("button", { name: "Besoins", exact: true }).click();
   await page.getByRole("button", { name: "Proposer les besoins de la semaine", exact: true }).waitFor();
+  malformedRead = true; await page.getByRole("button", { name: "Relire le PC", exact: true }).click();
+  await page.getByRole("alert").waitFor();
+  await page.getByRole("button", { name: /Synthetic oats.*1 x 500 g/ }).waitFor();
+  malformedRead = false; await page.getByRole("button", { name: "Relire le PC", exact: true }).click();
+  await page.getByText("Liste relue depuis le PC.", { exact: true }).waitFor();
   for (const width of [320, 390, 768, 1440]) { await page.setViewportSize({ width, height: 900 }); assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false); await page.screenshot({ path: `artifacts/groceries/weekly-needs-${width}.png`, fullPage: true }); }
   await page.getByRole("button", { name: "Comparer", exact: true }).click();
   for (const width of [320, 390, 768, 1440]) { await page.setViewportSize({ width, height: 900 }); assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false); await page.screenshot({ path: `artifacts/groceries/weekly-compare-${width}.png`, fullPage: true }); }

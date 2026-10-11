@@ -4,7 +4,7 @@
 
 | ID | Requirement | Status | Evidence |
 | --- | --- | --- | --- |
-| FH-FIN-018 | Tendances starts with twelve compact month circles and opens a monthly category/payment journey with Back. Observed spending remains visible independently of historical-reference availability; differences require comparable coverage. Dépenses and Investissements prioritize essential amounts, with details behind deliberate controls. Preserve sources, categories, audit, bulk Save & Next and undo. | Implemented; release testing | `FinanceTrends`, `FinancesView`, scoped CSS, synthetic model/browser regressions; docs/FINANCE-MONTH-JOURNEYS.md; #191 |
+| FH-FIN-018 | Tendances starts with twelve compact month circles and opens a monthly category/payment journey with Back. Observed spending remains visible independently of historical-reference availability; differences require comparable coverage. Dépenses and Investissements prioritize essential amounts, with details behind deliberate controls. Preserve sources, categories, audit, bulk Save & Next and undo. | Verified | `FinanceTrends`, `FinancesView`, scoped CSS, synthetic model/browser regressions; docs/FINANCE-MONTH-JOURNEYS.md; #191, PR #193; main 5cc399b and CI/Pages 38160451734, deployed four-width and paired read-only acceptance verified by Finance owner. |
 
 # FamilyHub — Canonical Requirements
 
