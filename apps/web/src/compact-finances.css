@@ -1,0 +1,68 @@
+/* Existing FamilyHub tokens; compact controls keep figures and source details distinct. */
+/* Keep wide system-font tabs inside the available grid track instead of widening the page. */
+.finance-view { grid-template-columns: minmax(0, 1fr); }
+.finance-view > .finance-tabs { width: max-content; max-width: 100%; min-width: 0; display: flex; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: thin; }
+.finance-view > .finance-tabs button { flex: 0 0 auto; white-space: nowrap; min-height: 44px; padding-inline: 14px; }
+.finance-scope { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-width: 0; }
+.finance-scope-copy { display: grid; gap: 3px; min-width: 0; }
+.finance-scope-copy > small { color: var(--muted); overflow-wrap: anywhere; }
+.compact-period { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.compact-period strong { font-size: 15px; overflow-wrap: anywhere; }
+.compact-period .icon-button { flex-shrink: 0; border: 0; background: var(--soft); }
+.compact-filter-button { flex-shrink: 0; }
+.finance-view .compact-finance-totals { gap: 12px 24px; }
+.compact-finance-totals > div:first-child { flex: 2 1 180px; }
+.compact-finance-totals > div:last-child { flex: 1 1 120px; }
+.compact-finance-totals > .finance-review-count { display: flex; align-items: center; gap: 8px; flex: 1 0 100%; }
+.compact-finance-totals > .finance-review-count strong { font-size: 18px; }
+.compact-finance-totals .compact-heading { justify-content: flex-start; }
+.recurring-paid { gap: 8px; }
+.recurring-paid .finance-totals strong { font-size: clamp(27px, 5vw, 36px); }
+.recurring-type { min-width: 0; }
+.recurring-type > h3 { color: var(--muted); font-size: 13px; padding-bottom: 8px; border-bottom: 1px solid var(--line); }
+.recurring-package-row { border-bottom: 1px solid var(--line); padding-bottom: 8px; }
+.recurring-package-row:last-child { border-bottom: 0; }
+.recurring-package-row .recurring-package { border: 0; padding-block: 14px; }
+.comparison-lead { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; min-height: 44px; max-width: 100%; padding: 8px 12px; border: 1px solid var(--green); border-radius: var(--radius-sm); background: var(--mint); color: var(--green); font-size: 13px; text-align: left; }
+.comparison-lead small { color: var(--ink); }
+.saved-comparisons { min-width: 0; }
+.savings-view .saved-comparisons > summary { min-height: 44px; display: flex; width: fit-content; align-items: center; gap: 10px; padding: 8px 12px; color: var(--green); border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--surface); cursor: pointer; }
+.saved-comparisons > summary::before { content: "+"; font-size: 18px; }
+.saved-comparisons[open] > summary::before { content: "−"; }
+.saved-comparison-list { display: grid; margin-top: 8px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); overflow: hidden; }
+.saved-comparison-list > button { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; min-width: 0; min-height: 56px; padding: 12px 16px; border: 0; border-bottom: 1px solid var(--line); background: transparent; color: var(--ink); text-align: left; }
+.saved-comparison-list > button:last-child { border-bottom: 0; }
+.saved-comparison-list > button:hover { background: var(--soft); }
+.saved-comparison-list span { display: grid; gap: 4px; min-width: 0; overflow-wrap: anywhere; }
+.saved-comparison-list small { color: var(--muted); }
+.saved-comparison-list svg { flex-shrink: 0; }
+.savings-comparison-dialog .sheet-header h2 { overflow-wrap: anywhere; }
+.savings-comparison-dialog .sheet-header .icon-button { flex-shrink: 0; }
+.savings-comparison-dialog .sheet-content { scroll-padding-top: 12px; }
+.savings-comparison-dialog label { display: grid; gap: 6px; min-width: 0; }
+.savings-comparison-dialog select { width: 100%; min-width: 0; }
+.savings-comparison-dialog .view-stack, .savings-comparison-dialog .savings-offer { min-width: 0; }
+.savings-comparison-dialog .savings-offer { display: grid; gap: 16px; border: 0; }
+.savings-comparison-dialog p, .savings-comparison-dialog li, .savings-comparison-dialog h3, .source-text { overflow-wrap: anywhere; line-height: 1.6; }
+.source-text { white-space: pre-wrap; }
+.source-text a { text-decoration: underline; text-underline-offset: 2px; color: var(--green); }
+.savings-comparison-dialog summary { min-height: 44px; padding-block: 10px; cursor: pointer; }
+.comparison-context { padding: 0 12px; border-radius: var(--radius-sm); background: var(--soft); }
+.comparison-context > div { padding-bottom: 12px; }
+.saved-offer { border: 1px solid var(--line); border-radius: var(--radius); min-width: 0; }
+.saved-offer > summary { padding: 14px; color: var(--ink); overflow-wrap: anywhere; }
+.saved-offer > summary strong { display: block; margin-top: 4px; font-variant-numeric: tabular-nums; color: var(--green); }
+.finance-view .finance-refresh-label { white-space: nowrap; }
+.finance-view .page-heading-actions, .savings-view .page-heading-actions { align-self: flex-start; }
+@media (max-width: 520px) {
+  .finance-view .finance-refresh-label, .savings-view .savings-add-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  .finance-view .page-heading-actions > button, .savings-view .page-heading-actions > button { min-width: 44px; padding-inline: 12px; }
+}
+.savings-comparison-dialog .toggle-label { display: flex; }
+@media (max-width: 420px) {
+  .finance-scope { align-items: flex-start; gap: 6px; }
+  .compact-period { gap: 2px; }
+  .compact-period strong { font-size: 13px; }
+  .compact-filter-button { padding-inline: 9px; }
+  .finance-tabs button { padding-inline: 11px; font-size: 12px; }
+}

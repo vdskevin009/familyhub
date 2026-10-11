@@ -11,6 +11,15 @@ const state = (): FinanceState => {
 };
 const trend = (s: FinanceState, month = "2026-10", account = "", currency = "CAD", today = "2026-10-10") => spendingTrend(s, month, account, currency, today);
 
+test("last observed movement exposes the unresolved dates without asserting missing transactions or blaming classification", () => {
+    const s = state(); s.data!.coverage.find(c => c.accountId === "card")!.latest = "2026-08-22";
+    const result = trend(s, "2026-08");
+    assert.equal(result.comparable, false); assert.equal(result.baselineCents, null);
+    assert.match(result.reasons.join(" "), /dernier mouvement importé le 2026-08-22; couverture du 2026-08-23 au 2026-08-31 non établie/);
+    assert.doesNotMatch(result.reasons.join(" "), /manquant|catégorie|classification/);
+    assert.equal(trend({ ...s, decisions: {} }, "2026-08").reasons.join(" "), result.reasons.join(" "));
+});
+
 test("personal baseline uses six prior complete months, net refunds and identical elapsed days", () => {
     const s = state(), before = JSON.stringify(s), t = trend(s);
     assert.equal(t.to, "2026-10-09"); assert.equal(t.partial, true);

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Check } from "lucide-react";
 import { currency } from "../domain";
-import { compareOffer, monthlyPrice, type SavingsContract, type SavingsOffer } from "../savings";
+import { compareOffer, contractMonthly, type SavingsContract, type SavingsOffer } from "../savings";
 const price = (value: number | null) => value === null ? "Unknown" : currency.format(value);
 export default function SavingsOfferCard({ contract, offer, decision, stale, onDecision }: {
   contract: SavingsContract; offer: SavingsOffer; decision: "review" | "shortlist" | "dismissed"; stale: boolean;
@@ -14,7 +14,7 @@ export default function SavingsOfferCard({ contract, offer, decision, stale, onD
   return <article className={"surface savings-offer " + (decision === "dismissed" ? "dismissed" : "")}>
     <div className="savings-contract-heading"><div><small>{offer.currentProvider ? "Current-provider option" : "Alternative"} · Public estimate</small><h3>{offer.provider}: {offer.title}</h3></div>{decision === "shortlist" && <span className="status-pill"><Check size={14} />Shortlisted</span>}</div>
     <dl className="savings-costs">
-      <div><dt>Current / month</dt><dd>{price(monthlyPrice(contract.price, contract.cycle))}</dd></div>
+      <div><dt>Current / month</dt><dd>{price(contractMonthly(contract))}</dd></div>
       <div><dt>Alternative / month</dt><dd>{price(offer.monthlyPrice)}</dd></div>
       <div><dt>After promotion / month</dt><dd>{price(offer.promoMonths ? offer.monthlyPriceAfterPromo : offer.monthlyPrice)}</dd></div>
       <div><dt>Promotion duration</dt><dd>{offer.promoMonths} months</dd></div>

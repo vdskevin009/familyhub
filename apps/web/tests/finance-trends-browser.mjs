@@ -1,3 +1,4 @@
+import { openFinanceFilters, selectFinanceFilter } from "./finance-filter-helpers.mjs";
 /** Synthetic browser acceptance. No installed worker, credentials or real source data. */
 import { chromium } from "playwright";
 import assert from "node:assert/strict";
@@ -107,11 +108,11 @@ try {
         await view.getByLabel("Afficher une catégorie", { exact: true }).selectOption("pets");
         assert.equal(await view.locator(".trend-category").count(), 0);
         await view.getByLabel("Afficher une catégorie", { exact: true }).selectOption("");
-        await page.getByLabel("Compte", { exact: true }).selectOption("bank");
+        await selectFinanceFilter(page, "Compte", "bank");
         assert.match(await view.locator(".trend-headline").innerText(), /600,00.*600,00/s);
         assert.match(await view.innerText(), /2 élément\(s\).*import complet/);
         assert.match(await view.innerText(), /ne sont pas disponibles pour cette sélection/);
-        await page.getByLabel("Compte", { exact: true }).selectOption("");
+        await selectFinanceFilter(page, "Compte", "");
         await month.fill("2026-04"); assert.match(await view.innerText(), /Historique insuffisant/);
         await month.fill("2026-11"); assert.match(await view.locator(".trend-headline").innerText(), /Non disponible.*Non disponible/s);
         await view.getByLabel("Année analysée", { exact: true }).selectOption("2026");
@@ -130,7 +131,7 @@ try {
         mode = "missing"; await page.getByRole("button", { name: "Actualiser", exact: true }).click();
         await view.getByText("Comparaison indisponible", { exact: true }).waitFor();
         assert.match(await view.locator(".trend-headline").innerText(), /780,00.*Non disponible/s);
-        await page.getByLabel("Compte", { exact: true }).selectOption("missing");
+        await selectFinanceFilter(page, "Compte", "missing");
         assert.match(await view.locator(".trend-headline").innerText(), /Non disponible.*Non disponible/s);
         await view.screenshot({ path: join(screenshots, `missing-${width}.png`) });
         mode = "error"; await page.getByRole("button", { name: "Actualiser", exact: true }).click();

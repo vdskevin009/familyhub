@@ -24,6 +24,9 @@ import {
 import { benchmarkMeta, benchmarkProfiles } from "../finance-benchmarks";
 import { calendarPeriod, defaultPeriod } from "../finance-periods";
 import PeriodNavigator from "./PeriodNavigator";
+import FinanceScope from "./FinanceScope";
+import InfoPopover from "../ui/InfoPopover";
+import "../compact-finances.css";
 const money = (cents: number, currency = "CAD") =>
     new Intl.NumberFormat("fr-CA", { style: "currency", currency }).format(
         cents / 100,
@@ -490,9 +493,10 @@ export default function FinancesView({
                     className="button secondary"
                     disabled={!paired || busy || loading}
                     onClick={() => void refresh()}
+                    aria-label={loading ? "Chargement" : "Actualiser"}
                 >
                     <RefreshCw size={16} />
-                    {loading ? "Chargement…" : "Actualiser"}
+                    <span className="finance-refresh-label">{loading ? "Chargement…" : "Actualiser"}</span>
                 </button>
             </PageHeader>
             <nav className="segment-tabs finance-tabs" aria-label="Finances">
@@ -534,106 +538,6 @@ export default function FinancesView({
                     </button>
                 </div>
             )}
-            {paired && (
-                <details className="surface finance-import">
-                    <summary>
-                        Sources et import privé{" "}
-                        {data ? `· collecte du ${data.collectedOn}` : ""}
-                    </summary>
-                    <div className="view-stack">
-                        <p>
-                            Importez une préparation TD vérifiée. L’aperçu
-                            précède l’enregistrement; vos décisions restent
-                            séparées des sources. Aucun accès bancaire ni
-                            transfert d’argent.
-                        </p>
-                        <label className="button secondary file-button">
-                            <Upload size={16} />
-                            Choisir la préparation JSON
-                            <input
-                                type="file"
-                                accept=".json,application/json"
-                                disabled={busy || loading}
-                                onChange={(e) => {
-                                    void readImport(e.target.files?.[0]);
-                                    e.target.value = "";
-                                }}
-                            />
-                        </label>
-                        {preview && (
-                            <div role="status">
-                                <p>
-                                    {preview.alreadyImported
-                                        ? "Fichier déjà importé."
-                                        : `${preview.added} nouvelles opérations · ${preview.possibleDuplicates} doublons possibles · ${preview.from} à ${preview.to}`}
-                                </p>
-                                {!preview.alreadyImported && (
-                                    <button
-                                        className="button"
-                                        disabled={busy}
-                                        onClick={() => void applyImport()}
-                                    >
-                                        Confirmer l’import sur le PC
-                                    </button>
-                                )}
-                            </div>
-                        )}
-                        {data && (
-                            <>
-                                <p>
-                                    {data.accounts.length} comptes ·{" "}
-                                    {data.transactions.length} opérations
-                                    bancaires · {data.activities.length}{" "}
-                                    activités de placement · {data.pendingCount}{" "}
-                                    opérations en attente exclues. Import du{" "}
-                                    {state?.importedAt}. Fenêtre demandée :{" "}
-                                    {data.scope.from} à {data.scope.to}.
-                                </p>
-                                <div className="finance-register">
-                                    {data.coverage.map((c) => (
-                                        <div
-                                            className="finance-coverage"
-                                            key={c.accountId}
-                                        >
-                                            <strong>
-                                                {
-                                                    data.accounts.find(
-                                                        (a) =>
-                                                            a.id ===
-                                                            c.accountId,
-                                                    )?.name
-                                                }
-                                            </strong>
-                                            <span>
-                                                {c.earliest ??
-                                                    "Aucune activité"}{" "}
-                                                — {c.latest ?? "date inconnue"}
-                                            </span>
-                                            {c.warning && <p>{c.warning}</p>}
-                                        </div>
-                                    ))}
-                                </div>
-                                <p className="muted">
-                                    Ces dates décrivent les lignes disponibles,
-                                    pas une preuve d’exhaustivité. Les fichiers
-                                    originaux et leurs empreintes restent
-                                    archivés sur le PC.
-                                </p>
-                                <details>
-                                    <summary>
-                                        Limites consignées lors de la collecte
-                                    </summary>
-                                    <ul>
-                                        {data.limits.map((l, i) => (
-                                            <li key={i}>{l}</li>
-                                        ))}
-                                    </ul>
-                                </details>
-                            </>
-                        )}
-                    </div>
-                </details>
-            )}
             {paired && !loading && !data && !error && (
                 <div className="surface">
                     <h2>Aucun historique importé</h2>
@@ -646,50 +550,8 @@ export default function FinancesView({
             )}
             {data && state && summary && (
                 <>
-                    {tab !== "trends" && <><PeriodNavigator range={{ from, to }} scope={data.scope} onChange={range => { setFrom(range.from); setTo(range.to); }} />
-                    <p className="muted">Totaux par date d'opération. La vue annuelle conserve les mois partiels et les lacunes; elle n'extrapole pas une année complète.</p></>}
-                    <div className="finance-filters">
-                        {tab !== "investments" && (
-                            <label>
-                                Compte
-                                <select
-                                    aria-label="Compte"
-                                    value={account}
-                                    onChange={(e) => setAccount(e.target.value)}
-                                >
-                                    <option value="">Tous les comptes</option>
-                                    {data.accounts.map((a) => (
-                                        <option key={a.id} value={a.id}>
-                                            {a.name}
-                                        </option>
-                                    ))}
-                                </select>
-                            </label>
-                        )}
-                        {tab !== "investments" && (
-                            <label>
-                                Devise
-                                <select
-                                    aria-label="Devise"
-                                    value={currency}
-                                    onChange={(e) =>
-                                        setCurrency(e.target.value)
-                                    }
-                                >
-                                    {[
-                                        ...new Set([
-                                            "CAD",
-                                            ...data.accounts.map(
-                                                (a) => a.currency,
-                                            ),
-                                        ]),
-                                    ].map((c) => (
-                                        <option key={c}>{c}</option>
-                                    ))}
-                                </select>
-                            </label>
-                        )}
-                    </div>
+                    {tab === "investments" ? <PeriodNavigator range={{ from, to }} scope={data.scope} onChange={range => { setFrom(range.from); setTo(range.to); }} /> :
+                        <FinanceScope data={data} range={tab === "expenses" ? { from, to } : undefined} onPeriod={range => { setFrom(range.from); setTo(range.to); }} account={account} currency={currency} onAccount={setAccount} onCurrency={setCurrency} />}
                     {tab !== "trends" && from > to && (
                         <Notice error>
                             La date de début doit précéder la date de fin.
@@ -697,30 +559,10 @@ export default function FinancesView({
                     )}
                     {tab === "trends" && trend ? <FinanceTrends state={state} trend={trend} account={account} currency={currency} onMonth={setTrendMonth} onCategory={openCategory} /> : tab === "expenses" ? (
                         <>
-                            <div className="finance-totals surface">
+                            <div className="finance-totals surface compact-finance-totals">
                                 <div>
-                                    <small>
-                                        Dépenses nettes importées · {currency}
-                                    </small>
-                                    <strong>
-                                        {money(summary.totalCents, currency)}
-                                    </strong>
-                                    <small>
-                                        Remboursements déduits · versements
-                                        hypothécaires entiers
-                                    </small>
-                                </div>
-                                <div>
-                                    <small>Revue restante</small>
-                                    <strong>{summary.reviewCount}</strong>
-                                    <small>
-                                        Opérations de nature/catégorie
-                                        incertaine · {summary.unreviewedCount}{" "}
-                                        suggestions non confirmées
-                                    </small>
-                                </div>
-                            </div>
-                            <p className="muted">
+                                    <div className="compact-heading"><small>Dépenses nettes · {currency}</small><InfoPopover title="Calcul des dépenses">
+                                        <p className="muted">
                                 Transferts, paiements de cartes, revenus et
                                 placements sont exclus selon leur nature
                                 proposée ou confirmée. Aucun partage
@@ -728,6 +570,25 @@ export default function FinancesView({
                                 à la fois, sans conversion. Les catégories
                                 automatiques restent provisoires.
                             </p>
+                                        <p>Totaux par date d’opération. La vue annuelle conserve les mois partiels et les lacunes; elle n’extrapole pas une année complète.</p>
+                                    </InfoPopover></div>
+                                    <strong>
+                                        {money(summary.totalCents, currency)}
+                                    </strong>
+                                    <small>
+                                        Remboursements déduits
+                                    </small>
+                                </div>
+                                <div className="finance-review-count">
+                                    <small>Revue restante</small>
+                                    <strong>{summary.reviewCount}</strong>
+                                    <InfoPopover title="Revue des opérations"><p>
+                                        Opérations de nature/catégorie
+                                        incertaine · {summary.unreviewedCount}{" "}
+                                        suggestions non confirmées
+                                    </p></InfoPopover>
+                                </div>
+                            </div>
                             <div className="finance-chart-grid finance-expense-charts">
                                 <section className="surface view-stack">
                                     <h2>Dépenses par catégorie</h2>
@@ -756,7 +617,7 @@ export default function FinancesView({
                                     )}
                                 </section>
                                 <section className="surface view-stack">
-                                    <h2>Évolution mensuelle</h2>
+                                    <div className="compact-heading"><h2>Évolution mensuelle</h2><InfoPopover title="Évolution mensuelle"><p>Un mois partiel n’est pas extrapolé. Une absence de lignes ne prouve pas une absence de dépenses.</p></InfoPopover></div>
                                     <Bars
                                         currency={currency}
                                         onSelect={(month) => { const period = calendarPeriod(Number(month.slice(0, 4)), Number(month.slice(5, 7))); setFrom(period.from); setTo(period.to); }}
@@ -769,11 +630,7 @@ export default function FinancesView({
                                                 : "Période partielle / couverture limitée",
                                         }))}
                                     />
-                                    <p className="muted">
-                                        Un mois partiel n’est pas extrapolé. Une
-                                        absence de lignes ne prouve pas une
-                                        absence de dépenses.
-                                    </p>
+
                                 </section>
                             </div>
                             <section className="surface view-stack finance-savings-flow" aria-label="Épargne et investissements classés">
@@ -1356,6 +1213,106 @@ export default function FinancesView({
                 </>
             )}
             <CategoryPayments category={categoryPayments} open={Boolean(categoryPayments) && !editing} summary={tab === "trends" ? trend?.summary ?? null : summary} accounts={data?.accounts ?? []} account={account} currency={currency} from={tab === "trends" ? trend?.from ?? "" : from} to={tab === "trends" ? trend?.to ?? "" : to} onClose={closeCategory} onEdit={openDecision} />
+            {paired && (
+                <details className="surface finance-import">
+                    <summary>
+                        Sources et import privé{" "}
+                        {data ? `· collecte du ${data.collectedOn}` : ""}
+                    </summary>
+                    <div className="view-stack">
+                        <p>
+                            Importez une préparation TD vérifiée. L’aperçu
+                            précède l’enregistrement; vos décisions restent
+                            séparées des sources. Aucun accès bancaire ni
+                            transfert d’argent.
+                        </p>
+                        <label className="button secondary file-button">
+                            <Upload size={16} />
+                            Choisir la préparation JSON
+                            <input
+                                type="file"
+                                accept=".json,application/json"
+                                disabled={busy || loading}
+                                onChange={(e) => {
+                                    void readImport(e.target.files?.[0]);
+                                    e.target.value = "";
+                                }}
+                            />
+                        </label>
+                        {preview && (
+                            <div role="status">
+                                <p>
+                                    {preview.alreadyImported
+                                        ? "Fichier déjà importé."
+                                        : `${preview.added} nouvelles opérations · ${preview.possibleDuplicates} doublons possibles · ${preview.from} à ${preview.to}`}
+                                </p>
+                                {!preview.alreadyImported && (
+                                    <button
+                                        className="button"
+                                        disabled={busy}
+                                        onClick={() => void applyImport()}
+                                    >
+                                        Confirmer l’import sur le PC
+                                    </button>
+                                )}
+                            </div>
+                        )}
+                        {data && (
+                            <>
+                                <p>
+                                    {data.accounts.length} comptes ·{" "}
+                                    {data.transactions.length} opérations
+                                    bancaires · {data.activities.length}{" "}
+                                    activités de placement · {data.pendingCount}{" "}
+                                    opérations en attente exclues. Import du{" "}
+                                    {state?.importedAt}. Fenêtre demandée :{" "}
+                                    {data.scope.from} à {data.scope.to}.
+                                </p>
+                                <div className="finance-register">
+                                    {data.coverage.map((c) => (
+                                        <div
+                                            className="finance-coverage"
+                                            key={c.accountId}
+                                        >
+                                            <strong>
+                                                {
+                                                    data.accounts.find(
+                                                        (a) =>
+                                                            a.id ===
+                                                            c.accountId,
+                                                    )?.name
+                                                }
+                                            </strong>
+                                            <span>
+                                                {c.earliest ??
+                                                    "Aucune activité"}{" "}
+                                                — {c.latest ?? "date inconnue"}
+                                            </span>
+                                            {c.warning && <p>{c.warning}</p>}
+                                        </div>
+                                    ))}
+                                </div>
+                                <p className="muted">
+                                    Ces dates décrivent les lignes disponibles,
+                                    pas une preuve d’exhaustivité. Les fichiers
+                                    originaux et leurs empreintes restent
+                                    archivés sur le PC.
+                                </p>
+                                <details>
+                                    <summary>
+                                        Limites consignées lors de la collecte
+                                    </summary>
+                                    <ul>
+                                        {data.limits.map((l, i) => (
+                                            <li key={i}>{l}</li>
+                                        ))}
+                                    </ul>
+                                </details>
+                            </>
+                        )}
+                    </div>
+                </details>
+            )}
             <Sheet
                 open={Boolean(editing)}
                 onClose={() => !busy && setEditing(null)}

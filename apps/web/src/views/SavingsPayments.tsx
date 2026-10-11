@@ -1,6 +1,7 @@
 import type { SavingsContract } from "../savings";
 import type { ContractPayments, PaidRow, reconcilePayments } from "../savings-payments";
 import { calendarPeriod, rangeLabel, type DateRange } from "../finance-periods";
+import InfoPopover from "../ui/InfoPopover";
 const money = (cents: number, currency: string) => new Intl.NumberFormat("fr-CA", { style: "currency", currency }).format(cents / 100);
 function PaymentSource({ row }: { row: PaidRow }) {
     return <details className="finance-evidence"><summary>Source du paiement</summary>{row.sources.map((s, i) => <p key={i}>{s.name}{s.record ? ` · ligne ${s.record}` : ""}{s.page ? ` · page ${s.page}` : ""}{s.sha256 && <code>SHA-256 : {s.sha256}</code>}</p>)}</details>;
@@ -20,10 +21,15 @@ export default function SavingsPayments({ result, contracts, range, onMonth }: {
     const summaries = result.summaries.filter(s => ids.has(s.contractId));
     const totals: Record<string, { cents: number; matched: number; missing: number }> = {};
     for (const c of contracts) { const s = summaries.find(s => s.contractId === c.id)!; const total = totals[c.billing?.currency ?? "CAD"] ??= { cents: 0, matched: 0, missing: 0 }; if (s.cents === null) total.missing++; else { total.cents += s.cents; total.matched++; } }
-    return <section className="surface view-stack" aria-label="Paiements TTC de la période">
-        <h2>Payé sur la période</h2><p className="muted">{rangeLabel(range)} · {contracts.length} contrat(s) affiché(s)</p>
-        <p>Dates des opérations bancaires, remboursements déduits. Les périodes des factures restent dans les contrats. Un prélèvement décalé n’est pas déplacé vers un autre mois.</p>
-        <div className="finance-totals">{Object.entries(totals).map(([currency, t]) => <div key={currency}><small>Paiements rapprochés · {currency}</small><strong>{t.matched ? money(t.cents, currency) : "Non disponible"}</strong><small>{t.matched} contrat(s) rapproché(s) · {t.missing} sans paiement identifié. Totaux partiels, taxes/frais dans le débit sans calcul séparé.</small></div>)}</div>
+    return <section className="surface view-stack recurring-paid" aria-label="Paiements TTC de la période">
+        <div className="compact-heading"><h2>Payé sur la période</h2><InfoPopover title="Paiements de la période">
+            <p>{rangeLabel(range)} · {contracts.length} contrat(s) affiché(s).</p>
+            <p>Dates des opérations bancaires, remboursements déduits. Les périodes des factures restent dans les contrats. Un prélèvement décalé n’est pas déplacé vers un autre mois.</p>
+            <p>Totaux partiels : taxes et frais inclus dans le débit, sans calcul séparé. Un contrat sans paiement identifié n’est pas considéré comme gratuit.</p>
+            {Object.entries(totals).map(([currency, t]) => <p key={currency}>{currency} : {t.matched} contrat(s) rapproché(s), {t.missing} sans paiement identifié.</p>)}
+        </InfoPopover></div>
+        <small className="muted">{rangeLabel(range)}</small>
+        <div className="finance-totals">{Object.entries(totals).map(([currency, t]) => <div key={currency}><strong>{t.matched ? money(t.cents, currency) : "Non disponible"}</strong><small>{currency} · {t.matched}/{t.matched + t.missing} contrats rapprochés{t.missing > 0 ? " · total partiel" : ""}</small></div>)}</div>
         {!contracts.length && <p>Aucun contrat dans ce filtre. Aucun total disponible.</p>}
         {result.months.length > 1 && <details className="savings-months"><summary>Voir les paiements mois par mois</summary>{Object.keys(totals).map(currency => {
             const months = result.months.map(m => { const rows = summaries.flatMap(s => s.rows).filter(r => r.currency === currency && r.date.startsWith(m.month)); return { ...m, count: rows.length, cents: rows.reduce((n, r) => n + r.outflowCents, 0) }; });
@@ -38,8 +44,7 @@ export function PaymentObservations({ result, contracts, onCategorize }: { resul
     const reviews = result.reviews.filter(r => r.contractIds.some(id => ids.has(id))).sort((a, b) => b.row.date.localeCompare(a.row.date));
     if (!reviews.length) return null;
     return <section className="surface view-stack savings-observations" aria-label="Observations sur les paiements">
-        <h2>Paiements à vérifier</h2>
-        <p>{reviews.length} opération(s) demandent une vérification avant rapprochement. Les services inclus, libellés ambigus et devises différentes ne permettent pas de conclure à une économie.</p>
+        <div className="compact-heading"><h2>Paiements à vérifier</h2><InfoPopover title="Paiements à vérifier"><p>{reviews.length} opération(s) demandent une vérification avant rapprochement. Les services inclus, libellés ambigus et devises différentes ne permettent pas de conclure à une économie.</p></InfoPopover></div>
         {reviews.length > 0 && <details className="payment-reviews"><summary>{reviews.length} paiement(s) à vérifier · exclus des totaux rapprochés</summary><div className="view-stack">{reviews.map(({ row, contractIds, reason }) => <div key={row.id}><strong>{row.date} · {money(row.outflowCents, row.currency)}</strong><p>{row.description}</p><p>{reason}</p><small>Contrat(s) concerné(s) : {contracts.filter(c => contractIds.includes(c.id)).map(c => c.name).join(", ")}</small><PaymentSource row={row} /></div>)}</div></details>}
         <button className="button secondary" onClick={onCategorize}>Catégoriser dans Finances</button>
     </section>;
