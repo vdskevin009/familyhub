@@ -5,9 +5,9 @@ import GroceriesView from "./GroceriesView";
 import GroceryPlanningView from "./GroceryPlanningView";
 import "../grocery.css";
 export default function CoursesView({ config, plannerItems }: { config: WorkerConfig; plannerItems: GroceryItem[] }) {
-  const [tab, setTab] = useState<"tickets" | "planning">("tickets");
-  return <section className="view-stack grocery-view"><PageHeader title="Courses" subtitle="Vos tickets, votre liste habituelle et des paniers comparés avec leurs sources." />
-    <nav className="segment-tabs" aria-label="Outils Courses"><button className={tab === "tickets" ? "active" : ""} aria-current={tab === "tickets" ? "page" : undefined} onClick={() => setTab("tickets")}>Tickets et dépenses</button><button className={tab === "planning" ? "active" : ""} aria-current={tab === "planning" ? "page" : undefined} onClick={() => setTab("planning")}>Liste et paniers</button></nav>
-    {tab === "tickets" ? <GroceriesView config={config} /> : <GroceryPlanningView config={config} plannerItems={plannerItems} />}
+  const [tab, setTab] = useState<"needs" | "compare" | "tickets">("needs");
+  return <section className="view-stack grocery-view"><PageHeader title="Courses" subtitle="Préparer les besoins, comparer, puis vérifier les achats." />
+    <nav className="segment-tabs grocery-workflow" aria-label="Outils Courses">{([["needs", "Besoins"], ["compare", "Comparer"], ["tickets", "Après achats"]] as const).map(([id, label]) => <button key={id} className={tab === id ? "active" : ""} aria-current={tab === id ? "page" : undefined} onClick={() => setTab(id)}>{label}</button>)}</nav>
+    {tab === "tickets" ? <GroceriesView config={config} /> : <GroceryPlanningView config={config} plannerItems={plannerItems} initialTab={tab === "compare" ? "compare" : "list"} />}
   </section>;
 }
