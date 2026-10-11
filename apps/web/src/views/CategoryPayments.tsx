@@ -8,7 +8,7 @@ type Summary = ReturnType<typeof summarizeSpending>;
 export default function CategoryPayments({ category, open, summary, accounts, account, currency, from, to, onClose, onEdit }: {
     category: ExpenseCategory | null; open: boolean; summary: Summary | null;
     accounts: FinanceAccount[]; account: string; currency: string; from: string; to: string;
-    onClose: () => void; onEdit: (id: string) => void;
+    onClose: () => void; onEdit: (id: string, queueIds: string[]) => void;
 }) {
     const [search, setSearch] = useState("");
     const [excludedOpen, setExcludedOpen] = useState(false);
@@ -31,7 +31,7 @@ export default function CategoryPayments({ category, open, summary, accounts, ac
     const visible = all.filter(r => r.description.toLocaleLowerCase().includes(search.toLocaleLowerCase()));
     const visibleExcluded = excluded.filter(r => r.description.toLocaleLowerCase().includes(search.toLocaleLowerCase()));
     const label = category ? expenseCategories[category] : "Catégorie";
-    const payment = (r: Summary["rows"][number]) => <button className="finance-service" key={r.id} data-payment-id={r.id} onClick={() => { lastRow.current = r.id; onEdit(r.id); }}>
+    const payment = (r: Summary["rows"][number], queueIds: string[]) => <button className="finance-service" key={r.id} data-payment-id={r.id} onClick={() => { lastRow.current = r.id; onEdit(r.id, queueIds); }}>
         <span><strong>{r.description}</strong><small>{r.date} · {accounts.find(a => a.id === r.accountId)?.name}</small>
             <small>{natures[r.nature]} · {r.reviewed ? "Confirmé" : "Suggestion"}</small>
             <small className="finance-edit-label">Modifier la catégorie</small></span>
@@ -47,13 +47,13 @@ export default function CategoryPayments({ category, open, summary, accounts, ac
             <p className="muted">{savings ? "Opérations d'épargne et de placement classées, hors dépenses. Leurs entrées et sorties ne sont pas additionnées." : "Dépenses et remboursements de cette catégorie, confirmés ou suggérés. Les paiements de carte, transferts et autres opérations exclues sont séparés sous « Hors dépenses »."} Vos filtres de départ restent disponibles en fermant cette liste.</p>
             <label>Rechercher dans cette catégorie<input type="search" value={search} onChange={e => setSearch(e.target.value)} /></label>
             <p aria-live="polite">{visible.length} opération(s){search ? " sur " + all.length : ""}{savings ? " classée(s), hors dépenses" : " dans les dépenses"}</p>
-            <div className="finance-register" aria-label={savings ? "Opérations d'épargne et de placement" : "Opérations de dépenses"}>{visible.map(payment)}</div>
+            <div className="finance-register" aria-label={savings ? "Opérations d'épargne et de placement" : "Opérations de dépenses"}>{visible.map(r => payment(r, visible.map(row => row.id)))}</div>
             {!visible.length && <p>{all.length ? "Aucune opération ne correspond à cette recherche." : "Aucune opération dans cette catégorie pour la période sélectionnée."}</p>}
             {excluded.length > 0 && <details className="finance-excluded-payments" open={excludedOpen} onToggle={event => setExcludedOpen(event.currentTarget.open)}>
                 <summary>Hors dépenses · {visibleExcluded.length} opération(s){search ? " sur " + excluded.length : ""}</summary>
                 <div className="view-stack">
                     <p className="muted">Ces opérations ne figurent ni dans le total ni dans la liste des dépenses ci-dessus. Leurs montants ne sont pas additionnés. Vous pouvez consulter leur source et corriger leur classement.</p>
-                    <div className="finance-register" aria-label="Opérations hors dépenses">{visibleExcluded.map(payment)}</div>
+                    <div className="finance-register" aria-label="Opérations hors dépenses">{visibleExcluded.map(r => payment(r, visibleExcluded.map(row => row.id)))}</div>
                     {!visibleExcluded.length && <p>Aucune opération hors dépenses ne correspond à cette recherche.</p>}
                 </div>
             </details>}
