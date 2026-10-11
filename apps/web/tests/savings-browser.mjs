@@ -93,7 +93,7 @@ try {
     const bundle = { kind: "familyhub.savings-contract-import", schemaVersion: 1,
       contract: historical, documents: [{ id: docId, type: "text/plain", data: Buffer.from(historicalDocument).toString("base64") }] };
     page.on("dialog", dialog => dialog.accept());
-    const importer = page.locator('.savings-view > .page-header input[type="file"]');
+    const importer = page.locator('.savings-view .page-heading .file-button input[type="file"]');
     // The header hosts the additive import control; its JSON never goes to a provider or GitHub.
     await importer.setInputFiles({ name: "test-import.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(bundle)) });
     await page.getByText(/Contract and 1 document\(s\) imported on this device/).waitFor();
