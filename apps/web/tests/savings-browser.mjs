@@ -75,6 +75,32 @@ try {
     await form.locator('input[type="file"]').setInputFiles({ name: "synthetic-policy.txt", mimeType: "text/plain", buffer: Buffer.from("PRIVATE-LOCAL-DOCUMENT") });
     await form.getByRole("button", { name: "Save contract", exact: true }).click();
     await page.getByRole("button", { name: /Ouvrir le contrat Synthetic internet/ }).waitFor();
+
+    // Import a private contract bundle without restoring or overwriting existing data.
+    const historicalDocument = "TEST-TD-REFERENCE";
+    const docId = "e0000000-0000-4000-8000-000000000001";
+    const historical = {
+      id: "historical-td-synthetic", name: "Historical synthetic condo", category: "home-insurance", provider: "TD Insurance",
+      price: null, cycle: "monthly", taxesIncluded: null, province: "BC", renewal: "", commitmentEnd: "",
+      cancellationFee: null, annualLostDiscounts: null, currentPromoMonths: 0, priceAfterPromo: null,
+      needs: "Historical synthetic coverage only", discounts: "", notes: "PRIVATE-IMPORTED-NOTES",
+      documents: [{ id: docId, name: "synthetic-contract.txt", type: "text/plain",
+        size: historicalDocument.length, addedAt: new Date().toISOString() }],
+      liabilityLimit: 1000000, collisionDeductible: null, comprehensiveDeductible: null,
+      dataGb: null, downloadMbps: null, lines: 1, mortgageBalance: null, mortgageRate: null,
+      amortizationYears: null, termMonths: null, rateType: "fixed", updatedAt: new Date().toISOString()
+    };
+    const bundle = { kind: "familyhub.savings-contract-import", schemaVersion: 1,
+      contract: historical, documents: [{ id: docId, type: "text/plain", data: Buffer.from(historicalDocument).toString("base64") }] };
+    page.on("dialog", dialog => dialog.accept());
+    const importer = page.locator('.savings-view .savings-import-actions .file-button input[type="file"]');
+    // The header hosts the additive import control; its JSON never goes to a provider or GitHub.
+    await importer.setInputFiles({ name: "test-import.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(bundle)) });
+    await page.getByText(/Contract and 1 document\(s\) imported on this device/).waitFor();
+    await page.getByRole("button", { name: /Ouvrir le contrat Historical synthetic condo/ }).waitFor();
+    await importer.setInputFiles({ name: "test-import.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(bundle)) });
+    await page.getByText(/This contract already exists/).waitFor();
+
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false, "Savings overflow at " + width);
     await page.reload(); await page.getByRole("button", { name: /Ouvrir le contrat Synthetic internet/ }).waitFor();
     await page.getByRole("button", { name: /Ouvrir le contrat Synthetic internet/ }).click();
@@ -111,12 +137,12 @@ try {
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false, "Document overflow");
     }
     await page.goto(base + "?view=more");
-    page.on("dialog", dialog => dialog.accept());
     const downloadEvent = page.waitForEvent("download");
     await page.getByRole("button", { name: "Export backup", exact: true }).click();
     const downloaded = await downloadEvent, backup = JSON.parse(await readFile(await downloaded.path(), "utf8"));
-    assert.equal(backup.savings.Contracts.length, 1);
-    assert.equal(Buffer.from(backup.savingsDocuments[0].data, "base64").toString(), "PRIVATE-LOCAL-DOCUMENT");
+    assert.equal(backup.savings.Contracts.length, 2);
+    assert.equal(backup.savingsDocuments.length, 2);
+    assert.deepEqual(backup.savingsDocuments.map(doc => Buffer.from(doc.data, "base64").toString()).sort(), ["PRIVATE-LOCAL-DOCUMENT", "TEST-TD-REFERENCE"].sort());
     assert.ok(!JSON.stringify(backup).includes("synthetic-key"), "Backup must exclude pairing secrets");
     const restore = page.locator(".backup-surface input[type=file]");
     await restore.setInputFiles({ name: "synthetic-backup.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(backup)) });

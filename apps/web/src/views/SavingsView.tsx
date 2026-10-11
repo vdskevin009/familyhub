@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Plus, Pencil, Search, RefreshCw, TrendingDown, ChevronRight } from "lucide-react";
+import { Plus, Pencil, Search, RefreshCw, TrendingDown, ChevronRight, Upload } from "lucide-react";
 import { PageHeader, Sheet, Notice } from "../ui/primitives";
 import { currency, recurringCandidates } from "../domain";
 import type { HubState } from "../state";
@@ -17,6 +17,7 @@ import SavingsPayments, { PaymentObservations } from "./SavingsPayments";
 import SavingsContractDetails from "./SavingsContractDetails";
 import SavingsOfferCard from "./SavingsOfferCard";
 import { useSavingsSharing } from "../savings-sharing";
+import { importSavingsContractBundle } from "../savings-contract-import";
 import { comparisonLead } from "../comparison-leads";
 import SourceText from "../ui/SourceText";
 import "../compact-finances.css";
@@ -104,6 +105,18 @@ export default function SavingsView({ hub, onNavigate }: { hub: HubState; onNavi
   });
   const total = shortlistTotal(entries);
   const recurring = recurringCandidates(hub.spending).filter(item => !contracts.some(contract => contract.name.toLowerCase() === item.merchant.toLowerCase())).slice(0, 5);
+  const [importing, setImporting] = useState(false);
+  async function importContractFile(file: File) {
+    setError(""); setMessage("");
+    if (!window.confirm("Import this contract and its supporting documents onto this device? Existing FamilyHub data will be preserved.")) return;
+    setImporting(true);
+    try {
+      const contract = await importSavingsContractBundle(file, contracts);
+      hub.setSavings(previous => ({ ...previous, Contracts: [...(previous.Contracts ?? []), contract] }));
+      setMessage("Contract and " + contract.documents.length + " document(s) imported on this device. Review the historical details, then choose Share device contracts with paired devices to sync to your PC.");
+    } catch (err) { setError(err instanceof Error ? err.message : "Could not import contract; existing data was preserved."); }
+    finally { setImporting(false); }
+  }
   function save(contract: SavingsContract) {
     hub.setSavings(previous => ({ ...previous, Contracts: [...(previous.Contracts ?? []).filter(item => item.id !== contract.id), contract] }));
     setEditing(null); setMessage("Contract saved on this device."); setError("");
@@ -124,7 +137,8 @@ export default function SavingsView({ hub, onNavigate }: { hub: HubState; onNavi
   const focusedReview = focusedContract ? reviews.find(review => review.job.id === resultJob && review.job.contractId === focusedContract.id) ?? latest(focusedContract.id) : undefined;
   const stale = focusedContract && focusedReview && focusedReview.localKey !== baselineKey(focusedContract);
   return <section className="view-stack savings-view">
-    <PageHeader title="Dépenses récurrentes" subtitle="Vos paiements, services et contrats"><button className="button" aria-label="Add contract" title="Add contract" disabled={sharing.busy} onClick={() => { setError(""); setDetailId(null); openEditor(newContract("telecom", crypto.randomUUID())); }}><Plus size={17} aria-hidden="true" /><span className="savings-add-label">Add contract</span></button></PageHeader>
+    <PageHeader title="Dépenses récurrentes" subtitle="Vos paiements, services et contrats"><button className="button" aria-label="Add contract" title="Add contract" disabled={sharing.busy || importing} onClick={() => { setError(""); setDetailId(null); openEditor(newContract("telecom", crypto.randomUUID())); }}><Plus size={17} aria-hidden="true" /><span className="savings-add-label">Add contract</span></button></PageHeader>
+    <div className="savings-import-actions"><label className="button secondary file-button" title="Import an additive contract bundle without replacing existing data"><Upload size={17} aria-hidden="true" />{importing ? "Importing…" : "Import contract file"}<input type="file" accept=".json,application/json" disabled={importing || sharing.busy} onChange={event => { const file = event.target.files?.[0]; event.target.value = ""; if (file) void importContractFile(file); }} /></label></div>
     {error && <Notice error onDismiss={() => setError("")}>{error}</Notice>}
     {message && <Notice onDismiss={() => setMessage("")}>{message}</Notice>}
     {sharing.error && <Notice error>{sharing.error}</Notice>}
