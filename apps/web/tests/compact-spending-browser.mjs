@@ -40,6 +40,11 @@ try {
         const fixture = trendsFixture();
         fixture.bundle.bankActivities.push({ ...fixture.bundle.bankActivities[0], id: "synthetic-recurring", sourceRowId: "synthetic-recurring", matchingFingerprint: "synthetic-recurring", transactionDate: "2026-09-05", descriptionOriginal: "TELUS SYNTHETIC", signedOutflowCents: 12000, debitCents: 12000, creditCents: null, accountId: "card" });
         fixture.decisions["synthetic-recurring"] = { nature: "expense", category: "other", note: "Synthetic source", updatedAt: "" };
+        for (const [index, category] of ["pets", "jasmine-school", "transport", "health", "household", "other"].entries()) {
+            const id = "synthetic-extra-category-" + index;
+            fixture.bundle.bankActivities.push({ ...fixture.bundle.bankActivities[0], id, sourceRowId: id, matchingFingerprint: id, transactionDate: "2026-09-06", descriptionOriginal: "SYNTHETIC CATEGORY " + index, signedOutflowCents: 100 + index, debitCents: 100 + index, creditCents: null, accountId: "card" });
+            fixture.decisions[id] = { nature: "expense", category, note: "Synthetic navigation fixture", updatedAt: "" };
+        }
         const library = new FinanceLibrary(join(temp, String(width)));
         let finance = (await library.import({ bundle: fixture.bundle, apply: true, expectedRevision: "empty" })).state;
         for (const [id, decision] of Object.entries(fixture.decisions)) finance = await library.decide({ id, decision, expectedRevision: finance.revision });
@@ -79,6 +84,19 @@ try {
         const tabs = await page.locator(".finance-tabs button").evaluateAll(els => els.map(el => el.getBoundingClientRect().top));
         assert(tabs.every(top => Math.abs(top - tabs[0]) < 2), "Tabs remain on one line");
         assert.equal(await page.locator(".bottom-nav button").count(), 6);
+        const categories = page.locator(".finance-expense-charts > section").first();
+        assert.equal(await categories.locator(".finance-bars li:visible").count(), 5, "Overview retains five leading categories");
+        const more = categories.locator(".finance-more-categories > summary");
+        await click(more);
+        assert.equal(await categories.locator(".finance-bars li:visible").count(), await categories.locator(".finance-bars li").count(), "Every other category remains reachable");
+        const remainder = categories.locator(".finance-more-categories .finance-bar-track > span");
+        assert((await remainder.evaluateAll(els => els.map(el => parseFloat(el.style.width)))).every(width => width < 1), "Secondary categories share the leading chart scale");
+        await categories.locator(".finance-more-categories .finance-bars button").first().click();
+        const payments = page.getByRole("dialog", { name: /^Paiements/ });
+        await payments.waitFor(); await page.keyboard.press("Escape");
+        await page.waitForFunction(() => document.activeElement?.closest(".finance-more-categories"));
+        await click(more);
+
         const filters = page.getByRole("button", { name: /^Filtres/ }), filterDialog = page.getByRole("dialog", { name: "Filtres des finances", exact: true });
         assert.equal(await filterDialog.isVisible(), false);
         const total = await page.locator(".finance-totals").first().innerText();

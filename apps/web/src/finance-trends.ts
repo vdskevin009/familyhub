@@ -61,7 +61,9 @@ export function spendingTrend(state: FinanceState, month: string, accountId = ""
             summary: summarizeSpending(state, previous + "-01", comparisonTo, accountId, currency, allRows) };
     });
     const qualified = candidates.filter(c => !c.reasons.length);
-    const baselineReady = comparable && qualified.length >= minimumBaselineMonths;
+    // A historical reference exists independently of whether the target is comparable.
+    const baselineReady = available && qualified.length >= minimumBaselineMonths;
+    const comparisonReady = comparable && baselineReady;
     const baselineCents = baselineReady ? mean(qualified.map(c => c.summary.totalCents)) : null;
     const categories = Object.keys(expenseCategories).filter(key => key !== "savings-investments").map(key => {
         const current = summary.categories.find(c => c.key === key)!;
@@ -77,7 +79,7 @@ export function spendingTrend(state: FinanceState, month: string, accountId = ""
         return { day, actualCents: actualCents === null || day > elapsedDays ? null : sumTo(summary.included), baselineCents: baselineReady ? mean(qualified.map(c => sumTo(c.summary.included))) : null };
     });
     return { month, from, to: available ? to : end, end, elapsedDays, partial, future, available, comparable, reasons, actualCents,
-        baselineCents, baselineReady, candidates, qualifiedMonths: qualified.map(c => c.month), categories, daily, summary, accounts,
+        baselineCents, baselineReady, comparisonReady, candidates, qualifiedMonths: qualified.map(c => c.month), categories, daily, summary, accounts,
         coverage: accounts.map(a => ({ account: a.name, rows: data?.coverage.filter(c => c.accountId === a.id) ?? [] })),
         warnings: [...new Set(accounts.flatMap(a => (data?.coverage.filter(c => c.accountId === a.id) ?? []).map(c => c.warning).filter((s): s is string => Boolean(s))))],
         pendingCount: data?.pendingCount ?? 0,

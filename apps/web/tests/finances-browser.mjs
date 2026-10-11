@@ -1,4 +1,4 @@
-import { openFinanceFilters, selectFinanceFilter, fillFinanceFilter } from "./finance-filter-helpers.mjs";
+import { openFinanceRegister, openFinanceSection, openFinanceFilters, selectFinanceFilter, fillFinanceFilter } from "./finance-filter-helpers.mjs";
 /** Synthetic built-PWA acceptance. No private worker or financial provider is contacted. */
 import { chromium } from "playwright";
 import assert from "node:assert/strict";
@@ -200,9 +200,11 @@ try {
         await selectFinanceFilter(page, "Vue", "year");
         assert.match(await page.locator(".finance-expense-charts > section").first().innerText(), /Courses alimentaires.*109,99/s);
         assert.match(await page.locator(".finance-expense-charts > section").first().innerText(), /Restaurants et livraison/);
-        assert.equal(await page.locator(".finance-expense-charts > section").last().locator(".finance-bars li").count(), 12);
+        await openFinanceSection(page, "Évolution mensuelle");
+        assert.equal(await page.locator(".finance-journey-disclosure").filter({ has: page.getByRole("heading", { name: "Évolution mensuelle", exact: true }) }).locator(".finance-bars li").count(), 12);
+        await openFinanceSection(page, "Évolution mensuelle");
         assert.match(await page.locator(".finance-expense-charts").innerText(), /Période partielle/);
-        await page.locator(".finance-expense-charts > section").last().getByRole("button", { name: /2026-04/ }).click();
+        await page.locator(".finance-journey-disclosure").filter({ has: page.getByRole("heading", { name: "Évolution mensuelle", exact: true }) }).getByRole("button", { name: /2026-04/ }).click();
         assert.equal(await page.getByLabel("Mois", { exact: true }).inputValue(), "4");
         assert.match(await page.locator(".finance-expense-charts > section").first().innerText(), /Courses alimentaires.*100,00/s);
         await selectFinanceFilter(page, "Vue", "custom");
@@ -220,6 +222,7 @@ try {
             await page.locator(".finance-totals").first().innerText(),
             /2\s?852/,
         );
+        await openFinanceSection(page, "Services et charges récurrentes");
         assert.match(
             await page
                 .getByRole("button", { name: /SPOTIFY SYNTHETIC.*Hausse/ })
@@ -239,6 +242,7 @@ try {
             1,
         );
         await selectFinanceFilter(page, "Devise", "CAD");
+        await openFinanceRegister(page);
         await page.getByLabel("Catégorie", { exact: true }).selectOption({ label: "Courses alimentaires" });
         assert.equal(await page.getByLabel("Catégorie", { exact: true }).inputValue(), "groceries");
         assert.equal(await page.getByLabel("Catégorie", { exact: true }).locator('option').filter({ hasText: /^Courses alimentaires$/ }).count(), 1);
@@ -294,12 +298,14 @@ try {
         await selectFinanceFilter(page, "Vue", "custom");
         await fillFinanceFilter(page, "Du", "2026-03-15");
         await fillFinanceFilter(page, "Au", "2026-09-30");
+        await openFinanceSection(page, "Évolution mensuelle");
         assert.match(
             await page.locator(".finance-expense-charts").innerText(),
             /Période partielle/,
         );
         await fillFinanceFilter(page, "Du", "2026-04-01");
         // A chart opens the full category even when the register is filtered to unreviewed Spotify rows.
+        await openFinanceRegister(page);
         await page.getByLabel("Rechercher", { exact: true }).fill("SPOTIFY");
         await page.locator(".finance-check input").check();
         const categoryBars = page.locator(".finance-expense-charts > section").first();
@@ -352,6 +358,7 @@ try {
         assert.match(await foodSheet.innerText(), /-24,50/);
         await foodSheet.getByRole("button", { name: "Fermer la catégorie", exact: true }).click();
         await page.waitForFunction(() => document.activeElement?.textContent?.startsWith("Courses alimentaires"));
+        assert.equal(await page.locator(".finance-more-categories").getAttribute("open"), "", "Category moved into the remainder is reopened for focus return");
         assert.equal(await page.getByLabel("Rechercher", { exact: true }).inputValue(), "SPOTIFY");
         assert.equal(await page.locator(".finance-check input").isChecked(), true);
         assert.equal(await page.getByLabel("Du", { exact: true }).inputValue(), "2026-04-01");
@@ -369,6 +376,7 @@ try {
         await foodBar.click(); await foodSheet.waitFor(); await page.keyboard.press("Escape");
         assert.equal(await page.locator("dialog[open]").count(), 0);
         await page.locator(".finance-check input").uncheck();
+        await openFinanceRegister(page);
         await page.getByLabel("Rechercher", { exact: true }).fill("SPOTIFY");
         await page.getByRole("button", { name: "Catégoriser les opérations", exact: true }).click();
         await sheet.getByLabel("Catégorie", { exact: true }).selectOption("recreation");
@@ -378,10 +386,13 @@ try {
         assert.match(await page.locator(".finance-expense-charts > section").first().innerText(), /Loisirs et sport.*20,00/s);
         await sheet.getByRole("button", { name: "Enregistrer la décision", exact: true }).click();
         await sheet.waitFor({ state: "hidden" });
+        await openFinanceRegister(page);
         await page.getByLabel("Rechercher", { exact: true }).fill("");
         // Explicitly classify both sides; show directions separately, never a 1,000 total.
+        await openFinanceRegister(page);
         await page.getByLabel("Opérations affichées", { exact: true }).selectOption("excluded");
         for (const description of ["TRANSFER TO SYNTHETIC", "SYNTHETIC SAVING RECEIPT"]) {
+        await openFinanceRegister(page);
             await page.locator(".finance-register button").filter({ hasText: description }).click();
             await sheet.getByLabel("Catégorie", { exact: true }).selectOption("savings-investments");
             await sheet.getByLabel("Nature", { exact: true }).selectOption("transfer");
@@ -390,7 +401,9 @@ try {
             await sheet.getByRole("button", { name: "Enregistrer la décision", exact: true }).click();
             await sheet.waitFor({ state: "hidden" });
         }
+        await openFinanceSection(page, "Épargne / Investissements classés");
         const flows = page.getByRole("region", { name: "Épargne et investissements classés", exact: true });
+        await openFinanceSection(page, "Épargne / Investissements classés");
         assert.match(await flows.locator(".finance-totals").innerText(), /Sorties classées.*500,00.*Entrées classées.*500,00/s);
         assert.match(await page.locator(".finance-totals").first().innerText(), /2\s?852/);
         assert.equal(await page.locator(".finance-tabs button").count(), 3);
@@ -399,6 +412,7 @@ try {
         assert.equal(await flows.locator(".finance-bars li").count(), 24);
         await flows.getByRole("button", { name: /2026-06/ }).first().click();
         assert.equal(await page.getByLabel("Mois", { exact: true }).inputValue(), "6");
+        await openFinanceSection(page, "Épargne / Investissements classés");
         assert.match(await flows.locator(".finance-totals").innerText(), /500,00.*500,00/s);
         await flows.getByRole("button", { name: "Voir les opérations classées", exact: true }).click();
         const categorySheet = page.getByRole("dialog", { name: /Paiements · Épargne/ });
@@ -412,6 +426,7 @@ try {
         await page.reload();
         await page.getByRole("heading", { name: "Dépenses par catégorie", exact: true }).waitFor();
         await selectFinanceFilter(page, "Mois", "6");
+        await openFinanceSection(page, "Épargne / Investissements classés");
         assert.match(await flows.locator(".finance-totals").innerText(), /500,00.*500,00/s);
         const decisions = (await finance.read()).decisions;
         assert.equal(decisions.transfer.category, "savings-investments");
@@ -419,6 +434,7 @@ try {
         assert.equal(decisions.groceries.note, "Synthetic reviewed purchase");
         await selectFinanceFilter(page, "Vue", "year");
         await flows.getByText("Flux mois par mois", { exact: true }).click();
+        await openFinanceSection(page, "Repères de dépenses");
         await page.getByLabel("Population de référence").selectOption("bc");
         assert.match(await page.locator(".finance-view").innerText(), /2023/);
         const checkExpenseWidth = async () => {
@@ -443,6 +459,13 @@ try {
         await page
             .getByRole("button", { name: "Investissements", exact: true })
             .click();
+        assert.equal(await page.locator("#investment-detail-title").count(), 0, "Account landing contains no automatic detail");
+        await page.screenshot({ path: join(screenshots, "investment-accounts-" + width + ".png"), fullPage: true });
+        await page.locator('[data-investment-account="rrsp"]').focus();
+        await page.keyboard.press("Enter");
+        await page.waitForFunction(() => document.activeElement?.id === "investment-detail-title");
+        assert.match(await page.locator(".investment-summary").innerText(), /Valeur observée.*2026-10-09/s);
+        await page.getByText("Positions et montants", { exact: true }).click();
         await page
             .getByRole("heading", { name: "REER de test", exact: true })
             .waitFor();
@@ -454,6 +477,8 @@ try {
             await page.locator(".finance-view").innerText(),
             /Cotisations identifiées/,
         );
+        await page.getByRole("button", { name: "Retour aux comptes", exact: true }).click();
+        await page.waitForFunction(() => document.activeElement?.getAttribute("data-investment-account") === "rrsp");
         await page.getByRole("button", { name: /CPG de test.*gic/ }).click();
         await page
             .getByRole("heading", { name: "Échéance du CPG : 2027-08-01" })
@@ -617,6 +642,7 @@ try {
         // A newly available category uses the existing persistent editor, filter and all-row drill-down.
         await page.goto(base + "?view=finances");
         await selectFinanceFilter(page, "Vue", "year");
+        await openFinanceRegister(page);
         await page.locator(".finance-register button").filter({ hasText: "SYNTHETIC RESTAURANT" }).first().click();
         const petEditor = page.getByRole("dialog", { name: /Vérifier l.opération/ });
         await petEditor.getByLabel("Catégorie", { exact: true }).selectOption("pets");
@@ -625,9 +651,13 @@ try {
         await petEditor.waitFor({ state: "hidden" });
         await page.reload();
         await selectFinanceFilter(page, "Vue", "year");
+        await openFinanceRegister(page);
         await page.getByLabel("Catégorie", { exact: true }).selectOption("pets");
+        await openFinanceRegister(page);
         assert.equal(await page.locator(".finance-register button").filter({ hasText: "SYNTHETIC RESTAURANT" }).count(), 1);
+        await openFinanceRegister(page);
         assert.equal(await page.locator(".finance-register button").filter({ hasText: "SPOTIFY SYNTHETIC" }).count(), 0);
+        await openFinanceRegister(page);
         assert.match(await page.locator(".finance-register button").filter({ hasText: "SYNTHETIC RESTAURANT" }).innerText(), /Animaux de compagnie.*Confirmé/s);
         await page.locator(".finance-expense-charts").getByRole("button", { name: /Animaux de compagnie/ }).click();
         const petPayments = page.getByRole("dialog", { name: /^Paiements.*Animaux de compagnie$/ });

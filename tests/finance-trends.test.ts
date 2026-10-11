@@ -29,7 +29,7 @@ test("explicit school category retains net refunds and comparable personal histo
 test("last observed movement exposes the unresolved dates without asserting missing transactions or blaming classification", () => {
     const s = state(); s.data!.coverage.find(c => c.accountId === "card")!.latest = "2026-08-22";
     const result = trend(s, "2026-08");
-    assert.equal(result.comparable, false); assert.equal(result.baselineCents, null);
+    assert.equal(result.comparable, false); assert.equal(result.comparisonReady, false); assert.notEqual(result.baselineCents, null);
     assert.match(result.reasons.join(" "), /dernier mouvement importé le 2026-08-22; couverture du 2026-08-23 au 2026-08-31 non établie/);
     assert.doesNotMatch(result.reasons.join(" "), /manquant|catégorie|classification/);
     assert.equal(trend({ ...s, decisions: {} }, "2026-08").reasons.join(" "), result.reasons.join(" "));
@@ -72,7 +72,9 @@ test("missing account coverage blocks a household baseline without inventing zer
     assert.equal(trend(s, "2026-10", "", "USD").baselineCents, null);
     assert.equal(trend(s, "2026-10", "card", "USD").actualCents, null);
     s.data!.coverage.find(c => c.accountId === "card")!.latest = "2026-08-24";
-    assert.equal(trend(s, "2026-10", "card").baselineCents, null);
+    assert.equal(trend(s, "2026-10", "card").baselineCents, 10500);
+    assert.deepEqual(trend(s, "2026-10", "card").qualifiedMonths, ["2026-04", "2026-05", "2026-06", "2026-07"]);
+    assert.equal(trend(s, "2026-10", "card").comparisonReady, false);
 });
 
 test("at least three bounded months are required and disconnected intervals do not bridge gaps", () => {
@@ -143,3 +145,18 @@ test("month boundaries respect leap years, year changes and a shorter baseline m
     assert.equal(t.qualifiedMonths.includes("2026-02"), false); assert.match(t.candidates.at(-1)!.reasons.join(" "), /court/);
     assert.throws(() => trend(s, "invalid"), /Mois invalide/);
 });
+
+ test("an observed historical reference does not certify current account coverage", () => {
+    const s = state(), facts = JSON.stringify(s);
+    s.data!.coverage.find(c => c.accountId === "card")!.latest = "2026-09-30";
+    const before = JSON.stringify(s), t = trend(s);
+    assert.equal(t.actualCents, 78000);
+    assert.equal(t.baselineCents, 71500);
+    assert.equal(t.baselineReady, true);
+    assert.equal(t.comparable, false);
+    assert.equal(t.comparisonReady, false);
+    assert.equal(t.qualifiedMonths.length, 6);
+    assert.equal(t.daily.at(-1)?.baselineCents, 71500);
+    assert.notEqual(before, facts);
+    assert.equal(JSON.stringify(s), before, "Derivation never writes source facts or decisions");
+ });

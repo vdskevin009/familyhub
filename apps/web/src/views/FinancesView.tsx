@@ -30,6 +30,7 @@ import PeriodNavigator from "./PeriodNavigator";
 import FinanceScope from "./FinanceScope";
 import InfoPopover from "../ui/InfoPopover";
 import "../compact-finances.css";
+import "../finance-journeys.css";
 const money = (cents: number, currency = "CAD") =>
     new Intl.NumberFormat("fr-CA", { style: "currency", currency }).format(
         cents / 100,
@@ -58,18 +59,21 @@ function Bars({
     values,
     onSelect,
     currency = "CAD",
+    scale,
 }: {
     values: { id: string; label: string; cents: number; note?: string }[];
     onSelect?: (id: string) => void;
     currency?: string;
+    scale?: number;
 }) {
-    const max = Math.max(1, ...values.map((v) => Math.abs(v.cents)));
+    const max = scale ?? Math.max(1, ...values.map((v) => Math.abs(v.cents)));
     return (
         <ul className="finance-bars">
             {values.map((v) => (
                 <li key={v.id}>
                     <button
                         type="button"
+                        data-finance-bar={v.id}
                         disabled={!onSelect}
                         onClick={() => onSelect?.(v.id)}
                     >
@@ -290,8 +294,14 @@ export default function FinancesView({
     function closeCategory() {
         setCategoryPayments(null);
         requestAnimationFrame(() => {
-            if (categoryTrigger.current?.isConnected) categoryTrigger.current.focus();
-            else document.querySelector<HTMLElement>(tab === "trends" ? ".trend-months button.selected" : ".finance-expense-charts button")?.focus();
+            // A saved category can move out of the leading five; return to it without focusing a hidden control.
+            const current = tab === "expenses" ? [...document.querySelectorAll<HTMLButtonElement>(".finance-expense-charts [data-finance-bar]")].find(el => el.dataset.financeBar === categoryPayments) : null;
+            if (current) {
+                const disclosure = current.closest<HTMLDetailsElement>(".finance-more-categories");
+                if (disclosure) disclosure.open = true;
+                current.focus();
+            } else if (categoryTrigger.current?.isConnected && categoryTrigger.current.getClientRects().length) categoryTrigger.current.focus();
+            else document.querySelector<HTMLElement>(tab === "trends" ? "#trends-month-title, .trend-months button.selected" : ".finance-expense-charts button")?.focus();
         });
     }
     const [bundle, setBundle] = useState<unknown>(null),
@@ -299,11 +309,20 @@ export default function FinancesView({
             ReturnType<typeof importFinances>
         > | null>(null),
         [investmentAccount, setInvestmentAccount] = useState("");
+    const [investmentDetail, setInvestmentDetail] = useState(false);
+    function openInvestment(id: string) {
+        setInvestmentAccount(id); setInvestmentDetail(true);
+        requestAnimationFrame(() => document.getElementById("investment-detail-title")?.focus());
+    }
+    function closeInvestment() {
+        setInvestmentDetail(false);
+        requestAnimationFrame(() => [...document.querySelectorAll<HTMLButtonElement>("[data-investment-account]")].find(el => el.dataset.investmentAccount === selected?.id)?.focus());
+    }
     const paired = Boolean(hub.worker.Endpoint && hub.worker.ApiKey);
     const openedLink = useRef(false);
     const initialize = (s: FinanceState) => {
         setState(s);
-        if (s.data && !trendMonth) setTrendMonth(defaultPeriod(s.data.scope).from.slice(0, 7));
+        if (s.data && !trendMonth) setTrendMonth(s.data.scope.to.slice(0, 7));
         if (s.data && !from) {
             const period = defaultPeriod(s.data.scope);
             setFrom(period.from); setTo(period.to);
@@ -316,7 +335,7 @@ export default function FinancesView({
                 if (row) { const period = calendarPeriod(Number(row.date.slice(0, 4)), Number(row.date.slice(5, 7))); setFrom(period.from); setTo(period.to); setCurrency(row.currency); openDecision(record, s); }
                 else setMessage("L’opération liée n’est pas présente dans les sources chargées.");
             }
-            if (query.get("tab") === "investments") { setTab("investments"); setInvestmentAccount(query.get("account") ?? ""); }
+            if (query.get("tab") === "investments") { setTab("investments"); setInvestmentAccount(query.get("account") ?? ""); setInvestmentDetail(Boolean(query.get("account"))); }
             const start = query.get("from"), end = query.get("to");
             if (start && end && /^\d{4}-\d{2}-\d{2}$/.test(start) && /^\d{4}-\d{2}-\d{2}$/.test(end) && start <= end && Date.parse(end) - Date.parse(start) < 366 * 86400000) { setFrom(start); setTo(end); }
             const linkedCurrency = query.get("currency");
@@ -537,11 +556,12 @@ export default function FinancesView({
             .filter((g) => g.accountId === selected?.id)
             .sort((a, b) => b.issueDate.localeCompare(a.issueDate))[0];
     const recurring = recurringObservations(summary?.rows ?? []);
+    const expenseValues = summary?.categories.filter(c => c.count).sort((a, b) => b.cents - a.cents).map(c => ({ id: c.key, label: expenseCategories[c.key], cents: c.cents })) ?? [];
+    const expenseScale = Math.max(1, ...expenseValues.map(c => Math.abs(c.cents)));
     return (
         <section className="view-stack finance-view">
             <PageHeader
                 title="Finances"
-                subtitle="Comprendre les dépenses et les placements"
             >
                 <button
                     className="button secondary"
@@ -605,7 +625,7 @@ export default function FinancesView({
             )}
             {data && state && summary && (
                 <>
-                    {tab === "investments" ? <PeriodNavigator range={{ from, to }} scope={data.scope} onChange={range => { setFrom(range.from); setTo(range.to); }} /> :
+                    {tab === "investments" ? investmentDetail && <details className="finance-journey-controls"><summary>Période des activités : {from} au {to}</summary><PeriodNavigator range={{ from, to }} scope={data.scope} onChange={range => { setFrom(range.from); setTo(range.to); }} /></details> :
                         <FinanceScope data={data} range={tab === "expenses" ? { from, to } : undefined} onPeriod={range => { setFrom(range.from); setTo(range.to); }} account={account} currency={currency} onAccount={setAccount} onCurrency={setCurrency} />}
                     {tab !== "trends" && from > to && (
                         <Notice error>
@@ -637,22 +657,12 @@ export default function FinancesView({
                                 <section className="surface view-stack">
                                     <h2>Dépenses par catégorie</h2>
                                     {summary.included.length ? (
-                                        <Bars
-                                            currency={currency}
-                                            values={summary.categories
-                                                .filter((c) => c.count)
-                                                .sort(
-                                                    (a, b) => b.cents - a.cents,
-                                                )
-                                                .map((c) => ({
-                                                    id: c.key,
-                                                    label: expenseCategories[
-                                                        c.key
-                                                    ],
-                                                    cents: c.cents,
-                                                }))}
-                                            onSelect={key => openCategory(key as ExpenseCategory)}
-                                        />
+                                        <>
+                                            <Bars currency={currency} values={expenseValues.slice(0, 5)} scale={expenseScale} onSelect={key => openCategory(key as ExpenseCategory)} />
+                                            {expenseValues.length > 5 && <details className="finance-more-categories"><summary>Autres catégories ({expenseValues.length - 5})</summary>
+                                                <Bars currency={currency} values={expenseValues.slice(5)} scale={expenseScale} onSelect={key => openCategory(key as ExpenseCategory)} />
+                                            </details>}
+                                        </>
                                     ) : (
                                         <p>
                                             Aucune dépense comptabilisée pour ce
@@ -660,6 +670,7 @@ export default function FinancesView({
                                         </p>
                                     )}
                                 </section>
+                                <details className="finance-journey-disclosure"><summary>Évolution mensuelle</summary>
                                 <section className="surface view-stack">
                                     <div className="compact-heading"><h2>Évolution mensuelle</h2><InfoPopover title="Évolution mensuelle"><p>Un mois partiel n’est pas extrapolé. Une absence de lignes ne prouve pas une absence de dépenses.</p></InfoPopover></div>
                                     <Bars
@@ -676,7 +687,9 @@ export default function FinancesView({
                                     />
 
                                 </section>
+                                </details>
                             </div>
+                            <details className="finance-journey-disclosure"><summary>Épargne / Investissements classés</summary>
                             <section className="surface view-stack finance-savings-flow" aria-label="Épargne et investissements classés">
                                 <h2>Épargne / Investissements</h2>
                                 {summary.savings.count > 0 ? <>
@@ -692,6 +705,8 @@ export default function FinancesView({
                                     <button className="button secondary" onClick={() => openCategory("savings-investments")}>Voir les opérations classées</button>
                                 </> : <p>Aucun mouvement d'épargne ou de placement explicitement classé dans cette période. Choisissez « Épargne / Investissements » lors de la catégorisation d'une opération; aucune affectation automatique n'est faite.</p>}
                             </section>
+                            </details>
+                            <details className="finance-journey-disclosure"><summary>Voir les opérations et catégories ({rows.length})</summary>
                             <section className="surface view-stack">
                                 <h2>Opérations et catégories</h2>
                                 {undoOptions.length > 0 && <details className="finance-edit-history">
@@ -829,6 +844,8 @@ export default function FinancesView({
                                     </button>
                                 </div>
                             </section>
+                            </details>
+                            <details className="finance-journey-disclosure"><summary>Repères de dépenses</summary>
                             <Benchmarks
                                 state={state}
                                 from={from}
@@ -836,6 +853,8 @@ export default function FinancesView({
                                 account={account}
                                 currency={currency}
                             />
+                            </details>
+                            <details className="finance-journey-disclosure"><summary>Services et charges récurrentes</summary>
                             <section className="surface view-stack">
                                 <h2>Pistes à examiner</h2>
                                 <p>
@@ -933,17 +952,13 @@ export default function FinancesView({
                                     modification de contrat n'est effectuée.
                                 </p>
                             </section>
+                            </details>
                         </>
                     ) : (
                         <>
+                            {!investmentDetail && <>
                             <section className="surface view-stack">
-                                <h2>Comptes et valeurs observées</h2>
-                                <p>
-                                    Chaque valeur garde sa date. Les cartes de
-                                    crédit ne sont pas des placements. Les
-                                    instantanés de dates différentes ne forment
-                                    pas un patrimoine synchronisé.
-                                </p>
+                                <div className="compact-heading"><h2>Comptes et valeurs observées</h2><InfoPopover title="Valeurs des comptes"><p>Chaque valeur conserve sa date et sa devise. Les instantanés de dates différentes ne constituent pas un patrimoine synchronisé; aucun rendement ou cours en direct n'est déduit.</p></InfoPopover></div>
                                 <div className="finance-register">
                                     {investmentAccounts.map((a) => {
                                         const h = data.holdings
@@ -954,9 +969,10 @@ export default function FinancesView({
                                         return (
                                             <button
                                                 key={a.id}
-                                                className={`finance-service ${selected?.id === a.id ? "selected" : ""}`}
+                                                data-investment-account={a.id}
+                                                className="finance-service"
                                                 onClick={() =>
-                                                    setInvestmentAccount(a.id)
+                                                    openInvestment(a.id)
                                                 }
                                             >
                                                 <span>
@@ -985,14 +1001,18 @@ export default function FinancesView({
                                     })}
                                 </div>
                             </section>
-                            {selected && (
+                            </>}
+                            {selected && investmentDetail && (
                                 <section className="surface view-stack">
-                                    <h2>{selected.name}</h2>
+                                    <div className="compact-heading"><button type="button" className="button secondary" onClick={closeInvestment}>Retour aux comptes</button><InfoPopover title="Valeur observée"><p>La valeur conserve sa date source et sa devise. Les flux de la période sont distincts de la valeur du compte; aucun rendement ni droit de cotisation n'est estimé.</p></InfoPopover></div>
+                                    <h2 id="investment-detail-title" tabIndex={-1}>{selected.name}</h2>
+                                    <div className="finance-totals investment-summary"><div><small>Valeur observée · {latest?.asOf ?? selected.asOf}</small><strong>{latest ? money(latest.totalCents, latest.currency) : selected.balanceCents === null ? "Valeur manquante" : money(selected.balanceCents, selected.currency)}</strong></div></div>
                                     <Sources
                                         sources={[
                                             latest?.source ?? selected.source,
                                         ]}
                                     />
+                                    <details className="finance-journey-disclosure"><summary>Positions et montants</summary>
                                     {latest ? (
                                         <>
                                             <h3>
@@ -1054,6 +1074,7 @@ export default function FinancesView({
                                             pour ce compte.
                                         </p>
                                     )}
+                                    </details>
                                     {gic && (
                                         <div className="finance-maturity">
                                             <h3>
@@ -1127,6 +1148,7 @@ export default function FinancesView({
                                                     </strong>
                                                 </div>
                                             </div>
+                                            <InfoPopover title="Calcul des flux de placement">
                                             <p className="muted">
                                                 Cotisations, transferts et
                                                 subventions ne sont pas des
@@ -1137,6 +1159,7 @@ export default function FinancesView({
                                                 ce total n’est pas le coût
                                                 global.
                                             </p>
+                                            </InfoPopover>
                                             <details>
                                                 <summary>
                                                     Historique des activités (
@@ -1187,6 +1210,7 @@ export default function FinancesView({
                                             frais ne sont pas présumés nuls.
                                         </p>
                                     )}
+                                    <details className="finance-journey-disclosure"><summary>Historique des valeurs</summary>
                                     <h3>Historique des valeurs</h3>
                                     {performance?.trend.length ? (
                                         <>
@@ -1223,6 +1247,7 @@ export default function FinancesView({
                                             rendement.
                                         </p>
                                     )}
+                                    </details>
                                     {data.feeReports
                                         .filter(
                                             (r) => r.accountId === selected.id,
@@ -1246,6 +1271,7 @@ export default function FinancesView({
                                                 <Sources sources={[r.source]} />
                                             </details>
                                         ))}
+                                    <details className="finance-journey-disclosure"><summary>Points à vérifier</summary>
                                     <h3>Points de revue</h3>
                                     <p>
                                         {flows.feesCents > 0
@@ -1257,6 +1283,7 @@ export default function FinancesView({
                                         officielles; aucun plafond personnel
                                         n’est déduit de cet historique.
                                     </p>
+                                    </details>
                                 </section>
                             )}
                         </>

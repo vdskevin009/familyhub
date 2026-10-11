@@ -18,3 +18,13 @@ export async function fillFinanceFilter(page, label, value) {
     await control.fill(value);
     if (!wasVisible) await page.getByRole("button", { name: "Voir les résultats", exact: true }).click();
 }
+
+export async function openFinanceRegister(page) {
+    const disclosure = page.locator(".finance-journey-disclosure").filter({ has: page.locator(".finance-register") }).first();
+    await disclosure.waitFor({ state: "attached" });
+    if (await disclosure.getAttribute("open") === null) await disclosure.locator(":scope > summary").click();
+}
+export async function openFinanceSection(page, label) {
+    const summary = page.locator(".finance-journey-disclosure > summary").filter({ hasText: label }).first();
+    if (await summary.count() && !await summary.evaluate(el => el.parentElement.open)) await summary.click();
+}
