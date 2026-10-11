@@ -10,13 +10,45 @@ import { prepareFinanceChange, FinanceConflict } from "../apps/worker/dist/finan
 import { categoryNameKey, categoryScope, financeUndoOptions } from "../apps/worker/dist/finance-category-match.js";
 import { validateFinanceState } from "../apps/worker/dist/finance-validation.js";
 import { FinanceLibrary } from "../apps/worker/dist/finance-library.js";
-import { classifiedRows, summarizeSpending } from "../apps/worker/dist/finance-model.js";
+import { classifiedRows, summarizeSpending, suggestClassification } from "../apps/worker/dist/finance-model.js";
 
 const state = () => ({ schema: 1, revision: "initial", importedAt: "2026-10-01", data: parseFinancePreparation(categoryFixture()), decisions: structuredClone(categoryDecisions), decisionHistory: [], imports: [] });
 const decision = { nature: "expense", category: "groceries", note: "Primary synthetic note" };
 const input = (s, extra = {}) => ({ requestId: randomUUID(), expectedRevision: s.revision, kind: "decision", id: "a", decision, ...extra });
 const group = s => prepareFinanceChange(s, input(s, { allSameName: true, expectedCount: 10 }));
 const undo = (s, operation, extra = {}) => prepareFinanceChange(s, { requestId: randomUUID(), expectedRevision: s.revision, kind: "undo", undoOf: operation.id, ...extra });
+
+test("school category is explicit only and persists single/bulk choices without changing source facts or totals", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "fh-school-category-"));
+    try {
+        const lib = new FinanceLibrary(dir);
+        let s = (await lib.import({ bundle: categoryFixture(), apply: true, expectedRevision: "empty" })).state;
+        for (const [id, decision] of Object.entries(categoryDecisions)) s = await lib.decide({ id, decision, expectedRevision: s.revision });
+        const facts = structuredClone(s.data), original = classifiedRows(s), summary = summarizeSpending(s, "2026-01-01", "2026-12-31");
+        assert.notEqual(suggestClassification({ ...s.data.transactions[0], description: "Jasmine school" }).category, "jasmine-school");
+        const selected = { ...decision, category: "jasmine-school" };
+        const single = await lib.change(input(s, { decision: selected }));
+        assert.equal(single.operation.count, 1);
+        s = await new FinanceLibrary(dir).read();
+        assert.equal(s.decisions.a.category, "jasmine-school");
+        assert.equal(s.decisions.confirmed.category, "groceries");
+        const bulk = await lib.change(input(s, { decision: selected, allSameName: true, expectedCount: 11 }));
+        assert.equal(bulk.operation.count, 11);
+        const saved = await new FinanceLibrary(dir).read();
+        for (const row of categoryScope(s, "a", selected).affected) {
+            assert.equal(saved.decisions[row.id].category, "jasmine-school");
+            if (row.id !== "a") {
+                assert.equal(saved.decisions[row.id].nature, original.find(r => r.id === row.id).nature);
+                assert.equal(saved.decisions[row.id].note, s.decisions[row.id]?.note ?? "");
+            }
+        }
+        const updated = summarizeSpending(saved, "2026-01-01", "2026-12-31");
+        assert.ok(updated.categories.find(c => c.key === "jasmine-school").count > 0);
+        assert.equal(updated.totalCents, summary.totalCents);
+        assert.deepEqual(saved.data, facts);
+        assert.deepEqual(validateFinanceState(saved), saved);
+    } finally { await rm(dir, { recursive: true, force: true }); }
+});
 
 test("exact normalized names retain accents, punctuation, digits and suffixes", () => {
     assert.equal(categoryNameKey("  CaFe\u0301 \t SHOP 01 "), categoryNameKey("café shop 01"));

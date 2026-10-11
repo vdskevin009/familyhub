@@ -144,7 +144,30 @@ try {
             await editor.getByRole("alert").filter({ hasText: /2.25.0/ }).waitFor();
             await page.keyboard.press("Escape");
         }
-        console.log(`Finance changes ${width}px: bulk scope, disabled rapid edits, undo after reload, lost-response retry, conflict and compact total passed`);
+        // The added category uses the same explicit single/bulk and persisted summary paths.
+        await open();
+        const category = editor.getByLabel("Catégorie", { exact: true });
+        assert.equal(await category.getByRole("option", { name: "Jasmine school", exact: true }).count(), 1);
+        await category.selectOption("jasmine-school");
+        assert.equal(await checkbox.isChecked(), false);
+        await editor.getByRole("button", { name: "Enregistrer la décision", exact: true }).click();
+        await editor.waitFor({ state: "hidden" });
+        assert.equal((await finance.read()).operations.at(-1).count, 1);
+        await open(); await checkbox.check();
+        await editor.getByRole("button", { name: "Enregistrer 11 opérations", exact: true }).click();
+        await editor.waitFor({ state: "hidden" });
+        const school = await finance.read();
+        assert.equal(school.decisions.confirmed.category, "jasmine-school");
+        assert.equal(school.decisions.refund.nature, "refund");
+        assert.equal(school.decisions.repayment.nature, "repayment");
+        assert.deepEqual(school.data, initial.data);
+        await page.reload(); await page.getByRole("heading", { name: "Dépenses par catégorie", exact: true }).waitFor();
+        await page.getByRole("button", { name: /^Jasmine school/ }).waitFor();
+        await open(); assert.equal(await category.inputValue(), "jasmine-school");
+        assert.equal(await editor.evaluate(el => el.scrollWidth > el.clientWidth), false);
+        await page.keyboard.press("Escape");
+        assert.deepEqual(errors, []);
+        console.log(`Finance changes ${width}px: bulk/undo/retry/conflict, compact total and school single/bulk/reload/summary passed`);
         await context.close();
     }
 } finally { await browser?.close(); await new Promise(resolve => server.close(resolve)); await rm(temp, { recursive: true, force: true }); }

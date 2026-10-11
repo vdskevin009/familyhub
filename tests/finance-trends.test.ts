@@ -11,6 +11,21 @@ const state = (): FinanceState => {
 };
 const trend = (s: FinanceState, month = "2026-10", account = "", currency = "CAD", today = "2026-10-10") => spendingTrend(s, month, account, currency, today);
 
+test("explicit school category retains net refunds and comparable personal history", () => {
+    const s = state(), facts = structuredClone(s.data), original = trend(s);
+    for (const decision of Object.values(s.decisions)) {
+        if (decision.category === "groceries") decision.category = "jasmine-school";
+    }
+    const result = trend(s), school = result.categories.find(c => c.key === "jasmine-school");
+    assert.equal(school?.label, "Jasmine school");
+    assert.equal(school?.actualCents, 18000);
+    assert.equal(school?.baselineCents, 11500);
+    assert.equal(school?.count, 2);
+    assert.equal(result.actualCents, original.actualCents);
+    assert.equal(result.baselineCents, original.baselineCents);
+    assert.deepEqual(s.data, facts);
+});
+
 test("last observed movement exposes the unresolved dates without asserting missing transactions or blaming classification", () => {
     const s = state(); s.data!.coverage.find(c => c.accountId === "card")!.latest = "2026-08-22";
     const result = trend(s, "2026-08");
