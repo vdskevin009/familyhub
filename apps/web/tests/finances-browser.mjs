@@ -309,6 +309,18 @@ try {
         await foodSheet.waitFor();
         assert.equal(await page.locator("dialog[open]").count(), 1);
         assert.equal(await foodSheet.locator(".finance-register button").count(), 2);
+        // Category drill-down must offer Save & Next for previously confirmed payments.
+        const categoryRows = foodSheet.locator(".finance-register button");
+        const secondDate = (await categoryRows.nth(1).innerText()).match(/\d{4}-\d{2}-\d{2}/)?.[0];
+        assert.ok(secondDate);
+        await categoryRows.first().click();
+        assert.equal(await sheet.locator(".finance-decision-actions > button").count(), 2);
+        await sheet.getByRole("button", { name: "Enregistrer et suivante", exact: true }).click();
+        await page.waitForFunction(date => document.querySelector("dialog[open] .finance-decision-form > p")?.textContent?.includes(date), secondDate);
+        assert.equal(await page.locator("dialog[open]").count(), 1, "Editor stays open on the next category payment");
+        await sheet.getByRole("button", { name: "Retour aux paiements de la catégorie", exact: true }).click();
+        await foodSheet.waitFor();
+        assert.equal(await foodSheet.locator(".finance-register button").count(), 2);
         assert.match(await foodSheet.innerText(), /100,00/);
         assert.equal(await foodSheet.evaluate(el => el.scrollWidth > el.clientWidth), false, "Category dialog overflow");
         await foodSheet.screenshot({ path: join(screenshots, "category-" + width + ".png") });

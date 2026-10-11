@@ -278,6 +278,7 @@ export default function FinancesView({
         });
     const [categoryPayments, setCategoryPayments] = useState<ExpenseCategory | null>(null);
     const savingDecision = useRef(false);
+    const categoryQueue = useRef<string[] | null>(null);
     const [allSameName, setAllSameName] = useState(false), [staleDraft, setStaleDraft] = useState(false);
     const attempt = useRef<{ intent: string; requestId: string } | null>(null);
     const categoryTrigger = useRef<HTMLElement | null>(null);
@@ -414,6 +415,13 @@ export default function FinancesView({
         setBusy(true);
         setError("");
         let confirmed = false;
+        // Preserve the original review order even if saving changes a row's category.
+        const queue = categoryQueue.current;
+        const ids = queue ?? rows.map(row => row.id);
+        const currentIndex = ids.indexOf(editing);
+        const candidates = queue
+            ? ids.slice(currentIndex + 1)
+            : [...ids.slice(currentIndex + 1), ...ids.slice(0, Math.max(currentIndex, 0))];
         try {
             setMessage("");
             const input = { kind: "decision", id: editing, decision, allSameName, ...(allSameName ? { expectedCount: categoryScope(state, editing, decision, classified).affected.length } : {}) };
@@ -426,8 +434,9 @@ export default function FinancesView({
             const saved = result.refreshRequired ? await fetchFinances(hub.worker) : applyFinanceDelta(state, result, requestId);
             setState(saved);
             attempt.current = null;
-            const following = next ? rows.find(r => r.id !== editing && !saved.decisions[r.id]) : undefined;
-            if (following) openDecision(following.id, saved); else setEditing(null);
+            const present = new Set(saved.data?.transactions.map(row => row.id) ?? []);
+            const following = next ? candidates.find(id => present.has(id) && (queue !== null || !saved.decisions[id])) : undefined;
+            if (following) openDecision(following, saved, queue ?? undefined); else setEditing(null);
             setMessage(result.operation.count === 1 ? "Décision enregistrée sur le PC." : `${result.operation.count} décisions enregistrées sur le PC.`);
         } catch (e) {
             setError((e as Error).message);
@@ -464,10 +473,11 @@ export default function FinancesView({
                     b.date.localeCompare(a.date) || a.id.localeCompare(b.id),
             ) ?? [];
     const editRow = classified.find((r) => r.id === editing);
-    function openDecision(id: string, saved = state) {
+    function openDecision(id: string, saved = state, queueIds?: string[]) {
         if (!saved) return;
         const row = classifiedRows(saved).find(r => r.id === id);
         if (!row) return;
+        categoryQueue.current = queueIds ?? null;
         setEditing(id); setError("");
         setAllSameName(false); setStaleDraft(false); attempt.current = null;
         setDecision({ nature: row.nature, category: row.category, note: saved.decisions[id]?.note ?? "", updatedAt: "" });
@@ -476,7 +486,7 @@ export default function FinancesView({
         if (savingDecision.current || busy) return;
         setBusy(true);
         setError("");
-        try { const saved = await fetchFinances(hub.worker); setState(saved); attempt.current = null; if (editing) openDecision(editing, saved); else setStaleDraft(false); setMessage("Données du PC actualisées."); }
+        try { const saved = await fetchFinances(hub.worker); setState(saved); attempt.current = null; if (editing) openDecision(editing, saved, categoryQueue.current ?? undefined); else setStaleDraft(false); setMessage("Données du PC actualisées."); }
         catch (e) { setError((e as Error).message); }
         finally { setBusy(false); }
     }
@@ -1252,7 +1262,7 @@ export default function FinancesView({
                     )}
                 </>
             )}
-            <CategoryPayments category={categoryPayments} open={Boolean(categoryPayments) && !editing} summary={tab === "trends" ? trend?.summary ?? null : summary} accounts={data?.accounts ?? []} account={account} currency={currency} from={tab === "trends" ? trend?.from ?? "" : from} to={tab === "trends" ? trend?.to ?? "" : to} onClose={closeCategory} onEdit={openDecision} />
+            <CategoryPayments category={categoryPayments} open={Boolean(categoryPayments) && !editing} summary={tab === "trends" ? trend?.summary ?? null : summary} accounts={data?.accounts ?? []} account={account} currency={currency} from={tab === "trends" ? trend?.from ?? "" : from} to={tab === "trends" ? trend?.to ?? "" : to} onClose={closeCategory} onEdit={(id, queueIds) => openDecision(id, state, queueIds)} />
             {paired && (
                 <details className="surface finance-import">
                     <summary>
@@ -1453,12 +1463,15 @@ export default function FinancesView({
                             />
                         </label>
                         <Sources sources={editRow.sources} />
-                        <button className="button" disabled={busy || staleDraft} aria-describedby={allSameName ? "finance-bulk-scope" : undefined}>
-                            {busy
-                                ? "Enregistrement…"
-                                : allSameName ? `Enregistrer ${scope?.affected.length ?? 1} opérations` : "Enregistrer la décision"}
-                        </button>
-                        {categoryPayments ? <button className="button secondary" type="button" disabled={busy} onClick={() => setEditing(null)}>Retour aux paiements de la catégorie</button> : <button className="button secondary" type="button" disabled={busy || staleDraft} onClick={() => void saveDecision(true)}>Enregistrer et suivante</button>}
+                        <div className="finance-decision-actions">
+                            <button className="button" type="submit" disabled={busy || staleDraft} aria-describedby={allSameName ? "finance-bulk-scope" : undefined}>
+                                {busy
+                                    ? "Enregistrement…"
+                                    : allSameName ? `Enregistrer ${scope?.affected.length ?? 1} opérations` : "Enregistrer la décision"}
+                            </button>
+                            <button className="button secondary" type="button" disabled={busy || staleDraft} onClick={() => void saveDecision(true)}>Enregistrer et suivante</button>
+                        </div>
+                        {categoryPayments && <button className="button secondary" type="button" disabled={busy} onClick={() => setEditing(null)}>Retour aux paiements de la catégorie</button>}
                         {staleDraft && <button className="button secondary" type="button" disabled={busy} onClick={() => void reloadDecision()}>Recharger la décision du PC et remplacer ce brouillon</button>}
                         {busy && <p role="status">{staleDraft ? "Actualisation" : "Enregistrement"} en cours sur le PC…</p>}
                         {message && staleDraft && <Notice>{message}</Notice>}
