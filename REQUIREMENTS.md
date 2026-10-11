@@ -1,5 +1,12 @@
 # FamilyHub — Canonical Requirements
 
+## Batch categorization and review ordering — 2026-10-11
+
+| ID | Requirement | Status | Implementation / validation |
+|---|---|---|---|
+| FH-FIN-017 | **Enregistrer et suivante** must support the same opt-in all-same-name bulk categorization as Save, show how many entries will change and skip all group-edited rows when advancing. Sort finance review lists and category drill-down by signed amount descending with deterministic ties; sort filter and editor category names alphabetically ascending in French without changing category keys, existing decisions, source facts or calculations. | Implemented; release verification tracked in #188 | UI-only `finance-order`, `FinancesView`, `CategoryPayments`, and four-width browser regressions for group Save & Next, order, audit/undo. Existing private paired worker unchanged. |
+
+
 ## Explicit school category - 2026-10-11
 
 | ID | Requirement | Status | Implementation / validation |

@@ -76,9 +76,17 @@ try {
         const register = page.getByRole("heading", { name: "Opérations et catégories", exact: true }).locator("..").locator(".finance-register");
         const editor = page.getByRole("dialog", { name: "Vérifier l’opération", exact: true });
         const open = async () => { await register.getByRole("button").filter({ hasText: /MAPLE MARKET 01/ }).first().click(); await editor.waitFor(); };
+        // Financial amounts (signed cents) order the register, even when dates differ.
+        assert.match(await register.locator(".finance-service").first().innerText(), /MAPLE MÁRKET 01/);
+        const filterOptions = await page.getByLabel("Catégorie", { exact: true }).locator("option").allTextContents();
+        const alphabetical = values => [...values].sort((a, b) => a.localeCompare(b, "fr-CA", { sensitivity: "base" }));
+        assert.deepEqual(filterOptions.slice(1), alphabetical(filterOptions.slice(1)), "Category filter is alphabetical (French), excluding All");
+
         await open();
         const checkbox = editor.getByRole("checkbox", { name: /Appliquer la catégorie/ });
         assert.equal(await checkbox.isChecked(), false);
+        const editorOptions = await editor.getByLabel("Catégorie", { exact: true }).locator("option").allTextContents();
+        assert.deepEqual(editorOptions, alphabetical(editorOptions), "Editor category names are ascending alphabetical");
         await editor.getByLabel("Catégorie", { exact: true }).selectOption("groceries");
         await editor.getByLabel("Note de décision").fill("Only this synthetic row note");
         await checkbox.check();
@@ -87,14 +95,22 @@ try {
         assert.equal(await editor.evaluate(el => el.scrollWidth > el.clientWidth), false);
         await editor.screenshot({ path: join(output, "bulk-" + width + ".png") });
         mode = "hold"; const count = requests.length, beforeGets = gets;
-        await editor.getByRole("button", { name: "Enregistrer 10 opérations", exact: true }).evaluate(el => { el.click(); el.click(); });
+        const saveNext = editor.getByRole("button", { name: "Enregistrer et suivante (10 opérations)", exact: true });
+        await saveNext.evaluate(el => { el.click(); el.click(); });
         await editor.getByRole("status").filter({ hasText: "Enregistrement en cours" }).waitFor();
         assert.equal(await editor.getByLabel("Catégorie", { exact: true }).isDisabled(), true);
         assert.equal(await editor.getByLabel("Nature", { exact: true }).isDisabled(), true);
         assert.equal(await editor.getByLabel("Note de décision").isDisabled(), true);
-        assert.equal(await checkbox.isDisabled(), true); assert.equal(requests.length - count, 1);
-        release(); await editor.waitFor({ state: "hidden" });
-        assert.equal(gets, beforeGets, "A normal save must not re-fetch the whole ledger");
+        assert.equal(await checkbox.isDisabled(), true); assert.equal(await saveNext.isDisabled(), true);
+        assert.equal(requests.length - count, 1);
+        assert.equal(requests.at(-1).allSameName, true, "Save & Next submits bulk flag just like Save");
+        assert.equal(requests.at(-1).expectedCount, 10);
+        release();
+        await editor.getByText("MAPLE MARKET 02", { exact: true }).waitFor();
+        assert.equal(await editor.isVisible(), true, "Save & Next keeps the editor open");
+        assert.equal(await checkbox.count(), 0, "Next unrelated merchant is not bulk-selected");
+        await page.keyboard.press("Escape");
+        assert.equal(gets, beforeGets, "Bulk Save & Next must not re-fetch the whole ledger");
         const saved = await finance.read(); assert.equal(saved.operations.length, 1); assert.equal(saved.operations[0].count, 10);
         assert.equal(saved.decisions.b.category, "groceries"); assert.equal(saved.decisions.usd.category, "groceries");
         for (const id of ["refund", "transfer", "repayment", "investment", "review", "duplicate", "c"]) {
@@ -167,7 +183,7 @@ try {
         assert.equal(await editor.evaluate(el => el.scrollWidth > el.clientWidth), false);
         await page.keyboard.press("Escape");
         assert.deepEqual(errors, []);
-        console.log(`Finance changes ${width}px: bulk/undo/retry/conflict, compact total and school single/bulk/reload/summary passed`);
+        console.log(`Finance changes ${width}px: bulk Save & Next, amount/category sorting, undo/retry/conflict, compact total and school persistence passed`);
         await context.close();
     }
 } finally { await browser?.close(); await new Promise(resolve => server.close(resolve)); await rm(temp, { recursive: true, force: true }); }
