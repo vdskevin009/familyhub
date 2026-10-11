@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import CategoryPayments from "./CategoryPayments";
+import { byAmountDescending, sortedExpenseCategories } from "../finance-order";
 import FinanceTrends from "./FinanceTrends";
 import { spendingTrend } from "../finance-trends";
 import { RefreshCw, Upload } from "lucide-react";
@@ -417,6 +418,11 @@ export default function FinancesView({
         let confirmed = false;
         // Preserve the original review order even if saving changes a row's category.
         const queue = categoryQueue.current;
+        // Both Save and Save & Next use the same bulk decision and atomic worker write.
+        // Skip the entire explicitly affected group when advancing: otherwise the category
+        // drill-down could immediately reopen a row just saved by this bulk operation.
+        const bulkScope = allSameName ? categoryScope(state, editing, decision, classified) : null;
+        const affectedIds = new Set(bulkScope?.affected.map(row => row.id) ?? [editing]);
         const ids = queue ?? rows.map(row => row.id);
         const currentIndex = ids.indexOf(editing);
         const candidates = queue
@@ -424,7 +430,7 @@ export default function FinancesView({
             : [...ids.slice(currentIndex + 1), ...ids.slice(0, Math.max(currentIndex, 0))];
         try {
             setMessage("");
-            const input = { kind: "decision", id: editing, decision, allSameName, ...(allSameName ? { expectedCount: categoryScope(state, editing, decision, classified).affected.length } : {}) };
+            const input = { kind: "decision", id: editing, decision, allSameName, ...(bulkScope ? { expectedCount: bulkScope.affected.length } : {}) };
             const intent = JSON.stringify(input);
             if (attempt.current?.intent !== intent) attempt.current = { intent, requestId: crypto.randomUUID() };
             const requestId = attempt.current.requestId;
@@ -435,7 +441,7 @@ export default function FinancesView({
             setState(saved);
             attempt.current = null;
             const present = new Set(saved.data?.transactions.map(row => row.id) ?? []);
-            const following = next ? candidates.find(id => present.has(id) && (queue !== null || !saved.decisions[id])) : undefined;
+            const following = next ? candidates.find(id => present.has(id) && !affectedIds.has(id) && (queue !== null || !saved.decisions[id])) : undefined;
             if (following) openDecision(following, saved, queue ?? undefined); else setEditing(null);
             setMessage(result.operation.count === 1 ? "Décision enregistrée sur le PC." : `${result.operation.count} décisions enregistrées sur le PC.`);
         } catch (e) {
@@ -468,10 +474,7 @@ export default function FinancesView({
                     (!reviewOnly || !r.reviewed) &&
                     r.description.toLowerCase().includes(search.toLowerCase()),
             )
-            .sort(
-                (a, b) =>
-                    b.date.localeCompare(a.date) || a.id.localeCompare(b.id),
-            ) ?? [];
+            .sort(byAmountDescending) ?? [];
     const editRow = classified.find((r) => r.id === editing);
     function openDecision(id: string, saved = state, queueIds?: string[]) {
         if (!saved) return;
@@ -716,9 +719,7 @@ export default function FinancesView({
                                             <option value="">
                                                 Toutes les catégories
                                             </option>
-                                            {Object.entries(
-                                                expenseCategories,
-                                            ).map(([k, v]) => (
+                                            {sortedExpenseCategories.map(([k, v]) => (
                                                 <option key={k} value={k}>
                                                     {v}
                                                 </option>
@@ -747,7 +748,7 @@ export default function FinancesView({
                                     Suggestions à confirmer seulement
                                 </label>
                                 <p className="muted">
-                                    {rows.length} opération(s) {operationScope === "expenses" ? "dans les dépenses" : "hors dépenses"}. Les règles de
+                                    {rows.length} opération(s) {operationScope === "expenses" ? "dans les dépenses" : "hors dépenses"}, par montant décroissant. Les règles de
                                     libellé sont des suggestions; les paniers
                                     mixtes demandent une revue.
                                 </p>
@@ -1430,7 +1431,7 @@ export default function FinancesView({
                                     })
                                 }
                             >
-                                {Object.entries(expenseCategories).map(
+                                {sortedExpenseCategories.map(
                                     ([k, v]) => (
                                         <option key={k} value={k}>
                                             {v}
@@ -1469,7 +1470,7 @@ export default function FinancesView({
                                     ? "Enregistrement…"
                                     : allSameName ? `Enregistrer ${scope?.affected.length ?? 1} opérations` : "Enregistrer la décision"}
                             </button>
-                            <button className="button secondary" type="button" disabled={busy || staleDraft} onClick={() => void saveDecision(true)}>Enregistrer et suivante</button>
+                            <button className="button secondary" type="button" disabled={busy || staleDraft} aria-describedby={allSameName ? "finance-bulk-scope" : undefined} onClick={() => void saveDecision(true)}>{allSameName ? `Enregistrer et suivante (${scope?.affected.length ?? 1} opérations)` : "Enregistrer et suivante"}</button>
                         </div>
                         {categoryPayments && <button className="button secondary" type="button" disabled={busy} onClick={() => setEditing(null)}>Retour aux paiements de la catégorie</button>}
                         {staleDraft && <button className="button secondary" type="button" disabled={busy} onClick={() => void reloadDecision()}>Recharger la décision du PC et remplacer ce brouillon</button>}

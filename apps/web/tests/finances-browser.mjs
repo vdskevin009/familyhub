@@ -309,6 +309,7 @@ try {
         await foodSheet.waitFor();
         assert.equal(await page.locator("dialog[open]").count(), 1);
         assert.equal(await foodSheet.locator(".finance-register button").count(), 2);
+        assert.match(await foodSheet.locator(".finance-register button").first().innerText(), /100,00/, "Category payments sorted largest amount first");
         // Category drill-down must offer Save & Next for previously confirmed payments.
         const categoryRows = foodSheet.locator(".finance-register button");
         const secondDate = (await categoryRows.nth(1).innerText()).match(/\d{4}-\d{2}-\d{2}/)?.[0];
