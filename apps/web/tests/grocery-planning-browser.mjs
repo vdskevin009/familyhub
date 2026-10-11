@@ -97,6 +97,8 @@ try {
   await page.getByRole("button", { name: "Ajouter les magasins proposés" }).click(); await page.getByRole("button", { name: "Ajouter les magasins proposés" }).click();
   await page.getByRole("button", { name: "Enregistrer sur le PC" }).click(); await page.getByText(/Liste et prix conservés sur le PC/).waitFor();
   const stores = (await store.read()).retailers; for (const name of ["Walmart", "Superstore", "Costco", "Fresh St. Market"]) assert.equal(stores.filter(r => r.name === name).length, 1);
+  await page.getByRole("button", { name: "Besoins", exact: true }).click();
+  for (const width of [320, 390, 768, 1440]) { await page.setViewportSize({ width, height: 900 }); assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false); await page.screenshot({ path: `artifacts/groceries/weekly-needs-${width}.png`, fullPage: true }); }
   await page.getByRole("button", { name: "Comparer", exact: true }).click();
   for (const width of [320, 390, 768, 1440]) { await page.setViewportSize({ width, height: 900 }); assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false); await page.screenshot({ path: `artifacts/groceries/weekly-compare-${width}.png`, fullPage: true }); }
   assert.deepEqual(errors, []);
