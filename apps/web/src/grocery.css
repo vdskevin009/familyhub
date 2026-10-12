@@ -112,3 +112,8 @@
 @media (max-width: 480px) { .grocery-store-card .grocery-card-top { display: grid; gap: 6px; } .grocery-store-card p { font-size: 12px; } }
 .grocery-view :is(button, input, select, summary):focus-visible, .grocery-review :is(button, input, select, summary):focus-visible { outline: 2px solid var(--green); outline-offset: 3px; }
 @media (max-width: 768px) { .grocery-view input, .grocery-view select, .grocery-review input, .grocery-review select { font-size: 16px; } .grocery-ticket { flex-wrap: wrap; } .grocery-ticket > span:last-child { flex-shrink: 1; } }
+
+.grocery-planning-compare > .grocery-section-heading { align-items: center; }
+.grocery-planning-compare > .grocery-section-heading h2 { margin: 0; }
+.grocery-planning-compare .grocery-actions { gap: 8px; align-items: center; }
+.grocery-planning-compare > .grocery-section-heading .button { padding-inline: 12px; }

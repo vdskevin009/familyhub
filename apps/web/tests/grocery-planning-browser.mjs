@@ -139,6 +139,9 @@ try {
       const card = page.locator(".grocery-common-row").filter({ hasText: name });
       assert.ok(await card.evaluate(el => el.getBoundingClientRect().height) >= 44);
     }
+    const refreshBounds = await page.getByRole("button", { name: "Relire le PC", exact: true }).boundingBox();
+    const saveBounds = await page.getByRole("button", { name: "Enregistrer sur le PC", exact: true }).boundingBox();
+    assert.ok(Math.abs(refreshBounds.y - saveBounds.y) < 1, "Compare refresh/save controls stay on one line");
     const rows = page.locator(".grocery-common-row");
     assert.deepEqual(await rows.locator(".grocery-common-store > strong").allTextContents(), ["Walmart", "Costco", "Fresh St.", "Superstore"]);
     const descriptions = await rows.evaluateAll(els => els.map(el => el.getAttribute("aria-describedby").split(" ").map(id => document.getElementById(id).textContent).join(" ")));
@@ -245,13 +248,13 @@ try {
     else await commonFreshDetails.getByRole("button", { name: closeWith === "return" ? "Retour aux prix" : "Close Détails du panier Fresh St. Market", exact: true }).click();
     await commonFreshDetails.waitFor({ state: "hidden" }); assert.equal(await commonFreshButton.evaluate(el => el === document.activeElement), true);
   }
-  await page.getByText("Magasins à comparer", { exact: true }).click();
+  await page.locator('summary[aria-label="Magasins à comparer"]').click();
   const walmartFilter = page.getByLabel("Walmart · Retrait", { exact: true });
   await walmartFilter.uncheck();
   const walmartRow = page.getByRole("button", { name: "Détails du panier Walmart", exact: true });
   await walmartRow.getByText("Non comparable", { exact: true }).waitFor();
   await walmartFilter.check();
-  await page.getByText("Magasins à comparer", { exact: true }).click();
+  await page.locator('summary[aria-label="Magasins à comparer"]').click();
   assert.deepEqual(await store.read(), preservedUnitFixture);
   await firstInfo.focus(); await firstInfo.press("Enter");
   await articleDetails.getByText(/Écart = \(prix unitaire/).waitFor();
