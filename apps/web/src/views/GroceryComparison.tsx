@@ -6,7 +6,7 @@ import { articleUnitComparison, formatUnitRate } from "../grocery-unit-compariso
 import { grocerySourceLink } from "../grocery-source-link";
 import { Sheet } from "../ui/primitives";
 import GroceryCommonBasket from "./GroceryCommonBasket";
-import { adjustedOfferQuantity } from "../grocery-common-quantity";
+import { adjustedMoney, adjustedNumber, adjustedOfferQuantity } from "../grocery-common-quantity";
 const cash = (n: number, c: string) => `${(n / 100).toFixed(2)} ${c}`;
 export function PriceSource({ value }: { value: Evidence }) {
   const link = grocerySourceLink(value.url);
@@ -98,9 +98,9 @@ function ArticleComparison({ plan, item, groups }: { plan: GroceryPlan; item: Sh
             <p>{ranked?.rate ? formatUnitRate(ranked.rate, p.currency) : "Prix unitaire non calculable"} · {ranked?.reason || ranked?.gap || priceState(p, r)}</p>
             <small>{modeLabels[p.mode ?? "unknown"]} · {p.locality || "Localité inconnue"} · {p.approved ? "Observation revue" : "Observation non approuvée"} · {p.available === "yes" ? "Stock selon source, à reconfirmer" : p.available === "no" ? "Indisponible selon source" : "Stock non confirmé"}</small>
             <p>{p.matchNote || "Marque, variante et format à revoir."}</p>
-            {adjusted && <p>Quantité commune : {Number(adjusted.quantity.toFixed(4))} {adjusted.label}. Conversion : {Number(adjusted.quantity.toFixed(4))} / {Number(adjusted.pack.toFixed(4))} = {Number((adjusted.quantity / adjusted.pack).toFixed(4))} format(s) proportionnels. Format candidat à revoir.</p>}
+            {adjusted && <p>Quantité commune : {adjustedNumber(adjusted.quantity)} {adjusted.label}. Conversion : {adjustedNumber(adjusted.quantity)} / {adjustedNumber(adjusted.pack)} = {adjustedNumber(adjusted.quantity / adjusted.pack)} format(s) proportionnels. Format candidat à revoir.</p>}
             <p>{(!adjusted && quantityReason(item, p)) || (packs === null ? "Montant du besoin inconnu" : "Achat de " + Number(packs.toFixed(3)) + " format(s) : " + cash(Math.round(packs * p.price * 100), plan.currency) + ", hors frais et taxes.")}{included.has(p.id) ? " Référence incluse dans les calculs." : " Référence non utilisée pour un panier complet."}</p>
-            {equivalent !== null && <p>Équivalent proportionnel du besoin : {Number(equivalent.toFixed(4))} {plan.currency}. Ce montant diffère de l'achat des paquets entiers et ne mesure pas la consommation réelle.</p>}
+            {equivalent !== null && <p>Équivalent proportionnel du besoin : {equivalent > 0 && equivalent < .0001 ? adjustedMoney(equivalent, plan.currency) : `${Number(equivalent.toFixed(4))} ${plan.currency}`}. Ce montant diffère de l'achat des paquets entiers et ne mesure pas la consommation réelle.</p>}
             <PriceSource value={p.evidence} />
             <p>Taxes produits : {p.taxPercent === null ? "à vérifier" : `${p.taxPercent} %`} · Consigne par format : {p.depositPerPack === null || p.depositPerPack === undefined ? "à vérifier" : `${p.depositPerPack.toFixed(2)} ${p.currency}`}</p>
           </div>;

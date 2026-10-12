@@ -2,6 +2,9 @@ import { normalizedSize, type GroceryPlan, type ShoppingItem } from "../../worke
 import { storeGroups } from "./grocery-comparison";
 import { articleUnitComparison, unitPercentLabel, type RankedOffer } from "./grocery-unit-comparison";
 
+export const adjustedNumber = (n: number) => n > 0 && n < .0001 ? "<0,0001" : new Intl.NumberFormat("fr-CA", { maximumFractionDigits: 4 }).format(n);
+export const adjustedMoney = (n: number, currency: string) => `${n > 0 && n < .01 ? "<0,01" : new Intl.NumberFormat("fr-CA", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n)} ${currency}`;
+
 function target(item: ShoppingItem) {
   const quantity = item.basketQuantity !== undefined ? item.basketQuantity : item.quantity;
   if (quantity === null || !Number.isFinite(quantity) || quantity <= 0) return null;

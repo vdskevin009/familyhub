@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { emptyPlan, type GroceryPrice, type ShoppingItem } from "../../worker/src/grocery-planning";
 import { retailerTemplate } from "../../worker/src/grocery-weekly";
-import { commonQuantityComparison } from "../src/grocery-common-quantity";
+import { adjustedMoney, adjustedNumber, commonQuantityComparison } from "../src/grocery-common-quantity";
 const day = "2026-10-12", evidence = { title: "Synthetic", url: "https://example.com", date: day, until: null };
 const item: ShoppingItem = { id: "i", name: "Synthetic eggs", quantity: 2, size: 12, unit: "each", measure: "pack", countUnit: "œufs", active: true, substitutions: true, preference: "", origin: "synthetic" };
 function fixture() {
@@ -42,4 +42,8 @@ test("Common basket: zero and singleton do not fabricate percentage, tiny nonzer
   const p = fixture(); p.prices[0].price = 0; const c = commonQuantityComparison(p, day); assert.equal(c.stores.find(s => s.group.name === "Superstore")!.percent, null); assert.equal(c.stores.find(s => s.group.name === "Walmart")!.gap, "Montant nul");
   p.prices.pop(); assert.equal(commonQuantityComparison(p, day).stores.find(s => s.group.name === "Walmart")!.gap, "Seul montant");
   p.prices.push({ ...p.prices[0], id: "near", retailerId: "r1", price: 3.000001 }); p.prices[0].price = 3; assert.equal(commonQuantityComparison(p, day).stores.find(s => s.group.name === "Superstore")!.gap, "+<0,1 %");
+});
+test("Common basket: small positive quantity or proportional money never displays as actual zero", () => {
+  assert.equal(adjustedNumber(.000001), "<0,0001"); assert.equal(adjustedMoney(.001, "CAD"), "<0,01 CAD");
+  assert.equal(adjustedNumber(0), "0"); assert.equal(adjustedMoney(0, "CAD"), "0,00 CAD");
 });

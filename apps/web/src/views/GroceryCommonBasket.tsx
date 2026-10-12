@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from "react";
 import { modeLabels, type GroceryPlan } from "../../../worker/src/grocery-planning";
-import { commonQuantityComparison } from "../grocery-common-quantity";
+import { adjustedMoney, adjustedNumber, commonQuantityComparison } from "../grocery-common-quantity";
 import { formatUnitRate } from "../grocery-unit-comparison";
 import { Sheet } from "../ui/primitives";
 import { grocerySourceLink } from "../grocery-source-link";
@@ -8,8 +8,8 @@ import { grocerySourceLink } from "../grocery-source-link";
 export default function GroceryCommonBasket({ plan, renderConditions }: { plan: GroceryPlan; renderConditions: (store: string) => ReactNode }) {
   const [selected, setSelected] = useState<string | null>(null);
   const common = commonQuantityComparison(plan), store = common.stores.find(s => s.group.name === selected);
-  const number = (n: number) => new Intl.NumberFormat("fr-CA", { maximumFractionDigits: 4 }).format(n);
-  const amount = (n: number) => `${new Intl.NumberFormat("fr-CA", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n)} ${plan.currency}`;
+  const number = adjustedNumber;
+  const amount = (n: number) => adjustedMoney(n, plan.currency);
   return <><p className="grocery-common-note">Base commune : {common.count}/{common.total} articles · Quantités ajustées, hors frais · Estimation à revoir</p>
     <div className="grocery-store-grid">{common.stores.filter(s => s.group.retailers.length || ["Fresh St. Market", "Walmart", "Costco", "Superstore"].includes(s.group.name)).map(s => <article className="grocery-basket grocery-common-card" key={s.group.name}>
       <div className="grocery-card-top"><h3>{s.group.name === "Fresh St. Market" ? "Fresh St." : s.group.name}</h3><strong className="grocery-card-amount">{s.amount === null ? "—" : amount(s.amount)}</strong></div>
