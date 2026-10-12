@@ -10,8 +10,8 @@
     "minimal-ui"
   ],
   "orientation": "any",
-  "background_color": "#f4f6f2",
-  "theme_color": "#163f35",
+  "background_color": "#f5f6f8",
+  "theme_color": "#f5f6f8",
   "description": "Your proactive household assistant for plans, money, meals, inbox and everyday admin.",
   "categories": [
     "productivity",

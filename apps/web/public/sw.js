@@ -1,4 +1,4 @@
-const CACHE = "familyhub-v2-shell-10";
+const CACHE = "familyhub-v2-shell-11";
 const SHELL = ["./", "./manifest.webmanifest", "./icon.svg", "./icon-192.png", "./icon-512.png", "./icon-maskable-512.png"];
 
 // Push payloads contain an opaque ID only. Never display remotely supplied title/body/URLs.
