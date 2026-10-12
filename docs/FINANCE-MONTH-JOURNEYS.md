@@ -59,7 +59,7 @@ Review scope is the annual → month → category list/inline edit/Back journey 
 | --- | --- | --- | --- | --- | --- |
 | HIGH | Layout | `apps/web/src/views/FinanceTrends.tsx:91`, monthly Gauge | Same amount renormalized locally | Annual scale passed to detail | Ring fill must not imply a changed amount |
 | MEDIUM | Writing | `apps/web/src/finance-trends.ts:68`, reference cohort | Partial imported history suppressed | Observed cohort with explicit indicative count/limits | Helps compare available evidence without inventing zeros |
-| MEDIUM | Layout | `apps/web/src/views/FinancesView.tsx:305`, expense total | Separate tall card | Compact total in categories block | Keeps categories prominent on mobile |
+| MEDIUM | Layout | `apps/web/src/views/FinancesView.tsx:693`, expense total | Separate tall card | Compact total in categories block | Keeps categories prominent on mobile |
 | MEDIUM | Accessibility | `apps/web/src/ui/InfoPopover.tsx:30`, onCancel | Nested Escape closed its parent sheet | Stop cancel propagation | Retains category context and focus |
 
 These findings are addressed. Approval is limited to the inspected flow and completed synthetic/read-only checks; release and exact CI remain tracked in #194. No claim of a full accessibility certification.
