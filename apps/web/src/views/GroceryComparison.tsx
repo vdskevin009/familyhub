@@ -1,6 +1,7 @@
 import { compatibleOffers, modeLabels, offerQuantity, type Basket, type Evidence, type GroceryPlan, type GroceryRetailer, type ShoppingItem } from "../../../worker/src/grocery-planning";
 import { needLabel } from "../../../worker/src/grocery-weekly";
-import { currentPrices, datedPrice, formatLabel, equivalentCost, observedSummary, comparisonStores, priceState, quantityReason, shortProduct, storeGroups, unitPrice, type StoreGroup } from "../grocery-comparison";
+import { datedPrice, formatLabel, equivalentCost, observedSummary, comparisonStores, priceState, quantityReason, shortProduct, storeGroups, unitPrice, type StoreGroup } from "../grocery-comparison";
+import { articleUnitComparison, formatUnitRate } from "../grocery-unit-comparison";
 const cash = (n: number, c: string) => `${(n / 100).toFixed(2)} ${c}`;
 export function PriceSource({ value }: { value: Evidence }) {
   return <p className="grocery-evidence">{value.url ? <a href={value.url} target="_blank" rel="noopener noreferrer">{value.title || "Source"}</a> : value.title || "Source à préciser"} · {value.date || "Date inconnue"} · {value.until ? `jusqu'au ${value.until}` : "Validité à vérifier"}</p>;
@@ -63,20 +64,21 @@ export function StoreCards({ plan, comparison, onEdit }: {
 }
 function ArticleComparison({ plan, item, groups }: { plan: GroceryPlan; item: ShoppingItem; groups: StoreGroup[] }) {
   const included = new Set(compatibleOffers(plan, item).map(p => p.id));
+  const unitComparison = articleUnitComparison(plan, item, groups);
   return <article className="grocery-article-comparison">
     <div className="grocery-section-heading"><h3>{item.name}</h3><small>{needLabel(item, true)}{item.provisional ? " · Provisoire" : ""}</small></div>
-    <div className="grocery-price-rows">{groups.map(g => {
-      const allOffers = g.retailers.flatMap(r => currentPrices(plan, item, r).map(p => ({ r, p })));
-      const offers = allOffers.some(o => !/catalogue par défaut/i.test(o.r.name)) ? allOffers.filter(o => !/catalogue par défaut/i.test(o.r.name)) : allOffers;
-      return <div className="grocery-price-row" key={g.name}><strong>{g.name}</strong><div>{offers.length ? offers.map(({ r, p }) =>
+    <div className="grocery-price-rows">{unitComparison.rows.map(({ group: g, offers }) => {
+      return <div className="grocery-price-row" key={g.name}><strong>{g.name}</strong><div>{offers.length ? offers.map(({ r, p, rate, reason, gap, tone }) =>
         <div className="grocery-price-option" key={p.id}>
-          <div><span className="grocery-price-value">{p.price.toFixed(2)} {p.currency}{p.weighed ? " / " + p.size + " " + p.unit : ""}</span><small>{priceState(p, r)}{g.retailers.length > 1 || p.mode !== r.mode ? " · " + modeLabels[p.mode ?? "unknown"] : ""}</small></div>
+          <div><span className="grocery-price-value">{p.price.toFixed(2)} {p.currency}{p.weighed ? " / " + p.size + " " + p.unit : ""}</span><small>{priceState(p, r)} · {modeLabels[p.mode ?? "unknown"]}</small></div>
           <small className="grocery-price-reference">{shortProduct(p.product)} · {formatLabel(p, item)}{p.usesPerPack ? " / " + p.usesPerPack + " utilisations" : ""}</small>
-          <small>{unitPrice(p)}</small>
+          <div className="grocery-unit-line"><small>{rate ? formatUnitRate(rate, p.currency) : unitPrice(p)}</small><small className={`grocery-unit-gap grocery-unit-gap-${tone}`} title={reason || "Écart au minimum observé dans la même unité et devise, hors frais"}>{gap}</small></div>
         </div>) : <div className="grocery-price-option"><span className="grocery-price-value">—</span><small>Prix manquant</small></div>}</div></div>;
     })}</div>
     <details className="grocery-card-info"><summary aria-label={"Info prix " + item.name}>Info</summary>
       <p>Besoin : {needLabel(item, true)}. {item.provisional ? "Quantité provisoire à confirmer." : ""}</p>
+      <p>Tri par prix unitaire observé, hors frais de commande. Écart = (prix unitaire / minimum comparable − 1) × 100. Les modes, marques et variantes restent à revoir ; ce classement ne valide ni une équivalence ni un panier complet.</p>
+      {unitComparison.rows.flatMap(row => row.offers.filter(o => o.reason).map(o => <p key={o.p.id}>{row.group.name} : {o.reason}. Aucun pourcentage comparable calculé.</p>))}
       {groups.map(g => {
         const offers = g.retailers.flatMap(r => plan.prices.filter(p => p.itemId === item.id && p.retailerId === r.id));
         return <section className="grocery-product" key={g.name}><h4>{g.name}</h4>{offers.map(p => {
@@ -110,7 +112,7 @@ export default function GroceryComparison({ plan, comparison }: { plan: GroceryP
       </details>
     </section>
     <StoreCards plan={plan} comparison={comparison} />
-    <h3>Prix par article</h3>{!items.length && <p className="grocery-empty">Aucun article dans ce panier.</p>}
+    <div><h3>Prix par article</h3><small>Prix unitaires croissants, hors frais. Modes et variantes à revoir dans Info.</small></div>{!items.length && <p className="grocery-empty">Aucun article dans ce panier.</p>}
     {items.map(item => <ArticleComparison key={item.id} plan={plan} item={item} groups={groups} />)}
     {!!comparison.split.length && <details className="grocery-info"><summary>Paniers répartis</summary><div className="grocery-store-grid">{comparison.split.map(b => <CompactBasket key={b.key} basket={b} plan={plan} />)}</div></details>}
   </>;

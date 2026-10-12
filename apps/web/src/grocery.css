@@ -77,6 +77,11 @@
 .grocery-price-option + .grocery-price-option { margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--line); }
 .grocery-price-option > div { display: flex; flex-wrap: wrap; justify-content: space-between; column-gap: 8px; }
 .grocery-price-value { font-weight: 700; font-variant-numeric: tabular-nums; }
+.grocery-price-option > .grocery-unit-line { justify-content: start; align-items: start; gap: 4px 8px; }
+.grocery-unit-gap { padding: 2px 6px; border-radius: 4px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.grocery-unit-gap-minimum { background: var(--soft); color: var(--green); font-weight: 600; }
+.grocery-unit-gap-higher { background: var(--warning-soft); color: var(--warning); }
+.grocery-unit-gap-neutral { background: var(--canvas); color: var(--muted); }
 .grocery-price-reference { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; }
 .grocery-costs { display: grid; gap: 4px; margin: 8px 0; }
 .grocery-costs > div { display: flex; justify-content: space-between; gap: 10px; }
