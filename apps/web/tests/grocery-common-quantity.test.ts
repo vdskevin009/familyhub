@@ -47,3 +47,23 @@ test("Common basket: small positive quantity or proportional money never display
   assert.equal(adjustedNumber(.000001), "<0,0001"); assert.equal(adjustedMoney(.001, "CAD"), "<0,01 CAD");
   assert.equal(adjustedNumber(0), "0"); assert.equal(adjustedMoney(0, "CAD"), "0,00 CAD");
 });
+test("Common basket: normalized ascending amounts, unknowns last and equal amounts alphabetical", () => {
+  const p = fixture(); p.prices[0].price = 8;
+  let c = commonQuantityComparison(p, day);
+  assert.deepEqual(c.stores.map(s => s.group.name), ["Superstore", "Walmart", "Costco", "Fresh St. Market"]);
+  assert.equal(c.stores[0].percent, 0); assert.ok(c.stores[1].percent! > 0);
+  p.prices[0].price = 3; Object.assign(p.prices[1], { price: 3, size: 12 });
+  c = commonQuantityComparison(p, day);
+  assert.deepEqual(c.stores.slice(0, 2).map(s => [s.group.name, s.percent]), [["Superstore", 0], ["Walmart", 0]]);
+  p.retailers.reverse(); p.prices.reverse();
+  assert.deepEqual(commonQuantityComparison(p, day), c);
+});
+test("Common basket: disabled store is unranked, shared IDs and quantities stay identical", () => {
+  const p = fixture(); p.items.push({ ...item, id: "second" });
+  p.prices.push(...p.prices.map(o => ({ ...o, id: `${o.id}-second`, itemId: "second" })));
+  const c = commonQuantityComparison(p, day);
+  assert.deepEqual(c.stores.filter(s => s.amount !== null).map(s => s.lines.map(l => [l.item.id, l.quantity])), [[["i", 24], ["second", 24]], [["i", 24], ["second", 24]]]);
+  p.retailers[0].enabled = false;
+  const disabled = commonQuantityComparison(p, day).stores.find(s => s.group.name === "Walmart")!;
+  assert.equal(disabled.amount, null); assert.equal(disabled.percent, null);
+});

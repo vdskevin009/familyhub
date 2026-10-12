@@ -61,6 +61,15 @@ jobs:
       - name: Verify Courses mobile receipts and basket planning
         run: npm run test:groceries:browser
 
+      - name: Upload synthetic Courses browser evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: courses-browser-evidence
+          path: artifacts/groceries/
+          if-no-files-found: ignore
+          retention-days: 7
+
       - name: Verify invoice collection and worker authorization
         run: npm run test:invoices
 

@@ -58,5 +58,9 @@ export function commonQuantityComparison(plan: GroceryPlan, now?: string) {
     const gap = (s.amount! / minimum! - 1) * 100;
     s.percent = gap; s.gap = Math.abs(gap) <= Number.EPSILON * 800 ? "0 %" : unitPercentLabel(gap);
   }
+  // Rank only the identical shared base, never a store's partial raw subtotal.
+  stores.sort((a, b) => (a.amount === null ? 1 : 0) - (b.amount === null ? 1 : 0)
+    || (a.amount !== null && b.amount !== null ? a.amount - b.amount : 0)
+    || a.group.name.localeCompare(b.group.name, "fr-CA"));
   return { stores, count: shared.length, total: items.length, excluded: items.filter(i => !shared.some(c => c.item.id === i.id)), participants: participants.length };
 }

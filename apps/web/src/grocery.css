@@ -85,9 +85,17 @@
 .grocery-source-action { display: flex !important; align-items: center; min-height: 44px; width: fit-content; }
 .grocery-detail-conditions { padding: 12px 0; border-top: 1px solid var(--line); }
 .grocery-common-note { font-size: 12px; color: var(--muted); }
-.grocery-common-card { padding: 12px; gap: 4px; }
-.grocery-common-actions { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.grocery-common-actions button { min-height: 44px; }
+.grocery-common-basket { border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--surface); padding: 12px; min-width: 0; }
+.grocery-common-basket .grocery-common-note { margin: 0; }
+.grocery-common-row { width: 100%; grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr) auto; min-height: 56px; text-align: left; color: var(--ink); background: transparent; border: 0; border-top: 1px solid var(--line); cursor: pointer; font: inherit; }
+.grocery-common-store, .grocery-common-price { display: grid; gap: 4px; min-width: 0; }
+.grocery-common-store strong { font-size: 14px; overflow-wrap: anywhere; }
+.grocery-common-store small { font-size: 12px; color: var(--muted); }
+.grocery-common-price { justify-items: end; text-align: right; }
+.grocery-common-price .grocery-price-value { font-size: 16px; overflow-wrap: anywhere; }
+.grocery-common-details { font-size: 12px; color: var(--green); text-decoration: underline; }
+.grocery-common-row:hover { background: var(--soft); }
+.grocery-common-row:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
 .grocery-article-details .sheet-content { display: grid; gap: 12px; }
 .grocery-article-details :is(button, a):focus-visible { outline: 2px solid var(--green); outline-offset: 3px; }
 .grocery-price-option > .grocery-unit-line { justify-content: start; align-items: start; gap: 4px 8px; }

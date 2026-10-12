@@ -87,3 +87,14 @@ test("Courses presentation: complete reviewed basket and conditional availabilit
   let html = renderToStaticMarkup(createElement(StoreCards, { plan: p, comparison: compareBaskets(p) })); assert.ok(html.includes("Panier complet estimé"));
   p.prices[0].available = "unknown"; html = renderToStaticMarkup(createElement(StoreCards, { plan: p, comparison: compareBaskets(p) })); assert.ok(html.includes("Panier complet conditionnel")); assert.ok(!html.includes("Estimation la plus basse"));
 });
+test("Courses presentation: compact basket rows expose partial coverage and mixed modes without calculation copy", () => {
+  const p = plan();
+  p.items.push(item({ id: "missing", quantity: null }));
+  p.retailers.push(retailer({ id: "other", name: "Superstore", mode: "delivery" }));
+  p.prices.push(price({ id: "other-price", retailerId: "other", mode: "delivery", price: 1 }));
+  const html = renderToStaticMarkup(createElement(GroceryComparison, { plan: p, comparison: compareBaskets(p) }));
+  assert.equal((html.match(/class="grocery-price-row grocery-common-row"/g) || []).length, 4);
+  assert.ok(html.indexOf('aria-label="Détails du panier Superstore"') < html.indexOf('aria-label="Détails du panier Walmart"'));
+  for (const text of ["Partielle", "Hors frais", "Estimation à revoir", "Modes mixtes", "Livraison", "Retrait"]) assert.ok(html.includes(text));
+  assert.ok(!html.includes('grocery-common-card')); assert.ok(!html.includes('Écart ='));
+});

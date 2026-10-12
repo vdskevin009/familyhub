@@ -118,16 +118,16 @@ export default function GroceryComparison({ plan, comparison }: { plan: GroceryP
   const known = items.filter(i => plan.prices.some(p => p.itemId === i.id && datedPrice(p) && p.available !== "no")).length;
   return <>
     <section className="grocery-comparison-status" aria-label="État des prix">
-      <strong>{known}/{items.length} articles avec un prix observé</strong>
-      <small>{comparison.coverage}/{items.length} références validées pour le total · {comparison.best ? "Panier estimé disponible" : "Totaux complets non confirmés"}{comparison.truncated ? " · Calcul limité" : ""}</small>
+      <small>{comparison.best ? "Panier estimé disponible" : "Totaux complets non confirmés"}{comparison.truncated ? " · Calcul limité" : ""}</small>
       <details className="grocery-card-info"><summary>Info sur les montants</summary>
+        <p>{known}/{items.length} articles avec un prix observé · {comparison.coverage}/{items.length} références validées pour le total.</p>
         <p>Un prix observé reste un candidat jusqu'à la revue du produit, du format, de la localité et du mode. Un sous-total partiel couvre uniquement les références chiffrables, hors frais et taxes non confirmés.</p>
         <p>Les paquets entiers sont arrondis à l'achat ; l'équivalent proportionnel du besoin ne mesure ni stock disponible ni consommation réelle.</p>
         {comparison.best && <p>Estimation la plus basse parmi les options entièrement renseignées : {comparison.best.name}, {cash(comparison.best.total!, plan.currency)}. À reconfirmer avant achat.</p>}
       </details>
     </section>
     <GroceryCommonBasket plan={plan} renderConditions={store => <StoreCards plan={plan} comparison={comparison} onlyStore={store} />} />
-    <div><h3>Prix par article</h3><small>Prix unitaires observés, hors frais. Modes et variantes dans Détails.</small></div>{!items.length && <p className="grocery-empty">Aucun article dans ce panier.</p>}
+    <div><h3>Prix par article</h3></div>{!items.length && <p className="grocery-empty">Aucun article dans ce panier.</p>}
     {items.map(item => <ArticleComparison key={item.id} plan={plan} item={item} groups={groups} />)}
     {!!comparison.split.length && <details className="grocery-info"><summary>Paniers répartis</summary><div className="grocery-store-grid">{comparison.split.map(b => <CompactBasket key={b.key} basket={b} plan={plan} />)}</div></details>}
   </>;
