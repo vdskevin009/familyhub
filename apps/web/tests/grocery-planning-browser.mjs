@@ -123,7 +123,7 @@ try {
   const fixture = { ...emptyPlan(), revision: (await store.read()).revision, currency: "CAD", area: "Synthetic city", areaConfirmed: true };
   fixture.items = Array.from({ length: 52 }, (_, n) => ({ id: `fiction-${n}`, name: `Fictional article ${n + 1}`, quantity: n === 1 ? null : n === 2 ? 7 : 10.5, size: n === 2 ? null : 1, unit: n === 2 ? null : "each", preference: "", substitutions: true, active: n < 14, origin: "synthetic", cadence: n < 14 ? "week" : "unknown", measure: n === 2 ? "uses" : "physical", bucket: n === 2 ? "household" : "food" }));
   fixture.retailers = ["Fresh St. Market", "Walmart", "Costco", "Superstore"].map((name, n) => ({ ...retailerTemplate(`store-${n}`, name), mode: n === 2 ? "delivery" : "pickup", locality: "Synthetic city" }));
-  fixture.prices = fixture.retailers.flatMap((r, index) => fixture.items.slice(0, index === 2 ? 11 : index === 1 ? 13 : 14).map((i, n) => ({ id: `price-${index}-${n}`, itemId: i.id, retailerId: r.id, product: `Synthetic reference ${n + 1}`, price: 2.5 + index, size: 6, unit: "each", weighed: false, taxPercent: null, depositPerPack: null, currency: "CAD", available: "unknown", substitution: true, approved: false, kind: "public", mode: r.mode, locality: "Synthetic city", localityConfirmed: false, evidence: { title: "Fictional dated catalogue", url: "https://example.com/synthetic", date: now, until: null } })));
+  fixture.prices = fixture.retailers.flatMap((r, index) => fixture.items.slice(0, index === 2 ? 11 : index === 1 ? 13 : 14).map((i, n) => ({ id: `price-${index}-${n}`, itemId: i.id, retailerId: r.id, product: `Synthetic reference ${n + 1}`, price: n === 0 ? 2.5 + index : [4.5, 2.5, 3.5, 5.5][index], size: 6, unit: "each", weighed: false, taxPercent: null, depositPerPack: null, currency: "CAD", available: "unknown", substitution: true, approved: false, kind: "public", mode: r.mode, locality: "Synthetic city", localityConfirmed: false, evidence: { title: "Fictional dated catalogue", url: "https://example.com/synthetic", date: now, until: null } })));
   await store.save({ plan: fixture, expectedRevision: fixture.revision });
   await page.getByRole("button", { name: "Relire le PC", exact: true }).click();
   await page.getByText("Base commune : 9/14 articles", { exact: false }).waitFor();
@@ -140,7 +140,9 @@ try {
       assert.ok(await card.evaluate(el => el.getBoundingClientRect().height) >= 44);
     }
     const rows = page.locator(".grocery-common-row");
-    assert.deepEqual(await rows.locator(".grocery-common-store > strong").allTextContents(), ["Fresh St.", "Walmart", "Costco", "Superstore"]);
+    assert.deepEqual(await rows.locator(".grocery-common-store > strong").allTextContents(), ["Walmart", "Costco", "Fresh St.", "Superstore"]);
+    const descriptions = await rows.evaluateAll(els => els.map(el => el.getAttribute("aria-describedby").split(" ").map(id => document.getElementById(id).textContent).join(" ")));
+    assert.ok(descriptions.every(text => text.includes("CAD") && text.includes("%") && /Retrait|Livraison/.test(text)));
     const bounds = await rows.evaluateAll(els => els.map(el => { const r = el.getBoundingClientRect(); return { x: r.x, y: r.y, bottom: r.bottom, width: r.width }; }));
     assert.ok(bounds.every((r, i) => r.x === bounds[0].x && r.width === bounds[0].width && (!i || r.y >= bounds[i - 1].bottom)));
     await page.screenshot({ path: `artifacts/groceries/compact-articles-${width}.png`, fullPage: true });

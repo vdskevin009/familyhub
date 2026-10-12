@@ -95,6 +95,6 @@ test("Courses presentation: compact basket rows expose partial coverage and mixe
   const html = renderToStaticMarkup(createElement(GroceryComparison, { plan: p, comparison: compareBaskets(p) }));
   assert.equal((html.match(/class="grocery-price-row grocery-common-row"/g) || []).length, 4);
   assert.ok(html.indexOf('aria-label="Détails du panier Superstore"') < html.indexOf('aria-label="Détails du panier Walmart"'));
-  for (const text of ["Partielle", "Hors frais", "Estimation à revoir", "Modes mixtes", "Livraison", "Retrait"]) assert.ok(html.includes(text));
+  for (const text of ["Partielle", "Hors frais", "Estimation proportionnelle à revoir", "Modes mixtes", "Livraison", "Retrait"]) assert.ok(html.includes(text));
   assert.ok(!html.includes('grocery-common-card')); assert.ok(!html.includes('Écart ='));
 });

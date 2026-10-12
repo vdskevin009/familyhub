@@ -55,6 +55,7 @@ test("Common basket: normalized ascending amounts, unknowns last and equal amoun
   p.prices[0].price = 3; Object.assign(p.prices[1], { price: 3, size: 12 });
   c = commonQuantityComparison(p, day);
   assert.deepEqual(c.stores.slice(0, 2).map(s => [s.group.name, s.percent]), [["Superstore", 0], ["Walmart", 0]]);
+  assert.ok(c.stores.slice(0, 2).every(s => s.gap === "0 % ex æquo"));
   p.retailers.reverse(); p.prices.reverse();
   assert.deepEqual(commonQuantityComparison(p, day), c);
 });
@@ -66,4 +67,9 @@ test("Common basket: disabled store is unranked, shared IDs and quantities stay 
   p.retailers[0].enabled = false;
   const disabled = commonQuantityComparison(p, day).stores.find(s => s.group.name === "Walmart")!;
   assert.equal(disabled.amount, null); assert.equal(disabled.percent, null);
+});
+test("Common basket: nonfinite relative gap is unknown, never a percentage", () => {
+  const p = fixture(); p.prices[0].price = 1e-310;
+  const higher = commonQuantityComparison(p, day).stores.find(s => s.group.name === "Superstore")!;
+  assert.equal(higher.percent, null); assert.equal(higher.gap, "Écart inconnu");
 });

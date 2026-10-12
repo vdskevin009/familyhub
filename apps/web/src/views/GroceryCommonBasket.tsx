@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useId, useState, type ReactNode } from "react";
 import { modeLabels, type GroceryPlan } from "../../../worker/src/grocery-planning";
 import { adjustedMoney, adjustedNumber, commonQuantityComparison } from "../grocery-common-quantity";
 import { formatUnitRate } from "../grocery-unit-comparison";
@@ -6,18 +6,19 @@ import { Sheet } from "../ui/primitives";
 import { grocerySourceLink } from "../grocery-source-link";
 
 export default function GroceryCommonBasket({ plan, renderConditions }: { plan: GroceryPlan; renderConditions: (store: string) => ReactNode }) {
+  const id = useId();
   const [selected, setSelected] = useState<string | null>(null);
   const common = commonQuantityComparison(plan), store = common.stores.find(s => s.group.name === selected);
   const number = adjustedNumber;
   const amount = (n: number) => adjustedMoney(n, plan.currency);
   const modes = [...new Set(common.stores.flatMap(s => s.lines.map(l => l.offer.p.mode ?? "unknown")))];
   return <><section className="grocery-common-basket" aria-label="Comparaison des magasins">
-    <p className="grocery-common-note">Base commune : {common.count}/{common.total} articles{common.count < common.total ? " · Partielle" : ""} · Hors frais · Estimation à revoir{modes.length > 1 ? " · Modes mixtes" : ""}</p>
-    <div className="grocery-price-rows grocery-common-rows">{common.stores.filter(s => s.group.retailers.length || ["Fresh St. Market", "Walmart", "Costco", "Superstore"].includes(s.group.name)).map(s => {
+    <p className="grocery-common-note">Base commune : {common.count}/{common.total} articles{common.count < common.total ? " · Partielle" : ""} · Hors frais · Estimation proportionnelle à revoir{modes.length > 1 ? " · Modes mixtes" : ""}</p>
+    <div className="grocery-price-rows grocery-common-rows">{common.stores.filter(s => s.group.retailers.length || ["Fresh St. Market", "Walmart", "Costco", "Superstore"].includes(s.group.name)).map((s, index) => {
       const storeModes = [...new Set(s.lines.map(l => l.offer.p.mode ?? "unknown"))];
-      return <button type="button" className="grocery-price-row grocery-common-row" key={s.group.name} aria-label={`Détails du panier ${s.group.name}`} aria-haspopup="dialog" onClick={() => setSelected(s.group.name)}>
-        <span className="grocery-common-store"><strong>{s.group.name === "Fresh St. Market" ? "Fresh St." : s.group.name}</strong><small>{storeModes.length > 1 ? "Modes mixtes" : storeModes.length ? modeLabels[storeModes[0]] : "Mode à vérifier"}</small></span>
-        <span className="grocery-common-price"><strong className="grocery-price-value">{s.amount === null ? "—" : amount(s.amount)}</strong><small className={`grocery-unit-gap grocery-unit-gap-${s.percent === 0 ? "minimum" : s.percent !== null ? "higher" : "neutral"}`}>{s.gap}</small></span>
+      return <button type="button" className="grocery-price-row grocery-common-row" key={s.group.name} aria-label={`Détails du panier ${s.group.name}`} aria-haspopup="dialog" aria-describedby={`${id}-store-${index} ${id}-price-${index}`} onClick={() => setSelected(s.group.name)}>
+        <span className="grocery-common-store" id={`${id}-store-${index}`}><strong>{s.group.name === "Fresh St. Market" ? "Fresh St." : s.group.name}</strong><small>{storeModes.length > 1 ? "Modes mixtes" : storeModes.length ? modeLabels[storeModes[0]] : "Mode à vérifier"}</small></span>
+        <span className="grocery-common-price" id={`${id}-price-${index}`}><strong className="grocery-price-value">{s.amount === null ? "—" : amount(s.amount)}</strong><small className={`grocery-unit-gap grocery-unit-gap-${s.percent === 0 ? "minimum" : s.percent !== null ? "higher" : "neutral"}`}>{s.gap}</small></span>
         <span className="grocery-common-details" aria-hidden="true">Détails</span>
       </button>;
     })}</div>
