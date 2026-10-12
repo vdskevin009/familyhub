@@ -58,6 +58,7 @@ export function quantityReason(item: ShoppingItem, p?: GroceryPrice) {
 /** Presentation only: one unambiguous dated reference per item/mode. Never certifies a basket. */
 export function observedSummary(plan: GroceryPlan, retailer: GroceryRetailer, now?: string) {
   let known = 0, priced = 0, food = 0, household = 0;
+  let foodPriced = 0, householdPriced = 0;
   const missing: { name: string; reason: string }[] = [];
   for (const item of plan.items.filter(i => i.active)) {
     const offers = currentPrices(plan, item, retailer, now).filter(p => datedPrice(p, now) && p.available !== "no");
@@ -67,12 +68,12 @@ export function observedSummary(plan: GroceryPlan, retailer: GroceryRetailer, no
     if (!reason && price && (price.currency !== plan.currency || !price.mode || price.mode === "unknown" || price.mode !== retailer.mode)) reason = "Devise ou mode non comparable";
     if (!reason && price) {
       const cost = Math.round(offerQuantity(item, price)! * price.price * 100);
-      if (Number.isSafeInteger(cost)) { priced++; if (item.bucket === "household") household += cost; else food += cost; }
+      if (Number.isSafeInteger(cost)) { priced++; if (item.bucket === "household") { household += cost; householdPriced++; } else { food += cost; foodPriced++; } }
       else reason = "Montant non calculable";
     }
     if (reason) missing.push({ name: item.name, reason });
   }
-  return { known, priced, subtotal: priced ? food + household : null, food, household, missing };
+  return { known, priced, subtotal: priced ? food + household : null, food, household, foodPriced, householdPriced, missing };
 }
 export function unitPrice(p: GroceryPrice) {
   if (/format (?:non confirmé|à confirmer)/i.test(p.matchNote ?? "")) return "Prix du format observé, taille non confirmée";
