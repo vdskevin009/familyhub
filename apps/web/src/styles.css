@@ -151,7 +151,7 @@ label { font-size: 12px; color: var(--muted); }
 .reimbursement-mode-tabs button { border-radius: 0; padding: 8px 0; border-bottom: 2px solid transparent; min-height: 44px; }
 .reimbursement-mode-tabs button.active { color: var(--green); border-bottom-color: var(--green); }
 .claim-scope-summary { display: grid; grid-template-columns: 1fr minmax(220px,.5fr); gap: 12px; align-items: start; }
-.reimbursement-family-scopes { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: thin; padding: 2px 0; }
+.reimbursement-family-scopes { position: relative; min-width: 0; max-width: 100%; display: flex; gap: 6px; overflow-x: auto; scrollbar-width: thin; padding: 2px 0; }
 .family-scope-card { display: inline-flex; flex: 1 0 auto; align-items: center; justify-content: center; gap: 7px; min-height: 38px; padding: 7px 12px; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; font-size: 12px; font-weight: 650; }
 .family-scope-card b { font-size: 11px; color: var(--muted); font-weight: 500; }
 .family-scope-card.active { border-color: var(--green); background: var(--mint); color: var(--green); }
@@ -167,7 +167,7 @@ label { font-size: 12px; color: var(--muted); }
 .reimbursement-summary article strong { font-size: 17px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
 .reimbursement-summary article span { font-size: 11px; color: var(--muted); }
 .reimbursement-summary .summary-attention { color: var(--warning); background: var(--warning-soft); }
-.workflow-tabs { justify-content: flex-start; }
+.workflow-tabs { justify-content: flex-start; flex-wrap: wrap; }
 .workflow-tabs button { flex: 1; font-size: 12px; padding: 7px 9px; min-height: 38px; }
 .workflow-tabs button.active { background: var(--green); color: white; }
 .workflow-tabs button.active span { background: #ffffff25; color: white; }

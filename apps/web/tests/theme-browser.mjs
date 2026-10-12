@@ -50,7 +50,9 @@ try {
       for (const value of [colors.ink, colors.muted, colors.accent]) for (const background of [colors.canvas, 'rgb(255, 255, 255)']) assert.ok(ratio(value, background) >= 4.5);
       for (const value of [colors.success, colors.warning, colors.danger]) assert.ok(ratio(value, 'rgb(255, 255, 255)') >= 4.5);
       assert.ok(ratio(colors.boundary, 'rgb(255, 255, 255)') >= 3);
-      assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false, `${view} ${width} overflow`);
+      const overflow = await page.evaluate(() => document.documentElement.scrollWidth > innerWidth);
+      if (overflow) console.log('OVERFLOW', JSON.stringify(await page.evaluate(() => [...document.querySelectorAll('body *')].map(e => ({ tag: e.tagName, cls: e.className, right: e.getBoundingClientRect().right, width: e.getBoundingClientRect().width, position: getComputedStyle(e).position, overflow: getComputedStyle(e).overflowX })).filter(e => e.width && e.right > innerWidth + 1))));
+      assert.equal(overflow, false, `${view} ${width} overflow`);
       assert.equal(await page.locator('main h1').first().evaluate(e => getComputedStyle(e).fontSize), '20px');
       metrics.push({ view, width, colorScheme, overflow: false });
       if (colorScheme === 'light') await page.screenshot({ path: join(output, `${view}-${width}.png`), fullPage: true });
