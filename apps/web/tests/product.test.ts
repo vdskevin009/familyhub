@@ -1,6 +1,7 @@
 import test from "node:test";
 import "./grocery-comparison.test";
 import "./grocery-unit-comparison.test";
+import "./grocery-common-quantity.test";
 import assert from "node:assert/strict";
 import { createElement } from "react";
 import { renderToString } from "react-dom/server";

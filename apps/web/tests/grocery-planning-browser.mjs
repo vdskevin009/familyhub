@@ -2,7 +2,7 @@
 import { chromium } from "playwright";
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
-import { mkdtemp, readFile, rm, mkdir } from "node:fs/promises";
+import { mkdtemp, readFile, rm, mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve, relative, extname } from "node:path";
 import { once } from "node:events";
@@ -11,7 +11,7 @@ import { emptyPlan } from "../../worker/dist/grocery-planning.js";
 import { retailerTemplate } from "../../worker/dist/grocery-weekly.js";
 const dir = await mkdtemp(join(tmpdir(), "fh-grocery-planning-ui-")), store = new GroceryPlanningStore(join(dir, "groceries"));
 const root = resolve("apps/web/dist"), errors = [], key = "synthetic-plan-key";
-let browser, offline = false, failSave = false, researchBody, weeklySupported = true, malformedRead = false;
+let browser, page, offline = false, failSave = false, researchBody, weeklySupported = true, malformedRead = false;
 const api = createServer(async (req, res) => {
   res.setHeader("Access-Control-Allow-Origin", req.headers.origin || "*"); res.setHeader("Access-Control-Allow-Headers", "content-type,x-familyhub-key"); res.setHeader("Access-Control-Allow-Methods", "GET,POST,OPTIONS"); if (req.method === "OPTIONS") { res.end(); return; }
   if (offline) { req.socket.destroy(); return; } res.setHeader("Content-Type", "application/json"); if (req.headers["x-familyhub-key"] !== key) { res.writeHead(401); res.end("{}"); return; }
@@ -32,7 +32,7 @@ try {
   browser = await chromium.launch({ headless: true, channel: process.env.FAMILYHUB_TEST_BROWSER_CHANNEL || undefined }); const context = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, reducedMotion: "reduce" });
   const original = { SchemaVersion: 1, Recipes: [], Meals: [], GroceryItems: [{ Id: "synthetic-plan-id", Name: "Synthetic oats", Quantity: "2 packs, format unknown", Checked: false, Source: "manual" }] };
   await context.addInitScript(({ endpoint, key, original }) => { if (!localStorage.getItem("familyhub.worker.v1")) localStorage.setItem("familyhub.worker.v1", JSON.stringify({ Endpoint: endpoint, ApiKey: key })); if (!localStorage.getItem("familyhub.planner.v1")) localStorage.setItem("familyhub.planner.v1", JSON.stringify(original)); }, { endpoint, key, original });
-  const page = await context.newPage(); page.on("pageerror", e => errors.push(e.message)); await planning(page, base);
+  page = await context.newPage(); page.on("pageerror", e => errors.push(e.message)); await planning(page, base);
   await page.getByRole("button", { name: "Copier les produits non cochés de Plan" }).click(); await page.getByText(/Produits non cochés de Plan copiés/).waitFor();
   await page.getByRole("button", { name: "Copier les produits non cochés de Plan" }).click(); assert.equal(await page.getByRole("button", { name: /Synthetic oats.*Quantité à préciser/ }).count(), 1);
   assert.deepEqual(await page.evaluate(() => JSON.parse(localStorage.getItem("familyhub.planner.v1"))), original);
@@ -48,13 +48,21 @@ try {
   await offer.getByLabel("Produit exact / marque / variante").fill("Synthetic exact oats"); await offer.getByLabel("Prix du format (avant taxes séparées)").fill("3"); await offer.getByLabel("Taille du format proposé").fill("500"); await offer.getByLabel("Unité", { exact: true }).selectOption("g"); await offer.getByLabel("Source / conditions").fill("Synthetic observation"); const now = new Date().toISOString().slice(0, 10); await offer.getByLabel("Date observée").fill(now); await offer.getByLabel(/J'ai vérifié la source/).check();
   await offer.getByRole("button", { name: "Conserver le prix vérifié" }).click(); await offer.waitFor({ state: "hidden" });
   await page.getByRole("button", { name: "Comparer", exact:true }).click(); await page.getByText(/Totaux complets non confirmés/).waitFor();
-  const market = page.locator(".grocery-store-card").filter({ has: page.getByRole("heading", { name: "Synthetic market", exact: true }) });
+  const basketButton = page.getByRole("button", { name: "Détails du panier Synthetic market", exact: true });
+  const basketDetails = page.getByRole("dialog", { name: "Détails du panier Synthetic market", exact: true });
+  await basketButton.click(); await basketDetails.waitFor();
+  const market = basketDetails.locator(".grocery-store-card").filter({ has: page.getByRole("heading", { name: "Synthetic market", exact: true }) });
   await market.getByText("Montant inconnu", { exact: true }).waitFor();
   await market.locator("summary").click(); await market.getByText(/minimum de commande inconnu/).waitFor();
+  await basketDetails.getByRole("button", { name: "Retour aux prix" }).click();
   await page.getByRole("button", { name: "Enregistrer sur le PC" }).click(); await page.getByText(/Liste et prix conservés sur le PC/).waitFor();
   // Supply fully sourced synthetic conditions to test rendering; production defaults remain unknown.
   const p = await store.read(); const until = new Date(Date.now() + 86400000).toISOString().slice(0, 10); Object.assign(p.retailers[0], { delivery: 1, service: 0, servicePercent: 0, feesTaxPercent: 0, minimum: 0, areaConfirmed: true, otherFeesReviewed: true, mode: "delivery", locality: "Synthetic city", slots: "yes", membershipStatus: "none", membershipWeekly: 0, evidence: { title: "Synthetic conditions", url: "https://example.com/terms", date: now, until } }); Object.assign(p.prices[0], { mode: "delivery", locality: "Synthetic city", localityConfirmed: true, depositPerPack: 0, taxPercent: 0, available: "yes", evidence: { title: "Synthetic catalogue", url: "https://example.com/oats", date: now, until } }); await store.save({ plan: p, expectedRevision: p.revision });
-  await page.getByRole("button", { name: "Relire le PC" }).click(); await market.getByText("Panier complet estimé", { exact: true }).waitFor(); await market.getByText("7.00 CAD", {exact:true}).waitFor();
+  await page.getByRole("button", { name: "Relire le PC" }).click();
+  const commonMarket = page.locator(".grocery-common-card").filter({ has: page.getByRole("heading", { name: "Synthetic market", exact: true }) });
+  await commonMarket.getByText("6,00 CAD", { exact: true }).waitFor();
+  await basketButton.click(); await basketDetails.waitFor(); await market.getByText("Panier complet estimé", { exact: true }).waitFor(); await market.getByText("7.00 CAD", {exact:true}).waitFor();
+  await basketDetails.getByRole("button", { name: "Retour aux prix" }).click();
   await mkdir("artifacts/groceries", { recursive: true }); for (const width of [320, 390, 768, 1280]) { await page.setViewportSize({ width, height: 900 }); assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false); await page.screenshot({ path: `artifacts/groceries/planning-${width}.png`, fullPage: true }); }
   await page.getByRole("button", { name: "Magasins et prix", exact: true }).click(); await page.getByText("Recherche publique", { exact: true }).click(); await page.getByLabel("Produit générique pour la recherche").fill("rolled oats"); await page.getByLabel(/J'ai vérifié le nom générique/).check(); await page.getByRole("button", { name: "Rechercher et revoir les sources" }).click(); await page.getByText("Synthetic catalogue only").waitFor(); assert.deepEqual(researchBody, { product: "rolled oats", area: "Montréal", confirmed: true });
   const second = await browser.newContext({ viewport: { width: 1280, height: 900 } }); await second.addInitScript(({ endpoint, key }) => localStorage.setItem("familyhub.worker.v1", JSON.stringify({ Endpoint: endpoint, ApiKey: key })), { endpoint, key }); const pc = await second.newPage(); pc.on("pageerror", e => errors.push(e.message)); await planning(pc, base); await pc.getByRole("button", { name: /Synthetic oats.*2 x 500 g/ }).waitFor();
@@ -120,36 +128,56 @@ try {
   await page.getByRole("button", { name: "Relire le PC", exact: true }).click();
   await page.getByText("14/14 articles avec un prix observé", { exact: true }).waitFor();
   assert.equal(await page.locator(".grocery-article-comparison").count(), 14);
-  assert.equal(await page.locator(".grocery-store-card").count(), 4);
+  assert.equal(await page.locator(".grocery-common-card").count(), 4);
   const initialFixture = await store.read();
   assert.equal(await page.locator(".grocery-card-info[open]").count(), 0);
   for (const width of [320, 390, 768, 1440]) {
     await page.setViewportSize({ width, height: 900 });
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
-    for (const [name, count] of [["Fresh St.", 14], ["Walmart", 13], ["Costco", 11], ["Superstore", 14]]) {
-      const card = page.locator(".grocery-store-card").filter({ has: page.getByRole("heading", { name, exact: true }) });
-      await card.getByText(new RegExp(`${count}/14 prix`)).waitFor();
-      await card.getByText("Sous-total partiel observé", { exact: true }).waitFor();
-      assert.ok(await card.locator("summary").evaluate(el => el.getBoundingClientRect().height) >= 44);
+    await page.getByText("Base commune : 9/14 articles", { exact: false }).waitFor();
+    for (const name of ["Fresh St.", "Walmart", "Costco", "Superstore"]) {
+      const card = page.locator(".grocery-common-card").filter({ has: page.getByRole("heading", { name, exact: true }) });
+      assert.ok(await card.getByRole("button", { name: /Détails du panier/ }).evaluate(el => el.getBoundingClientRect().height) >= 44);
     }
     await page.screenshot({ path: `artifacts/groceries/compact-articles-${width}.png`, fullPage: true });
   }
-  const firstInfo = page.locator("summary[aria-label='Info prix Fictional article 1']");
+  const firstInfo = page.getByRole("button", { name: "Détails de Fictional article 1", exact: true });
+  const articleDetails = page.getByRole("dialog", { name: "Détails de Fictional article 1", exact: true });
+  const commonFreshButton = page.getByRole("button", { name: "Détails du panier Fresh St. Market", exact: true });
+  const commonFreshDetails = page.getByRole("dialog", { name: "Détails du panier Fresh St. Market", exact: true });
+  await commonFreshButton.click(); await commonFreshDetails.waitFor();
   const storeInfo = page.locator("summary[aria-label='Info Fresh St. Market']");
   await storeInfo.click();
   await storeInfo.locator("..").getByText(/Maison non chiffrable/).waitFor();
   assert.equal(await storeInfo.locator("..").getByText(/Maison 0\.00 CAD/).count(), 0);
   await storeInfo.click();
-  await firstInfo.focus(); await firstInfo.press("Enter");
-  await firstInfo.locator("..").getByText("Équivalent proportionnel du besoin : 4.375 CAD.", { exact: false }).waitFor();
-  assert.equal(await firstInfo.locator("..").getAttribute("open"), "");
-  await firstInfo.press("Space"); assert.equal(await firstInfo.locator("..").getAttribute("open"), null);
+  await commonFreshDetails.getByRole("button", { name: "Retour aux prix" }).click();
+  for (const width of [320, 390, 768, 1440]) {
+    await page.setViewportSize({ width, height: 900 });
+    assert.ok(await firstInfo.evaluate(el => el.getBoundingClientRect().height) >= 44);
+    await firstInfo.focus(); await firstInfo.press("Enter");
+    await articleDetails.getByText("Équivalent proportionnel du besoin : 4.375 CAD.", { exact: false }).waitFor();
+    await articleDetails.getByText("Observation non approuvée", { exact: false }).first().waitFor();
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+    const back = articleDetails.getByRole("button", { name: "Retour aux prix", exact: true });
+    const close = articleDetails.getByRole("button", { name: "Close Détails de Fictional article 1", exact: true });
+    await back.focus(); await back.press("Tab"); assert.equal(await close.evaluate(el => el === document.activeElement), true);
+    await close.press("Shift+Tab"); assert.equal(await back.evaluate(el => el === document.activeElement), true);
+    await page.screenshot({ path: `artifacts/groceries/article-details-${width}.png` });
+    await back.click(); await articleDetails.waitFor({ state: "hidden" });
+    assert.equal(await firstInfo.evaluate(el => el === document.activeElement), true);
+    await firstInfo.press("Space"); await articleDetails.waitFor(); await articleDetails.press("Escape");
+    await articleDetails.waitFor({ state: "hidden" }); assert.equal(await firstInfo.evaluate(el => el === document.activeElement), true);
+    await firstInfo.click(); await articleDetails.waitFor(); await close.click();
+    await articleDetails.waitFor({ state: "hidden" }); assert.equal(await firstInfo.evaluate(el => el === document.activeElement), true);
+    assert.equal(await page.getByText("Synthetic reference 1", { exact: true }).count(), 0);
+  }
   assert.deepEqual(await store.read(), initialFixture);
   await page.reload(); await page.getByRole("button", { name: "Comparer", exact: true }).click();
   await page.getByText("14/14 articles avec un prix observé", { exact: true }).waitFor();
   assert.deepEqual(await store.read(), initialFixture);
   assert.equal(await page.getByText("Prix manquant", { exact: true }).count(), 4);
-  console.log("PASS: compact article-first 52/14 fixture, four store coverage/mode/partial totals, missing dashes, 320/390/768/1440, 44px Info, Enter/Space, unchanged selection/quantities/approval and reload.");
+  console.log("PASS: minimal article rows and native Details at320/390/768/1440, 44px controls, Enter/Space/Escape/close/Return/focus containment/restoration, source data absent when closed, unchanged selection/quantities/approval and reload.");
   // Unit ranking fixture: package ordering differs from unit ordering; all observations stay unapproved.
   const unitFixture = await store.read();
   for (const [storeIndex, [price, size]] of [[6, 12], [9, 30], [10, 20], [4, 10]].entries()) Object.assign(unitFixture.prices.find(p => p.id === `price-${storeIndex}-0`), { price, size });
@@ -159,6 +187,8 @@ try {
   for (const [storeIndex, [price, size, uses]] of [[10, 1, 25], [20, 2, 100]].entries()) Object.assign(unitFixture.prices.find(p => p.id === `price-${storeIndex}-2`), { price, size, unit: "l", usesPerPack: uses });
   for (const storeIndex of [0, 1]) Object.assign(unitFixture.prices.find(p => p.id === `price-${storeIndex}-3`), { price: storeIndex ? 6 : 3, size: storeIndex ? 24 : 12 });
   Object.assign(unitFixture.prices.find(p => p.id === "price-0-4"), { price: 0 });
+  unitFixture.prices.find(p => p.id === "price-1-0").evidence.url = "https://www.walmart.ca/en/ip/eggs/10052944";
+  unitFixture.prices.find(p => p.id === "price-0-0").evidence.url = "https://freshstmarket.com/results?q=eggs";
   await store.save({ plan: unitFixture, expectedRevision: unitFixture.revision });
   await page.getByRole("button", { name: "Relire le PC", exact: true }).click();
   const firstArticle = page.locator(".grocery-article-comparison").filter({ has: page.getByRole("heading", { name: "Fictional article 1", exact: true }) });
@@ -170,16 +200,17 @@ try {
   };
   for (const width of [320, 390, 768, 1440]) {
     await page.setViewportSize({ width, height: 900 });
-    assert.deepEqual(await firstArticle.locator(".grocery-price-row > strong").allTextContents(), ["Walmart", "Superstore", "Fresh St. Market", "Costco"]);
-    await firstArticle.getByText("9.00 CAD", { exact: true }).waitFor(); // Not the cheapest pack.
-    await firstArticle.getByText("Plus bas observé · 0 %", { exact: true }).waitFor();
+    assert.deepEqual(await firstArticle.locator(".grocery-price-row > strong").allTextContents(), ["Walmart", "Superstore", "Fresh St.", "Costco"]);
+    await firstArticle.getByText("0,3 CAD/unité", { exact: true }).waitFor(); // Same unit, not the raw pack price.
+    assert.equal(await firstArticle.getByText("9.00 CAD", { exact: true }).count(), 0);
+    await firstArticle.getByText("0 %", { exact: true }).waitFor();
     const massArticle = page.locator(".grocery-article-comparison").filter({ has: page.getByRole("heading", { name: "Fictional article 2", exact: true }) });
     assert.equal((await massArticle.locator(".grocery-price-row > strong").allTextContents())[0], "Walmart");
     const volumeRow = massArticle.locator(".grocery-price-row").filter({ has: page.getByText("Costco", { exact: true }) });
     await volumeRow.getByText("Non comparable", { exact: true }).waitFor();
     const zeroArticle = page.locator(".grocery-article-comparison").filter({ has: page.getByRole("heading", { name: "Fictional article 5", exact: true }) });
     await zeroArticle.getByText("Prix nul observé", { exact: true }).waitFor();
-    assert.equal(await zeroArticle.getByText("Plus bas observé · 0 %", { exact: true }).count(), 0);
+    assert.equal(await zeroArticle.getByText("0 %", { exact: true }).count(), 0);
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
     for (const cls of ["minimum", "higher", "neutral"]) {
       const colors = await page.locator(`.grocery-unit-gap-${cls}`).first().evaluate(el => ({ foreground: getComputedStyle(el).color, background: getComputedStyle(el).backgroundColor }));
@@ -187,14 +218,39 @@ try {
     }
     await firstArticle.scrollIntoViewIfNeeded();
     await page.screenshot({ path: `artifacts/groceries/unit-ranking-${width}.png` });
+    await commonFreshButton.click(); await commonFreshDetails.waitFor();
+    await commonFreshDetails.getByText(/Même base de/).waitFor();
+    await commonFreshDetails.locator(".grocery-product").filter({ has: page.getByRole("heading", { name: "Fictional article 1", exact: true }) }).getByText(/Conversion : 10,5 \/ 12/).waitFor();
+    await commonFreshDetails.getByText(/Achat de paquets entiers : 1 format/).first().waitFor();
+    await commonFreshDetails.getByText(/Articles exclus de la base commune/).waitFor();
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+    await page.screenshot({ path: `artifacts/groceries/common-basket-${width}.png` });
+    await commonFreshDetails.press("Escape"); await commonFreshDetails.waitFor({ state: "hidden" });
+    assert.equal(await commonFreshButton.evaluate(el => el === document.activeElement), true);
   }
   await firstInfo.focus(); await firstInfo.press("Enter");
-  await firstInfo.locator("..").getByText(/Écart = \(prix unitaire/).waitFor();
-  await firstInfo.press("Space");
+  await articleDetails.getByText(/Écart = \(prix unitaire/).waitFor();
+  await articleDetails.getByText(/Prix du format : 9.00 CAD/).waitFor();
+  await articleDetails.getByText(/Taxes produits/).first().waitFor();
+  await articleDetails.getByText(/Abonnement/).first().waitFor();
+  const productLink = articleDetails.getByRole("link", { name: /Ouvrir le produit/ });
+  const searchLink = articleDetails.getByRole("link", { name: /Ouvrir la recherche/ });
+  assert.equal(await productLink.getAttribute("href"), "https://www.walmart.ca/en/ip/eggs/10052944");
+  assert.equal(await searchLink.getAttribute("href"), "https://freshstmarket.com/results?q=eggs");
+  assert.equal(await productLink.getAttribute("rel"), "noopener noreferrer");
+  await context.route("https://www.walmart.ca/en/ip/eggs/10052944", route => route.fulfill({ contentType: "text/html", body: "<h1>Synthetic intercepted product link</h1>" }));
+  const popupPromise = context.waitForEvent("page"); await productLink.click(); const popup = await popupPromise;
+  await popup.getByRole("heading", { name: "Synthetic intercepted product link" }).waitFor();
+  assert.equal(popup.url(), "https://www.walmart.ca/en/ip/eggs/10052944"); await popup.close();
+  await articleDetails.waitFor(); await articleDetails.getByRole("button", { name: "Retour aux prix" }).click();
+  assert.equal(await firstInfo.evaluate(el => el === document.activeElement), true);
   assert.deepEqual(await store.read(), preservedUnitFixture);
   await page.reload(); await page.getByRole("button", { name: "Comparer", exact: true }).click();
   await firstArticle.getByText("+33,3 %", { exact: true }).waitFor(); assert.deepEqual(await store.read(), preservedUnitFixture);
   console.log("PASS: unit-ranked article rows preserve pack prices/modes/quality; percentage, mixed units, zero minimum, contrast≥4.5, keyboard/reload/no mutation at320/390/768/1440.");
   assert.deepEqual(errors, []);
   console.log("PASS: explicit Plan copy/dedup/preservation, editable quantity/format/preferences, blank prices, save failure/reload/retry, incomplete and sourced basket, 320/390/768/1280 layouts, minimal public query, shared persistence, stale conflict and offline draft. Weekly/monthly separation, current-basket override, cancel, old-worker capability gate, suggested retailers dedup and 1440px also pass. Zero page errors."); await second.close();
+} catch (error) {
+  if (page && !page.isClosed()) { await mkdir("artifacts/groceries", { recursive: true }); await writeFile("artifacts/groceries/planning-failure.txt", await page.locator("body").innerText()); await page.screenshot({ path: "artifacts/groceries/planning-failure.png", fullPage: true }); }
+  throw error;
 } finally { await browser?.close(); await Promise.all([new Promise(r => api.close(r)), new Promise(r => site.close(r))]); await rm(dir, { recursive: true, force: true }); }
