@@ -62,27 +62,27 @@ test("each settlement leg, pending, confirmed duplicates and investment flow is 
     assert.equal(trend(s).pendingRows.length, 1); assert.equal(trend(s).pendingCount, 2);
 });
 
-test("missing account coverage blocks a household baseline without inventing zeros", () => {
+test("missing accounts qualify a partial indicative reference without inventing their amounts", () => {
     const s = state();
     s.data!.accounts.push({ ...s.data!.accounts[0], id: "missing", name: "Missing card", type: "credit-card" });
-    assert.equal(trend(s).baselineCents, null); assert.equal(trend(s).actualCents, 78000);
+    assert.equal(trend(s).baselineCents, 71500); assert.equal(trend(s).actualCents, 78000); assert.equal(trend(s).referenceIndicative, true);
     assert.match(trend(s).reasons.join(" "), /Missing card/);
     assert.equal(trend(s, "2026-10", "missing").actualCents, null);
     assert.equal(trend(s, "2026-10", "card").baselineCents, 11500);
     assert.equal(trend(s, "2026-10", "", "USD").baselineCents, null);
     assert.equal(trend(s, "2026-10", "card", "USD").actualCents, null);
     s.data!.coverage.find(c => c.accountId === "card")!.latest = "2026-08-24";
-    assert.equal(trend(s, "2026-10", "card").baselineCents, 10500);
+    assert.equal(trend(s, "2026-10", "card").baselineCents, 11500);
     assert.deepEqual(trend(s, "2026-10", "card").qualifiedMonths, ["2026-04", "2026-05", "2026-06", "2026-07"]);
     assert.equal(trend(s, "2026-10", "card").comparisonReady, false);
 });
 
-test("at least three bounded months are required and disconnected intervals do not bridge gaps", () => {
+test("partial source intervals retain indicative observations without bridging their gaps", () => {
     const s = state();
     s.data!.coverage.find(c => c.accountId === "card")!.earliest = "2026-07-01";
     assert.equal(trend(s).qualifiedMonths.length, 3); assert.equal(trend(s).baselineReady, true);
     s.data!.coverage.find(c => c.accountId === "card")!.earliest = "2026-07-02";
-    assert.equal(trend(s).qualifiedMonths.length, 2); assert.equal(trend(s).baselineCents, null);
+    assert.equal(trend(s).qualifiedMonths.length, 2); assert.equal(trend(s).baselineCents, 71500); assert.equal(trend(s).referenceIndicative, true);
     s.data!.coverage = s.data!.coverage.filter(c => c.accountId !== "card");
     s.data!.coverage.push({ accountId: "card", earliest: "2026-03-01", latest: "2026-06-15", warning: null }, { accountId: "card", earliest: "2026-06-17", latest: "2026-10-09", warning: null });
     assert.equal(trend(s).qualifiedMonths.includes("2026-06"), false);
@@ -117,9 +117,9 @@ test("no target or future data leaks into typical spending; collection and today
 test("eligible zero and net-negative months remain valid amounts, not missing history or ratios", () => {
     const s = state();
     s.data!.transactions = [];
-    assert.equal(trend(s).actualCents, 0); assert.equal(trend(s).baselineCents, 0);
+    assert.equal(trend(s).actualCents, null); assert.equal(trend(s).baselineCents, null);
     const original = state(); s.data!.transactions = [original.data!.transactions.find(r => r.id === "oct-refund")!];
-    assert.equal(trend(s).actualCents, -2000); assert.equal(trend(s).baselineCents, 0);
+    assert.equal(trend(s).actualCents, -2000); assert.equal(trend(s).baselineCents, null);
     assert.equal(trend(s).daily.at(-1)?.actualCents, -2000);
     s.data!.coverage = [];
     assert.equal(trend(s).actualCents, -2000); assert.equal(trend(s).baselineCents, null);
@@ -160,3 +160,31 @@ test("month boundaries respect leap years, year changes and a shorter baseline m
     assert.notEqual(before, facts);
     assert.equal(JSON.stringify(s), before, "Derivation never writes source facts or decisions");
  });
+
+
+test("only observed periods divide the reference; partial source bounds and absent months never fabricate zeros", () => {
+    const s = state();
+    s.data!.transactions = s.data!.transactions.filter(r => r.date.startsWith("2026-04") || r.date.startsWith("2026-10"));
+    const facts = JSON.stringify(s), t = trend(s);
+    assert.deepEqual(t.referenceMonths, ["2026-04"]);
+    assert.equal(t.baselineCents, 69000); assert.equal(t.referenceIndicative, true);
+    assert.equal(t.daily.at(-1)?.baselineCents, 69000); assert.equal(JSON.stringify(s), facts);
+    s.data!.coverage = [];
+    assert.equal(trend(s).baselineCents, 69000); assert.equal(trend(s).comparisonReady, false);
+    s.data!.transactions = s.data!.transactions.filter(r => r.date.startsWith("2026-10"));
+    assert.equal(trend(s).baselineCents, null); assert.deepEqual(trend(s).referenceMonths, []);
+});
+
+test("a real net-zero reference is retained while target, current-incomplete and future periods are excluded", () => {
+    const s = state(), source = s.data!.transactions[0];
+    s.data!.transactions = [
+        { ...source, id: "zero-expense", date: "2026-09-02", outflowCents: 1000 },
+        { ...source, id: "zero-refund", date: "2026-09-03", outflowCents: -1000 },
+        { ...source, id: "target", date: "2026-10-03", outflowCents: 999999 },
+    ];
+    s.decisions["zero-expense"] = { nature: "expense", category: "groceries", note: "", updatedAt: "" };
+    s.decisions["zero-refund"] = { nature: "refund", category: "groceries", note: "", updatedAt: "" };
+    assert.deepEqual(trend(s).referenceMonths, ["2026-09"]); assert.equal(trend(s).baselineCents, 0);
+    assert.equal(trend(s, "2026-11").baselineCents, null);
+    assert.equal(trend(s, "2026-09", "", "CAD", "2026-09-15").referenceMonths.includes("2026-09"), false);
+});

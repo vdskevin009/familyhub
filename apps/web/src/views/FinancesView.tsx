@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import CategoryPayments from "./CategoryPayments";
+import CategoryPayments, { type InlineEntry, type InlineResult } from "./CategoryPayments";
 import { byAmountDescending, sortedExpenseCategories } from "../finance-order";
 import FinanceTrends from "./FinanceTrends";
-import { spendingTrend } from "../finance-trends";
+import { localToday, spendingTrend } from "../finance-trends";
 import { RefreshCw, Upload } from "lucide-react";
 import type { HubState } from "../state";
 import type { AppView } from "../types";
@@ -283,6 +283,7 @@ export default function FinancesView({
         });
     const [categoryPayments, setCategoryPayments] = useState<ExpenseCategory | null>(null);
     const savingDecision = useRef(false);
+    const inlineAttempt = useRef<{ intent: string; requestId: string; input: object } | null>(null);
     const categoryQueue = useRef<string[] | null>(null);
     const [allSameName, setAllSameName] = useState(false), [staleDraft, setStaleDraft] = useState(false);
     const attempt = useRef<{ intent: string; requestId: string } | null>(null);
@@ -301,7 +302,7 @@ export default function FinancesView({
                 if (disclosure) disclosure.open = true;
                 current.focus();
             } else if (categoryTrigger.current?.isConnected && categoryTrigger.current.getClientRects().length) categoryTrigger.current.focus();
-            else document.querySelector<HTMLElement>(tab === "trends" ? "#trends-month-title, .trend-months button.selected" : ".finance-expense-charts button")?.focus();
+            else (document.querySelector<HTMLElement>(tab === "trends" ? "#trends-month-title, .trend-months button.selected" : ".finance-expense-charts [data-finance-bar]") ?? document.querySelector<HTMLElement>(".finance-category-total button"))?.focus();
         });
     }
     const [bundle, setBundle] = useState<unknown>(null),
@@ -472,9 +473,61 @@ export default function FinancesView({
             setBusy(false);
         }
     }
+    async function saveInline(entries: InlineEntry[], sameName: boolean, progress: (done: string[]) => void): Promise<InlineResult> {
+        if (!state || savingDecision.current) return { done: [], error: "Un enregistrement est déjà en cours." };
+        savingDecision.current = true; setBusy(true); setError(""); setMessage("");
+        let current = state, confirmed = false;
+        const done = new Set<string>();
+        try {
+            if (sameName) {
+                const categories = new Map<string, ExpenseCategory>();
+                for (const entry of entries) {
+                    const group = categoryScope(current, entry.id, { ...entry, note: current.decisions[entry.id]?.note ?? "", updatedAt: "" });
+                    for (const row of group.affected) {
+                        if (categories.has(row.id) && categories.get(row.id) !== entry.category) throw new Error("Deux sélections du même nom demandent des catégories différentes. Choisissez une catégorie commune ou désactivez l'application du même nom.");
+                        categories.set(row.id, entry.category);
+                    }
+                }
+            }
+            const grouped = new Set<string>();
+            for (const entry of entries) {
+                if (done.has(entry.id)) continue;
+                confirmed = false;
+                const decision: FinanceDecision = { nature: entry.nature, category: entry.category, note: current.decisions[entry.id]?.note ?? "", updatedAt: "" };
+                const group = sameName && !grouped.has(entry.id) ? categoryScope(current, entry.id, decision) : null;
+                const input = { kind: "decision", id: entry.id, decision, allSameName: Boolean(group), ...(group ? { expectedCount: group.affected.length } : {}) };
+                const intent = JSON.stringify({ entry, sameName, note: decision.note });
+                if (inlineAttempt.current?.intent !== intent) inlineAttempt.current = { intent, requestId: crypto.randomUUID(), input };
+                // Preserve the exact failed payload as well as its ID, even after an earlier
+                // same-name step fulfilled peers and changed this step's derived scope.
+                const requestId = inlineAttempt.current.requestId;
+                const result = await saveFinanceChange(hub.worker, { ...inlineAttempt.current.input, expectedRevision: current.revision, requestId });
+                if (result.operation?.id !== requestId || !result.revision || !Array.isArray(result.history)) throw new Error("Enregistrement non confirmé par le PC. Réessayez la même sélection.");
+                confirmed = true;
+                current = result.refreshRequired ? await fetchFinances(hub.worker) : applyFinanceDelta(current, result, requestId);
+                const affected = current.decisionHistory.filter(e => e.operationId === requestId).map(e => e.id);
+                if (!affected.length) throw new Error("Décision confirmée, historique à actualiser avant de continuer.");
+                affected.forEach(id => {
+                    grouped.add(id);
+                    const requested = entries.find(e => e.id === id), saved = current.decisions[id];
+                    if (!requested || (saved?.nature === requested.nature && saved.category === requested.category)) done.add(id);
+                });
+                setState(current); inlineAttempt.current = null; progress([...done]);
+                if (result.refreshRequired) throw new Error("Des décisions plus récentes ont été conservées. Revoyez le reste du lot après actualisation; aucune ancienne décision n'a été réappliquée.");
+            }
+            return { done: [...done] };
+        } catch (e) {
+            return { done: [...done], error: (confirmed ? "Enregistrement confirmé; actualisez les décisions avant de continuer. " : "") + (e as Error).message, stale: confirmed || (e as Error & { status?: number }).status === 409 };
+        } finally { savingDecision.current = false; setBusy(false); }
+    }
+    async function reloadInline() {
+        const saved = await fetchFinances(hub.worker);
+        setState(saved); inlineAttempt.current = null; attempt.current = null; setStaleDraft(false);
+    }
     const data = state?.data;
     const classified = useMemo(() => state ? classifiedRows(state) : [], [state]);
-    const trend = useMemo(() => tab === "trends" && state?.data && trendMonth ? spendingTrend(state, trendMonth, account, currency) : null, [tab, state, trendMonth, account, currency]);
+    const trendToday = localToday();
+    const trend = useMemo(() => tab === "trends" && state?.data && trendMonth ? spendingTrend(state, trendMonth, account, currency, trendToday) : null, [tab, state, trendMonth, account, currency, trendToday]);
     const scope = useMemo(() => state && editing ? categoryScope(state, editing, decision, classified) : null, [state, editing, decision, classified]);
     const undoOptions = useMemo(() => state ? financeUndoOptions(state) : [], [state]);
     const summary = useMemo(
@@ -512,7 +565,7 @@ export default function FinancesView({
         catch (e) { setError((e as Error).message); }
         finally { setBusy(false); }
     }
-    async function undoChange(id: string) {
+    async function undoChange(id: string, bubble = false) {
         if (!state || savingDecision.current || staleDraft) return;
         savingDecision.current = true; setBusy(true); setError("");
         setMessage("");
@@ -530,6 +583,7 @@ export default function FinancesView({
             setError((e as Error).message);
             if (confirmed || (e as Error & { status?: number }).status === 409) setStaleDraft(true);
             if (confirmed) setMessage("Annulation enregistrée; actualisation encore nécessaire.");
+            if (bubble) throw e;
         } finally { savingDecision.current = false; setBusy(false); }
     }
     const investmentAccounts =
@@ -634,9 +688,10 @@ export default function FinancesView({
                     )}
                     {tab === "trends" && trend ? <FinanceTrends state={state} trend={trend} account={account} currency={currency} onMonth={setTrendMonth} onCategory={openCategory} /> : tab === "expenses" ? (
                         <>
-                            <div className="finance-totals surface compact-finance-totals">
-                                <div>
-                                    <div className="compact-heading"><small>Dépenses nettes · {currency}</small><InfoPopover title="Calcul des dépenses">
+                            <div className="finance-chart-grid finance-expense-charts">
+                                <section className="surface view-stack">
+                                    <div className="finance-totals compact-finance-totals finance-category-total"><div>
+                                        <span>Dépenses nettes · {currency}</span><strong>{money(summary.totalCents, currency)}</strong><InfoPopover title="Calcul des dépenses">
                                         <p className="muted">
                                 Transferts, paiements de cartes, revenus et
                                 placements sont exclus selon leur nature
@@ -647,14 +702,7 @@ export default function FinancesView({
                             </p>
                                         <p>Remboursements déduits. Totaux par date d’opération. La vue annuelle conserve les mois partiels et les lacunes; elle n’extrapole pas une année complète.</p>
                                         <p>{summary.reviewCount} opérations à revoir · {summary.unreviewedCount} suggestions non confirmées.</p>
-                                    </InfoPopover></div>
-                                    <strong>
-                                        {money(summary.totalCents, currency)}
-                                    </strong>
-                                </div>
-                            </div>
-                            <div className="finance-chart-grid finance-expense-charts">
-                                <section className="surface view-stack">
+                                    </InfoPopover></div></div>
                                     <h2>Dépenses par catégorie</h2>
                                     {summary.included.length ? (
                                         <>
@@ -1290,7 +1338,7 @@ export default function FinancesView({
                     )}
                 </>
             )}
-            <CategoryPayments category={categoryPayments} open={Boolean(categoryPayments) && !editing} summary={tab === "trends" ? trend?.summary ?? null : summary} accounts={data?.accounts ?? []} account={account} currency={currency} from={tab === "trends" ? trend?.from ?? "" : from} to={tab === "trends" ? trend?.to ?? "" : to} onClose={closeCategory} onEdit={(id, queueIds) => openDecision(id, state, queueIds)} />
+            <CategoryPayments category={categoryPayments} open={Boolean(categoryPayments) && !editing} summary={tab === "trends" ? trend?.summary ?? null : summary} state={state} onSave={saveInline} onReload={reloadInline} onUndo={id => undoChange(id, true)} accounts={data?.accounts ?? []} account={account} currency={currency} from={tab === "trends" ? trend?.from ?? "" : from} to={tab === "trends" ? trend?.to ?? "" : to} onClose={closeCategory} onEdit={(id, queueIds) => openDecision(id, state, queueIds)} />
             {paired && (
                 <details className="surface finance-import">
                     <summary>
@@ -1476,7 +1524,7 @@ export default function FinancesView({
                         {decision.category === "savings-investments" && <p className="muted">Hors dépenses. Choisissez Transfert pour un mouvement entre comptes, Placement / cotisation pour un versement, ou À vérifier en cas de doute. Les entrées et sorties restent séparées; aucun rendement n'est calculé.</p>}
                         {decision.category === "groceries" && <p className="muted">Vérifiez le ticket pour les achats mixtes (aliments et autres produits). La suggestion du commerçant ne confirme pas tout le contenu.</p>}
                         {decision.category === "pets" && <p className="muted">Nourriture, soins vétérinaires, médicaments, toilettage et assurance pour animaux. Confirmez le type d’achat à partir du justificatif; le nom du commerçant seul ne suffit pas.</p>}
-                        <label>
+                        <details className="finance-decision-note"><summary>Note et audit</summary>                        <label>
                             Note de décision
                             <textarea
                                 maxLength={1000}
@@ -1489,7 +1537,7 @@ export default function FinancesView({
                                     })
                                 }
                             />
-                        </label>
+                        </label></details>
                         <Sources sources={editRow.sources} />
                         <div className="finance-decision-actions">
                             <button className="button" type="submit" disabled={busy || staleDraft} aria-describedby={allSameName ? "finance-bulk-scope" : undefined}>

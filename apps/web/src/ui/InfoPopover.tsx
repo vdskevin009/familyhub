@@ -27,7 +27,7 @@ export function CompactDialog({ open, onClose, title, children, anchor, id }: {
         };
     }, [open, anchor]);
     return <dialog id={id} ref={ref} className="compact-dialog" aria-labelledby={titleId}
-        onCancel={e => { e.preventDefault(); onClose(); }}
+        onCancel={e => { e.preventDefault(); e.stopPropagation(); onClose(); }}
         onKeyDown={e => {
             if (e.key !== "Tab") return;
             const controls = [...e.currentTarget.querySelectorAll<HTMLElement>('button:not(:disabled), a[href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), summary, [tabindex="0"]')].filter(c => c.getClientRects().length > 0);

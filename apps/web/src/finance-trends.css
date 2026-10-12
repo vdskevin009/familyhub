@@ -81,3 +81,11 @@
   .trend-months .trend-gauge { width: 48px; height: 48px; }
   .trend-months > button { font-size: 12px; }
 }
+
+/* Same magnitude and mobile ring size as annual; figures share the category block. */
+.finance-trends .trend-headline .trend-gauge { width: 64px; height: 64px; }
+.trend-month-summary { min-width: 0; flex: 1; }
+.trend-month-total { display: grid; grid-template-columns: minmax(0, 1fr) auto 44px; align-items: center; gap: 6px; }
+.trend-month-total .trend-total { font-size: clamp(16px, 4.5vw, 20px); white-space: nowrap; }
+.trend-reference-caption { display: block; font-variant-numeric: tabular-nums; }
+@media (max-width: 700px) { .finance-trends .trend-headline .trend-gauge { width: 48px; height: 48px; } .trend-month-total { grid-template-columns: minmax(0, 1fr) 44px; } .trend-month-total > small { grid-column: 1; } .trend-month-total .trend-total { grid-column: 1; } .trend-month-total .info-trigger { grid-column: 2; grid-row: 1 / 3; } }

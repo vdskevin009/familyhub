@@ -69,15 +69,17 @@ try {
         const excluded = sheet.locator('[aria-label="Opérations hors dépenses"]');
         assert.equal(await included.getByRole("button").count(), 2);
         assert.doesNotMatch(await included.innerText(), /PAYMENT-THANKYOU|TFR-TO/);
-        assert.match(await sheet.innerText(), /30,00.*2 opération\(s\) dans les dépenses/s);
+        assert.match(await sheet.innerText(), /2 opération\(s\).*30,00/s);
         assert.equal(await excluded.isVisible(), false);
         const disclosure = sheet.locator(".finance-excluded-payments > summary");
         assert.match(await disclosure.innerText(), /Hors dépenses · 2 opération/);
         await disclosure.focus(); await page.keyboard.press("Enter");
         await excluded.waitFor();
         assert.equal(await excluded.getByRole("button").count(), 2);
-        assert.match(await excluded.innerText(), /Paiement de carte.*-1\s?350,00/s);
-        assert.match(await excluded.innerText(), /Transfert.*1\s?350,00/s);
+        assert.equal(await excluded.locator('[data-inline-payment="fixture-card-repayment"]').getByLabel("Nature", { exact: true }).inputValue(), "repayment");
+        assert.match(await excluded.locator('[data-inline-payment="fixture-card-repayment"]').innerText(), /-1\s?350,00/);
+        assert.equal(await excluded.locator('[data-inline-payment="fixture-bank-transfer"]').getByLabel("Nature", { exact: true }).inputValue(), "transfer");
+        assert.match(await excluded.locator('[data-inline-payment="fixture-bank-transfer"]').innerText(), /1\s?350,00/);
         assert.equal(await sheet.evaluate(el => el.scrollWidth > el.clientWidth), false);
         assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
         await sheet.screenshot({ path: join(screenshots, "separated-" + width + ".png") });
@@ -118,6 +120,7 @@ try {
         assert.deepEqual(await finance.read(), initial);
         await selectFinanceFilter(page, "Compte", "");
         await register.getByRole("button").filter({ hasText: "PAYMENT-THANKYOU" }).click();
+        if (!await editor.getByLabel("Note de décision").isVisible()) await editor.getByText("Note et audit", { exact: true }).click();
         await editor.getByLabel("Note de décision", { exact: true }).fill("Synthetic repayment reviewed");
         await editor.getByRole("button", { name: "Enregistrer la décision", exact: true }).click();
         await editor.waitFor({ state: "hidden" });

@@ -1,7 +1,7 @@
 import { classifiedRows, expenseCategories, summarizeSpending, type FinanceState } from "../../worker/src/finance-model";
 
 export const baselineWindowMonths = 6;
-export const minimumBaselineMonths = 3;
+export const minimumBaselineMonths = 1;
 const pad = (n: number) => String(n).padStart(2, "0");
 export function localToday() { const d = new Date(); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; }
 export function shiftMonth(month: string, offset: number) {
@@ -50,36 +50,43 @@ export function spendingTrend(state: FinanceState, month: string, accountId = ""
     const summary = summarizeSpending(state, from, available ? to : from, accountId, currency, allRows);
     const comparable = available && reasons.length === 0;
     // Missing coverage with no actual expense rows is unknown, not an invented zero.
-    const actualCents = available && (comparable || summary.included.length > 0) ? summary.totalCents : null;
+    const targetPosted = allRows.filter(r => r.status === "posted" && r.currency === currency && (!accountId || r.accountId === accountId) && r.date >= from && r.date <= to);
+    const actualCents = available && (summary.included.length > 0 || (comparable && targetPosted.length > 0 && summary.reviewCount === 0)) ? summary.totalCents : null;
     const candidates = Array.from({ length: baselineWindowMonths }, (_, index) => {
         const previous = shiftMonth(month, -baselineWindowMonths + index), last = monthEnd(previous);
         const problems = coverage(previous + "-01", last);
         if (last >= from || last > today) problems.push("Le mois cible et les mois futurs sont exclus");
         if (partial && Number(last.slice(8)) < elapsedDays) problems.push("Mois trop court pour comparer le même nombre de jours");
         const comparisonTo = partial ? `${previous}-${pad(Math.min(elapsedDays, Number(last.slice(8))))}` : last;
-        return { month: previous, from: previous + "-01", to: last, comparisonTo, reasons: problems,
-            summary: summarizeSpending(state, previous + "-01", comparisonTo, accountId, currency, allRows) };
+        const observation = summarizeSpending(state, previous + "-01", comparisonTo, accountId, currency, allRows);
+        const posted = allRows.filter(r => r.status === "posted" && r.currency === currency && (!accountId || r.accountId === accountId) && r.date >= previous + "-01" && r.date <= comparisonTo);
+        // Absence of source rows is unknown, not a zero month. Bounds are not a completeness certificate.
+        const observed = last <= asOf && (!partial || Number(last.slice(8)) >= elapsedDays) &&
+            (observation.included.length > 0 || (problems.length === 0 && posted.length > 0 && observation.reviewCount === 0));
+        return { month: previous, from: previous + "-01", to: last, comparisonTo, reasons: problems, observed, summary: observation };
     });
     const qualified = candidates.filter(c => !c.reasons.length);
+    const reference = candidates.filter(c => c.observed);
     // A historical reference exists independently of whether the target is comparable.
-    const baselineReady = available && qualified.length >= minimumBaselineMonths;
-    const comparisonReady = comparable && baselineReady;
-    const baselineCents = baselineReady ? mean(qualified.map(c => c.summary.totalCents)) : null;
+    const baselineReady = available && reference.length >= minimumBaselineMonths;
+    const comparisonReady = comparable && baselineReady && summary.reviewCount === 0 && summary.unreviewedCount === 0 && reference.length === baselineWindowMonths && reference.every(c => !c.reasons.length && c.summary.reviewCount === 0 && c.summary.unreviewedCount === 0);
+    const referenceIndicative = baselineReady && !comparisonReady;
+    const baselineCents = baselineReady ? mean(reference.map(c => c.summary.totalCents)) : null;
     const categories = Object.keys(expenseCategories).filter(key => key !== "savings-investments").map(key => {
         const current = summary.categories.find(c => c.key === key)!;
-        const typical = baselineReady ? mean(qualified.map(c => c.summary.categories.find(row => row.key === key)!.cents)) : null;
+        const typical = baselineReady ? mean(reference.map(c => c.summary.categories.find(row => row.key === key)!.cents)) : null;
         return { key: current.key, label: expenseCategories[current.key], actualCents: actualCents === null ? null : current.cents,
             count: available ? current.count : 0, baselineCents: typical,
-            baselineCount: qualified.reduce((sum, c) => sum + c.summary.categories.find(row => row.key === key)!.count, 0) };
+            baselineCount: reference.reduce((sum, c) => sum + c.summary.categories.find(row => row.key === key)!.count, 0) };
     }).filter(c => c.count || (baselineReady && c.baselineCount));
-    const chartDays = partial || !baselineReady ? elapsedDays : Math.max(elapsedDays, ...qualified.map(c => Number(c.to.slice(8))));
+    const chartDays = partial || !baselineReady ? elapsedDays : Math.max(elapsedDays, ...reference.map(c => Number(c.to.slice(8))));
     const daily = Array.from({ length: chartDays }, (_, index) => {
         const day = index + 1;
         const sumTo = (rows: typeof summary.included) => rows.filter(r => Number(r.date.slice(8)) <= day).reduce((sum, r) => sum + r.outflowCents, 0);
-        return { day, actualCents: actualCents === null || day > elapsedDays ? null : sumTo(summary.included), baselineCents: baselineReady ? mean(qualified.map(c => sumTo(c.summary.included))) : null };
+        return { day, actualCents: actualCents === null || day > elapsedDays ? null : sumTo(summary.included), baselineCents: baselineReady ? mean(reference.map(c => sumTo(c.summary.included))) : null };
     });
-    return { month, from, to: available ? to : end, end, elapsedDays, partial, future, available, comparable, reasons, actualCents,
-        baselineCents, baselineReady, comparisonReady, candidates, qualifiedMonths: qualified.map(c => c.month), categories, daily, summary, accounts,
+    return { today, month, from, to: available ? to : end, end, elapsedDays, partial, future, available, comparable, reasons, actualCents,
+        baselineCents, baselineReady, comparisonReady, referenceIndicative, referenceMonths: reference.map(c => c.month), candidates, qualifiedMonths: qualified.map(c => c.month), categories, daily, summary, accounts,
         coverage: accounts.map(a => ({ account: a.name, rows: data?.coverage.filter(c => c.accountId === a.id) ?? [] })),
         warnings: [...new Set(accounts.flatMap(a => (data?.coverage.filter(c => c.accountId === a.id) ?? []).map(c => c.warning).filter((s): s is string => Boolean(s))))],
         pendingCount: data?.pendingCount ?? 0,

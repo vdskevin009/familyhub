@@ -50,6 +50,10 @@ try {
                 const state = structuredClone(await finance.read());
                 if (mode === "empty") state.data = null;
                 if (mode === "zero") state.data.transactions = [];
+                if (mode === "net-zero") {
+                    state.data.transactions = state.data.transactions.filter(r => !r.date.startsWith("2026-10") || ["oct-food", "oct-refund"].includes(r.id));
+                    state.data.transactions.find(r => r.id === "oct-refund").outflowCents = -20000;
+                }
                 if (mode === "refund") state.data.transactions = state.data.transactions.filter(r => r.id === "oct-refund");
                 if (mode === "target-gap") state.data.coverage.find(c => c.accountId === "card").latest = "2026-09-30";
                 if (mode === "missing") state.data.accounts.push({ ...state.data.accounts[0], id: "missing", name: "Missing synthetic card", type: "credit-card" });
@@ -77,6 +81,14 @@ try {
         assert.equal(await view.locator(".trend-category").count(), 0);
         assert.equal(await view.locator('[data-trend-month="2026-10"] .trend-actual-ring').count(), 1);
         await view.screenshot({ path: join(screenshots, `annual-${width}.png`) });
+        const gaugeState = async selector => page.locator(selector).evaluate(el => ({ rings: [...el.querySelectorAll("circle[pathLength]")].map(c => [c.getAttribute("class"), c.getAttribute("stroke-dasharray")]) }));
+        const parity = async month => {
+            if (await view.getByRole("button", { name: "Retour à l'année", exact: true }).isVisible()) await view.getByRole("button", { name: "Retour à l'année", exact: true }).click();
+            const annual = await gaugeState(`[data-trend-month="${month}"]`);
+            await openMonth(month);
+            assert.deepEqual(await gaugeState(".trend-headline"), annual, "Identical ring normalization for the same filtered month");
+        };
+        await parity("2026-10"); await parity("2026-09");
         for (let i = 0; i < 3; i++) {
             await openMonth("2026-10");
             await view.getByRole("button", { name: "Retour à l'année", exact: true }).click();
@@ -104,7 +116,9 @@ try {
         await food.focus(); await page.keyboard.press("Enter");
         const sheet = page.getByRole("dialog", { name: /^Paiements.*Courses alimentaires$/ });
         await sheet.waitFor();
-        assert.match(await sheet.innerText(), /2026-10-01.*2026-10-09/s);
+        await sheet.getByRole("button", { name: "Informations : Période et édition", exact: true }).click();
+        assert.match(await page.getByRole("dialog", { name: "Période et édition", exact: true }).innerText(), /2026-10-01.*2026-10-09/s);
+        await page.keyboard.press("Escape");
         assert.equal(await sheet.locator('[aria-label="Opérations de dépenses"] button').count(), 2);
         assert.doesNotMatch(await sheet.innerText(), /oct-card-payment|oct-transfer/);
         await sheet.locator('[data-payment-id="oct-food"]').click();
@@ -130,12 +144,12 @@ try {
         assert.equal(await view.locator(".trend-category").count(), 0);
         await view.getByLabel("Afficher une catégorie", { exact: true }).selectOption("");
         await selectFinanceFilter(page, "Compte", "bank");
-        assert.match(await view.locator(".trend-headline").innerText(), /600,00.*600,00/s);
+        assert.match(await view.locator(".trend-headline").innerText(), /600,00.*600,00/s); await parity("2026-10");
         await view.getByText("Opérations en attente", { exact: true }).click();
         assert.match(await view.innerText(), /2 élément\(s\).*import complet/);
         assert.match(await view.innerText(), /ne sont pas disponibles pour cette sélection/);
         await selectFinanceFilter(page, "Compte", "");
-        await openMonth("2026-04"); assert.match(await view.innerText(), /Historique insuffisant/);
+        await openMonth("2026-04"); assert.match(await view.innerText(), /Référence indisponible/);
         await openMonth("2026-11"); assert.match(await view.locator(".trend-headline").innerText(), /Non disponible.*Non disponible/s);
         await view.getByRole("button", { name: "Retour à l'année", exact: true }).click();
         await view.getByLabel("Année analysée", { exact: true }).selectOption("2026");
@@ -152,30 +166,34 @@ try {
         assert.equal(saved.decisions["oct-food"].category, "restaurants");
         assert.equal(saved.decisionHistory.length, initial.decisionHistory.length + 1);
         mode = "missing"; await page.getByRole("button", { name: "Actualiser", exact: true }).click();
-        await view.getByRole("status").filter({ hasText: "Comparaison indisponible" }).waitFor();
-        assert.equal(await view.locator(".trend-headline .trend-actual-ring").count(), 1, "Actual remains colored without any baseline");
-        assert.match(await view.locator(".trend-headline").innerText(), /780,00.*Non disponible/s);
+        await view.getByRole("status").filter({ hasText: "Référence indicative" }).waitFor();
+        assert.equal(await view.locator(".trend-headline .trend-actual-ring").count(), 1, "Actual remains colored with an indicative partial baseline");
+        assert.match(await view.locator(".trend-headline").innerText(), /780,00.*715,00/s);
         mode = "target-gap"; await page.getByRole("button", { name: "Actualiser", exact: true }).click();
         await view.locator(".trend-headline .trend-reference-ring").waitFor();
-        await view.getByRole("status").filter({ hasText: "Comparaison indisponible" }).waitFor();
+        await view.getByRole("status").filter({ hasText: "Référence indicative" }).waitFor();
         assert.match(await view.locator(".trend-headline").innerText(), /780,00.*715,00/s);
-        assert.doesNotMatch(await view.locator(".trend-headline").innerText(), /au-dessus|en dessous/);
+        assert.match(await view.locator(".trend-headline").innerText(), /Référence indicative/);
         assert.equal(await view.locator(".trend-headline .trend-actual-ring").count(), 1);
         assert.equal(await view.locator(".trend-headline .trend-reference-ring").count(), 1);
         mode = "missing"; await page.getByRole("button", { name: "Actualiser", exact: true }).click();
-        await view.locator(".trend-headline .trend-reference-ring").waitFor({ state: "detached" });
+        await view.locator(".trend-headline .trend-reference-ring").waitFor();
         await selectFinanceFilter(page, "Compte", "missing");
         assert.match(await view.locator(".trend-headline").innerText(), /Non disponible.*Non disponible/s);
         await view.screenshot({ path: join(screenshots, `missing-${width}.png`) });
         await selectFinanceFilter(page, "Compte", "");
         mode = "zero"; await page.getByRole("button", { name: "Actualiser", exact: true }).click();
+        await view.locator(".trend-total").filter({ hasText: /^Non disponible/ }).waitFor();
+        assert.equal(await view.locator(".trend-headline .trend-actual-ring").count(), 0);
+        assert.match(await view.locator(".trend-headline").innerText(), /Référence.*Non disponible/);
+        mode = "net-zero"; await page.getByRole("button", { name: "Actualiser", exact: true }).click();
         await view.locator(".trend-total").filter({ hasText: /^0,00/ }).waitFor();
         assert.equal(await view.locator(".trend-headline .trend-actual-ring").count(), 0);
-        assert.doesNotMatch(await view.locator(".trend-headline").innerText(), /Non disponible/);
+        assert.match(await view.locator(".trend-headline").innerText(), /0,00.*715,00/s);
         mode = "refund"; await page.getByRole("button", { name: "Actualiser", exact: true }).click();
         await view.locator(".trend-total").filter({ hasText: /-20,00/ }).waitFor();
         assert.equal(await view.locator(".trend-headline .trend-actual-ring").count(), 1);
-        assert.match(await view.locator(".trend-headline").innerText(), /-20,00.*0,00/s);
+        assert.match(await view.locator(".trend-headline").innerText(), /-20,00.*Non disponible/s);
         mode = "error"; await page.getByRole("button", { name: "Actualiser", exact: true }).click();
         await page.getByText("Synthetic unavailable", { exact: true }).waitFor();
         mode = "empty"; await page.getByRole("button", { name: "Actualiser", exact: true }).click();

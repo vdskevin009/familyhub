@@ -60,8 +60,9 @@ try {
         await page.goto(base + "?view=finances");
         await page.getByRole("heading", { name: "Dépenses par catégorie", exact: true }).waitFor();
         const total = page.locator(".compact-finance-totals"), box = await total.boundingBox();
-        assert.ok(box.height < 135, `Total too tall: ${box.height}px at ${width}`);
+        assert.ok(box.height < 90, `Total too tall: ${box.height}px at ${width}`);
         assert.equal(await total.locator(":scope > div").count(), 1);
+        assert.equal(await total.evaluate(el => el.closest("section")?.querySelector(".finance-bars") !== null), true);
         assert.doesNotMatch(await total.innerText(), /suggestions non confirmées|opérations à revoir/);
         await total.getByRole("button", { name: /Calcul des dépenses/ }).click();
         await page.getByRole("dialog", { name: "Calcul des dépenses", exact: true }).getByText(/suggestions non confirmées/).waitFor();
@@ -89,6 +90,7 @@ try {
         const editorOptions = await editor.getByLabel("Catégorie", { exact: true }).locator("option").allTextContents();
         assert.deepEqual(editorOptions, alphabetical(editorOptions), "Editor category names are ascending alphabetical");
         await editor.getByLabel("Catégorie", { exact: true }).selectOption("groceries");
+        if (!await editor.getByLabel("Note de décision").isVisible()) await editor.getByText("Note et audit", { exact: true }).click();
         await editor.getByLabel("Note de décision").fill("Only this synthetic row note");
         await checkbox.check();
         assert.match(await editor.innerText(), /10 opérations à enregistrer sur 11.*tout l’historique/s);
@@ -125,6 +127,7 @@ try {
         assert.deepEqual((await finance.read()).decisions, initial.decisions);
         await open(); assert.equal(await checkbox.isChecked(), false);
         await editor.getByLabel("Catégorie", { exact: true }).selectOption("restaurants");
+        if (!await editor.getByLabel("Note de décision").isVisible()) await editor.getByText("Note et audit", { exact: true }).click();
         await editor.getByLabel("Note de décision").fill("Synthetic lost response draft");
         mode = "lost";
         await editor.getByRole("button", { name: "Enregistrer la décision", exact: true }).click();

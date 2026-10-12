@@ -261,6 +261,7 @@ try {
             .getByText("Sources et traçabilité", { exact: true })
             .click();
         assert.match(await sheet.innerText(), /original.csv.*SHA-256/s);
+        if (!await sheet.getByLabel("Note de décision").isVisible()) await sheet.getByText("Note et audit", { exact: true }).click();
         await sheet
             .getByLabel("Note de décision")
             .fill("Synthetic reviewed purchase");
@@ -275,6 +276,7 @@ try {
         assert.equal((await finance.read()).decisions.groceries, undefined);
         assert.equal(await sheet.getByRole("button", { name: "Enregistrer la décision", exact: true }).isDisabled(), true);
         await sheet.getByRole("button", { name: "Recharger la décision du PC et remplacer ce brouillon" }).click();
+        if (!await sheet.getByLabel("Note de décision").isVisible()) await sheet.getByText("Note et audit", { exact: true }).click();
         await sheet.getByLabel("Note de décision").fill("Synthetic reviewed purchase");
         await sheet
             .getByRole("button", { name: "Enregistrer la décision" })
@@ -331,7 +333,8 @@ try {
         assert.match(await foodSheet.innerText(), /100,00/);
         assert.equal(await foodSheet.evaluate(el => el.scrollWidth > el.clientWidth), false, "Category dialog overflow");
         await foodSheet.screenshot({ path: join(screenshots, "category-" + width + ".png") });
-        assert.match(await foodSheet.innerText(), /Remboursement.*-24,50/s);
+        assert.equal(await foodSheet.locator('[data-inline-payment="refund"]').getByLabel("Nature", { exact: true }).inputValue(), "refund");
+        assert.match(await foodSheet.locator('[data-inline-payment="refund"]').innerText(), /-24,50/);
         const foodSearch = foodSheet.getByLabel("Rechercher dans cette catégorie", { exact: true });
         await foodSearch.fill("No result");
         await foodSheet.getByText("Aucune opération ne correspond à cette recherche.", { exact: true }).waitFor();
