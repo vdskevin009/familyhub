@@ -59,7 +59,7 @@ try {
   // Supply fully sourced synthetic conditions to test rendering; production defaults remain unknown.
   const p = await store.read(); const until = new Date(Date.now() + 86400000).toISOString().slice(0, 10); Object.assign(p.retailers[0], { delivery: 1, service: 0, servicePercent: 0, feesTaxPercent: 0, minimum: 0, areaConfirmed: true, otherFeesReviewed: true, mode: "delivery", locality: "Synthetic city", slots: "yes", membershipStatus: "none", membershipWeekly: 0, evidence: { title: "Synthetic conditions", url: "https://example.com/terms", date: now, until } }); Object.assign(p.prices[0], { mode: "delivery", locality: "Synthetic city", localityConfirmed: true, depositPerPack: 0, taxPercent: 0, available: "yes", evidence: { title: "Synthetic catalogue", url: "https://example.com/oats", date: now, until } }); await store.save({ plan: p, expectedRevision: p.revision });
   await page.getByRole("button", { name: "Relire le PC" }).click();
-  const commonMarket = page.locator(".grocery-common-card").filter({ has: page.getByRole("heading", { name: "Synthetic market", exact: true }) });
+  const commonMarket = page.locator(".grocery-common-row").filter({ hasText: "Synthetic market" });
   await commonMarket.getByText("6,00 CAD", { exact: true }).waitFor();
   await basketButton.click(); await basketDetails.waitFor(); await market.getByText("Panier complet estimé", { exact: true }).waitFor(); await market.getByText("7.00 CAD", {exact:true}).waitFor();
   await basketDetails.getByRole("button", { name: "Retour aux prix" }).click();
@@ -123,12 +123,12 @@ try {
   const fixture = { ...emptyPlan(), revision: (await store.read()).revision, currency: "CAD", area: "Synthetic city", areaConfirmed: true };
   fixture.items = Array.from({ length: 52 }, (_, n) => ({ id: `fiction-${n}`, name: `Fictional article ${n + 1}`, quantity: n === 1 ? null : n === 2 ? 7 : 10.5, size: n === 2 ? null : 1, unit: n === 2 ? null : "each", preference: "", substitutions: true, active: n < 14, origin: "synthetic", cadence: n < 14 ? "week" : "unknown", measure: n === 2 ? "uses" : "physical", bucket: n === 2 ? "household" : "food" }));
   fixture.retailers = ["Fresh St. Market", "Walmart", "Costco", "Superstore"].map((name, n) => ({ ...retailerTemplate(`store-${n}`, name), mode: n === 2 ? "delivery" : "pickup", locality: "Synthetic city" }));
-  fixture.prices = fixture.retailers.flatMap((r, index) => fixture.items.slice(0, index === 2 ? 11 : index === 1 ? 13 : 14).map((i, n) => ({ id: `price-${index}-${n}`, itemId: i.id, retailerId: r.id, product: `Synthetic reference ${n + 1}`, price: 2.5 + index, size: 6, unit: "each", weighed: false, taxPercent: null, depositPerPack: null, currency: "CAD", available: "unknown", substitution: true, approved: false, kind: "public", mode: r.mode, locality: "Synthetic city", localityConfirmed: false, evidence: { title: "Fictional dated catalogue", url: "https://example.com/synthetic", date: now, until: null } })));
+  fixture.prices = fixture.retailers.flatMap((r, index) => fixture.items.slice(0, index === 2 ? 11 : index === 1 ? 13 : 14).map((i, n) => ({ id: `price-${index}-${n}`, itemId: i.id, retailerId: r.id, product: `Synthetic reference ${n + 1}`, price: n === 0 ? 2.5 + index : [4.5, 2.5, 3.5, 5.5][index], size: 6, unit: "each", weighed: false, taxPercent: null, depositPerPack: null, currency: "CAD", available: "unknown", substitution: true, approved: false, kind: "public", mode: r.mode, locality: "Synthetic city", localityConfirmed: false, evidence: { title: "Fictional dated catalogue", url: "https://example.com/synthetic", date: now, until: null } })));
   await store.save({ plan: fixture, expectedRevision: fixture.revision });
   await page.getByRole("button", { name: "Relire le PC", exact: true }).click();
-  await page.getByText("14/14 articles avec un prix observé", { exact: true }).waitFor();
+  await page.getByText("Base commune : 9/14 articles", { exact: false }).waitFor();
   assert.equal(await page.locator(".grocery-article-comparison").count(), 14);
-  assert.equal(await page.locator(".grocery-common-card").count(), 4);
+  assert.equal(await page.locator(".grocery-common-row").count(), 4);
   const initialFixture = await store.read();
   assert.equal(await page.locator(".grocery-card-info[open]").count(), 0);
   for (const width of [320, 390, 768, 1440]) {
@@ -136,9 +136,18 @@ try {
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
     await page.getByText("Base commune : 9/14 articles", { exact: false }).waitFor();
     for (const name of ["Fresh St.", "Walmart", "Costco", "Superstore"]) {
-      const card = page.locator(".grocery-common-card").filter({ has: page.getByRole("heading", { name, exact: true }) });
-      assert.ok(await card.getByRole("button", { name: /Détails du panier/ }).evaluate(el => el.getBoundingClientRect().height) >= 44);
+      const card = page.locator(".grocery-common-row").filter({ hasText: name });
+      assert.ok(await card.evaluate(el => el.getBoundingClientRect().height) >= 44);
     }
+    const refreshBounds = await page.getByRole("button", { name: "Relire le PC", exact: true }).boundingBox();
+    const saveBounds = await page.getByRole("button", { name: "Enregistrer sur le PC", exact: true }).boundingBox();
+    assert.ok(Math.abs(refreshBounds.y - saveBounds.y) < 1, "Compare refresh/save controls stay on one line");
+    const rows = page.locator(".grocery-common-row");
+    assert.deepEqual(await rows.locator(".grocery-common-store > strong").allTextContents(), ["Walmart", "Costco", "Fresh St.", "Superstore"]);
+    const descriptions = await rows.evaluateAll(els => els.map(el => el.getAttribute("aria-describedby").split(" ").map(id => document.getElementById(id).textContent).join(" ")));
+    assert.ok(descriptions.every(text => text.includes("CAD") && text.includes("%") && /Retrait|Livraison/.test(text)));
+    const bounds = await rows.evaluateAll(els => els.map(el => { const r = el.getBoundingClientRect(); return { x: r.x, y: r.y, bottom: r.bottom, width: r.width }; }));
+    assert.ok(bounds.every((r, i) => r.x === bounds[0].x && r.width === bounds[0].width && (!i || r.y >= bounds[i - 1].bottom)));
     await page.screenshot({ path: `artifacts/groceries/compact-articles-${width}.png`, fullPage: true });
   }
   const firstInfo = page.getByRole("button", { name: "Détails de Fictional article 1", exact: true });
@@ -174,7 +183,7 @@ try {
   }
   assert.deepEqual(await store.read(), initialFixture);
   await page.reload(); await page.getByRole("button", { name: "Comparer", exact: true }).click();
-  await page.getByText("14/14 articles avec un prix observé", { exact: true }).waitFor();
+  await page.getByText("Base commune : 9/14 articles", { exact: false }).waitFor();
   assert.deepEqual(await store.read(), initialFixture);
   assert.equal(await page.getByText("Prix manquant", { exact: true }).count(), 4);
   console.log("PASS: minimal article rows and native Details at320/390/768/1440, 44px controls, Enter/Space/Escape/close/Return/focus containment/restoration, source data absent when closed, unchanged selection/quantities/approval and reload.");
@@ -220,6 +229,10 @@ try {
     await page.screenshot({ path: `artifacts/groceries/unit-ranking-${width}.png` });
     await commonFreshButton.click(); await commonFreshDetails.waitFor();
     await commonFreshDetails.getByText(/Même base de/).waitFor();
+    const basketBack = commonFreshDetails.getByRole("button", { name: "Retour aux prix", exact: true });
+    const basketClose = commonFreshDetails.getByRole("button", { name: "Close Détails du panier Fresh St. Market", exact: true });
+    await basketBack.focus(); await basketBack.press("Tab"); assert.equal(await basketClose.evaluate(el => el === document.activeElement), true);
+    await basketClose.press("Shift+Tab"); assert.equal(await basketBack.evaluate(el => el === document.activeElement), true);
     await commonFreshDetails.locator(".grocery-product").filter({ has: page.getByRole("heading", { name: "Fictional article 1", exact: true }) }).getByText(/Conversion : 10,5 \/ 12/).waitFor();
     await commonFreshDetails.getByText(/Achat de paquets entiers : 1 format/).first().waitFor();
     await commonFreshDetails.getByText(/Articles exclus de la base commune/).waitFor();
@@ -228,6 +241,21 @@ try {
     await commonFreshDetails.press("Escape"); await commonFreshDetails.waitFor({ state: "hidden" });
     assert.equal(await commonFreshButton.evaluate(el => el === document.activeElement), true);
   }
+  // Repeated store details and filter changes must not save or alter the plan.
+  for (const closeWith of ["return", "close", "escape"]) {
+    await commonFreshButton.focus(); await commonFreshButton.press("Enter"); await commonFreshDetails.waitFor();
+    if (closeWith === "escape") await commonFreshDetails.press("Escape");
+    else await commonFreshDetails.getByRole("button", { name: closeWith === "return" ? "Retour aux prix" : "Close Détails du panier Fresh St. Market", exact: true }).click();
+    await commonFreshDetails.waitFor({ state: "hidden" }); assert.equal(await commonFreshButton.evaluate(el => el === document.activeElement), true);
+  }
+  await page.locator('summary[aria-label="Magasins à comparer"]').click();
+  const walmartFilter = page.getByLabel("Walmart · Retrait", { exact: true });
+  await walmartFilter.uncheck();
+  const walmartRow = page.getByRole("button", { name: "Détails du panier Walmart", exact: true });
+  await walmartRow.getByText("Non comparable", { exact: true }).waitFor();
+  await walmartFilter.check();
+  await page.locator('summary[aria-label="Magasins à comparer"]').click();
+  assert.deepEqual(await store.read(), preservedUnitFixture);
   await firstInfo.focus(); await firstInfo.press("Enter");
   await articleDetails.getByText(/Écart = \(prix unitaire/).waitFor();
   await articleDetails.getByText(/Prix du format : 9.00 CAD/).waitFor();
