@@ -135,6 +135,11 @@ try {
     await page.screenshot({ path: `artifacts/groceries/compact-articles-${width}.png`, fullPage: true });
   }
   const firstInfo = page.locator("summary[aria-label='Info prix Fictional article 1']");
+  const storeInfo = page.locator("summary[aria-label='Info Fresh St. Market']");
+  await storeInfo.click();
+  await storeInfo.locator("..").getByText(/Maison non chiffrable/).waitFor();
+  assert.equal(await storeInfo.locator("..").getByText(/Maison 0\.00 CAD/).count(), 0);
+  await storeInfo.click();
   await firstInfo.focus(); await firstInfo.press("Enter");
   await firstInfo.locator("..").getByText("Équivalent proportionnel du besoin : 4.375 CAD.", { exact: false }).waitFor();
   assert.equal(await firstInfo.locator("..").getAttribute("open"), "");

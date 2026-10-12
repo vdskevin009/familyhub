@@ -10,7 +10,8 @@ function Fees({ retailer: r }: { retailer: GroceryRetailer }) {
   return <p className="grocery-fee-line">Livr. {fee(r.delivery)} · Service {r.service === null || r.servicePercent === null ? "?" : `${fee(r.service)}${r.servicePercent ? ` + ${r.servicePercent}%` : ""}`} · Min. {fee(r.minimum)}</p>;
 }
 function BasketInfo({ basket: b, plan }: { basket: Basket; plan: GroceryPlan }) {
-  return <><p>Alimentation {cash(b.foodSubtotal, plan.currency)} · Maison {cash(b.householdSubtotal, plan.currency)}</p>
+  const covered = (household: boolean) => b.lines.some(l => (plan.items.find(i => i.id === l.itemId)?.bucket === "household") === household);
+  return <><p>Alimentation {covered(false) ? cash(b.foodSubtotal, plan.currency) : "non chiffrable"} · Maison {covered(true) ? cash(b.householdSubtotal, plan.currency) : "non chiffrable"}</p>
     {b.orders.map(o => { const r = plan.retailers.find(r => r.id === o.retailerId)!; return <section className="grocery-product" key={o.retailerId}><strong>{r.name} · {modeLabels[r.mode ?? "unknown"]}</strong><dl className="grocery-costs">{[["Produits", o.subtotal], ["Taxes produits", o.tax], ["Livraison", o.delivery], ["Service", o.service], ["Taxes sur frais", o.feesTax], ["Consignes", o.deposit], ["Abonnement / semaine", o.membership], ["Pourboire optionnel", o.tip]].map(([name, amount]) => <div key={name}><dt>{name}</dt><dd>{amount === null ? "À vérifier" : cash(amount as number, plan.currency)}</dd></div>)}</dl><PriceSource value={r.evidence} /></section>; })}
     {b.lines.map(line => {
       const price = plan.prices.find(p => p.id === line.priceId)!;
@@ -44,7 +45,7 @@ export function StoreCards({ plan, comparison, onEdit }: {
       {r ? <Fees retailer={r} /> : <p className="grocery-fee-line">Frais à vérifier</p>}
       <details className="grocery-card-info"><summary aria-label={"Info " + g.name}>Info</summary>{r ? <>
         <p>{s?.priced ?? 0} référence(s) chiffrable(s), paquets entiers ; frais, taxes et quantités manquantes exclus du sous-total.</p>
-        <p>Alimentation {s?.priced ? cash(s.food, plan.currency) : "—"} · Maison {s?.priced ? cash(s.household, plan.currency) : "—"}</p>
+        <p>Alimentation {s?.foodPriced ? cash(s.food, plan.currency) : "non chiffrable"} · Maison {s?.householdPriced ? cash(s.household, plan.currency) : "non chiffrable"}</p>
         <p>{r.locality || "Localité à vérifier"} · {r.areaConfirmed ? "Zone confirmée" : "Zone à vérifier"} · {r.enabled === false ? "Hors comparaison" : "Dans la comparaison"}</p>
         <PriceSource value={r.evidence} />
         {r.minimum === null && <p>Minimum de commande inconnu.</p>}
