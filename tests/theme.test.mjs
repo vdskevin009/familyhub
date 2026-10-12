@@ -24,3 +24,8 @@ test('Theme: browser chrome matches canvas while launcher identity stays intact'
   assert.deepEqual(manifest.icons.map(x => x.src), ['icon-192.png', 'icon-512.png', 'icon-maskable-512.png', 'icon.svg']);
   assert.match(await readFile('apps/web/public/sw.js', 'utf8'), /familyhub-v2-shell-11/);
 });
+
+test('Theme: borderless search inputs retain a contrasting outer boundary', async () => {
+  const styles = await readFile('apps/web/src/styles.css', 'utf8');
+  assert.match(styles, /\.search-field \{[^}]*border: 1px solid var\(--control-line\)/);
+});
