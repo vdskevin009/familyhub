@@ -15,3 +15,9 @@ Validation: typechecks/build; unit/comparison regressions; synthetic receipt and
 ## Compact basket refinement (2026-10-12)
 
 Status: implementation under test, not published. The identical common-base amounts are sorted ascending, unknown amounts last, with deterministic alphabetical ties. Each full store row is a keyboard-accessible Details button. Partial coverage, excluded fees, review state and purchase modes remain concise and visible; mixed modes are labelled. Calculation explanations remain in collapsed Info or Details. Whole-pack purchasing costs stay separate from proportional estimates. No appwide color/launcher change or persistent-state/backend change. Publication and real acceptance are separate gates.
+
+## Comparison coverage (Issue #203)
+
+Status: Testing; publication pending. Count selected articles with comparable unit rates at two or more distinct stores prominently, independently of quantities required for the total. Multiple variants at one store do not constitute a comparison. Unknown household quantities still allow sourced unit-rate comparison; mass, volume, units and labelled uses remain separate.
+
+The common-total count explicitly says “pour le total”. A collapsed store selector changes only this display calculation, preserving all article comparisons and every saved plan field. Default participants retain the existing calculable-store set; a store explicitly selected without compatible references must reduce shared coverage, never silently disappear. Changing store selection requires recomputing one identical subset and quantity at each chosen store; unequal partial totals cannot be ranked. Empty/single-store selections have no competitive claim. Details identify missing quantity/desired format/capacity or the selected store without a compatible reference. No new research, price, household quantity, unit conversion, dose, approval, worker or persistent-state change.

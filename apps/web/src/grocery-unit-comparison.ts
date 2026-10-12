@@ -99,3 +99,10 @@ export function articleUnitComparison(plan: GroceryPlan, item: ShoppingItem, gro
   });
   return { rows, basis, minimum, comparableCount: comparable.length };
 }
+
+/** Count competing stores, not multiple formats at a single store. No need quantity required. */
+export function articleComparisonCoverage(plan: GroceryPlan, groups: StoreGroup[], now?: string) {
+  const items = plan.items.filter(i => i.active);
+  const comparable = items.filter(item => articleUnitComparison(plan, item, groups, now).rows.filter(row => row.rank !== null).length >= 2);
+  return { count: comparable.length, total: items.length };
+}

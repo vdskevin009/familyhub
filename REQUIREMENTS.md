@@ -1,5 +1,9 @@
 # FamilyHub - Canonical Requirements
 
+## Courses comparison coverage (#203)
+
+FH-GROCERY-006 is maintained in [its scoped requirement](docs/requirements/FH-GROCERY-006.md). Status: Testing. Article unit-price coverage is counted independently of the common-total subset; a display-only store selector can expand that subset with equal quantities and explicit exclusions. Implementation: `grocery-unit-comparison`, `grocery-common-quantity`, `GroceryComparison`, `GroceryCommonBasket`. Public release and physical-phone verification remain separate gates.
+
 ## Indicative references and inline category editing (#194)
 
 | ID | Requirement | Status | Evidence |

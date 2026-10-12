@@ -130,6 +130,22 @@ try {
   assert.equal(await page.locator(".grocery-article-comparison").count(), 14);
   assert.equal(await page.locator(".grocery-common-row").count(), 4);
   const initialFixture = await store.read();
+  await page.getByText("14/14 articles comparables par prix unitaire", { exact: true }).waitFor();
+  const totalChoices = page.locator(".grocery-total-stores");
+  await page.getByText("Choisir les magasins du total", { exact: true }).click();
+  await totalChoices.getByLabel("Costco", { exact: true }).uncheck();
+  await page.getByText("Base commune : 11/14 articles", { exact: false }).waitFor();
+  assert.equal(await page.locator(".grocery-article-comparison").count(), 14);
+  assert.equal(await page.locator(".grocery-common-row").count(), 3);
+  for (const width of [320, 390, 768, 1440]) {
+    await page.setViewportSize({ width, height: 900 });
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+    assert.ok(await totalChoices.getByLabel("Costco", { exact: true }).evaluate(el => el.closest("label").getBoundingClientRect().height) >= 44);
+  }
+  assert.deepEqual(await store.read(), initialFixture);
+  await page.getByRole("button", { name: "Réinitialiser les magasins", exact: true }).click();
+  await page.getByText("Base commune : 9/14 articles", { exact: false }).waitFor();
+  await page.getByText("Choisir les magasins du total", { exact: true }).click();
   assert.equal(await page.locator(".grocery-card-info[open]").count(), 0);
   for (const width of [320, 390, 768, 1440]) {
     await page.setViewportSize({ width, height: 900 });

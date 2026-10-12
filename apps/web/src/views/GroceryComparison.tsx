@@ -2,7 +2,7 @@ import { useState } from "react";
 import { compatibleOffers, modeLabels, offerQuantity, type Basket, type Evidence, type GroceryPlan, type GroceryRetailer, type ShoppingItem } from "../../../worker/src/grocery-planning";
 import { needLabel } from "../../../worker/src/grocery-weekly";
 import { datedPrice, formatLabel, equivalentCost, observedSummary, comparisonStores, priceState, quantityReason, storeGroups, unitPrice, type StoreGroup } from "../grocery-comparison";
-import { articleUnitComparison, formatUnitRate } from "../grocery-unit-comparison";
+import { articleComparisonCoverage, articleUnitComparison, formatUnitRate } from "../grocery-unit-comparison";
 import { grocerySourceLink } from "../grocery-source-link";
 import { Sheet } from "../ui/primitives";
 import GroceryCommonBasket from "./GroceryCommonBasket";
@@ -116,11 +116,14 @@ export default function GroceryComparison({ plan, comparison }: { plan: GroceryP
   const items = plan.items.filter(i => i.active);
   const groups = storeGroups(plan).filter(g => comparisonStores.includes(g.name) || g.retailers.some(r => plan.prices.some(p => p.retailerId === r.id && items.some(i => i.id === p.itemId))));
   const known = items.filter(i => plan.prices.some(p => p.itemId === i.id && datedPrice(p) && p.available !== "no")).length;
+  const unitCoverage = articleComparisonCoverage(plan, groups);
   return <>
     <section className="grocery-comparison-status" aria-label="État des prix">
+      <strong>{unitCoverage.count}/{unitCoverage.total} articles comparables par prix unitaire</strong>
       <small>{comparison.best ? "Panier estimé disponible" : "Totaux complets non confirmés"}{comparison.truncated ? " · Calcul limité" : ""}</small>
       <details className="grocery-card-info"><summary>Info sur les montants</summary>
         <p>{known}/{items.length} articles avec un prix observé · {comparison.coverage}/{items.length} références validées pour le total.</p>
+        <p>Les prix unitaires se comparent même si la quantité du panier est inconnue. Le total commun exige une quantité connue et une référence compatible dans chaque magasin choisi.</p>
         <p>Un prix observé reste un candidat jusqu'à la revue du produit, du format, de la localité et du mode. Un sous-total partiel couvre uniquement les références chiffrables, hors frais et taxes non confirmés.</p>
         <p>Les paquets entiers sont arrondis à l'achat ; l'équivalent proportionnel du besoin ne mesure ni stock disponible ni consommation réelle.</p>
         {comparison.best && <p>Estimation la plus basse parmi les options entièrement renseignées : {comparison.best.name}, {cash(comparison.best.total!, plan.currency)}. À reconfirmer avant achat.</p>}
