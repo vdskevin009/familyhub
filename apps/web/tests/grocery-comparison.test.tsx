@@ -62,6 +62,15 @@ test("Courses presentation: four stores, missing dash, article-first and collaps
   assert.ok(html.indexOf("Info prix Synthetic muffins") < html.indexOf("example.com/catalogue", html.indexOf("Info prix Synthetic muffins")));
   assert.deepEqual(p, before);
 });
+test("Courses presentation: one chiffrable bucket cannot turn another unknown bucket into zero", () => {
+  const p = plan(); p.items.push(item({ id: "household", name: "Synthetic household", bucket: "household", quantity: null }));
+  const s = observedSummary(p, p.retailers[0]); assert.equal(s.foodPriced, 1); assert.equal(s.householdPriced, 0);
+  for (const approved of [false, true]) {
+    p.prices[0].approved = approved;
+    const html = renderToStaticMarkup(createElement(GroceryComparison, { plan: p, comparison: compareBaskets(p) }));
+    assert.ok(html.includes("Maison non chiffrable")); assert.ok(!html.includes("Maison 0.00 CAD"));
+  }
+});
 test("Courses presentation: complete reviewed basket and conditional availability are distinct", () => {
   const p = plan(item(), retailer(), [price({ approved: true, localityConfirmed: true })]);
   let html = renderToStaticMarkup(createElement(GroceryComparison, { plan: p, comparison: compareBaskets(p) })); assert.ok(html.includes("Panier complet estimé"));
