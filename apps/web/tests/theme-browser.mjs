@@ -54,6 +54,15 @@ try {
       if (overflow) console.log('OVERFLOW', JSON.stringify(await page.evaluate(() => [...document.querySelectorAll('body *')].map(e => ({ tag: e.tagName, cls: e.className, right: e.getBoundingClientRect().right, width: e.getBoundingClientRect().width, position: getComputedStyle(e).position, overflow: getComputedStyle(e).overflowX })).filter(e => e.width && e.right > innerWidth + 1))));
       assert.equal(overflow, false, `${view} ${width} overflow`);
       assert.equal(await page.locator('main h1').first().evaluate(e => getComputedStyle(e).fontSize), '20px');
+      if (['invoices', 'desjardins', 'blue-cross'].includes(view)) {
+        const bell = await page.getByRole('button', { name: 'Ouvrir les notifications', exact: true }).boundingBox();
+        const tabs = page.getByRole('navigation', { name: 'Document sources', exact: true });
+        for (const button of await tabs.getByRole('button').all()) {
+          const box = await button.boundingBox();
+          assert.ok(box.x + box.width <= bell.x || box.y >= bell.y + bell.height, 'Source tab label/control must not sit beneath notification bell');
+          await button.click({ trial: true });
+        }
+      }
       metrics.push({ view, width, colorScheme, overflow: false });
       if (colorScheme === 'light') await page.screenshot({ path: join(output, `${view}-${width}.png`), fullPage: true });
       if (view === 'reimbursements') {
