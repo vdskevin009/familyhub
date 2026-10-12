@@ -85,6 +85,9 @@
 .grocery-source-action { display: flex !important; align-items: center; min-height: 44px; width: fit-content; }
 .grocery-detail-conditions { padding: 12px 0; border-top: 1px solid var(--line); }
 .grocery-common-note { font-size: 12px; color: var(--muted); }
+.grocery-total-stores { display: grid; gap: 4px; margin-block: 8px; padding: 8px; }
+.grocery-total-stores label { display: flex; align-items: center; gap: 8px; min-height: 44px; }
+.grocery-total-stores input { width: 18px; height: 18px; flex: 0 0 auto; }
 .grocery-common-basket { border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--surface); padding: 12px; min-width: 0; }
 .grocery-common-basket .grocery-common-note { margin: 0; }
 .grocery-common-row { width: 100%; grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr) auto; min-height: 56px; text-align: left; color: var(--ink); background: transparent; border: 0; border-top: 1px solid var(--line); cursor: pointer; font: inherit; }

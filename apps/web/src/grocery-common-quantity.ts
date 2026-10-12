@@ -28,8 +28,8 @@ export function adjustedOfferQuantity(item: ShoppingItem, offer: RankedOffer): C
 /** Display-only estimate: one identical subset/quantity at every participating store.
  * Candidate products remain unreviewed; no density/dose or new household quantity is inferred.
  */
-export function commonQuantityComparison(plan: GroceryPlan, now?: string) {
-  const groups = storeGroups(plan), items = plan.items.filter(i => i.active);
+export function commonQuantityComparison(plan: GroceryPlan, now?: string, selectedStores?: readonly string[]) {
+  const groups = storeGroups(plan).filter(g => selectedStores === undefined || selectedStores.includes(g.name)), items = plan.items.filter(i => i.active);
   const candidates = items.map(item => {
     const need = target(item);
     const rows = articleUnitComparison(plan, item, groups, now).rows.map(row => {
@@ -44,7 +44,8 @@ export function commonQuantityComparison(plan: GroceryPlan, now?: string) {
     });
     return { item, rows };
   });
-  const participants = groups.filter(g => candidates.some(c => c.rows.some(r => r.group.name === g.name && r.line)));
+  // An explicitly chosen store must never disappear just because its references are missing.
+  const participants = selectedStores === undefined ? groups.filter(g => candidates.some(c => c.rows.some(r => r.group.name === g.name && r.line))) : groups;
   const shared = participants.length ? candidates.filter(c => participants.every(g => c.rows.some(r => r.group.name === g.name && r.line))) : [];
   const stores = groups.map(group => {
     const lines = shared.flatMap(c => { const line = c.rows.find(r => r.group.name === group.name)?.line; return line ? [line] : []; });
@@ -65,5 +66,13 @@ export function commonQuantityComparison(plan: GroceryPlan, now?: string) {
   stores.sort((a, b) => (a.amount === null ? 1 : 0) - (b.amount === null ? 1 : 0)
     || (a.amount !== null && b.amount !== null ? a.amount - b.amount : 0)
     || a.group.name.localeCompare(b.group.name, "fr-CA"));
-  return { stores, count: shared.length, total: items.length, excluded: items.filter(i => !shared.some(c => c.item.id === i.id)), participants: participants.length };
+  const excluded = items.filter(i => !shared.some(c => c.item.id === i.id));
+  const exclusionDetails = excluded.map(item => {
+    const quantity = item.basketQuantity !== undefined ? item.basketQuantity : item.quantity;
+    if (quantity === null || !Number.isFinite(quantity) || quantity <= 0) return { item, reason: "Quantité du panier à préciser ; les prix unitaires restent disponibles." };
+    if (item.measure !== "uses" && (item.size === null || !item.unit)) return { item, reason: "Format souhaité à préciser pour calculer le total ; les prix unitaires restent disponibles." };
+    const missing = participants.filter(g => !candidates.find(c => c.item.id === item.id)?.rows.some(r => r.group.name === g.name && r.line)).map(g => g.name);
+    return { item, reason: missing.length ? `Référence ${item.measure === "uses" ? "avec capacité en utilisations" : "dans l’unité du besoin"} manquante ou non comparable : ${missing.join(", ")}.` : "Choisissez au moins un magasin pour calculer le total." };
+  });
+  return { stores, count: shared.length, total: items.length, excluded, exclusionDetails, participants: participants.length, participantNames: participants.map(g => g.name) };
 }

@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 import { emptyPlan, type GroceryPrice, type ShoppingItem } from "../../worker/src/grocery-planning";
 import { retailerTemplate } from "../../worker/src/grocery-weekly";
 import { adjustedMoney, adjustedNumber, commonQuantityComparison } from "../src/grocery-common-quantity";
+import { articleComparisonCoverage } from "../src/grocery-unit-comparison";
+import { storeGroups } from "../src/grocery-comparison";
 const day = "2026-10-12", evidence = { title: "Synthetic", url: "https://example.com", date: day, until: null };
 const item: ShoppingItem = { id: "i", name: "Synthetic eggs", quantity: 2, size: 12, unit: "each", measure: "pack", countUnit: "œufs", active: true, substitutions: true, preference: "", origin: "synthetic" };
 function fixture() {
@@ -72,4 +74,44 @@ test("Common basket: nonfinite relative gap is unknown, never a percentage", () 
   const p = fixture(); p.prices[0].price = 1e-310;
   const higher = commonQuantityComparison(p, day).stores.find(s => s.group.name === "Superstore")!;
   assert.equal(higher.percent, null); assert.equal(higher.gap, "Écart inconnu");
+});
+
+test("Coverage: unknown quantities keep competing unit prices and one store's variants do not inflate coverage", () => {
+  const p = fixture(); p.items[0].quantity = null;
+  assert.deepEqual(articleComparisonCoverage(p, storeGroups(p), day), { count: 1, total: 1 });
+  const common = commonQuantityComparison(p, day);
+  assert.equal(common.count, 0); assert.match(common.exclusionDetails[0].reason, /Quantité du panier/);
+  p.prices[1].retailerId = p.prices[0].retailerId;
+  assert.equal(articleComparisonCoverage(p, storeGroups(p), day).count, 0);
+});
+test("Common basket: selected stores expand shared articles without changing quantities or ranking unequal bases", () => {
+  const p = fixture();
+  p.retailers.push({ ...retailerTemplate("r2", "Costco"), mode: "delivery" });
+  p.prices.push({ ...p.prices[0], id: "third", retailerId: "r2", mode: "delivery" });
+  p.items.push({ ...item, id: "extra" });
+  p.prices.push(...p.prices.slice(0, 2).map(o => ({ ...o, id: `${o.id}-extra`, itemId: "extra" })));
+  const before = structuredClone(p);
+  assert.equal(commonQuantityComparison(p, day).count, 1);
+  const pair = commonQuantityComparison(p, day, ["Walmart", "Superstore"]);
+  assert.equal(pair.count, 2); assert.equal(pair.participants, 2);
+  assert.deepEqual(pair.stores.map(s => s.lines.map(l => [l.item.id, l.quantity])), [[["i", 24], ["extra", 24]], [["i", 24], ["extra", 24]]]);
+  assert.deepEqual(p, before);
+  const excluded = commonQuantityComparison(p, day).exclusionDetails.find(e => e.item.id === "extra")!;
+  assert.match(excluded.reason, /Costco/);
+});
+test("Common basket: explicitly chosen unpriced store, empty and singleton selections never claim a competing minimum", () => {
+  const p = fixture(); p.retailers.push({ ...retailerTemplate("missing", "Unpriced store"), mode: "pickup" });
+  const unpriced = commonQuantityComparison(p, day, ["Walmart", "Unpriced store"]);
+  assert.equal(unpriced.participants, 2); assert.equal(unpriced.count, 0);
+  assert.ok(unpriced.stores.every(s => s.amount === null && s.percent === null));
+  assert.match(unpriced.exclusionDetails[0].reason, /Unpriced store/);
+  assert.equal(commonQuantityComparison(p, day, []).count, 0);
+  const single = commonQuantityComparison(p, day, ["Walmart"]);
+  assert.equal(single.stores[0].gap, "Seul montant"); assert.equal(single.stores[0].percent, null);
+});
+test("Common basket: missing pack format and labelled capacity explain exclusions without guessing a dose", () => {
+  const p = fixture(); p.items[0].size = null;
+  assert.match(commonQuantityComparison(p, day).exclusionDetails[0].reason, /Format souhaité/);
+  p.items[0].measure = "uses";
+  assert.match(commonQuantityComparison(p, day, ["Walmart", "Superstore"]).exclusionDetails[0].reason, /capacité en utilisations.*Walmart.*Superstore/);
 });
