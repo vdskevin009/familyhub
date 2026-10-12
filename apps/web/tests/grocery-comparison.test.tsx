@@ -4,7 +4,8 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { compareBaskets, emptyPlan, type GroceryPlan, type GroceryPrice, type GroceryRetailer, type ShoppingItem } from "../../worker/src/grocery-planning";
 import { currentPrices, equivalentCost, formatLabel, observedSummary, priceState, quantityReason, shortProduct, storeGroups, unitPrice } from "../src/grocery-comparison";
-import GroceryComparison from "../src/views/GroceryComparison";
+import GroceryComparison, { StoreCards } from "../src/views/GroceryComparison";
+import { grocerySourceLink } from "../src/grocery-source-link";
 
 const today = new Date().toISOString().slice(0, 10);
 const evidence = { title: "Synthetic catalogue", url: "https://example.com/catalogue", date: today, until: "2099-12-31" };
@@ -57,22 +58,32 @@ test("Courses presentation: physical and label unit prices and literal brand", (
 });
 test("Courses presentation: four stores, missing dash, article-first and collapsed sources without mutation", () => {
   const p = plan(), before = structuredClone(p), html = renderToStaticMarkup(createElement(GroceryComparison, { plan: p, comparison: compareBaskets(p) }));
-  assert.equal(storeGroups(p).length, 4); for (const name of ["Fresh St.", "Walmart", "Costco", "Superstore", "Prix par article", "Sous-total partiel observé", "Prix manquant"]) assert.ok(html.includes(name));
+  assert.equal(storeGroups(p).length, 4); for (const name of ["Fresh St.", "Walmart", "Costco", "Superstore", "Prix par article", "Seul montant", "Prix manquant", "Base commune"]) assert.ok(html.includes(name));
   assert.ok(!html.includes("Panier complet estimé")); assert.ok(!html.includes(" open="));
-  assert.ok(html.indexOf("Info prix Synthetic muffins") < html.indexOf("example.com/catalogue", html.indexOf("Info prix Synthetic muffins")));
+  assert.ok(html.includes("Détails de Synthetic muffins"));
+  assert.ok(!html.includes("Synthetic exact muffins"));
+  assert.ok(!html.includes("Prix du format :"));
+  assert.ok(!html.includes("Observation non approuvée"));
   assert.deepEqual(p, before);
+});
+test("Courses details: recorded product/search/source URLs are labelled without fabrication", () => {
+  for (const url of ["https://www.walmart.ca/en/ip/eggs/10052944", "https://www.realcanadiansuperstore.ca/eggs/p/20037681001_EA", "https://sameday.costco.ca/store/costco-canada/products/123456-eggs"]) assert.equal(grocerySourceLink(url)?.label, "Ouvrir le produit");
+  for (const url of ["https://www.walmart.ca/search?q=eggs", "https://freshstmarket.com/results?q=eggs", "https://sameday.costco.ca/s?k=eggs"]) assert.equal(grocerySourceLink(url)?.label, "Ouvrir la recherche");
+  assert.deepEqual(grocerySourceLink("https://example.com/catalogue"), { href: "https://example.com/catalogue", label: "Voir la source" });
+  assert.equal(grocerySourceLink("https://walmart.ca.example.com/en/ip/eggs/10052944")?.label, "Voir la source");
+  for (const url of ["", "broken", "javascript:alert(1)", "http://example.com", "https://user:password@example.com", "https://127.0.0.1/test", "https://10.0.0.1/test", "https://household.internal/test"]) assert.equal(grocerySourceLink(url), null);
 });
 test("Courses presentation: one chiffrable bucket cannot turn another unknown bucket into zero", () => {
   const p = plan(); p.items.push(item({ id: "household", name: "Synthetic household", bucket: "household", quantity: null }));
   const s = observedSummary(p, p.retailers[0]); assert.equal(s.foodPriced, 1); assert.equal(s.householdPriced, 0);
   for (const approved of [false, true]) {
     p.prices[0].approved = approved;
-    const html = renderToStaticMarkup(createElement(GroceryComparison, { plan: p, comparison: compareBaskets(p) }));
+    const html = renderToStaticMarkup(createElement(StoreCards, { plan: p, comparison: compareBaskets(p) }));
     assert.ok(html.includes("Maison non chiffrable")); assert.ok(!html.includes("Maison 0.00 CAD"));
   }
 });
 test("Courses presentation: complete reviewed basket and conditional availability are distinct", () => {
   const p = plan(item(), retailer(), [price({ approved: true, localityConfirmed: true })]);
-  let html = renderToStaticMarkup(createElement(GroceryComparison, { plan: p, comparison: compareBaskets(p) })); assert.ok(html.includes("Panier complet estimé"));
-  p.prices[0].available = "unknown"; html = renderToStaticMarkup(createElement(GroceryComparison, { plan: p, comparison: compareBaskets(p) })); assert.ok(html.includes("Panier complet conditionnel")); assert.ok(!html.includes("Estimation la plus basse"));
+  let html = renderToStaticMarkup(createElement(StoreCards, { plan: p, comparison: compareBaskets(p) })); assert.ok(html.includes("Panier complet estimé"));
+  p.prices[0].available = "unknown"; html = renderToStaticMarkup(createElement(StoreCards, { plan: p, comparison: compareBaskets(p) })); assert.ok(html.includes("Panier complet conditionnel")); assert.ok(!html.includes("Estimation la plus basse"));
 });
