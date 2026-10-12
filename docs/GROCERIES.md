@@ -69,3 +69,13 @@ Observed subtotals are presentation-only candidates, not recommendations: only o
 Nine synthetic presentation regressions run with existing product tests. Planning browser acceptance includes a fictional 52-need/14-selected catalogue at 320/390/768/1440, mode/coverage/partial totals, missing-price dashes, keyboard Info, 44px targets, unchanged plan and reload, plus existing failure/retry/offline/conflict flows. Real observations and household details are never repository fixtures.
 
 Unpriced food or household buckets show “non chiffrable” in Info, even when the other category has a partial observed or reviewed subtotal. This avoids representing missing category coverage as zero.
+
+## Unit-rate ranking (FH-GROCERY-005)
+
+Article rows sort by the minimum sourced comparable unit rate at each store, with alternative pack formats individually sorted and retained. The plan currency and one evidenced dimension form the comparison group: requested unit first when known, otherwise the most represented physical unit. A known labelled load/cycle capacity takes precedence for a use-based need. Kilograms and litres never convert without density; weight alone never supplies a slice count or dose. Unknown usual quantities still block a full basket, while a known source format can expose its observed physical rate.
+
+Known delivery/pickup/store modes remain visible: these are product rates before order fees, not mode equivalence or a basket recommendation. Brands, formulation, source/date, stock uncertainty and review status stay intact. Unapproved candidates remain unapproved. Expired/future/receipt/unavailable/default-catalogue/disabled/foreign/unknown-mode or inferred-format/estimated-package observations cannot establish the reference minimum. Other units remain visible with a neutral non-comparable label and an explanation in Info.
+
+Percentage is computed on full-precision unit rates as (rate/minimum − 1) ×100. Equal rates retain stable ordering and say Ex æquo with0%. Small positive gaps say +<0.1% rather than0%. A single reference has no competitive claim; a genuine zero minimum has no ratio and shows no percentage. Color supplements the numeric/text label: green minimum, amber higher, neutral unresolved. Normal-text contrast is tested at least4.5:1. All calculations are presentation-only; no save/selection/quantity/source/approval change.
+
+Local synthetic checks cover rates/counts/loads, mixed units/currencies, ties, rounding, singleton/missing/zero/invalid values and plan preservation. The existing browser harness adds reversed package-vs-unit price order, mixed mass/volume, unconfirmed formats, loads, a zero minimum, contrast, keyboard Info and reload at320/390/768/1440. Real household data are never fixtures.

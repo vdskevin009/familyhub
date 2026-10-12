@@ -150,6 +150,51 @@ try {
   assert.deepEqual(await store.read(), initialFixture);
   assert.equal(await page.getByText("Prix manquant", { exact: true }).count(), 4);
   console.log("PASS: compact article-first 52/14 fixture, four store coverage/mode/partial totals, missing dashes, 320/390/768/1440, 44px Info, Enter/Space, unchanged selection/quantities/approval and reload.");
+  // Unit ranking fixture: package ordering differs from unit ordering; all observations stay unapproved.
+  const unitFixture = await store.read();
+  for (const [storeIndex, [price, size]] of [[6, 12], [9, 30], [10, 20], [4, 10]].entries()) Object.assign(unitFixture.prices.find(p => p.id === `price-${storeIndex}-0`), { price, size });
+  for (const storeIndex of [0, 1]) Object.assign(unitFixture.prices.find(p => p.id === `price-${storeIndex}-1`), { price: storeIndex ? 6 : 4, size: storeIndex ? 1 : 500, unit: storeIndex ? "kg" : "g" });
+  Object.assign(unitFixture.prices.find(p => p.id === "price-2-1"), { price: 5, size: 1, unit: "l" });
+  Object.assign(unitFixture.prices.find(p => p.id === "price-3-1"), { matchNote: "Format non confirmé" });
+  for (const [storeIndex, [price, size, uses]] of [[10, 1, 25], [20, 2, 100]].entries()) Object.assign(unitFixture.prices.find(p => p.id === `price-${storeIndex}-2`), { price, size, unit: "l", usesPerPack: uses });
+  for (const storeIndex of [0, 1]) Object.assign(unitFixture.prices.find(p => p.id === `price-${storeIndex}-3`), { price: storeIndex ? 6 : 3, size: storeIndex ? 24 : 12 });
+  Object.assign(unitFixture.prices.find(p => p.id === "price-0-4"), { price: 0 });
+  await store.save({ plan: unitFixture, expectedRevision: unitFixture.revision });
+  await page.getByRole("button", { name: "Relire le PC", exact: true }).click();
+  const firstArticle = page.locator(".grocery-article-comparison").filter({ has: page.getByRole("heading", { name: "Fictional article 1", exact: true }) });
+  await firstArticle.getByText("+33,3 %", { exact: true }).waitFor();
+  const preservedUnitFixture = await store.read();
+  const ratio = (foreground, background) => {
+    const luminance = color => { const channels = color.match(/[\d.]+/g).slice(0, 3).map(Number).map(n => n / 255).map(n => n <= .04045 ? n / 12.92 : ((n + .055) / 1.055) ** 2.4); return .2126 * channels[0] + .7152 * channels[1] + .0722 * channels[2]; };
+    const a = luminance(foreground), b = luminance(background); return (Math.max(a, b) + .05) / (Math.min(a, b) + .05);
+  };
+  for (const width of [320, 390, 768, 1440]) {
+    await page.setViewportSize({ width, height: 900 });
+    assert.deepEqual(await firstArticle.locator(".grocery-price-row > strong").allTextContents(), ["Walmart", "Superstore", "Fresh St. Market", "Costco"]);
+    await firstArticle.getByText("9.00 CAD", { exact: true }).waitFor(); // Not the cheapest pack.
+    await firstArticle.getByText("Plus bas observé · 0 %", { exact: true }).waitFor();
+    const massArticle = page.locator(".grocery-article-comparison").filter({ has: page.getByRole("heading", { name: "Fictional article 2", exact: true }) });
+    assert.equal((await massArticle.locator(".grocery-price-row > strong").allTextContents())[0], "Walmart");
+    const volumeRow = massArticle.locator(".grocery-price-row").filter({ has: page.getByText("Costco", { exact: true }) });
+    await volumeRow.getByText("Non comparable", { exact: true }).waitFor();
+    const zeroArticle = page.locator(".grocery-article-comparison").filter({ has: page.getByRole("heading", { name: "Fictional article 5", exact: true }) });
+    await zeroArticle.getByText("Prix nul observé", { exact: true }).waitFor();
+    assert.equal(await zeroArticle.getByText("Plus bas observé · 0 %", { exact: true }).count(), 0);
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+    for (const cls of ["minimum", "higher", "neutral"]) {
+      const colors = await page.locator(`.grocery-unit-gap-${cls}`).first().evaluate(el => ({ foreground: getComputedStyle(el).color, background: getComputedStyle(el).backgroundColor }));
+      assert.ok(ratio(colors.foreground, colors.background) >= 4.5, `Unit badge contrast ${cls}`);
+    }
+    await firstArticle.scrollIntoViewIfNeeded();
+    await page.screenshot({ path: `artifacts/groceries/unit-ranking-${width}.png` });
+  }
+  await firstInfo.focus(); await firstInfo.press("Enter");
+  await firstInfo.locator("..").getByText(/Écart = \(prix unitaire/).waitFor();
+  await firstInfo.press("Space");
+  assert.deepEqual(await store.read(), preservedUnitFixture);
+  await page.reload(); await page.getByRole("button", { name: "Comparer", exact: true }).click();
+  await firstArticle.getByText("+33,3 %", { exact: true }).waitFor(); assert.deepEqual(await store.read(), preservedUnitFixture);
+  console.log("PASS: unit-ranked article rows preserve pack prices/modes/quality; percentage, mixed units, zero minimum, contrast≥4.5, keyboard/reload/no mutation at320/390/768/1440.");
   assert.deepEqual(errors, []);
   console.log("PASS: explicit Plan copy/dedup/preservation, editable quantity/format/preferences, blank prices, save failure/reload/retry, incomplete and sourced basket, 320/390/768/1280 layouts, minimal public query, shared persistence, stale conflict and offline draft. Weekly/monthly separation, current-basket override, cancel, old-worker capability gate, suggested retailers dedup and 1440px also pass. Zero page errors."); await second.close();
 } finally { await browser?.close(); await Promise.all([new Promise(r => api.close(r)), new Promise(r => site.close(r))]); await rm(dir, { recursive: true, force: true }); }
