@@ -1,6 +1,6 @@
 .compact-dialog { position: fixed; inset: auto; margin: 0; padding: 0; width: min(420px, calc(100vw - 24px)); max-width: calc(100vw - 24px); max-height: calc(100dvh - 24px); overflow: hidden; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); color: var(--ink); box-shadow: var(--shadow-overlay); }
 .compact-dialog[open] { display: flex; flex-direction: column; }
-.compact-dialog::backdrop { background: #16291f33; }
+.compact-dialog::backdrop { background: #20212433; }
 .compact-dialog > header { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-shrink: 0; padding: 8px 12px 8px 16px; border-bottom: 1px solid var(--line); }
 .compact-dialog h2 { margin: 0; font-size: 16px; overflow-wrap: anywhere; }
 .compact-dialog-content { overflow-y: auto; overscroll-behavior: contain; padding: 16px; min-height: 0; display: grid; gap: 12px; line-height: 1.6; }

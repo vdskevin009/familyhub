@@ -2,7 +2,7 @@
 import { chromium } from "playwright";
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
-import { readFile, mkdtemp, rm } from "node:fs/promises";
+import { readFile, mkdtemp, rm, mkdir, cp } from "node:fs/promises";
 import { join, resolve, extname, sep } from "node:path";
 import { tmpdir } from "node:os";
 import { once } from "node:events";
@@ -152,4 +152,4 @@ try {
     console.log("PASS Savings + Documents + document backup/restore at " + width + "px");
     await context.close();
   }
-} finally { if (browser) await browser.close(); await new Promise(resolve => server.close(resolve)); await rm(output, { recursive: true, force: true }); }
+} finally { await mkdir("artifacts/theme-savings", { recursive: true }); await cp(output, "artifacts/theme-savings", { recursive: true }); if (browser) await browser.close(); await new Promise(resolve => server.close(resolve)); await rm(output, { recursive: true, force: true }); }

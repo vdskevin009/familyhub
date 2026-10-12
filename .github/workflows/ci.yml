@@ -49,6 +49,18 @@ jobs:
       - name: Install browser for Savings acceptance
         run: npx playwright install --with-deps chromium
 
+      - name: Verify neutral theme, navigation and accessible dialogs
+        run: node apps/web/tests/theme-browser.mjs
+
+      - name: Upload synthetic theme evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: theme-browser-evidence
+          path: artifacts/theme/
+          if-no-files-found: ignore
+          retention-days: 7
+
       - name: Verify Savings mobile and desktop flows
         run: npm run test:savings:browser
 
@@ -67,6 +79,17 @@ jobs:
         with:
           name: courses-browser-evidence
           path: artifacts/groceries/
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Upload synthetic cross-feature visual evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cross-feature-browser-evidence
+          path: |
+            output/playwright/
+            artifacts/theme-savings/
           if-no-files-found: ignore
           retention-days: 7
 

@@ -9,7 +9,7 @@ Claims remains the default. Invoices, Desjardins, Blue Cross and Other remain av
 ## Design and interactions
 
 - One compact page heading instead of a global header followed by another large page introduction. Desktop uses a labelled rail; mobile keeps five bottom destinations with safe-area padding. Browser Back/Forward works between views, with per-view scroll restoration and a keyboard skip link.
-- A neutral surface palette and deep green accent, semantic warning/error/info/success styles, shared typography, spacing, radii and 44px controls live in `src/ui/tokens.css` and the consolidated `styles.css`. Reduced-motion and visible keyboard focus are covered.
+- A neutral-gray/white surface palette, anthracite text and blue action accent (FH-UX-002; supersedes the former deep-green in-app accent), semantic warning/error/info/success styles, shared typography, spacing, radii and 44px controls live in `src/ui/tokens.css` and the consolidated `styles.css`. Reduced-motion and visible keyboard focus are covered.
 - `PageHeader`, `Sheet`, `SearchField`, `FilterButton`, `FilterChips`, `Notice` and `SkeletonList` provide reusable UI primitives. Native modal dialogs provide background isolation, Escape/close, focus restoration and explicit Tab wrapping. Sheet content scrolls independently on smaller screens.
 - Claims shows family scope, a compact recoverable summary, search and workflow tabs. Portal sync/coverage controls move to an explicit Sources sheet without automatically collecting or changing their contracts. Advanced filters move to a sheet with removable active chips; the original inclusive claims date range and exclusive library Before boundary are preserved.
 - `ClaimCard` aligns Expense / Desjardins / Blue Cross / Remaining, with visible status, source evidence and confidence. One-tap details expose all former explanation, workflow history, PDF options, match evidence and manual candidate actions. Selection is opt-in; bulk Ignore still acts on the visible selected IDs and retains unsuccessful selections.
@@ -54,3 +54,7 @@ python apps/web/tests/browser_smoke.py --url http://127.0.0.1:4173/familyhub/ --
 ```
 
 Use `--inline` only in restricted rendering environments, and label its results accordingly. Neither mode contacts a real PC worker. Screenshots and `report.json` are generated in the chosen output folder and should remain build artifacts, not real household data in Git.
+
+## In-app theme refinement — FH-UX-002 / Issue #201
+
+The neutral/blue in-app visual direction is approved on 2026-10-12. See `requirements/FH-UX-002.md` for the current palette, semantic boundaries and verification contract. This explicitly supersedes the former deep-green in-app theme. The forest/cream launcher artwork from FH-PWA-002 stays unchanged. Release evidence belongs in Issue #201 and its implementation PR; no deployment or physical-device success is inferred from this document.
