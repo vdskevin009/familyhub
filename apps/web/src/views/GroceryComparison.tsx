@@ -9,6 +9,7 @@ import GroceryCommonBasket from "./GroceryCommonBasket";
 import type { ReceiptProduct } from "../grocery-receipt-products";
 import { ArticleReceiptProducts, StoreReceiptProducts } from "./GroceryReceiptProducts";
 import { adjustedMoney, adjustedNumber, adjustedOfferQuantity } from "../grocery-common-quantity";
+import { packagePrice } from "../grocery-price-display";
 const cash = (n: number, c: string) => `${(n / 100).toFixed(2)} ${c}`;
 export function PriceSource({ value }: { value: Evidence }) {
   const link = grocerySourceLink(value.url);
@@ -119,21 +120,24 @@ export function ArticleOfferCard({ plan, item, p, r, ranked, included }: {
   </article>;
 }
 
-export function ArticleComparison({ plan, item, groups, products, showComparison = true, identity }: { plan: GroceryPlan; item: ShoppingItem; groups: StoreGroup[]; products: ReceiptProduct[]; showComparison?: boolean; identity?: React.ReactNode }) {
+export function ArticleComparison({ plan, item, groups, products, showComparison = true, identity, format }: { plan: GroceryPlan; item: ShoppingItem; groups: StoreGroup[]; products: ReceiptProduct[]; showComparison?: boolean; identity?: React.ReactNode; format?: React.ReactNode }) {
   const [detailsOpen, setDetailsOpen] = useState(false);
   const included = new Set(compatibleOffers(plan, item).map(p => p.id));
   const unitComparison = articleUnitComparison(plan, item, groups);
+  const needsReview = !unitComparison.comparableCount || unitComparison.rows.flatMap(row => row.offers).some(o => o.reason || !o.p.approved || o.p.available !== "yes" || !o.p.localityConfirmed || !o.r.areaConfirmed || !plan.areaConfirmed || !o.p.evidence.until || o.p.substitution && (!item.substitutions || !o.p.matchNote?.trim()));
   return <article className="grocery-article-comparison">
-    <div className="grocery-article-heading"><h3>{item.name}</h3><button type="button" className="text-action" aria-label={`Détails de ${item.name}`} aria-haspopup="dialog" onClick={() => setDetailsOpen(true)}>Détails</button></div>
+    <div className="grocery-article-heading"><h3>{item.name}</h3>{identity ? <span className="grocery-quantity-chip">{format}</span> : <button type="button" className="text-action" aria-label={`Détails de ${item.name}`} aria-haspopup="dialog" onClick={() => setDetailsOpen(true)}>Détails</button>}</div>
     {identity}
+    {identity && showComparison && <div className="grocery-price-headings" aria-hidden="true"><span>Magasin</span><span>Prix / unité</span><span>Écart min.</span></div>}
     {showComparison && <div className="grocery-price-rows">{unitComparison.rows.map(({ group: g, offers }) => {
       return <div className="grocery-price-row" key={g.name}><strong>{g.name === "Fresh St. Market" ? "Fresh St." : g.name}</strong><div>{offers.length ? offers.map(({ p, rate, reason, gap, tone }) =>
         <div className="grocery-price-option" key={p.id}>
-          <span className="grocery-price-value">{!reason && rate ? formatUnitRate(rate, p.currency) : p.available === "no" ? "Indisponible" : !datedPrice(p) ? "Historique" : !p.mode || p.mode === "unknown" ? "Mode à confirmer" : "Non comparable"}</span>
+          <span className="grocery-price-value">{identity ? <><strong>{packagePrice(p.price, p.currency)}</strong><small>{!reason && rate ? formatUnitRate(rate, p.currency) : p.available === "no" ? "Indisponible" : !datedPrice(p) ? "Historique" : !p.mode || p.mode === "unknown" ? "Mode à confirmer" : "Non comparable"}</small><small>{formatLabel(p, item)}</small></> : !reason && rate ? formatUnitRate(rate, p.currency) : p.available === "no" ? "Indisponible" : !datedPrice(p) ? "Historique" : !p.mode || p.mode === "unknown" ? "Mode à confirmer" : "Non comparable"}</span>
           <small className={`grocery-unit-gap grocery-unit-gap-${tone}`} aria-label={gap} title={reason || "Écart au minimum observé dans la même unité et devise, hors frais"}>{gap === "Plus bas observé · 0 %" ? "0 %" : gap === "Ex æquo · 0 %" ? "0 % ex æquo" : reason ? "-" : gap}</small>
           {identity && <small className="grocery-price-mode">{modeLabels[p.mode ?? "unknown"]}{p.substitution ? " · Substitution" : ""}{!p.approved ? " · À revoir" : ""}{reason ? " · " + reason : ""}</small>}
         </div>) : <div className="grocery-price-option"><span className="grocery-price-value">Prix manquant</span><small className="grocery-unit-gap grocery-unit-gap-neutral">—</small></div>}</div></div>;
     })}</div>}
+    {identity && <div className="grocery-catalogue-card-footer"><span className={needsReview ? "grocery-price-review" : "grocery-price-observed"}>{needsReview ? "Prix à vérifier" : "Prix unitaires observés"}</span><button type="button" className="text-action grocery-details-action" aria-label={`Détails de ${item.name}`} aria-haspopup="dialog" onClick={() => setDetailsOpen(true)}>Détails</button></div>}
     <Sheet open={detailsOpen} onClose={() => setDetailsOpen(false)} title="Détails du produit" className="grocery-article-details" resetScrollOnOpen footer={<button type="button" className="button secondary" onClick={() => setDetailsOpen(false)}>Retour aux prix</button>}>
       <div className="grocery-product-heading"><h3>{item.name}</h3><p>Prix et détails par magasin</p></div>
       {identity}
