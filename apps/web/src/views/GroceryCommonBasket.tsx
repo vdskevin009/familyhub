@@ -5,8 +5,10 @@ import { formatUnitRate } from "../grocery-unit-comparison";
 import { Sheet } from "../ui/primitives";
 import { grocerySourceLink } from "../grocery-source-link";
 import { storeGroups } from "../grocery-comparison";
+import type { ReceiptProduct } from "../grocery-receipt-products";
+import { ArticleReceiptProducts, StoreReceiptProducts } from "./GroceryReceiptProducts";
 
-export default function GroceryCommonBasket({ plan, renderConditions }: { plan: GroceryPlan; renderConditions: (store: string) => ReactNode }) {
+export default function GroceryCommonBasket({ plan, renderConditions, products = [] }: { plan: GroceryPlan; renderConditions: (store: string) => ReactNode; products?: ReceiptProduct[] }) {
   const id = useId();
   const [selected, setSelected] = useState<string | null>(null);
   const [selectedStores, setSelectedStores] = useState<string[] | undefined>();
@@ -52,7 +54,8 @@ export default function GroceryCommonBasket({ plan, renderConditions }: { plan: 
               <span className="grocery-basket-line-chevron" aria-hidden="true">⌄</span>
             </summary>
             <div className="grocery-basket-line-detail">
-              <strong>{l.offer.p.product}</strong>
+              <small>Produit proposé par le magasin</small><strong>{l.offer.p.product}</strong>
+              <ArticleReceiptProducts itemId={l.item.id} products={products} />
               <p><strong>Achat {l.offer.p.weighed ? "au poids" : "en paquets entiers"} : {amount(l.purchase)}</strong> · {number(l.packs)} format(s) de {number(l.pack)} {l.label}. Hors frais, taxes et consignes.</p>
               <p>{modeLabels[l.offer.p.mode ?? "unknown"]} · {l.offer.p.locality || "Localité inconnue"} · {l.offer.p.approved ? "Observation revue" : "Observation non approuvée"} · {l.offer.p.available === "yes" ? "Stock selon source, à reconfirmer" : "Stock non confirmé"}</p>
               <p>{l.selection} {l.reference ? "Quantité de référence pour comparer ; le besoin réel reste inchangé." : l.item.provisional ? "Besoin provisoire à confirmer." : "Quantité enregistrée du panier."}</p>
@@ -61,6 +64,7 @@ export default function GroceryCommonBasket({ plan, renderConditions }: { plan: 
             </div>
           </details>; })}
         </div>
+        <StoreReceiptProducts plan={plan} products={products} retailerIds={store.group.retailers.map(r => r.id)} />
         <details className="grocery-card-info"><summary>Info sur le calcul</summary><p>Même base de {common.count}/{common.total} articles aux mêmes quantités pour les {common.participants} magasins du calcul. Écart = (montant normalisé / minimum de la même base - 1) × 100. Les quantités de référence comparent des montants équivalents sans modifier le panier réel. Le total proportionnel n’est pas le montant à payer pour des paquets entiers. Produits, marques, variantes, localité, disponibilité et modes restent à revoir. Conversion dans la même dimension seulement : aucun poids, densité ou dose inconnu n’est déduit.</p></details>
         {!!common.excluded.length && <details className="grocery-card-info"><summary>Articles exclus ({common.excluded.length})</summary><ul>{common.exclusionDetails.map(({ item, reason }) => <li key={item.id}>{item.name} : {reason}</li>)}</ul><p>Un article doit avoir une référence compatible dans chaque magasin choisi. Une base partielle ne certifie pas un panier complet ni une économie après frais.</p></details>}
         <details className="grocery-card-info"><summary>Conditions et achats enregistrés</summary>{renderConditions(store.group.name)}</details>

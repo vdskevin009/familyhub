@@ -124,6 +124,34 @@ try {
   assert.deepEqual(await store.read(), brandSnapshot, "Displaying receipts and editing an uncommitted sheet never writes the plan");
   for (const width of [320,390,768,1440]) { await page.setViewportSize({width,height:900}); assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false); }
   await page.setViewportSize({width:1280,height:900});
+  // Receipt brands remain separate from the current offer in both comparison detail paths.
+  receiptRecords[0].receipt.store = "Other synthetic receipt shop";
+  await page.getByRole("button", {name:"Relire le PC",exact:true}).click();
+  await page.getByRole("button", {name:"Comparer",exact:true}).click();
+  const brandedArticle = page.getByRole("dialog", {name:"Détails de Synthetic oats",exact:true});
+  await page.getByRole("button", {name:"Détails de Synthetic oats",exact:true}).click();
+  await brandedArticle.getByText("ExampleBrand rolled oats",{exact:true}).waitFor();
+  await brandedArticle.getByText("Synthetic exact oats",{exact:true}).waitFor();
+  await brandedArticle.getByText(/Ticket : Other synthetic receipt shop/).waitFor();
+  for (const width of [320,390,768,1440]) { await page.setViewportSize({width,height:900}); assert.equal(await brandedArticle.evaluate(el=>el.scrollWidth>el.clientWidth),false); await page.screenshot({path:`artifacts/groceries/article-brands-${width}.png`,fullPage:true}); }
+  await brandedArticle.getByRole("button",{name:"Retour aux prix",exact:true}).click();
+  await basketButton.click(); await basketDetails.waitFor();
+  const receiptBrands = basketDetails.locator(".grocery-store-receipt-products").first();
+  await receiptBrands.locator("summary").click();
+  await receiptBrands.getByText("ExampleBrand rolled oats",{exact:true}).waitFor();
+  await receiptBrands.getByText(/Ticket : Other synthetic receipt shop/).waitFor();
+  const brandedLine = basketDetails.locator(".grocery-basket-line").filter({hasText:"Synthetic oats"});
+  await brandedLine.locator("summary").click();
+  await brandedLine.getByText("ExampleBrand rolled oats",{exact:true}).waitFor();
+  await brandedLine.getByText("Synthetic exact oats",{exact:true}).waitFor();
+  for (const width of [320,390,768,1440]) { await page.setViewportSize({width,height:900}); assert.equal(await basketDetails.evaluate(el=>el.scrollWidth>el.clientWidth),false); await page.screenshot({path:`artifacts/groceries/store-brands-${width}.png`,fullPage:true}); }
+  await basketDetails.getByText("Conditions et achats enregistrés",{exact:true}).click();
+  await market.getByLabel("Info Synthetic market",{exact:true}).click();
+  await market.locator(".grocery-store-receipt-products summary").click();
+  await market.locator(".grocery-store-receipt-products").getByText("ExampleBrand rolled oats",{exact:true}).waitFor();
+  await basketDetails.getByRole("button",{name:"Retour aux prix",exact:true}).click();
+  assert.deepEqual(await store.read(),brandSnapshot,"Comparison receipt labels never change saved calculations or approvals");
+  await page.getByRole("button",{name:"Besoins",exact:true}).click(); await page.setViewportSize({width:1280,height:900});
   const second = await browser.newContext({ viewport: { width: 1280, height: 900 } }); await second.addInitScript(({ endpoint, key }) => localStorage.setItem("familyhub.worker.v1", JSON.stringify({ Endpoint: endpoint, ApiKey: key })), { endpoint, key }); const pc = await second.newPage(); pc.on("pageerror", e => errors.push(e.message)); await planning(pc, base); await pc.getByRole("button", { name: /Synthetic oats.*2 x 500 g/ }).waitFor();
   // Two devices edit the same revision; only the first succeeds. The second draft survives refresh/reload.
   await page.getByRole("button", { name: "Ma liste", exact: true }).click(); await page.getByText("Info et filtres", { exact: true }).click(); await page.getByLabel("Pourboire optionnel par commande (0 = aucun)").fill("2"); await pc.getByText("Info et filtres", { exact: true }).click(); await pc.getByLabel("Pourboire optionnel par commande (0 = aucun)").fill("1"); await savePlanning(pc);

@@ -6,6 +6,8 @@ import { articleComparisonCoverage, articleUnitComparison, formatUnitRate } from
 import { grocerySourceLink } from "../grocery-source-link";
 import { Sheet } from "../ui/primitives";
 import GroceryCommonBasket from "./GroceryCommonBasket";
+import type { ReceiptProduct } from "../grocery-receipt-products";
+import { ArticleReceiptProducts, StoreReceiptProducts } from "./GroceryReceiptProducts";
 import { adjustedMoney, adjustedNumber, adjustedOfferQuantity } from "../grocery-common-quantity";
 const cash = (n: number, c: string) => `${(n / 100).toFixed(2)} ${c}`;
 export function PriceSource({ value }: { value: Evidence }) {
@@ -16,25 +18,26 @@ function Fees({ retailer: r }: { retailer: GroceryRetailer }) {
   const fee = (n: number | null) => n === null ? "?" : n.toFixed(2);
   return <p className="grocery-fee-line">Livr. {fee(r.delivery)} · Service {r.service === null || r.servicePercent === null ? "?" : `${fee(r.service)}${r.servicePercent ? ` + ${r.servicePercent}%` : ""}`} · Min. {fee(r.minimum)}</p>;
 }
-function BasketInfo({ basket: b, plan }: { basket: Basket; plan: GroceryPlan }) {
+function BasketInfo({ basket: b, plan, products = [] }: { basket: Basket; plan: GroceryPlan; products?: ReceiptProduct[] }) {
   const covered = (household: boolean) => b.lines.some(l => (plan.items.find(i => i.id === l.itemId)?.bucket === "household") === household);
   return <><p>Alimentation {covered(false) ? cash(b.foodSubtotal, plan.currency) : "non chiffrable"} · Maison {covered(true) ? cash(b.householdSubtotal, plan.currency) : "non chiffrable"}</p>
     {b.orders.map(o => { const r = plan.retailers.find(r => r.id === o.retailerId)!; return <section className="grocery-product" key={o.retailerId}><strong>{r.name} · {modeLabels[r.mode ?? "unknown"]}</strong><dl className="grocery-costs">{[["Produits", o.subtotal], ["Taxes produits", o.tax], ["Livraison", o.delivery], ["Service", o.service], ["Taxes sur frais", o.feesTax], ["Consignes", o.deposit], ["Abonnement / semaine", o.membership], ["Pourboire optionnel", o.tip]].map(([name, amount]) => <div key={name}><dt>{name}</dt><dd>{amount === null ? "À vérifier" : cash(amount as number, plan.currency)}</dd></div>)}</dl><PriceSource value={r.evidence} /></section>; })}
     {b.lines.map(line => {
       const price = plan.prices.find(p => p.id === line.priceId)!;
-      return <section className="grocery-product" key={line.itemId}><strong>{price.product}</strong><p>{Number(line.quantity.toFixed(3))} × {price.size} {price.unit} · {cash(line.cost, plan.currency)}{price.substitution ? " · Substitution revue" : ""}</p><PriceSource value={price.evidence} /></section>;
+      return <section className="grocery-product" key={line.itemId}><strong>{price.product}</strong><p>{Number(line.quantity.toFixed(3))} × {price.size} {price.unit} · {cash(line.cost, plan.currency)}{price.substitution ? " · Substitution revue" : ""}</p><PriceSource value={price.evidence} /><ArticleReceiptProducts itemId={line.itemId} products={products} /></section>;
     })}
     {!!b.missing.length && <ul className="grocery-missing">{b.missing.map(s => <li key={s}>{s}</li>)}</ul>}
   </>;
 }
-export function CompactBasket({ basket: b, plan }: { basket: Basket; plan: GroceryPlan }) {
-  return <article className="grocery-basket"><div className="grocery-card-top"><h4>{b.name}</h4><span className="grocery-card-amount">{b.total === null ? b.coverage ? cash(b.subtotal, plan.currency) : "—" : cash(b.total, plan.currency)}</span></div><p>{b.coverage}/{b.count} articles · {b.total === null ? "Sous-total partiel" : b.eligible ? "Panier complet estimé" : "Panier complet conditionnel"}</p><details className="grocery-card-info"><summary aria-label={`Info ${b.name}`}>Info</summary><BasketInfo basket={b} plan={plan} /></details></article>;
+export function CompactBasket({ basket: b, plan, products = [] }: { basket: Basket; plan: GroceryPlan; products?: ReceiptProduct[] }) {
+  return <article className="grocery-basket"><div className="grocery-card-top"><h4>{b.name}</h4><span className="grocery-card-amount">{b.total === null ? b.coverage ? cash(b.subtotal, plan.currency) : "—" : cash(b.total, plan.currency)}</span></div><p>{b.coverage}/{b.count} articles · {b.total === null ? "Sous-total partiel" : b.eligible ? "Panier complet estimé" : "Panier complet conditionnel"}</p><details className="grocery-card-info"><summary aria-label={`Info ${b.name}`}>Info</summary><BasketInfo basket={b} plan={plan} products={products} /></details></article>;
 }
-export function StoreCards({ plan, comparison, onEdit, onlyStore }: {
+export function StoreCards({ plan, comparison, onEdit, onlyStore, products = [] }: {
   plan: GroceryPlan;
   comparison: ReturnType<typeof import("../../../worker/src/grocery-planning").compareBaskets>;
   onEdit?: (retailer: GroceryRetailer) => void;
   onlyStore?: string;
+  products?: ReceiptProduct[];
 }) {
   const items = plan.items.filter(i => i.active);
   const groups = storeGroups(plan).filter(g => (!onlyStore || g.name === onlyStore) && (onEdit || comparisonStores.includes(g.name) || g.retailers.some(r => plan.prices.some(p => p.retailerId === r.id && items.some(i => i.id === p.itemId)))));
@@ -59,7 +62,8 @@ export function StoreCards({ plan, comparison, onEdit, onlyStore }: {
         {r.minimum === null && <p>Minimum de commande inconnu.</p>}
         <p>Taxes, consignes, abonnement et autres frais : {r.otherFeesReviewed ? "voir les valeurs renseignées" : "à vérifier"}.</p>
         {!!s!.missing.length && <ul className="grocery-missing">{s!.missing.map(m => <li key={m.name}>{m.name} : {m.reason}</li>)}</ul>}
-        {basket && <BasketInfo basket={basket} plan={plan} />}
+        {basket && <BasketInfo basket={basket} plan={plan} products={products} />}
+        <StoreReceiptProducts plan={plan} products={products} retailerIds={g.retailers.map(r => r.id)} />
         {g.retailers.length > 1 && <><p>Autres modes ou catalogues, présentés séparément :</p>{g.retailers.filter(x => x.id !== r.id).map(x => <section className="grocery-product" key={x.id}>
           <strong>{x.name} · {modeLabels[x.mode ?? "unknown"]}</strong><p>{observedSummary(plan, x).known}/{items.length} prix. Leurs montants ne sont pas additionnés au mode ci-dessus.</p><PriceSource value={x.evidence} />
           {onEdit && <button className="text-action grocery-card-edit" onClick={() => onEdit(x)} aria-label={"Modifier " + x.name + " " + modeLabels[x.mode ?? "unknown"]}>Modifier</button>}
@@ -69,7 +73,7 @@ export function StoreCards({ plan, comparison, onEdit, onlyStore }: {
     </article>;
   })}</div>;
 }
-function ArticleComparison({ plan, item, groups }: { plan: GroceryPlan; item: ShoppingItem; groups: StoreGroup[] }) {
+function ArticleComparison({ plan, item, groups, products }: { plan: GroceryPlan; item: ShoppingItem; groups: StoreGroup[]; products: ReceiptProduct[] }) {
   const [detailsOpen, setDetailsOpen] = useState(false);
   const included = new Set(compatibleOffers(plan, item).map(p => p.id));
   const unitComparison = articleUnitComparison(plan, item, groups);
@@ -84,6 +88,7 @@ function ArticleComparison({ plan, item, groups }: { plan: GroceryPlan; item: Sh
     })}</div>
     <Sheet open={detailsOpen} onClose={() => setDetailsOpen(false)} title={`Détails de ${item.name}`} className="grocery-article-details" footer={<button type="button" className="button secondary" onClick={() => setDetailsOpen(false)}>Retour aux prix</button>}>
       <p>Besoin : {needLabel(item, true)}. {item.provisional ? "Quantité provisoire à confirmer." : ""}</p>
+      <ArticleReceiptProducts itemId={item.id} products={products} />
       <p>Tri par prix unitaire observé, hors frais de commande. Écart = (prix unitaire / minimum comparable − 1) × 100. Les modes, marques et variantes restent à revoir ; ce classement ne valide ni une équivalence ni un panier complet.</p>
       {unitComparison.rows.flatMap(row => row.offers.filter(o => o.reason).map(o => <p key={o.p.id}>{row.group.name} : {o.reason}. Aucun pourcentage comparable calculé.</p>))}
       {groups.map(g => {
@@ -112,7 +117,7 @@ function ArticleComparison({ plan, item, groups }: { plan: GroceryPlan; item: Sh
   </article>;
 }
 
-export default function GroceryComparison({ plan, comparison }: { plan: GroceryPlan; comparison: ReturnType<typeof import("../../../worker/src/grocery-planning").compareBaskets> }) {
+export default function GroceryComparison({ plan, comparison, products = [] }: { plan: GroceryPlan; comparison: ReturnType<typeof import("../../../worker/src/grocery-planning").compareBaskets>; products?: ReceiptProduct[] }) {
   const items = plan.items.filter(i => i.active);
   const groups = storeGroups(plan).filter(g => comparisonStores.includes(g.name) || g.retailers.some(r => plan.prices.some(p => p.retailerId === r.id && items.some(i => i.id === p.itemId))));
   const known = items.filter(i => plan.prices.some(p => p.itemId === i.id && datedPrice(p) && p.available !== "no")).length;
@@ -129,9 +134,9 @@ export default function GroceryComparison({ plan, comparison }: { plan: GroceryP
         {comparison.best && <p>Estimation la plus basse parmi les options entièrement renseignées : {comparison.best.name}, {cash(comparison.best.total!, plan.currency)}. À reconfirmer avant achat.</p>}
       </details>
     </section>
-    <GroceryCommonBasket plan={plan} renderConditions={store => <StoreCards plan={plan} comparison={comparison} onlyStore={store} />} />
+    <GroceryCommonBasket plan={plan} products={products} renderConditions={store => <StoreCards plan={plan} comparison={comparison} products={products} onlyStore={store} />} />
     <div><h3>Prix par article</h3></div>{!items.length && <p className="grocery-empty">Aucun article dans ce panier.</p>}
-    {items.map(item => <ArticleComparison key={item.id} plan={plan} item={item} groups={groups} />)}
-    {!!comparison.split.length && <details className="grocery-info"><summary>Paniers répartis</summary><div className="grocery-store-grid">{comparison.split.map(b => <CompactBasket key={b.key} basket={b} plan={plan} />)}</div></details>}
+    {items.map(item => <ArticleComparison key={item.id} plan={plan} item={item} groups={groups} products={products} />)}
+    {!!comparison.split.length && <details className="grocery-info"><summary>Paniers répartis</summary><div className="grocery-store-grid">{comparison.split.map(b => <CompactBasket key={b.key} basket={b} plan={plan} products={products} />)}</div></details>}
   </>;
 }
