@@ -2,7 +2,7 @@
 
 ## Receipt-backed product brands (#208)
 
-[FH-GROCERY-008](docs/requirements/FH-GROCERY-008.md) is the canonical scoped requirement. Status: Testing. Reviewed exact receipt products appear on matching household articles and can populate the explicitly reviewed public product/brand query. Manual preferences and saved plan remain intact unless explicitly edited. Implementation: `grocery-receipt-products`, `GroceryPlanningView`; release evidence tracked in #208.
+[FH-GROCERY-008](docs/requirements/FH-GROCERY-008.md) is the canonical scoped requirement. Status: Testing. Reviewed exact receipt products appear on matching household articles and can populate the explicitly reviewed public product/brand query. Manual preferences and saved plan remain intact unless explicitly edited. Implementation: `grocery-receipt-products`, `GroceryPlanningView`; release evidence tracked in #208. Comparison details extension #210 adds the same receipt identities with historical store/date in article, store and basket disclosures, separate from current candidate offers; calculations and compact rows remain intact.
 
 ## Equivalent reference quantities (#205)
 

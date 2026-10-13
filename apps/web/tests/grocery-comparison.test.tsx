@@ -6,6 +6,9 @@ import { compareBaskets, emptyPlan, type GroceryPlan, type GroceryPrice, type Gr
 import { currentPrices, equivalentCost, formatLabel, observedSummary, priceState, quantityReason, shortProduct, storeGroups, unitPrice } from "../src/grocery-comparison";
 import GroceryComparison, { StoreCards } from "../src/views/GroceryComparison";
 import { grocerySourceLink } from "../src/grocery-source-link";
+import { ArticleReceiptProducts, StoreReceiptProducts } from "../src/views/GroceryReceiptProducts";
+import type { ReceiptProduct } from "../src/grocery-receipt-products";
+import { commonQuantityComparison } from "../src/grocery-common-quantity";
 
 const today = new Date().toISOString().slice(0, 10);
 const evidence = { title: "Synthetic catalogue", url: "https://example.com/catalogue", date: today, until: "2099-12-31" };
@@ -97,4 +100,36 @@ test("Courses presentation: compact basket rows expose partial coverage and mixe
   assert.ok(html.indexOf('aria-label="Détails du panier Superstore"') < html.indexOf('aria-label="Détails du panier Walmart"'));
   for (const text of ["Partielle", "Hors frais", "Estimation proportionnelle à revoir", "Modes mixtes", "Livraison", "Retrait"]) assert.ok(html.includes(text));
   assert.ok(!html.includes('grocery-common-card')); assert.ok(!html.includes('Écart ='));
+});
+
+const receiptIdentities: ReceiptProduct[] = [
+ {itemId:"i",product:"ExampleBrand original muffins",recordId:"source-one",store:"Other synthetic receipt shop",date:"2026-10-01"},
+ {itemId:"i",product:"SecondBrand blueberry muffins",recordId:"source-two",store:"Other source shop",date:null},
+ {itemId:"unrelated",product:"UnrelatedBrand private article",recordId:"source-three",store:"Unrelated shop",date:"2026-10-02"}
+];
+test("Comparison brands: matching article details keep multiple identities and historical source, never unrelated brands", () => {
+ const p=plan(), before=structuredClone(p);
+ const html=renderToStaticMarkup(createElement(ArticleReceiptProducts,{itemId:"i",products:receiptIdentities}));
+ assert.ok(html.includes("ExampleBrand original muffins") && html.includes("SecondBrand blueberry muffins"));
+ assert.ok(html.includes("Other synthetic receipt shop") && html.includes("2026-10-01") && html.includes("date inconnue"));
+ assert.ok(html.includes("Achat historique") && html.includes("offre comparée restent à confirmer"));
+ assert.ok(!html.includes("UnrelatedBrand"));
+ assert.equal(renderToStaticMarkup(createElement(ArticleReceiptProducts,{itemId:"missing",products:receiptIdentities})),"");
+ assert.deepEqual(p,before);
+});
+test("Comparison brands: store details show only active priced articles, including ones excluded from common totals, no offer brand claim or plan mutation", () => {
+ const p=plan(), before=structuredClone(p), c=compareBaskets(p);
+ const html=renderToStaticMarkup(createElement(StoreCards,{plan:p,comparison:c,products:receiptIdentities}));
+ assert.ok(html.includes("Marques retrouvées sur ticket") && html.includes("ExampleBrand original muffins"));
+ assert.ok(html.includes("autre magasin ou d’une autre localité") && html.includes("Other synthetic receipt shop"));
+ assert.ok(!html.includes("UnrelatedBrand"));
+ assert.equal(renderToStaticMarkup(createElement(StoreReceiptProducts,{plan:p,products:receiptIdentities,retailerIds:["different-store"]})),"");
+ const inactive=structuredClone(p);inactive.items[0].active=false;
+ assert.equal(renderToStaticMarkup(createElement(StoreReceiptProducts,{plan:inactive,products:receiptIdentities,retailerIds:["r"]})),"");
+ const excluded=structuredClone(p); excluded.retailers.push(retailer({id:"r2",name:"Costco"}));
+ assert.equal(commonQuantityComparison(excluded,today,["Walmart","Costco"]).count,0);
+ assert.ok(renderToStaticMarkup(createElement(StoreReceiptProducts,{plan:excluded,products:receiptIdentities,retailerIds:["r"]})).includes("ExampleBrand original muffins"));
+ assert.deepEqual(compareBaskets(p),c);assert.deepEqual(p,before);
+ const compact=renderToStaticMarkup(createElement(GroceryComparison,{plan:p,comparison:c,products:receiptIdentities}));
+ assert.ok(!compact.includes("ExampleBrand"),"Receipt identities appear only when comparison Details open");
 });
