@@ -1,5 +1,36 @@
 .grocery-import, .grocery-month { background: var(--surface); border: 1px solid var(--line); padding: 20px; border-radius: var(--radius); display: grid; gap: 14px; }
 .grocery-import h2 { margin: 8px 0; }
+.grocery-catalogue { gap: 12px; }
+.grocery-catalogue-controls { display: flex; align-items: end; flex-wrap: wrap; gap: 8px; }
+.grocery-catalogue-controls > * { flex: 1 1 160px; min-width: 0; }
+.grocery-catalogue-controls > .button { flex: 0 0 108px; }
+.grocery-catalogue-controls .button { min-height: 44px; padding: 10px 8px; font-size: 13px; }
+.grocery-catalogue-controls select { width: 100%; min-height: 44px; min-width: 0; background: var(--surface); border: 1px solid var(--control-line); border-radius: var(--radius-sm); padding: 8px; font-size: 13px; }
+.grocery-catalogue-controls label { font-size: 12px; }
+.grocery-catalogue-search { display: flex; align-items: end; gap: 8px; }
+.grocery-catalogue-search label { flex: 1; min-width: 0; font-size: 12px; }
+.grocery-catalogue-search .button { min-height: 44px; min-width: 44px; }
+.grocery-catalogue-count { font-size: 13px; margin: 0; }
+.grocery-catalogue-article { border-bottom: 1px solid var(--line); min-width: 0; }
+.grocery-catalogue-article .grocery-article-comparison { margin-bottom: 0; padding: 8px 0; border: 0; border-radius: 0; background: none; }
+.grocery-catalogue-identity { font-size: 13px; overflow-wrap: anywhere; }
+.grocery-catalogue-identity p { display: flex; flex-wrap: wrap; gap: 4px 10px; margin: 4px 0 10px; }
+.grocery-catalogue-identity p > span:first-child { flex: 1 1 130px; }
+.grocery-catalogue-identity summary, .grocery-catalogue-history summary { min-height: 44px; display: flex; align-items: center; cursor: pointer; font-size: 12px; }
+.grocery-catalogue-identity summary::before, .grocery-catalogue-history summary::before { content: "+"; padding-right: 8px; }
+.grocery-catalogue-identity details[open] > summary::before, .grocery-catalogue-history[open] > summary::before { content: "−"; }
+.grocery-catalogue-history p { font-size: 13px; overflow-wrap: anywhere; }
+.grocery-price-mode { grid-column: 1 / -1; color: var(--muted); font-size: 12px; }
+.grocery-target-store { display: grid; gap: 12px; min-width: 0; }
+.grocery-target-store h2 { font-size: 18px; margin: 10px 0 0; }
+.grocery-target-article { border-bottom: 1px solid var(--line); padding: 8px 0 12px; overflow-wrap: anywhere; }
+.grocery-target-article p { font-size: 14px; margin: 8px 0; }
+.grocery-target-article p > small { display: block; }
+.grocery-target-saving { flex-shrink: 0; color: var(--success); font-variant-numeric: tabular-nums; }
+.grocery-target-note { font-size: 13px; }
+.grocery-workflow { flex-wrap: nowrap; }
+.grocery-workflow button { white-space: normal; min-height: 44px; flex: 1; min-width: 0; }
+@media (max-width: 440px) { .grocery-workflow button { font-size: 12px; padding: 8px 6px; } }
 .grocery-actions { display: flex; flex-wrap: wrap; gap: 10px; }
 .grocery-thumbnails { display: flex; gap: 12px; overflow-x: auto; padding: 4px; }
 .grocery-thumbnails > div { position: relative; flex: 0 0 130px; background: var(--soft); padding: 8px; border-radius: var(--radius-sm); }

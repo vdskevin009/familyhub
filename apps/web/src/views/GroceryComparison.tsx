@@ -119,21 +119,24 @@ export function ArticleOfferCard({ plan, item, p, r, ranked, included }: {
   </article>;
 }
 
-function ArticleComparison({ plan, item, groups, products }: { plan: GroceryPlan; item: ShoppingItem; groups: StoreGroup[]; products: ReceiptProduct[] }) {
+export function ArticleComparison({ plan, item, groups, products, showComparison = true, identity }: { plan: GroceryPlan; item: ShoppingItem; groups: StoreGroup[]; products: ReceiptProduct[]; showComparison?: boolean; identity?: React.ReactNode }) {
   const [detailsOpen, setDetailsOpen] = useState(false);
   const included = new Set(compatibleOffers(plan, item).map(p => p.id));
   const unitComparison = articleUnitComparison(plan, item, groups);
   return <article className="grocery-article-comparison">
     <div className="grocery-article-heading"><h3>{item.name}</h3><button type="button" className="text-action" aria-label={`Détails de ${item.name}`} aria-haspopup="dialog" onClick={() => setDetailsOpen(true)}>Détails</button></div>
-    <div className="grocery-price-rows">{unitComparison.rows.map(({ group: g, offers }) => {
+    {identity}
+    {showComparison && <div className="grocery-price-rows">{unitComparison.rows.map(({ group: g, offers }) => {
       return <div className="grocery-price-row" key={g.name}><strong>{g.name === "Fresh St. Market" ? "Fresh St." : g.name}</strong><div>{offers.length ? offers.map(({ p, rate, reason, gap, tone }) =>
         <div className="grocery-price-option" key={p.id}>
           <span className="grocery-price-value">{!reason && rate ? formatUnitRate(rate, p.currency) : p.available === "no" ? "Indisponible" : !datedPrice(p) ? "Historique" : !p.mode || p.mode === "unknown" ? "Mode à confirmer" : "Non comparable"}</span>
-          <small className={`grocery-unit-gap grocery-unit-gap-${tone}`} aria-label={gap} title={reason || "Écart au minimum observé dans la même unité et devise, hors frais"}>{gap === "Plus bas observé · 0 %" ? "0 %" : gap === "Ex æquo · 0 %" ? "0 % ex æquo" : reason ? "—" : gap}</small>
+          <small className={`grocery-unit-gap grocery-unit-gap-${tone}`} aria-label={gap} title={reason || "Écart au minimum observé dans la même unité et devise, hors frais"}>{gap === "Plus bas observé · 0 %" ? "0 %" : gap === "Ex æquo · 0 %" ? "0 % ex æquo" : reason ? "-" : gap}</small>
+          {identity && <small className="grocery-price-mode">{modeLabels[p.mode ?? "unknown"]}{p.substitution ? " · Substitution" : ""}{!p.approved ? " · À revoir" : ""}{reason ? " · " + reason : ""}</small>}
         </div>) : <div className="grocery-price-option"><span className="grocery-price-value">Prix manquant</span><small className="grocery-unit-gap grocery-unit-gap-neutral">—</small></div>}</div></div>;
-    })}</div>
+    })}</div>}
     <Sheet open={detailsOpen} onClose={() => setDetailsOpen(false)} title="Détails du produit" className="grocery-article-details" resetScrollOnOpen footer={<button type="button" className="button secondary" onClick={() => setDetailsOpen(false)}>Retour aux prix</button>}>
       <div className="grocery-product-heading"><h3>{item.name}</h3><p>Prix et détails par magasin</p></div>
+      {identity}
       <div className="grocery-offer-cards">{unitComparison.rows.map(({ group: g, offers: rankedOffers }) => {
         // Retain older observations and separate modes; only current ranked offers get a gap.
         const offers = g.retailers.flatMap(r => plan.prices.filter(p => p.itemId === item.id && p.retailerId === r.id));

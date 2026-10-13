@@ -111,12 +111,28 @@ test("authenticated real-worker API: origin, pairing, no-store, upload/review/so
   assert.equal((await request("/groceries", undefined, { Origin: "https://untrusted.invalid" })).status, 403);
   const health = await (await request("/health")).json(); assert.ok(health.capabilities.includes("grocery-receipts-v1"));
   assert.ok(health.capabilities.includes("grocery-weekly-v1"));
+  assert.ok(health.capabilities.includes("grocery-items-300-v1")); assert.equal(health.version, "2.25.3");
   const plan = (await (await request("/groceries/planning")).json()); assert.equal(plan.schema, 1);
   plan.area = "Synthetic city";
   plan.items = [{ id: "synthetic-month", name: "Synthetic monthly packs", quantity: 3, size: null, unit: null, preference: "Format unknown", substitutions: false, active: false, origin: "", cadence: "month", every: 1, bucket: "household", measure: "pack", provisional: true, basketQuantity: null }];
-  const savedPlan = await request("/groceries/planning", { plan, expectedRevision: "" }); assert.equal(savedPlan.status, 200); assert.equal(savedPlan.headers.get("cache-control"), "no-store"); const planningRevision = (await savedPlan.json()).revision;
+  plan.items.push(...Array.from({ length: 76 }, (_, n) => ({ ...plan.items[0], id: "synthetic-expanded-" + n, name: "Synthetic article " + n, cadence: "unknown", cadenceNote: "Synthetic retained note", preference: "Synthetic preference " + n })));
+  const savedPlan = await request("/groceries/planning", { plan, expectedRevision: "" }); assert.equal(savedPlan.status, 200); assert.equal(savedPlan.headers.get("cache-control"), "no-store"); let planningRevision = (await savedPlan.json()).revision;
   assert.equal((await request("/groceries/planning", { plan, expectedRevision: "" })).status, 409);
   assert.equal((await request("/groceries/planning", { plan, expectedRevision: planningRevision }, { "x-familyhub-key": "wrong" })).status, 401);
+  const maximum = structuredClone(plan); maximum.revision = planningRevision;
+  maximum.items.push(...Array.from({ length: 223 }, (_, n) => ({ ...plan.items[0], id: "synthetic-max-" + n, name: "Synthetic maximum article " + n, preference: "Synthetic preference ".repeat(20).trim() })));
+  maximum.prices = maximum.items.map((item, n) => ({ id: "synthetic-price-" + n, itemId: item.id, retailerId: "synthetic-store", product: "Synthetic recorded product " + n, price: 3, size: 500, unit: "g", weighed: false, taxPercent: null, currency: "CAD", available: "unknown", substitution: false, approved: false, kind: "public", evidence: { title: "Synthetic observed source", url: "https://example.com/synthetic", date: "2026-10-13", until: null } }));
+  maximum.retailers = [{ id: "synthetic-store", name: "Synthetic retailer", delivery: null, service: null, servicePercent: null, feesTaxPercent: null, minimum: null, freeDeliveryAbove: null, areaConfirmed: false, otherFeesReviewed: false, evidence: { title: "Synthetic source", url: "https://example.com/synthetic", date: "2026-10-13", until: null } }];
+  assert.ok(Buffer.byteLength(JSON.stringify({ plan: maximum, expectedRevision: planningRevision })) > 100_000);
+  const maximumResponse = await request("/groceries/planning", { plan: maximum, expectedRevision: planningRevision }); assert.equal(maximumResponse.status, 200); const maximumSaved = await maximumResponse.json(); planningRevision = maximumSaved.revision;
+  assert.deepEqual(maximumSaved, { ...maximum, revision: planningRevision });
+  const overLimit = structuredClone(maximumSaved); overLimit.items.push({ ...overLimit.items[0], id: "synthetic-over-limit" });
+  assert.equal((await request("/groceries/planning", { plan: overLimit, expectedRevision: planningRevision })).status, 400);
+  // The existing streaming bound can reject with HTTP 400 or close the oversized stream.
+  await request("/groceries/planning", { plan: maximumSaved, expectedRevision: planningRevision, padding: "x".repeat(10_000_000) }, { Connection: "close" }).then(response => assert.equal(response.status, 400), error => {
+    assert.equal(error.message, "fetch failed"); assert.ok(["ECONNRESET", "EPIPE", "UND_ERR_SOCKET"].includes(error.cause?.code));
+  });
+  assert.deepEqual(await (await request("/groceries/planning")).json(), maximumSaved);
   assert.equal((await request("/groceries/research", { product: "oats", area: "123 exact address", confirmed: true })).status, 400);
   const r = (await (await request("/groceries/import", { sources: [source("Synthetic API receipt")] })).json()).record;
   const reviewed = await request(`/groceries/${r.id}/review`, { receipt, expectedRevision: r.revision, save: true, confirmed: true }); assert.equal(reviewed.status, 200); assert.equal(reviewed.headers.get("cache-control"), "no-store");
@@ -125,7 +141,7 @@ test("authenticated real-worker API: origin, pairing, no-store, upload/review/so
   const malformed = await fetch(`http://127.0.0.1:${port}/groceries/import`, { method: "POST", headers: { "x-familyhub-key": key }, body: "{private-source-content" }); assert.equal(malformed.status, 400); assert.ok(!(await malformed.text()).includes("private-source-content"));
   await stop(); await start(); assert.equal((await (await request("/groceries")).json()).records[0].status, "saved");
   assert.equal((await (await request("/groceries/planning")).json()).revision, planningRevision);
-  assert.deepEqual((await (await request("/groceries/planning")).json()).items, plan.items);
+  assert.deepEqual((await (await request("/groceries/planning")).json()), maximumSaved);
   // Startup logs predate this module; never output private source text from a Courses route.
   assert.ok(!logs.includes("Synthetic API receipt")); await stop();
 });

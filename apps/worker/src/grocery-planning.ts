@@ -1,5 +1,11 @@
 import { GroceryError, type GroceryUnit } from "./grocery-model.js";
 
+export const groceryItemLimit = 300;
+export const legacyGroceryItemLimit = 60;
+export const groceryExpandedListCapability = "grocery-items-300-v1";
+// Fits the bounded schema's strings, including escaped Unicode, without making other routes larger.
+export const groceryPlanningMaxBytes = 10_000_000;
+
 export type ShoppingItem = { id: string; name: string; quantity: number | null; size: number | null; unit: GroceryUnit | null; preference: string; substitutions: boolean; active: boolean; origin: string; cadence?: "week" | "month" | "other" | "unknown"; every?: number; cadenceNote?: string; bucket?: "food" | "household"; measure?: "physical" | "pack" | "uses"; countUnit?: string; provisional?: boolean; freshness?: "fresh" | "frozen" | "pantry" | "household" | "unknown"; basketQuantity?: number | null };
 export type PurchaseMode = "unknown" | "delivery" | "pickup" | "store";
 export const modeLabels: Record<PurchaseMode, string> = { unknown: "Mode inconnu", delivery: "Livraison", pickup: "Retrait", store: "En magasin / entrepôt" };
@@ -65,7 +71,7 @@ function priceDetails(o: Record<string, unknown>) {
 }
 export function validatePlan(v: unknown): GroceryPlan {
   const p = object(v);
-  if (p.schema !== 1 || !Array.isArray(p.items) || p.items.length > 60 || !Array.isArray(p.retailers) || p.retailers.length > 16 || !Array.isArray(p.prices) || p.prices.length > 300) throw new GroceryError("Limite de liste atteinte (60 produits, 16 magasins/modes, 300 prix).");
+  if (p.schema !== 1 || !Array.isArray(p.items) || p.items.length > groceryItemLimit || !Array.isArray(p.retailers) || p.retailers.length > 16 || !Array.isArray(p.prices) || p.prices.length > 300) throw new GroceryError(`Limite de liste atteinte (${groceryItemLimit} produits, 16 magasins/modes, 300 prix).`);
   const items = p.items.map(v => { const i = object(v); if (i.unit !== null && !units.includes(String(i.unit))) throw new GroceryError("Unité invalide."); const name = text(i.name); if (!name) throw new GroceryError("Nommez chaque produit."); return { id: id(i.id), name, quantity: number(i.quantity, true, 10000, true), size: number(i.size, true, 100000, true), unit: i.unit as GroceryUnit | null, preference: text(i.preference, 500), substitutions: flag(i.substitutions), active: flag(i.active), origin: text(i.origin, 80), ...itemDetails(i) }; });
   const retailers = p.retailers.map(v => { const r = object(v); const name = text(r.name); if (!name) throw new GroceryError("Nommez chaque magasin."); return { id: id(r.id), name, delivery: money(r.delivery), service: money(r.service), servicePercent: number(r.servicePercent, true, 100), feesTaxPercent: number(r.feesTaxPercent, true, 100), minimum: money(r.minimum), freeDeliveryAbove: money(r.freeDeliveryAbove), areaConfirmed: flag(r.areaConfirmed), otherFeesReviewed: flag(r.otherFeesReviewed), evidence: evidence(r.evidence), ...retailerDetails(r) }; });
   const prices = p.prices.map(v => { const o = object(v); if (!units.includes(String(o.unit)) || !["unknown", "yes", "no"].includes(String(o.available)) || !["public", "manual", "receipt"].includes(String(o.kind))) throw new GroceryError("Offre invalide."); const e = evidence(o.evidence); if (!e.title || !e.date || o.kind === "public" && !e.url) throw new GroceryError("Chaque prix nécessite une source et sa date ; une offre publique nécessite son lien."); return { id: id(o.id), itemId: id(o.itemId), retailerId: id(o.retailerId), product: text(o.product), price: money(o.price, false)!, size: number(o.size, false, 100000, true)!, unit: o.unit as GroceryUnit, weighed: flag(o.weighed), taxPercent: number(o.taxPercent, true, 100), currency: currency(o.currency), available: o.available as GroceryPrice["available"], substitution: flag(o.substitution), approved: flag(o.approved), kind: o.kind as GroceryPrice["kind"], evidence: e, ...priceDetails(o) }; });
