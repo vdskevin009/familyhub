@@ -368,6 +368,9 @@ try {
   denseFixture.prices = denseFixture.retailers.flatMap((r, storeIndex) => denseFixture.items.slice(0, 9).map((i, n) => ({ id: `dense-price-${storeIndex}-${n}`, itemId: i.id, retailerId: r.id, product: `Synthetic extra-long recorded product reference ${n + 1}: family-size original variety with a detailed manufacturer description and individually wrapped portions`, price: 2.5 + n + storeIndex, size: 6, unit: "each", weighed: false, taxPercent: null, depositPerPack: null, currency: "CAD", available: "unknown", substitution: true, approved: false, kind: "public", mode: "pickup", locality: "Synthetic city", localityConfirmed: false, evidence: { title: `Synthetic dense catalogue ${n + 1}`, url: "https://example.com/synthetic-dense-catalogue", date: now, until: null } })));
   await store.save({ plan: denseFixture, expectedRevision: denseFixture.revision });
   await page.getByRole("button", { name: "Relire le PC", exact: true }).click();
+  // The preceding edit/reload regression intentionally leaves a local draft. Explicitly
+  // accept the synthetic PC fixture through the normal conflict UI before density checks.
+  await page.getByRole("button", { name: "Charger le PC, archiver mon brouillon", exact: true }).click();
   await page.getByText("Base commune : 9/10 articles", { exact: false }).waitFor();
   const preservedDenseFixture = await store.read();
   const denseAmounts = denseFixture.items.slice(0, 9).map((i, n) => `${new Intl.NumberFormat("fr-CA", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format((i.quantity ?? 1) * (2.5 + n) / 6)} CAD`);
@@ -385,7 +388,8 @@ try {
     await total.getByText("Total proportionnel", { exact: true }).waitFor();
     await total.getByText(denseTotal, { exact: true }).waitFor();
     await total.getByText(/9\/10 articles.*Base partielle/).waitFor();
-    await total.getByText(/Hors frais, taxes et consignes.*À revoir/).waitFor();
+    await total.getByText(/Hors frais, taxes et consignes/).waitFor();
+    await total.getByText("Prix à vérifier · Stock à confirmer", { exact: true }).waitFor();
     await total.getByText(/1 quantité\(s\) de référence.*Pas le panier réel/).waitFor();
     const methods = commonFreshDetails.locator("summary").filter({ hasText: /^Info sur le calcul$/ });
     const excluded = commonFreshDetails.locator("summary").filter({ hasText: /^Articles exclus \(1\)$/ });

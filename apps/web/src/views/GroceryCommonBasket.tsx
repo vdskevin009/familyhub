@@ -40,7 +40,8 @@ export default function GroceryCommonBasket({ plan, renderConditions }: { plan: 
         <div className="grocery-basket-total">
           <div><span>Total proportionnel</span><strong>{store.amount === null ? "Inconnu" : amount(store.amount)}</strong></div>
           <small>{common.count}/{common.total} articles{common.count < common.total ? " · Base partielle" : ""} · {store.gap}</small>
-          <small>Hors frais, taxes et consignes · À revoir{modes.length > 1 ? " · Modes mixtes" : ""}</small>
+          <small>Hors frais, taxes et consignes{modes.length > 1 ? " · Modes mixtes" : ""}</small>
+          <small>{store.lines.length && store.lines.every(l => l.offer.p.approved) ? "Prix revus" : "Prix à vérifier"} · Stock à confirmer</small>
           {common.referenceCount > 0 && <small>{common.referenceCount} quantité(s) de référence · Pas le panier réel</small>}
         </div>
         <div className="grocery-basket-lines" aria-label="Articles du total proportionnel">
