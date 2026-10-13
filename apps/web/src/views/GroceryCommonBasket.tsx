@@ -35,7 +35,7 @@ export default function GroceryCommonBasket({ plan, renderConditions }: { plan: 
     })}</div>
     {common.participants === 0 && <p>Choisissez au moins un magasin pour calculer le total.</p>}
     </section>
-    <Sheet open={!!store} onClose={() => setSelected(null)} title={`Détails du panier ${selected || ""}`} className="grocery-article-details grocery-basket-details" footer={<button type="button" className="button secondary" onClick={() => setSelected(null)}>Retour aux prix</button>}>
+    <Sheet resetScrollOnOpen open={!!store} onClose={() => setSelected(null)} title={`Détails du panier ${selected || ""}`} className="grocery-article-details grocery-basket-details" footer={<button type="button" className="button secondary" onClick={() => setSelected(null)}>Retour aux prix</button>}>
       {store && <>
         <div className="grocery-basket-total">
           <div><span>Total proportionnel</span><strong>{store.amount === null ? "Inconnu" : amount(store.amount)}</strong></div>
