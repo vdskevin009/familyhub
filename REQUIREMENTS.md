@@ -1,5 +1,9 @@
 # FamilyHub - Canonical Requirements
 
+## Equivalent reference quantities (#205)
+
+[FH-GROCERY-007](docs/requirements/FH-GROCERY-007.md) is the canonical scoped requirement. Status: Testing. Authorized equal reference quantities let unknown physical needs enter a comparison basket without changing the saved household plan. Known calculable quantities remain intact; missing prices and incompatible dimensions remain explicit exclusions. Implementation: grocery-common-quantity and comparison details; exact CI/public acceptance tracked in #205.
+
 ## Courses comparison coverage (#203)
 
 FH-GROCERY-006 is maintained in [its scoped requirement](docs/requirements/FH-GROCERY-006.md). Status: Testing. Article unit-price coverage is counted independently of the common-total subset; a display-only store selector can expand that subset with equal quantities and explicit exclusions. Implementation: `grocery-unit-comparison`, `grocery-common-quantity`, `GroceryComparison`, `GroceryCommonBasket`. Public release and physical-phone verification remain separate gates.

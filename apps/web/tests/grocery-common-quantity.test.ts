@@ -31,8 +31,8 @@ test("Common basket: g/kg and ml/l conversions preserve dimension, never density
 test("Common basket: uses require stated capacities; no unknown dose or pack quantity inferred", () => {
   const p = fixture(); p.items[0] = { ...item, measure: "uses", quantity: 7, size: null, unit: null, countUnit: "charges" }; p.prices[0].usesPerPack = 25; p.prices[1].usesPerPack = 50;
   const c = commonQuantityComparison(p, day); assert.equal(c.count, 1); assert.equal(c.stores.find(s => s.group.name === "Walmart")!.lines[0].packs, 1);
-  delete p.prices[0].usesPerPack; delete p.prices[1].usesPerPack; assert.equal(commonQuantityComparison(p, day).count, 0);
-  p.items[0] = { ...item, size: null }; assert.equal(commonQuantityComparison(p, day).count, 0);
+  delete p.prices[0].usesPerPack; delete p.prices[1].usesPerPack; const physical = commonQuantityComparison(p, day); assert.equal(physical.count, 1); assert.equal(physical.referenceCount, 1); assert.equal(physical.stores[0].lines[0].offer.rate!.basis, "each"); assert.equal(physical.stores[0].lines[0].quantity, 1);
+  p.items[0] = { ...item, size: null }; assert.equal(commonQuantityComparison(p, day).referenceCount, 1);
 });
 test("Common basket: dated unavailable, foreign, unknown-mode, estimated and inferred observations stay excluded", () => {
   for (const patch of [{ available: "no" }, { currency: "USD" }, { mode: "unknown" }, { evidence: { ...evidence, until: "2000-01-01" } }, { matchNote: "Format non confirmé" }, { matchNote: "Prix de barquette estimé" }] as Partial<GroceryPrice>[]) { const p = fixture(); p.prices.forEach(q => Object.assign(q, patch)); assert.equal(commonQuantityComparison(p, day).count, 0); }
@@ -80,7 +80,7 @@ test("Coverage: unknown quantities keep competing unit prices and one store's va
   const p = fixture(); p.items[0].quantity = null;
   assert.deepEqual(articleComparisonCoverage(p, storeGroups(p), day), { count: 1, total: 1 });
   const common = commonQuantityComparison(p, day);
-  assert.equal(common.count, 0); assert.match(common.exclusionDetails[0].reason, /Quantité du panier/);
+  assert.equal(common.count, 1); assert.equal(common.referenceCount, 1); assert.equal(common.stores[0].lines[0].quantity, 1); assert.equal(p.items[0].quantity, null);
   p.prices[1].retailerId = p.prices[0].retailerId;
   assert.equal(articleComparisonCoverage(p, storeGroups(p), day).count, 0);
 });
@@ -109,9 +109,38 @@ test("Common basket: explicitly chosen unpriced store, empty and singleton selec
   const single = commonQuantityComparison(p, day, ["Walmart"]);
   assert.equal(single.stores[0].gap, "Seul montant"); assert.equal(single.stores[0].percent, null);
 });
-test("Common basket: missing pack format and labelled capacity explain exclusions without guessing a dose", () => {
+test("Common basket: unknown pack and dose use a separate common physical reference", () => {
   const p = fixture(); p.items[0].size = null;
-  assert.match(commonQuantityComparison(p, day).exclusionDetails[0].reason, /Format souhaité/);
+  assert.equal(commonQuantityComparison(p, day).referenceCount, 1);
   p.items[0].measure = "uses";
-  assert.match(commonQuantityComparison(p, day, ["Walmart", "Superstore"]).exclusionDetails[0].reason, /capacité en utilisations.*Walmart.*Superstore/);
+  const c = commonQuantityComparison(p, day, ["Walmart", "Superstore"]);
+  assert.equal(c.referenceCount, 1); assert.ok(c.stores.every(s => s.lines[0].quantity === 1 && s.lines[0].label === "unités"));
+  assert.equal(p.items[0].quantity, 2); assert.ok(p.prices.every(o => o.usesPerPack === undefined));
+});
+
+test("Reference quantities: all fourteen unknown needs share identical quantities at every chosen store, no mutation", () => {
+  const p = fixture();
+  p.items = Array.from({ length: 14 }, (_, n) => ({ ...item, id: 'need-' + n, quantity: null, size: null, unit: null, measure: "physical" as const }));
+  const offers = p.prices;
+  p.prices = p.items.flatMap((i, n) => offers.map(o => ({ ...o, id: o.id + '-' + n, itemId: i.id, unit: n % 2 ? "g" as const : "ml" as const, size: 500, price: 2 })));
+  const before = structuredClone(p), c = commonQuantityComparison(p, day, ["Walmart", "Superstore"]);
+  assert.equal(c.count, 14); assert.equal(c.referenceCount, 14);
+  assert.deepEqual(c.stores[0].lines.map(l => [l.item.id, l.quantity, l.label]), c.stores[1].lines.map(l => [l.item.id, l.quantity, l.label]));
+  assert.ok(c.stores[0].lines.every(l => l.quantity === 1 && l.reference));
+  assert.equal(c.stores[0].amount, 56); assert.deepEqual(p, before);
+  p.retailers.push({ ...retailerTemplate("r2", "Costco"), mode: "pickup" });
+  const missing = commonQuantityComparison(p, day, ["Walmart", "Costco"]);
+  assert.equal(missing.count, 0); assert.ok(missing.stores.every(s => s.amount === null));
+});
+test("Reference quantities: portions without weights use 1 kg without assigning any weight to each portion", () => {
+  const p = fixture(); p.items[0] = { ...item, measure: "physical", quantity: 4, size: 1, unit: "each", countUnit: "poitrines" };
+  for (const o of p.prices) Object.assign(o, { size: 1, unit: "kg", price: 10 });
+  const before = structuredClone(p), c = commonQuantityComparison(p, day);
+  assert.equal(c.referenceCount, 1); assert.ok(c.stores.filter(s => s.amount !== null).every(s => s.lines[0].quantity === 1 && s.lines[0].label === "kg"));
+  assert.deepEqual(p, before);
+});
+test("Reference quantities: explicit unknown basket quantity stays unknown, invalid values do not become reference prices", () => {
+  const p = fixture(); p.items[0].basketQuantity = null;
+  assert.equal(commonQuantityComparison(p, day).referenceCount, 1); assert.equal(p.items[0].basketQuantity, null);
+  for (const q of [0, -1, NaN, Infinity]) { p.items[0].basketQuantity = q; assert.equal(commonQuantityComparison(p, day).count, 0); }
 });
