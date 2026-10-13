@@ -128,8 +128,9 @@ try {
   receiptRecords[0].receipt.store = "Other synthetic receipt shop";
   await page.getByRole("button", {name:"Relire le PC",exact:true}).click();
   await page.getByRole("button", {name:"Comparer",exact:true}).click();
-  const brandedArticle = page.getByRole("dialog", {name:"Détails de Synthetic oats",exact:true});
+  const brandedArticle = page.getByRole("dialog", {name:"Détails du produit",exact:true});
   await page.getByRole("button", {name:"Détails de Synthetic oats",exact:true}).click();
+  await brandedArticle.getByText("Info sur la comparaison", { exact: true }).click();
   await brandedArticle.getByText("ExampleBrand rolled oats",{exact:true}).waitFor();
   await brandedArticle.getByText("Synthetic exact oats",{exact:true}).waitFor();
   await brandedArticle.getByText(/Ticket : Other synthetic receipt shop/).waitFor();
@@ -268,7 +269,7 @@ try {
     await page.screenshot({ path: `artifacts/groceries/compact-articles-${width}.png`, fullPage: true });
   }
   const firstInfo = page.getByRole("button", { name: "Détails de Fictional article 1", exact: true });
-  const articleDetails = page.getByRole("dialog", { name: "Détails de Fictional article 1", exact: true });
+  const articleDetails = page.getByRole("dialog", { name: "Détails du produit", exact: true });
   const commonFreshButton = page.getByRole("button", { name: "Détails du panier Fresh St. Market", exact: true });
   const commonFreshDetails = page.getByRole("dialog", { name: "Détails du panier Fresh St. Market", exact: true });
   await commonFreshButton.click(); await commonFreshDetails.waitFor();
@@ -283,11 +284,12 @@ try {
     await page.setViewportSize({ width, height: 900 });
     assert.ok(await firstInfo.evaluate(el => el.getBoundingClientRect().height) >= 44);
     await firstInfo.focus(); await firstInfo.press("Enter");
+    for (const summary of await articleDetails.locator(".grocery-offer-source > summary").all()) await summary.click();
     await articleDetails.getByText("Équivalent proportionnel du besoin : 4.375 CAD.", { exact: false }).waitFor();
     await articleDetails.getByText("Observation non approuvée", { exact: false }).first().waitFor();
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
     const back = articleDetails.getByRole("button", { name: "Retour aux prix", exact: true });
-    const close = articleDetails.getByRole("button", { name: "Close Détails de Fictional article 1", exact: true });
+    const close = articleDetails.getByRole("button", { name: "Close Détails du produit", exact: true });
     await back.focus(); await back.press("Tab"); assert.equal(await close.evaluate(el => el === document.activeElement), true);
     await close.press("Shift+Tab"); assert.equal(await back.evaluate(el => el === document.activeElement), true);
     await page.screenshot({ path: `artifacts/groceries/article-details-${width}.png` });
@@ -381,8 +383,10 @@ try {
   await page.locator('summary[aria-label="Magasins à comparer"]').click();
   assert.deepEqual(await store.read(), preservedUnitFixture);
   await firstInfo.focus(); await firstInfo.press("Enter");
+  await articleDetails.getByText("Info sur la comparaison", { exact: true }).click();
   await articleDetails.getByText(/Écart = \(prix unitaire/).waitFor();
-  await articleDetails.getByText(/Prix du format : 9.00 CAD/).waitFor();
+  for (const summary of await articleDetails.locator(".grocery-offer-source > summary").all()) await summary.click();
+  await articleDetails.locator(".grocery-offer-prices").getByText("9,00 CAD", { exact: true }).waitFor();
   await articleDetails.getByText(/Taxes produits/).first().waitFor();
   await articleDetails.getByText(/Abonnement/).first().waitFor();
   const productLink = articleDetails.getByRole("link", { name: /Ouvrir le produit/ });
@@ -400,6 +404,42 @@ try {
   await page.reload(); await page.getByRole("button", { name: "Comparer", exact: true }).click();
   await firstArticle.getByText("+33,3 %", { exact: true }).waitFor(); assert.deepEqual(await store.read(), preservedUnitFixture);
   console.log("PASS: unit-ranked article rows preserve pack prices/modes/quality; percentage, mixed units, zero minimum, contrast≥4.5, keyboard/reload/no mutation at320/390/768/1440.");
+  // Approved product-detail cards: inspect collapsed/expanded states without writing private data.
+  for (const width of [320, 390, 412, 768, 1440]) {
+    await page.setViewportSize({ width, height: width <= 412 ? 844 : 900 });
+    await firstInfo.click(); await articleDetails.waitFor();
+    await articleDetails.getByRole("heading", { name: "Fictional article 1", exact: true }).waitFor();
+    const cards = articleDetails.locator("article.grocery-offer-card");
+    assert.equal(await cards.count(), 4);
+    assert.equal(await articleDetails.locator("details[open]").count(), 0);
+    await cards.first().getByText("Le moins cher", { exact: true }).waitFor();
+    assert.deepEqual(await cards.locator("h4").allTextContents(), ["Walmart", "Superstore", "Fresh St. Market", "Costco"]);
+    assert.equal(await cards.first().locator(".grocery-offer-fields dd").first().innerText(), "Non précisée");
+    assert.equal(await cards.first().locator(".grocery-offer-prices dd").first().innerText(), "9,00 CAD");
+    assert.equal(await cards.first().locator(".grocery-offer-prices dd").last().innerText(), "0,3 CAD");
+    assert.equal(await articleDetails.getByRole("button", { name: /Choisir|Ajouter|Acheter/ }).count(), 0);
+    assert.equal(await articleDetails.getByRole("link").count(), 0);
+    assert.equal(await articleDetails.locator(".sheet-content").evaluate(el => el.scrollWidth > el.clientWidth + 1), false);
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+    await page.screenshot({ path: `artifacts/groceries/product-cards-initial-${width}.png` });
+    const source = cards.first().locator("summary"), details = cards.first().locator(".grocery-offer-source-content");
+    assert.ok(await source.evaluate(el => el.getBoundingClientRect().height) >= 44);
+    await source.focus(); await source.press("Enter");
+    assert.equal(await cards.first().locator("details").getAttribute("open"), "");
+    await details.getByText("Observation non approuvée", { exact: false }).waitFor();
+    await details.getByText(/Taxes produits/).waitFor();
+    assert.equal(await details.getByRole("link", { name: /Ouvrir le produit/ }).getAttribute("href"), "https://www.walmart.ca/en/ip/eggs/10052944");
+    const sourceColors = await source.evaluate(el => ({ foreground: getComputedStyle(el).color, background: getComputedStyle(el.closest("article")).backgroundColor }));
+    assert.ok(ratio(sourceColors.foreground, sourceColors.background) >= 4.5);
+    assert.equal(await source.evaluate(el => getComputedStyle(el).outlineStyle), "solid");
+    assert.equal(await articleDetails.locator(".sheet-content").evaluate(el => el.scrollWidth > el.clientWidth + 1), false);
+    await page.screenshot({ path: `artifacts/groceries/product-cards-expanded-${width}.png` });
+    await source.press("Space"); assert.equal(await cards.first().locator("details").getAttribute("open"), null);
+    await articleDetails.press("Escape"); await articleDetails.waitFor({ state: "hidden" });
+    assert.equal(await firstInfo.evaluate(el => el === document.activeElement), true);
+    assert.deepEqual(await store.read(), preservedUnitFixture);
+  }
+  console.log("PASS: informational retailer cards at 320/390/412/768/1440; real pack/unit prices, no invented brand or CTA, keyboard sources, contrast, focus restoration and no saved-plan changes.");
   // Dense mobile basket: nine synthetic priced needs plus an explicitly excluded need.
   // Long household labels stress summary wrapping; longer recorded product names stay behind disclosure.
   const denseNames = [
@@ -500,6 +540,18 @@ try {
   await page.reload(); await page.getByRole("button", { name: "Comparer", exact: true }).click();
   await page.getByText("Base commune : 9/10 articles", { exact: false }).waitFor();
   assert.deepEqual(await store.read(), preservedDenseFixture);
+  for (const width of [320, 390, 412]) {
+    await page.setViewportSize({ width, height: 844 });
+    await page.getByRole("button", { name: `Détails de ${denseNames[0]}`, exact: true }).click();
+    await articleDetails.waitFor();
+    await articleDetails.locator(".grocery-offer-fields").getByText(denseFixture.prices[0].product, { exact: true }).first().waitFor();
+    assert.equal(await articleDetails.locator(".sheet-content").evaluate(el => el.scrollWidth > el.clientWidth + 1), false);
+    const fieldsFit = await articleDetails.locator(".grocery-offer-fields dd").evaluateAll(els => els.every(el => el.scrollWidth <= el.clientWidth + 1));
+    assert.equal(fieldsFit, true, `Full recorded names wrap without clipping at ${width}px`);
+    await page.screenshot({ path: `artifacts/groceries/product-cards-long-name-${width}.png` });
+    await articleDetails.press("Escape"); await articleDetails.waitFor({ state: "hidden" });
+    assert.deepEqual(await store.read(), preservedDenseFixture);
+  }
   console.log("PASS: dense nine-item basket shows total and ≥3 complete names/prices initially at320/390/412×740 and768/1440; long names, proportional/purchase distinction, all prices above footer, keyboard/touch disclosure, bottom clearance, close/Escape/Return/focus/reopen reset, excluded/conditions and unchanged saved plan/reload.");
   assert.deepEqual(errors, []);
   console.log("PASS: explicit Plan copy/dedup/preservation, editable quantity/format/preferences, blank prices, save failure/reload/retry, incomplete and sourced basket, 320/390/768/1280 layouts, minimal public query, shared persistence, stale conflict and offline draft. Weekly/monthly separation, current-basket override, cancel, old-worker capability gate, suggested retailers dedup and 1440px also pass. Zero page errors."); await second.close();

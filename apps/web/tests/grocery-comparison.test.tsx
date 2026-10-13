@@ -4,11 +4,12 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { compareBaskets, emptyPlan, type GroceryPlan, type GroceryPrice, type GroceryRetailer, type ShoppingItem } from "../../worker/src/grocery-planning";
 import { currentPrices, equivalentCost, formatLabel, observedSummary, priceState, quantityReason, shortProduct, storeGroups, unitPrice } from "../src/grocery-comparison";
-import GroceryComparison, { StoreCards } from "../src/views/GroceryComparison";
+import GroceryComparison, { ArticleOfferCard, StoreCards } from "../src/views/GroceryComparison";
 import { grocerySourceLink } from "../src/grocery-source-link";
 import { ArticleReceiptProducts, StoreReceiptProducts } from "../src/views/GroceryReceiptProducts";
 import type { ReceiptProduct } from "../src/grocery-receipt-products";
 import { commonQuantityComparison } from "../src/grocery-common-quantity";
+import { articleUnitComparison } from "../src/grocery-unit-comparison";
 
 const today = new Date().toISOString().slice(0, 10);
 const evidence = { title: "Synthetic catalogue", url: "https://example.com/catalogue", date: today, until: "2099-12-31" };
@@ -16,6 +17,40 @@ const item = (patch: Partial<ShoppingItem> = {}): ShoppingItem => ({ id: "i", na
 const retailer = (patch: Partial<GroceryRetailer> = {}): GroceryRetailer => ({ id: "r", name: "Walmart", delivery: 0, service: 0, servicePercent: 0, feesTaxPercent: 0, minimum: 0, freeDeliveryAbove: null, areaConfirmed: true, otherFeesReviewed: true, mode: "pickup", locality: "Synthetic city", slots: "yes", membershipStatus: "none", membershipWeekly: 0, evidence, ...patch });
 const price = (patch: Partial<GroceryPrice> = {}): GroceryPrice => ({ id: "p", itemId: "i", retailerId: "r", product: "Synthetic exact muffins", price: 2.5, size: 6, unit: "each", weighed: false, taxPercent: 0, depositPerPack: 0, currency: "CAD", available: "yes", substitution: false, approved: false, kind: "public", mode: "pickup", locality: "Synthetic city", localityConfirmed: false, evidence, ...patch });
 function plan(i = item(), r = retailer(), prices = [price()]): GroceryPlan { return { ...emptyPlan(), area: "Synthetic city", areaConfirmed: true, items: [i], retailers: [r], prices }; }
+
+test("Product cards preserve recorded identity, dynamic unit price and safe sources without mutation", () => {
+  const p = plan(item({ unit: "l" }), retailer(), [price({ product: "Earth's Own Original unsweetened", price: 4, size: 2000, unit: "ml" })]);
+  p.retailers.push(retailer({ id: "other", name: "Superstore" }));
+  p.prices.push(price({ id: "other-price", retailerId: "other", product: "Unidentified original unsweetened", price: 6, size: 2, unit: "l" }));
+  const before = structuredClone(p), ranked = articleUnitComparison(p, p.items[0], storeGroups(p)).rows.flatMap(row => row.offers);
+  const render = (n: number) => renderToStaticMarkup(createElement(ArticleOfferCard, { plan: p, item: p.items[0], p: p.prices[n], r: p.retailers[n], ranked: ranked.find(o => o.p.id === p.prices[n].id), included: false }));
+  const html = render(0);
+  for (const text of ["Marque", "Earth&#x27;s Own", "Produit", "Original unsweetened", "Format", "2000 ml", "Prix du format", "4,00 CAD", "Prix pour 1 L", "2 CAD", "Le moins cher", "Source et conditions", "Observation non approuvée", "Localité à confirmer", "Taxes produits", "Abonnement", "noopener noreferrer"]) assert.ok(html.includes(text), text);
+  assert.ok(!html.includes(" open=")); assert.ok(!html.includes("<button")); assert.ok(!html.includes("<input"));
+  assert.ok(render(1).includes("Non précisée")); assert.ok(render(1).includes("+50 %"));
+  assert.deepEqual(p, before);
+});
+test("Product cards keep zero minima, historical and uncertain observations neutral", () => {
+  for (const patch of [{ price: 0 }, { matchNote: "Format non confirmé" }, { matchNote: "Prix de barquette estimé" }, { kind: "receipt" as const }, { mode: "unknown" as const }, { unit: "kg" as const, size: 1 }]) {
+    const p = plan(item({ unit: "l" }), retailer(), [price({ unit: "l", size: 2, ...patch, product: "Tidewater original" })]);
+    p.retailers.push(retailer({ id: "other", name: "Superstore" }));
+    p.prices.push(price({ id: "other-price", retailerId: "other", price: 6, size: 2, unit: "l" }));
+    const ranked = articleUnitComparison(p, p.items[0], storeGroups(p)).rows.flatMap(row => row.offers).find(o => o.p.id === "p");
+    const html = renderToStaticMarkup(createElement(ArticleOfferCard, { plan: p, item: p.items[0], p: p.prices[0], r: p.retailers[0], ranked, included: false }));
+    assert.ok(!html.includes("Le moins cher")); assert.ok(html.includes("Non précisée"));
+    assert.ok(html.includes("grocery-unit-gap-neutral"));
+    if (patch.matchNote) assert.ok(html.includes("Non calculable"));
+  }
+});
+test("Product cards only warn when there is an observed uncertainty", () => {
+  const p = plan(item(), retailer(), [price({ approved: true, localityConfirmed: true })]);
+  const ranked = articleUnitComparison(p, p.items[0], storeGroups(p)).rows.flatMap(row => row.offers)[0];
+  let html = renderToStaticMarkup(createElement(ArticleOfferCard, { plan: p, item: p.items[0], p: p.prices[0], r: p.retailers[0], ranked, included: true }));
+  assert.ok(!html.includes('class="grocery-offer-warning"')); assert.ok(html.includes("Seul prix comparable"));
+  p.prices[0].available = "unknown";
+  html = renderToStaticMarkup(createElement(ArticleOfferCard, { plan: p, item: p.items[0], p: p.prices[0], r: p.retailers[0], ranked, included: true }));
+  assert.ok(html.includes("Stock à confirmer"));
+});
 
 test("Courses presentation: rounded purchase and proportional need remain distinct, unapproved", () => {
   const p = plan(), original = structuredClone(p), s = observedSummary(p, p.retailers[0]);
