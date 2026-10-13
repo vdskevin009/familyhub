@@ -1,5 +1,9 @@
 # FamilyHub - Canonical Requirements
 
+## Receipt-backed product brands (#208)
+
+[FH-GROCERY-008](docs/requirements/FH-GROCERY-008.md) is the canonical scoped requirement. Status: Testing. Reviewed exact receipt products appear on matching household articles and can populate the explicitly reviewed public product/brand query. Manual preferences and saved plan remain intact unless explicitly edited. Implementation: `grocery-receipt-products`, `GroceryPlanningView`; release evidence tracked in #208.
+
 ## Equivalent reference quantities (#205)
 
 [FH-GROCERY-007](docs/requirements/FH-GROCERY-007.md) is the canonical scoped requirement. Status: Testing. Authorized equal reference quantities let unknown physical needs enter a comparison basket without changing the saved household plan. Known calculable quantities remain intact; missing prices and incompatible dimensions remain explicit exclusions. Implementation: grocery-common-quantity and comparison details; exact CI/public acceptance tracked in #205.

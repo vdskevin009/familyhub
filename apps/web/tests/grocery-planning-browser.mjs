@@ -11,7 +11,7 @@ import { emptyPlan } from "../../worker/dist/grocery-planning.js";
 import { retailerTemplate } from "../../worker/dist/grocery-weekly.js";
 const dir = await mkdtemp(join(tmpdir(), "fh-grocery-planning-ui-")), store = new GroceryPlanningStore(join(dir, "groceries"));
 const root = resolve("apps/web/dist"), errors = [], key = "synthetic-plan-key";
-let browser, page, offline = false, failSave = false, researchBody, weeklySupported = true, malformedRead = false;
+let browser, page, offline = false, failSave = false, researchBody, receiptRecords = [], weeklySupported = true, malformedRead = false;
 const api = createServer(async (req, res) => {
   res.setHeader("Access-Control-Allow-Origin", req.headers.origin || "*"); res.setHeader("Access-Control-Allow-Headers", "content-type,x-familyhub-key"); res.setHeader("Access-Control-Allow-Methods", "GET,POST,OPTIONS"); if (req.method === "OPTIONS") { res.end(); return; }
   if (offline) { req.socket.destroy(); return; } res.setHeader("Content-Type", "application/json"); if (req.headers["x-familyhub-key"] !== key) { res.writeHead(401); res.end("{}"); return; }
@@ -20,11 +20,12 @@ const api = createServer(async (req, res) => {
     if (req.url === "/health") result = { capabilities: ["grocery-planning-v1", "grocery-receipts-v1", ...(weeklySupported ? ["grocery-weekly-v1"] : [])] };
     else if (req.url === "/groceries/planning") { if (body && failSave) { failSave = false; throw new Error("Échec synthétique de sauvegarde ; brouillon conservé."); } result = body ? await store.save(body) : malformedRead ? { state: "idle" } : await store.read(); }
     else if (req.url === "/groceries/research") { researchBody = body; result = { summary: "Synthetic catalogue only", prices: [] }; }
-    else if (req.url === "/groceries") result = { records: [] };
+    else if (req.url === "/groceries") result = { records: receiptRecords };
     else throw new Error("Unknown synthetic route"); res.end(JSON.stringify(result));
   } catch (e) { res.writeHead(409); res.end(JSON.stringify({ error: e.message })); }
 });
 const site = createServer(async (req, res) => { const pathname = new URL(req.url, "http://localhost").pathname.replace(/^\/familyhub/, ""), file = resolve(root, "." + (pathname || "/index.html")); if (relative(root, file).startsWith("..")) { res.writeHead(403); res.end(); return; } try { const target = pathname.endsWith("/") ? join(file, "index.html") : file; res.setHeader("Content-Type", ({ ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".svg": "image/svg+xml", ".png": "image/png" })[extname(target)] || "application/octet-stream"); res.end(await readFile(target)); } catch { res.writeHead(404); res.end(); } });
+async function savePlanning(page) { await Promise.all([page.waitForResponse(r => r.url().endsWith("/groceries/planning") && r.request().method() === "POST" && r.status() === 200), page.getByRole("button", { name: "Enregistrer sur le PC" }).click()]); await page.getByText(/Liste et prix conservés sur le PC/).waitFor(); }
 async function planning(page, base) { await page.goto(base); await page.getByRole("button", { name: "Besoins", exact: true }).click(); await page.getByRole("button", { name: "Ajouter un produit", exact: true }).waitFor(); }
 async function assertCompactBasketLayout(dialog, width, height) {
   const layout = await dialog.evaluate(el => {
@@ -73,7 +74,7 @@ try {
   await page.getByText("Info et filtres", { exact: true }).click(); await page.getByLabel("Ville ou préfixe postal de domicile").fill("Montréal"); await page.getByLabel(/J'ai confirmé la zone réelle/).check();
   failSave = true; await page.getByRole("button", { name: "Enregistrer sur le PC" }).click(); await page.getByText(/Échec synthétique/).waitFor();
   await page.reload(); await page.getByRole("button", { name: "Besoins", exact: true }).click(); await page.getByRole("button", { name: /Synthetic oats.*2 x 500 g/ }).waitFor(); await page.getByText("Info et filtres", { exact: true }).click(); assert.equal(await page.getByLabel("Ville ou préfixe postal de domicile").inputValue(), "Montréal");
-  await page.getByRole("button", { name: "Enregistrer sur le PC" }).click(); await page.getByText(/Liste et prix conservés sur le PC/).waitFor();
+  await savePlanning(page);
   await page.getByRole("button", { name: "Magasins et prix", exact: true }).click(); await page.getByRole("button", { name: "Ajouter un magasin" }).click(); const retailer = page.getByRole("dialog", { name: "Magasin et conditions" }); await retailer.waitFor(); await retailer.getByLabel("Magasin", { exact: true }).fill("Synthetic market");
   await retailer.getByRole("button", { name: "Conserver le magasin" }).click(); await retailer.waitFor({ state: "hidden" });
   await page.getByRole("button", { name: "Ajouter un prix", exact: true }).click(); const offer = page.getByRole("dialog", { name: "Revoir un prix" }); await offer.waitFor(); assert.equal(await offer.getByLabel("Prix du format (avant taxes séparées)").inputValue(), "");
@@ -88,7 +89,7 @@ try {
   await market.getByText("Montant inconnu", { exact: true }).waitFor();
   await market.locator("summary").click(); await market.getByText(/minimum de commande inconnu/).waitFor();
   await basketDetails.getByRole("button", { name: "Retour aux prix" }).click();
-  await page.getByRole("button", { name: "Enregistrer sur le PC" }).click(); await page.getByText(/Liste et prix conservés sur le PC/).waitFor();
+  await savePlanning(page);
   // Supply fully sourced synthetic conditions to test rendering; production defaults remain unknown.
   const p = await store.read(); const until = new Date(Date.now() + 86400000).toISOString().slice(0, 10); Object.assign(p.retailers[0], { delivery: 1, service: 0, servicePercent: 0, feesTaxPercent: 0, minimum: 0, areaConfirmed: true, otherFeesReviewed: true, mode: "delivery", locality: "Synthetic city", slots: "yes", membershipStatus: "none", membershipWeekly: 0, evidence: { title: "Synthetic conditions", url: "https://example.com/terms", date: now, until } }); Object.assign(p.prices[0], { mode: "delivery", locality: "Synthetic city", localityConfirmed: true, depositPerPack: 0, taxPercent: 0, available: "yes", evidence: { title: "Synthetic catalogue", url: "https://example.com/oats", date: now, until } }); await store.save({ plan: p, expectedRevision: p.revision });
   await page.getByRole("button", { name: "Relire le PC" }).click();
@@ -99,10 +100,33 @@ try {
   await market.getByText("Panier complet estimé", { exact: true }).waitFor(); await market.getByText("7.00 CAD", {exact:true}).waitFor();
   await basketDetails.getByRole("button", { name: "Retour aux prix" }).click();
   await mkdir("artifacts/groceries", { recursive: true }); for (const width of [320, 390, 768, 1280]) { await page.setViewportSize({ width, height: 900 }); assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false); await page.screenshot({ path: `artifacts/groceries/planning-${width}.png`, fullPage: true }); }
-  await page.getByRole("button", { name: "Magasins et prix", exact: true }).click(); await page.getByText("Recherche publique", { exact: true }).click(); await page.getByLabel("Produit générique pour la recherche").fill("rolled oats"); await page.getByLabel(/J'ai vérifié le nom générique/).check(); await page.getByRole("button", { name: "Rechercher et revoir les sources" }).click(); await page.getByText("Synthetic catalogue only").waitFor(); assert.deepEqual(researchBody, { product: "rolled oats", area: "Montréal", confirmed: true });
+  await page.getByRole("button", { name: "Magasins et prix", exact: true }).click(); await page.getByText("Recherche publique", { exact: true }).click(); await page.getByLabel("Produit public / marque pour la recherche").fill("rolled oats"); await page.getByLabel(/J'ai vérifié le produit, sa marque/).check(); await page.getByRole("button", { name: "Rechercher et revoir les sources" }).click(); await page.getByText("Synthetic catalogue only").waitFor(); assert.deepEqual(researchBody, { product: "rolled oats", area: "Montréal", confirmed: true });
+  // Reviewed exact branded product on a matching receipt; no quantity/price needed.
+  const brandPlan = await store.read(), brandSnapshot = structuredClone(brandPlan);
+  receiptRecords = [{ id: "synthetic-receipt", revision: "r", status: "saved", extraction: "pending", reviewedAt: now, createdAt: now, duplicateOf: null, sources: [], receipt: { store: "Synthetic market", date: now, items: [{ name: "ABBR OATS", product: "ExampleBrand rolled oats", amount: null, quantity: null, size: null, unit: null, uncertain: false, evidence: "Private note. Article rapproché : " + brandPlan.items[0].id + "." }] } }];
+  await page.getByRole("button", { name: "Relire le PC" }).click();
+  await page.getByLabel("Reprendre un produit identifié sur ticket").selectOption("0");
+  assert.equal(await page.getByLabel("Produit public / marque pour la recherche").inputValue(), "ExampleBrand rolled oats");
+  assert.equal(await page.getByLabel(/J'ai vérifié le produit, sa marque/).isChecked(), false);
+  assert.equal(await page.getByRole("button", { name: "Rechercher et revoir les sources" }).isDisabled(), true);
+  await page.getByLabel(/J'ai vérifié le produit, sa marque/).check();
+  await page.getByRole("button", { name: "Rechercher et revoir les sources" }).click(); await page.getByText("Synthetic catalogue only").waitFor();
+  assert.deepEqual(researchBody, { product: "ExampleBrand rolled oats", area: "Montréal", confirmed: true });
+  await page.getByRole("button", { name: "Ma liste", exact: true }).click();
+  await page.getByText("Ticket : ExampleBrand rolled oats", {exact:true}).waitFor();
+  await page.getByRole("button", { name: /Synthetic oats.*2 x 500 g/ }).click();
+  await product.getByRole("heading", {name:"Marques / produits identifiés sur ticket"}).waitFor();
+  const oldPreference = await product.getByLabel("Marque / préférences").inputValue();
+  await product.getByRole("button", {name:"Ajouter à mes préférences : ExampleBrand rolled oats"}).click();
+  assert.equal(await product.getByLabel("Marque / préférences").inputValue(), [oldPreference, "Produit observé sur ticket : ExampleBrand rolled oats"].filter(Boolean).join(" · "));
+  for (const width of [320,390,768,1440]) { await page.setViewportSize({width,height:900}); assert.equal(await product.evaluate(el=>el.scrollWidth>el.clientWidth),false); }
+  await page.keyboard.press("Escape"); await product.waitFor({state:"hidden"});
+  assert.deepEqual(await store.read(), brandSnapshot, "Displaying receipts and editing an uncommitted sheet never writes the plan");
+  for (const width of [320,390,768,1440]) { await page.setViewportSize({width,height:900}); assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false); }
+  await page.setViewportSize({width:1280,height:900});
   const second = await browser.newContext({ viewport: { width: 1280, height: 900 } }); await second.addInitScript(({ endpoint, key }) => localStorage.setItem("familyhub.worker.v1", JSON.stringify({ Endpoint: endpoint, ApiKey: key })), { endpoint, key }); const pc = await second.newPage(); pc.on("pageerror", e => errors.push(e.message)); await planning(pc, base); await pc.getByRole("button", { name: /Synthetic oats.*2 x 500 g/ }).waitFor();
   // Two devices edit the same revision; only the first succeeds. The second draft survives refresh/reload.
-  await page.getByRole("button", { name: "Ma liste", exact: true }).click(); await page.getByText("Info et filtres", { exact: true }).click(); await page.getByLabel("Pourboire optionnel par commande (0 = aucun)").fill("2"); await pc.getByText("Info et filtres", { exact: true }).click(); await pc.getByLabel("Pourboire optionnel par commande (0 = aucun)").fill("1"); await pc.getByRole("button", { name: "Enregistrer sur le PC" }).click(); await pc.getByText(/Liste et prix conservés sur le PC/).waitFor();
+  await page.getByRole("button", { name: "Ma liste", exact: true }).click(); await page.getByText("Info et filtres", { exact: true }).click(); await page.getByLabel("Pourboire optionnel par commande (0 = aucun)").fill("2"); await pc.getByText("Info et filtres", { exact: true }).click(); await pc.getByLabel("Pourboire optionnel par commande (0 = aucun)").fill("1"); await savePlanning(pc);
   await page.getByRole("button", { name: "Enregistrer sur le PC" }).click(); await page.getByText(/La liste a changé sur le PC/).waitFor(); await page.getByRole("button", { name: "Relire le PC" }).click(); await page.getByRole("heading", { name: "Conflit entre appareils" }).waitFor(); assert.equal(await page.getByLabel("Pourboire optionnel par commande (0 = aucun)").inputValue(), "2");
   offline = true; await planning(page, base); await page.getByRole("button", { name: /Synthetic oats.*2 x 500 g/ }).waitFor(); await page.getByText("Info et filtres", {exact:true}).click(); assert.equal(await page.getByLabel("Pourboire optionnel par commande (0 = aucun)").inputValue(), "2"); assert.deepEqual(errors, []);
   offline = false;
@@ -133,7 +157,7 @@ try {
   await page.getByRole("button", { name: "Enregistrer sur le PC" }).click(); await page.getByText(/Mettez à jour le worker/).waitFor();
   assert.equal((await store.read()).items.length, 1);
   weeklySupported = true;
-  await page.getByRole("button", { name: "Enregistrer sur le PC" }).click(); await page.getByText(/Liste et prix conservés sur le PC/).waitFor();
+  await savePlanning(page);
   const weekly = await store.read(); assert.equal(weekly.items[0].quantity, 2); assert.equal(weekly.items[0].basketQuantity, 1); assert.equal(weekly.items[1].quantity, 3); assert.equal(weekly.items[1].cadence, "month"); assert.equal(weekly.items[1].active, false);
   await page.reload(); await page.getByRole("button", {name:"Tous les besoins",exact:true}).click(); await page.getByRole("button", { name: /Synthetic monthly coffee.*3 format/ }).waitFor();
   assert.equal(await page.getByText("Info et filtres", { exact: true }).locator("..").getAttribute("open"), null);
@@ -142,7 +166,7 @@ try {
   await page.getByRole("button", { name: /Synthetic monthly coffee.*3 format/ }).waitFor();
   await page.getByRole("button", { name: "Magasins et prix", exact: true }).click();
   await page.getByRole("button", { name: "Ajouter les magasins proposés" }).click(); await page.getByRole("button", { name: "Ajouter les magasins proposés" }).click();
-  await page.getByRole("button", { name: "Enregistrer sur le PC" }).click(); await page.getByText(/Liste et prix conservés sur le PC/).waitFor();
+  await savePlanning(page);
   const stores = (await store.read()).retailers; for (const name of ["Walmart", "Superstore", "Costco", "Fresh St. Market"]) assert.equal(stores.filter(r => r.name === name).length, 1);
   await page.getByRole("button", { name: "Besoins", exact: true }).click();
   await page.getByRole("button", { name: "Proposer les besoins de la semaine", exact: true }).waitFor();
