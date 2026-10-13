@@ -11,14 +11,14 @@ import { emptyPlan } from "../../worker/dist/grocery-planning.js";
 import { retailerTemplate } from "../../worker/dist/grocery-weekly.js";
 const dir = await mkdtemp(join(tmpdir(), "fh-grocery-planning-ui-")), store = new GroceryPlanningStore(join(dir, "groceries"));
 const root = resolve("apps/web/dist"), errors = [], key = "synthetic-plan-key";
-let browser, page, offline = false, failSave = false, researchBody, receiptRecords = [], weeklySupported = true, malformedRead = false;
+let browser, page, offline = false, failSave = false, researchBody, receiptRecords = [], weeklySupported = true, expandedSupported = true, planningPosts = 0, malformedRead = false;
 const api = createServer(async (req, res) => {
   res.setHeader("Access-Control-Allow-Origin", req.headers.origin || "*"); res.setHeader("Access-Control-Allow-Headers", "content-type,x-familyhub-key"); res.setHeader("Access-Control-Allow-Methods", "GET,POST,OPTIONS"); if (req.method === "OPTIONS") { res.end(); return; }
   if (offline) { req.socket.destroy(); return; } res.setHeader("Content-Type", "application/json"); if (req.headers["x-familyhub-key"] !== key) { res.writeHead(401); res.end("{}"); return; }
   try { const chunks = []; for await (const c of req) chunks.push(c); const body = chunks.length ? JSON.parse(Buffer.concat(chunks)) : undefined;
     let result;
-    if (req.url === "/health") result = { capabilities: ["grocery-planning-v1", "grocery-receipts-v1", ...(weeklySupported ? ["grocery-weekly-v1"] : [])] };
-    else if (req.url === "/groceries/planning") { if (body && failSave) { failSave = false; throw new Error("Échec synthétique de sauvegarde ; brouillon conservé."); } result = body ? await store.save(body) : malformedRead ? { state: "idle" } : await store.read(); }
+    if (req.url === "/health") result = { capabilities: ["grocery-planning-v1", "grocery-receipts-v1", ...(weeklySupported ? ["grocery-weekly-v1"] : []), ...(expandedSupported ? ["grocery-items-300-v1"] : [])] };
+    else if (req.url === "/groceries/planning") { if (body) planningPosts++; if (body && failSave) { failSave = false; throw new Error("Échec synthétique de sauvegarde ; brouillon conservé."); } result = body ? await store.save(body) : malformedRead ? { state: "idle" } : await store.read(); }
     else if (req.url === "/groceries/research") { researchBody = body; result = { summary: "Synthetic catalogue only", prices: [] }; }
     else if (req.url === "/groceries") result = { records: receiptRecords };
     else throw new Error("Unknown synthetic route"); res.end(JSON.stringify(result));
@@ -554,6 +554,25 @@ try {
     assert.deepEqual(await store.read(), preservedDenseFixture);
   }
   console.log("PASS: dense nine-item basket shows total and ≥3 complete names/prices initially at320/390/412×740 and768/1440; long names, proportional/purchase distinction, all prices above footer, keyboard/touch disclosure, bottom clearance, close/Escape/Return/focus/reopen reset, excluded/conditions and unchanged saved plan/reload.");
+  // Maximum-size editor round-trip, using a new profile and the same synthetic-only server.
+  const largeFixture = { ...emptyPlan(), area: "Synthetic city", areaConfirmed: true, items: Array.from({ length: 300 }, (_, n) => ({ id: "expanded_" + n, name: "Synthetic expanded article " + String(n).padStart(3, "0"), quantity: null, size: null, unit: null, preference: "Synthetic retained preference " + n, substitutions: false, active: n % 2 === 0, origin: "synthetic", cadence: n % 3 ? "month" : "unknown", every: 2, cadenceNote: "Synthetic preserved note", basketQuantity: null })) };
+  const largeSaved = await store.save({ plan: largeFixture, expectedRevision: (await store.read()).revision });
+  const largeContext = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  await largeContext.addInitScript(({ endpoint, key }) => localStorage.setItem("familyhub.worker.v1", JSON.stringify({ Endpoint: endpoint, ApiKey: key })), { endpoint, key });
+  const largePage = await largeContext.newPage(); largePage.on("pageerror", e => errors.push(e.message)); await planning(largePage, base);
+  await largePage.getByRole("button", { name: "Tous les besoins", exact: true }).click(); assert.equal(await largePage.locator(".grocery-need").count(), 300);
+  const largeFirst = largePage.getByRole("button", { name: /Synthetic expanded article 000/ });
+  await largeFirst.click(); const largeEditor = largePage.getByRole("dialog", { name: "Produit habituel" }); await largeEditor.getByLabel("Marque / préférences").fill("Synthetic preserved edit"); await largeEditor.getByRole("button", { name: "Conserver dans la liste" }).click();
+  expandedSupported = false; const postsBeforeGate = planningPosts; await largePage.getByRole("button", { name: "Enregistrer sur le PC", exact: true }).click(); await largePage.getByText(/enregistrer plus de 60 articles/).waitFor();
+  assert.equal(planningPosts, postsBeforeGate); assert.deepEqual(await store.read(), largeSaved);
+  await largePage.reload(); await openManagement(largePage); await largePage.getByRole("button", { name: "Tous les besoins", exact: true }).click(); assert.equal(await largePage.locator(".grocery-need").count(), 300);
+  await largeFirst.click(); assert.equal(await largeEditor.getByLabel("Marque / préférences").inputValue(), "Synthetic preserved edit"); await largeEditor.getByRole("button", { name: "Close Produit habituel", exact: true }).click();
+  expandedSupported = true; await savePlanning(largePage); const largeResult = await store.read();
+  assert.equal(largeResult.items.length, 300); assert.deepEqual(largeResult.items, largeSaved.items.map((item, n) => n === 0 ? { ...item, preference: "Synthetic preserved edit" } : item));
+  await largePage.reload(); await openManagement(largePage); await largePage.getByRole("button", { name: "Tous les besoins", exact: true }).click(); assert.equal(await largePage.locator(".grocery-need").count(), 300);
+  await largeFirst.click(); assert.equal(await largeEditor.getByLabel("Marque / préférences").inputValue(), "Synthetic preserved edit"); await largeEditor.getByRole("button", { name: "Close Produit habituel", exact: true }).click();
+  assert.deepEqual(await store.read(), largeResult); await largeContext.close();
+  console.log("PASS: 300-item editor read/edit/save/reload round-trip; old-worker gate sends no POST and retains the full dirty draft; explicit new capability saves all records, cadences, selections and notes unchanged except the requested synthetic edit.");
   assert.deepEqual(errors, []);
   console.log("PASS: explicit Plan copy/dedup/preservation, editable quantity/format/preferences, blank prices, save failure/reload/retry, incomplete and sourced basket, 320/390/768/1280 layouts, minimal public query, shared persistence, stale conflict and offline draft. Weekly/monthly separation, current-basket override, cancel, old-worker capability gate, suggested retailers dedup and 1440px also pass. Zero page errors."); await second.close();
 } catch (error) {

@@ -17,6 +17,7 @@ import { GroceryStore, GroceryConflict } from "./grocery-store.js";
 import { GroceryError } from "./grocery-model.js";
 import { extractGrocery } from "./grocery-extraction.js";
 import { GroceryPlanningStore } from "./grocery-planning-store.js";
+import { groceryExpandedListCapability, groceryPlanningMaxBytes } from "./grocery-planning.js";
 import { GroceryResearch } from "./grocery-research.js";
 import { importConnectorMessage, claimPreparation } from "./invoices.js";
 import { parseLoginRecoveryRequest } from "./portal-login-recovery.js";
@@ -48,7 +49,7 @@ type ResearchWatch = {
 };
 type PersistedState = { watches: ResearchWatch[] };
 
-const version = "2.25.2";
+const version = "2.25.3";
 const host = process.env.FAMILYHUB_WORKER_HOST?.trim() || "127.0.0.1";
 const port = Number(process.env.FAMILYHUB_WORKER_PORT || "4713");
 const stateDir = process.env.FAMILYHUB_WORKER_DATA?.trim() || join(homedir(), ".familyhub-worker");
@@ -263,7 +264,7 @@ const server = createServer(async (request, response) => {
       if (parts.length === 1 && request.method === "GET") { json(response, 200, await groceryStore.list(), origin); return; }
       if (parts.length === 2 && parts[1] === "planning") {
         if (request.method === "GET") { json(response, 200, await groceryPlanning.read(), origin); return; }
-        if (request.method === "POST") { json(response, 200, await groceryPlanning.save(await readJson(request)), origin); return; }
+        if (request.method === "POST") { json(response, 200, await groceryPlanning.save(await readJson(request, groceryPlanningMaxBytes)), origin); return; }
       }
       if (parts.length === 2 && parts[1] === "import" && request.method === "POST") { json(response, 200, await groceryStore.import(await readJson(request, 30_000_000)), origin); return; }
       if (parts.length === 3 && request.method === "POST") {
@@ -458,7 +459,7 @@ const server = createServer(async (request, response) => {
       }
     }
     if (request.method === "GET" && parts.length === 1 && parts[0] === "health") {
-      json(response, 200, { status: "ok", codex: "sdk-ready", version, capabilities: ["grocery-receipts-v1", "grocery-planning-v1", "grocery-weekly-v1"] }, origin);
+      json(response, 200, { status: "ok", codex: "sdk-ready", version, capabilities: ["grocery-receipts-v1", "grocery-planning-v1", "grocery-weekly-v1", groceryExpandedListCapability] }, origin);
       return;
     }
 

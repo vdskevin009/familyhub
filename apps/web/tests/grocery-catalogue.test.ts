@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { emptyPlan, type GroceryPlan, type GroceryPrice, type ShoppingItem } from "../../worker/src/grocery-planning";
 import { emptyReceipt, type GroceryRecord } from "../../worker/src/grocery-model";
 import { currentCart, filterCatalogue, householdCatalogue, parseCartSnapshot, targetSavings, savingLabel, validateCataloguePlan, type PCExpressCartSnapshot } from "../src/grocery-catalogue";
+import { assertGrocerySaveSupported } from "../src/grocery-planning-support";
 const now = "2026-10-13", timestamp = now + "T12:00:00Z";
 const item = (id: string, patch: Partial<ShoppingItem> = {}): ShoppingItem => ({ id, name: "Synthetic product " + id, quantity: null, size: null, unit: "kg", preference: "keep", substitutions: false, active: false, origin: "synthetic", cadence: "unknown", ...patch });
 function fixture(): GroceryPlan {
@@ -83,4 +84,13 @@ test("Catalogue reader admits a larger synthetic plan, with existing validation 
   plan.prices.push({ ...plan.prices[0], id: "lastprice", itemId: "new72" });
   const before = structuredClone(plan), result = validateCataloguePlan(plan); assert.equal(result.items.length, 77); assert.equal(result.prices.length, 5); assert.deepEqual(plan, before);
   for (const invalid of [{ ...plan, items: [...plan.items, plan.items[0]] }, { ...plan, prices: [...plan.prices, { ...plan.prices[0], itemId: "absent" }] }, { ...plan, items: Array.from({ length: 301 }, (_, n) => item("n" + n)) }, { ...plan, items: [...plan.items.slice(0, 61), { ...plan.items[61], cadence: "invented" }] }]) assert.throws(() => validateCataloguePlan(invalid));
+});
+test("Expanded editor saves require explicit worker support while legacy plans stay compatible with 2.25.2", () => {
+  const plan = fixture(); plan.items = Array.from({ length: 60 }, (_, n) => item("n" + n));
+  assert.doesNotThrow(() => assertGrocerySaveSupported(plan, ["grocery-weekly-v1"]));
+  const before = structuredClone(plan); plan.items.push(item("extra"));
+  assert.throws(() => assertGrocerySaveSupported(plan, ["grocery-weekly-v1"]), /plus de 60 articles/);
+  assert.throws(() => assertGrocerySaveSupported(plan, undefined), /brouillon/);
+  assert.doesNotThrow(() => assertGrocerySaveSupported(plan, ["grocery-weekly-v1", "grocery-items-300-v1"]));
+  assert.deepEqual(plan.items.slice(0, 60), before.items); assert.equal(plan.items.length, 61);
 });

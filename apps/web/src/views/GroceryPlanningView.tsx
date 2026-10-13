@@ -4,6 +4,7 @@ import type { WorkerConfig, GroceryItem as PlannerItem } from "../types";
 import { Notice, Sheet } from "../ui/primitives";
 import { groceryRequest, loadGroceries } from "../grocery-api";
 import { groceryCache } from "../grocery-cache";
+import { assertGrocerySaveSupported } from "../grocery-planning-support";
 import { receiptProducts, receiptPreference, publicProductResearch } from "../grocery-receipt-products";
 import { compareBaskets, emptyEvidence, emptyPlan, normalizedSize, validatePlan, type Evidence, type GroceryPlan, type GroceryPrice, type GroceryRetailer, type ShoppingItem } from "../../../worker/src/grocery-planning";
 import type { GroceryRecord, GroceryUnit } from "../../../worker/src/grocery-model";
@@ -44,7 +45,7 @@ export default function GroceryPlanningView({ config, plannerItems, initialTab =
   async function action(run: () => Promise<void>) { if (lock.current) return; lock.current = true; setBusy(true); setError(""); setNotice(""); try { await run(); } catch (e) { setError((e as Error).message); } finally { lock.current = false; setBusy(false); } }
   function change(p: GroceryPlan) { setPlan(p); setDirty(true); void groceryCache(cacheKey, { plan: p, dirty: true }).catch(e => setError(e.message)); }
   async function commit(p: GroceryPlan) { const checked = validatePlan(p); await groceryCache(cacheKey, { plan: checked, dirty: true }); change(checked); setItem(null); setRetailer(null); setPrice(null); }
-  async function capabilities() { const health = await groceryRequest<{ capabilities?: string[] }>(config, "/health"); if (!health.capabilities?.includes("grocery-weekly-v1")) throw new Error("Mettez à jour le worker pour les listes Courses. Votre brouillon reste sur cet appareil."); }
+  async function capabilities() { const health = await groceryRequest<{ capabilities?: string[] }>(config, "/health"); assertGrocerySaveSupported(plan, health.capabilities); }
   async function save() { await capabilities(); const checked = validatePlan(plan); const pc = validatePlan(await groceryRequest<GroceryPlan>(config, "/groceries/planning", { plan: checked, expectedRevision: plan.revision })); await groceryCache(cacheKey, { plan: pc, dirty: false }); setPlan(pc); setRemote(pc); setDirty(false); setNotice("Liste et prix conservés sur le PC du foyer."); }
   async function refresh() { try { setHistory((await loadGroceries(config)).records); setHistoryError(""); } catch { setHistoryError("Tickets indisponibles : les marques identifiées ne peuvent pas être relues."); } const pc = validatePlan(await groceryRequest<GroceryPlan>(config, "/groceries/planning")); setRemote(pc); if (!dirty) setPlan(pc); setNotice(dirty ? "Version PC relue. Votre brouillon reste affiché. Comparez les versions ci-dessous." : "Liste relue depuis le PC."); }
   const comparison = useMemo(() => tab === "compare" ? compareBaskets(plan) : null, [tab, plan]);

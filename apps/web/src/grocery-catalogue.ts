@@ -4,22 +4,9 @@ import { receiptProducts } from "./grocery-receipt-products";
 import { shortProduct, storeGroups, storeName } from "./grocery-comparison";
 import { articleUnitComparison, type RankedOffer } from "./grocery-unit-comparison";
 
-/** Forward-compatible read-only catalogue, without changing the worker's save limit.
- * Reuse every existing field validator in bounded chunks; check cross-chunk identity too.
- */
+/** Catalogue and editor share the same bounded schema-1 validator. */
 export function validateCataloguePlan(value: unknown): GroceryPlan {
-  const p = value as GroceryPlan;
-  if (!p || !Array.isArray(p.items) || p.items.length > 300 || !Array.isArray(p.prices) || p.prices.length > 300) throw new Error("Catalogue PC invalide ou trop volumineux.");
-  if (p.items.length <= 60) return validatePlan(value);
-  if (p.prices.some(price => !price || !p.items.some(item => item && item.id === price.itemId))) throw new Error("Le prix référence un article absent du catalogue.");
-  const parts: GroceryPlan[] = [];
-  for (let index = 0; index < p.items.length; index += 60) {
-    const items = p.items.slice(index, index + 60);
-    parts.push(validatePlan({ ...p, items, prices: p.prices.filter(price => items.some(item => item && item.id === price.itemId)) }));
-  }
-  const items = parts.flatMap(part => part.items), prices = parts.flatMap(part => part.prices);
-  if (new Set(items.map(i => i.id)).size !== items.length || new Set(prices.map(i => i.id)).size !== prices.length) throw new Error("Identifiants du catalogue dupliqués.");
-  return { ...parts[0], items, prices };
+  return validatePlan(value);
 }
 
 /** Separate read-only snapshot. Never derived from active, weekly quantities or stock. */

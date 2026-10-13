@@ -24,7 +24,7 @@
     "test:finances:browser": "node apps/web/tests/finances-browser.mjs && node apps/web/tests/card-payments-browser.mjs && node apps/web/tests/finance-trends-browser.mjs && node apps/web/tests/compact-spending-browser.mjs && node apps/web/tests/finance-changes-browser.mjs && node apps/web/tests/finance-inline-browser.mjs",
     "test:notifications": "npm run build:worker && node --test tests/notifications.test.mjs tests/notification-push.test.mjs tests/worker-notifications.test.mjs",
     "test:notifications:browser": "node apps/web/tests/notifications-browser.mjs",
-    "test:groceries": "npm run build:worker && node --test tests/groceries.test.mjs tests/grocery-planning.test.mjs tests/grocery-weekly.test.mjs",
+    "test:groceries": "npm run build:worker && node --test tests/groceries.test.mjs tests/grocery-planning.test.mjs tests/grocery-weekly.test.mjs tests/grocery-large-plan.test.mjs",
     "test:groceries:browser": "node apps/web/tests/groceries-browser.mjs && node apps/web/tests/grocery-planning-browser.mjs && node apps/web/tests/grocery-catalogue-browser.mjs"
   }
 }
