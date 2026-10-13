@@ -4,14 +4,14 @@ import type { WorkerConfig } from "../types";
 import { Notice } from "../ui/primitives";
 import { groceryRequest, loadGroceries } from "../grocery-api";
 import { groceryCache } from "../grocery-cache";
-import { emptyPlan, modeLabels, type GroceryPlan } from "../../../worker/src/grocery-planning";
+import { emptyPlan, type GroceryPlan } from "../../../worker/src/grocery-planning";
 import type { GroceryRecord } from "../../../worker/src/grocery-model";
 import { cadenceLabel } from "../../../worker/src/grocery-weekly";
-import { storeGroups, storeName } from "../grocery-comparison";
+import { storeGroups } from "../grocery-comparison";
 import { receiptProducts } from "../grocery-receipt-products";
-import { currentCart, filterCatalogue, householdCatalogue, parseCartSnapshot, savingLabel, targetSavings, validateCataloguePlan, type CatalogueArticle, type PCExpressCartSnapshot } from "../grocery-catalogue";
-import { formatUnitRate } from "../grocery-unit-comparison";
-import { ArticleComparison, ArticleOfferCard } from "./GroceryComparison";
+import { currentCart, filterCatalogue, householdCatalogue, parseCartSnapshot, validateCataloguePlan, type CatalogueArticle, type PCExpressCartSnapshot } from "../grocery-catalogue";
+import GroceryTargetView from "./GroceryTargetView";
+import { ArticleComparison } from "./GroceryComparison";
 
 function Identity({ row }: { row: CatalogueArticle }) {
   const identities = row.identities.length ? row.identities : [{ product: row.item.name, brand: null, size: row.item.size, unit: row.item.unit, source: "Liste du foyer", date: null }];
@@ -48,7 +48,6 @@ export default function GroceryCatalogueView({ config, view, onManage }: { confi
   const rows = useMemo(() => householdCatalogue(plan, records, snapshot), [plan, records, snapshot]);
   const visible = filterCatalogue(rows, scope, search, snapshot);
   const groups = storeGroups(plan), products = receiptProducts(plan, records);
-  const targets = targetSavings(plan, visible.map(r => r.item));
   const cartIsCurrent = currentCart(snapshot);
   async function importSnapshot(file: File | undefined) {
     if (!file) return;
@@ -80,14 +79,7 @@ export default function GroceryCatalogueView({ config, view, onManage }: { confi
     {view === "catalogue" ? <>
       {ready && !visible.length && <p className="grocery-empty">Aucun article pour ces filtres.{scope === "all" && !search ? " Ajoutez les besoins du foyer ou relisez les tickets après achats." : ""}</p>}
       {visible.map(row => <div key={row.item.id} className="grocery-catalogue-article"><ArticleComparison plan={plan} item={row.item} groups={groups} products={products} showComparison={showComparison} identity={<Identity row={row} />} /><details className="grocery-catalogue-history"><summary>Historique et fréquence <span className="sr-only">de {row.item.name}</span></summary><p>{row.item.cadence && row.item.cadence !== "unknown" ? cadenceLabel(row.item) : "Fréquence inconnue : aucun rythme déduit des achats."}</p>{row.identities.map((p, i) => <p key={i}>{p.product} · {p.source} · {p.date || "Date inconnue"}</p>)}</details></div>)}
-    </> : <>
-      <p className="grocery-target-note">Économies par article face à Superstore, dans le même mode et la même unité, hors frais. Références revues datant de 7 jours au plus. Les frais peuvent annuler l'économie.</p>
-      {groups.filter(g => g.name !== "Superstore").map(g => {
-        const savings = targets.result.filter(s => storeName(s.alternative.r.name) === g.name);
-        return savings.length ? <section className="grocery-target-store" key={g.name}><h2>{g.name}</h2>{savings.map(s => <article key={s.item.id} className="grocery-target-article"><div className="grocery-article-heading"><h3>{s.item.name}</h3><strong className="grocery-target-saving">−{savingLabel(s.percent)}</strong></div><p>{formatUnitRate(s.alternative.rate!, plan.currency)} <small>contre {formatUnitRate(s.baseline.rate!, plan.currency)} chez Superstore</small></p><p>{s.alternative.p.product} · {modeLabels[s.alternative.p.mode ?? "unknown"]}{s.alternative.p.substitution ? " · Substitution revue" : " · Même référence"}</p><small>Observé le {s.alternative.p.evidence.date} · Superstore le {s.baseline.p.evidence.date}</small><details className="grocery-info"><summary>Détails de l'économie <span className="sr-only">de {s.item.name} chez {g.name}</span></summary><p>({s.baseline.rate!.amount} − {s.alternative.rate!.amount}) / {s.baseline.rate!.amount} × 100 = {savingLabel(s.percent)}. Aucune économie totale de commande n'est calculée.</p><ArticleOfferCard plan={plan} item={s.item} p={s.alternative.p} r={s.alternative.r} ranked={s.alternative} included={false} /><ArticleOfferCard plan={plan} item={s.item} p={s.baseline.p} r={s.baseline.r} ranked={s.baseline} included={false} /></details></article>)}</section> : null;
-      })}
-      {ready && !targets.result.length && <p className="grocery-empty">Aucune économie confirmable face à Superstore avec ces références. Une référence manquante ou incompatible ne produit pas de gagnant.</p>}
-      {!!targets.excluded.length && <details className="grocery-info"><summary>Articles sans économie confirmable ({targets.excluded.length})</summary><p>Prix Superstore manquant, données anciennes, qualité ou mode non confirmé, ou aucune alternative moins chère.</p><ul>{targets.excluded.map(i => <li key={i.id}>{i.name}</li>)}</ul></details>}
-    </>}
+    </> : <GroceryTargetView plan={plan} items={visible.map(row=>row.item)} ready={ready} />}
+
   </section>;
 }

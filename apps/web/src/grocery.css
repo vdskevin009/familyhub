@@ -28,6 +28,15 @@
 .grocery-target-article p > small { display: block; }
 .grocery-target-saving { flex-shrink: 0; color: var(--success); font-variant-numeric: tabular-nums; }
 .grocery-target-note { font-size: 13px; }
+.grocery-target-status { display: grid; gap: 8px; font-size: 13px; }
+.grocery-target-status .grocery-check { display: flex; align-items: center; gap: 8px; min-height: 44px; font-weight: 500; }
+.grocery-target-status input { margin: 0; width: 18px; height: 18px; }
+.grocery-target-verification { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 8px; }
+.grocery-target-verification > span { font-size: 12px; }
+.grocery-target-badge { display: inline-block; padding: 4px 8px; border: 1px solid var(--line); background: var(--surface); border-radius: 4px; color: var(--ink); font-size: 12px; }
+.grocery-target-badge.is-validated { color: var(--success); background: var(--success-soft); }
+.grocery-target-observed .grocery-target-saving { color: var(--ink); }
+.grocery-target-modes, .grocery-target-limit { font-size: 12px !important; }
 .grocery-workflow { flex-wrap: nowrap; }
 .grocery-workflow button { white-space: normal; min-height: 44px; flex: 1; min-width: 0; }
 @media (max-width: 440px) { .grocery-workflow button { font-size: 12px; padding: 8px 6px; } }

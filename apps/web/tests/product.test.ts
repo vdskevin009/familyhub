@@ -1,5 +1,6 @@
 import "./grocery-receipt-products.test";
 import "./grocery-catalogue.test";
+import "./grocery-target-observations.test";
 import test from "node:test";
 import "./grocery-comparison.test";
 import "./grocery-unit-comparison.test";

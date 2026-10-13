@@ -51,6 +51,52 @@ try {
     await page.getByRole("button", { name: "Moins cher ailleurs", exact: true }).click(); assert.equal(await page.locator(".grocery-target-article").count(), 2); const targets = await page.locator(".grocery-target-article").allTextContents(); assert.ok(targets.some(t => /Café démo.*−20 %/s.test(t))); assert.ok(!targets.some(t => /50 %/.test(t))); assert.ok(targets.some(t => /Substitution revue/.test(t)));
     await noOverflow(page, width); await page.screenshot({ path: join(evidenceDir, `target-${width}.png`), fullPage: true }); await page.screenshot({ path: join(evidenceDir, `target-viewport-${width}.png`) });
     await page.locator(".grocery-target-article .grocery-info summary").first().click(); await noOverflow(page, width);
+    // Observations stay useful without silently approving source, equivalence, zone or availability.
+    plan.items[0].preference = "Café en grains";
+    for (const p of plan.prices) { p.approved = false; p.available = "unknown"; p.localityConfirmed = false; }
+    for (const r of plan.retailers) r.areaConfirmed = false;
+    for (const p of plan.prices.filter(p => p.itemId === "i0")) { p.product = "Café démo en grains"; p.substitution = true; }
+    plan.prices.find(p => p.id === "p2").price = 4;
+    plan.prices.find(p => p.id === "p2").mode = "delivery";
+    plan.retailers.find(r => r.id === "r2").mode = "delivery";
+    const observedPlan = structuredClone(plan);
+    await page.reload(); await page.getByText("8 article(s)", { exact: true }).waitFor();
+    await page.getByRole("button", { name: "Moins cher ailleurs", exact: true }).click();
+    assert.equal(await page.locator(".grocery-target-article").count(), 3);
+    assert.equal(await page.locator(".grocery-target-badge").filter({ hasText: "À vérifier" }).count(), 3);
+    const costcoTarget = page.locator(".grocery-target-store").filter({ has: page.getByRole("heading", { name: "Costco", exact: true }) });
+    assert.match(await costcoTarget.innerText(), /[−-]20 %/); assert.match(await costcoTarget.innerText(), /Modes différents/);
+    assert.match(await costcoTarget.innerText(), /Substitution non autorisée/);
+    assert.equal(await page.locator(".grocery-target-badge.is-validated").count(), 0);
+    await noOverflow(page, width);
+    await page.screenshot({ path: join(evidenceDir, `target-observed-${width}.png`), fullPage: true });
+    await page.screenshot({ path: join(evidenceDir, `target-observed-viewport-${width}.png`) });
+    await costcoTarget.locator(".grocery-target-article > .grocery-info > summary").click();
+    assert.match(await costcoTarget.innerText(), /Frais \/ taxes à vérifier/);
+    assert.equal(await costcoTarget.getByText("Le moins cher", { exact: true }).count(), 0);
+    await noOverflow(page, width);
+    if (width === 320) await page.screenshot({ path: join(evidenceDir, "target-observed-expanded-320.png"), fullPage: true });
+    await page.getByLabel("Références validées seulement").check();
+    assert.equal(await page.locator(".grocery-target-article").count(), 0);
+    await page.getByText(/Aucune référence entièrement validée/).waitFor();
+    await page.getByLabel("Références validées seulement").uncheck();
+    assert.equal(await page.locator(".grocery-target-article").count(), 3);
+    // Explicit type conflict and a missing baseline never receive a synthetic saving.
+    plan.prices.find(p => p.id === "p2").product = "Café démo instantané";
+    await page.reload(); await page.getByText("8 article(s)", { exact: true }).waitFor();
+    await page.getByRole("button", { name: "Moins cher ailleurs", exact: true }).click();
+    assert.equal(await page.locator(".grocery-target-article").count(), 2);
+    assert.equal(await page.locator(".grocery-target-store").filter({ has: page.getByRole("heading", { name: "Costco", exact: true }) }).count(), 0);
+    plan.prices = plan.prices.filter(p => p.id !== "p0");
+    await page.reload(); await page.getByText("8 article(s)", { exact: true }).waitFor();
+    await page.getByRole("button", { name: "Moins cher ailleurs", exact: true }).click();
+    assert.equal(await page.locator(".grocery-target-article").count(), 1);
+    await page.getByText(/Références manquantes ou non comparables/).click();
+    assert.match(await page.locator(".grocery-info[open]").last().innerText(), /Café démo.*Référence Superstore manquante/s);
+    assert.deepEqual(observedPlan.items[0].substitutions, false);
+    Object.assign(plan, structuredClone(original));
+    await page.reload(); await page.getByText("8 article(s)", { exact: true }).waitFor();
+    await page.getByRole("button", { name: "Comparaisons masquées" }).click();
     await page.getByRole("button", { name: "Catalogue", exact: true }).click(); assert.equal(await page.getByRole("button", { name: "Comparaisons affichées" }).count(), 1); await page.getByRole("button", { name: "Comparaisons affichées" }).click(); assert.equal(await page.locator(".grocery-price-rows").count(), 0);
     await importCart(page, { ...snapshot, capturedAt: "2000-01-01T00:00:00Z" }); await page.getByLabel("Afficher", { exact: true }).selectOption("cart"); await page.getByText(/Snapshot ancien/).waitFor(); assert.equal(await page.locator(".grocery-catalogue-article").count(), 0);
     await importCart(page, snapshot); await page.reload(); await page.getByText("8 article(s)", { exact: true }).waitFor(); await page.getByLabel("Afficher", { exact: true }).selectOption("cart"); await page.getByText("3 article(s) dans le snapshot PCExpress", { exact: true }).waitFor();
@@ -59,5 +105,5 @@ try {
     await context.close(); console.log(`Catalogue, combined filters, honest target, receipt navigation and details pass at ${width}px`);
   }
   assert.equal(writes, 0); assert.deepEqual(plan, original); assert.deepEqual(errors, []); assert.deepEqual(external, []);
-  await writeFile(join(evidenceDir, "verification.json"), JSON.stringify({ widths: [320, 390, 412], synthetic: true, writes, externalRequests: external.length, browserErrors: errors, checks: "all/cart x comparison on/off, search, inactive/unpriced/receipt-only/cart-only products, snapshot age, unit ordering, Superstore percent, substitution, incompatible mode, details Enter/Escape/Return and focus restore, receipt navigation, reload, unavailable PC, overflow" }, null, 2));
+  await writeFile(join(evidenceDir, "verification.json"), JSON.stringify({ widths: [320, 390, 412], synthetic: true, writes, externalRequests: external.length, browserErrors: errors, checks: "all/cart x comparison on/off, search, inactive/unpriced/receipt-only/cart-only products, snapshot age, unit ordering, Superstore percent, substitution, incompatible mode, observed vs validated Target, known-mode differences, fees/source disclosures, forbidden substitution, incompatible coffee forms, missing Superstore baseline, details Enter/Escape/Return and focus restore, receipt navigation, reload, unavailable PC, overflow" }, null, 2));
 } finally { await browser?.close(); api.close(); site.close(); }
