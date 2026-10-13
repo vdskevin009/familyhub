@@ -34,6 +34,7 @@ function eligibilityReason(plan: GroceryPlan, r: GroceryRetailer, p: GroceryPric
   if (p.currency !== plan.currency) return "Devise différente";
   if (p.available === "no") return "Indisponible selon source";
   if (!datedPrice(p, now)) return "Prix historique ou à actualiser";
+  if ((Date.parse(now ?? new Date().toISOString().slice(0, 10)) - Date.parse(p.evidence.date)) / 86400000 > 7) return "Observation ancienne, à actualiser";
   if (/catalogue par défaut/i.test(r.name)) return "Catalogue non local";
   if (!p.mode || p.mode === "unknown" || p.mode !== r.mode) return "Mode du prix à confirmer";
   if (uncertainFormat.test(p.matchNote ?? "")) return "Format non confirmé";

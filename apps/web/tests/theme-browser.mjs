@@ -83,7 +83,7 @@ try {
     // Use actual navigation controls and browser history; no storage/route hacks.
     page = await context.newPage(); await page.goto(base + '?view=other');
     const nav = page.locator(width <= 760 ? '.bottom-nav' : '.app-rail nav');
-    await nav.getByRole('button', { name: 'Courses', exact: true }).click(); await page.getByRole('button', { name: 'Comparer', exact: true }).click();
+    await nav.getByRole('button', { name: 'Courses', exact: true }).click(); await page.getByRole('button', { name: 'Comparaisons masquées', exact: true }).click();
     await nav.getByRole('button', { name: 'Finances', exact: true }).click(); await page.goBack(); await page.getByRole('heading', { name: 'Courses', exact: true }).waitFor();
     await page.goForward(); await page.getByRole('heading', { name: 'Finances', exact: true }).waitFor();
     await context.close();

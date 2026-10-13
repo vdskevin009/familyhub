@@ -26,7 +26,8 @@ const api = createServer(async (req, res) => {
 });
 const site = createServer(async (req, res) => { const pathname = new URL(req.url, "http://localhost").pathname.replace(/^\/familyhub/, ""), file = resolve(root, "." + (pathname || "/index.html")); if (relative(root, file).startsWith("..")) { res.writeHead(403); res.end(); return; } try { const target = pathname.endsWith("/") ? join(file, "index.html") : file; res.setHeader("Content-Type", ({ ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".svg": "image/svg+xml", ".png": "image/png" })[extname(target)] || "application/octet-stream"); res.end(await readFile(target)); } catch { res.writeHead(404); res.end(); } });
 async function savePlanning(page) { await Promise.all([page.waitForResponse(r => r.url().endsWith("/groceries/planning") && r.request().method() === "POST" && r.status() === 200), page.getByRole("button", { name: "Enregistrer sur le PC" }).click()]); await page.getByText(/Liste et prix conservés sur le PC/).waitFor(); }
-async function planning(page, base) { await page.goto(base); await page.getByRole("button", { name: "Besoins", exact: true }).click(); await page.getByRole("button", { name: "Ajouter un produit", exact: true }).waitFor(); }
+async function openManagement(page) { await page.getByText("Sources et outils", { exact: true }).click(); await page.getByRole("button", { name: "Gérer les besoins et prix", exact: true }).click(); }
+async function planning(page, base) { await page.goto(base); await openManagement(page); await page.getByRole("button", { name: "Besoins", exact: true }).click(); await page.getByRole("button", { name: "Ajouter un produit", exact: true }).waitFor(); }
 async function assertCompactBasketLayout(dialog, width, height) {
   const layout = await dialog.evaluate(el => {
     const box = node => { const r = node.getBoundingClientRect(); return { top: r.top, bottom: r.bottom, left: r.left, right: r.right, height: r.height }; };
@@ -73,7 +74,7 @@ try {
   await product.getByLabel("Quantité habituelle").fill("2"); await product.getByLabel("Taille d'un format souhaité").fill("500"); await product.getByLabel("Unité", { exact: true }).selectOption("g"); await product.getByLabel("Marque / préférences").fill("Synthetic exact brand"); await product.getByRole("button", { name: "Conserver dans la liste" }).click(); await product.waitFor({ state: "hidden" });
   await page.getByText("Info et filtres", { exact: true }).click(); await page.getByLabel("Ville ou préfixe postal de domicile").fill("Montréal"); await page.getByLabel(/J'ai confirmé la zone réelle/).check();
   failSave = true; await page.getByRole("button", { name: "Enregistrer sur le PC" }).click(); await page.getByText(/Échec synthétique/).waitFor();
-  await page.reload(); await page.getByRole("button", { name: "Besoins", exact: true }).click(); await page.getByRole("button", { name: /Synthetic oats.*2 x 500 g/ }).waitFor(); await page.getByText("Info et filtres", { exact: true }).click(); assert.equal(await page.getByLabel("Ville ou préfixe postal de domicile").inputValue(), "Montréal");
+  await page.reload(); await openManagement(page); await page.getByRole("button", { name: "Besoins", exact: true }).click(); await page.getByRole("button", { name: /Synthetic oats.*2 x 500 g/ }).waitFor(); await page.getByText("Info et filtres", { exact: true }).click(); assert.equal(await page.getByLabel("Ville ou préfixe postal de domicile").inputValue(), "Montréal");
   await savePlanning(page);
   await page.getByRole("button", { name: "Magasins et prix", exact: true }).click(); await page.getByRole("button", { name: "Ajouter un magasin" }).click(); const retailer = page.getByRole("dialog", { name: "Magasin et conditions" }); await retailer.waitFor(); await retailer.getByLabel("Magasin", { exact: true }).fill("Synthetic market");
   await retailer.getByRole("button", { name: "Conserver le magasin" }).click(); await retailer.waitFor({ state: "hidden" });
@@ -188,7 +189,7 @@ try {
   weeklySupported = true;
   await savePlanning(page);
   const weekly = await store.read(); assert.equal(weekly.items[0].quantity, 2); assert.equal(weekly.items[0].basketQuantity, 1); assert.equal(weekly.items[1].quantity, 3); assert.equal(weekly.items[1].cadence, "month"); assert.equal(weekly.items[1].active, false);
-  await page.reload(); await page.getByRole("button", {name:"Tous les besoins",exact:true}).click(); await page.getByRole("button", { name: /Synthetic monthly coffee.*3 format/ }).waitFor();
+  await page.reload(); await openManagement(page); await page.getByRole("button", {name:"Tous les besoins",exact:true}).click(); await page.getByRole("button", { name: /Synthetic monthly coffee.*3 format/ }).waitFor();
   assert.equal(await page.getByText("Info et filtres", { exact: true }).locator("..").getAttribute("open"), null);
   await page.getByRole("button", { name: /Synthetic monthly coffee.*3 format/ }).click();
   await product.getByLabel("Quantité habituelle").fill("99"); await product.getByRole("button", { name: "Close Produit habituel", exact: true }).click();
@@ -302,7 +303,7 @@ try {
     assert.equal(await page.getByText("Synthetic reference 1", { exact: true }).count(), 0);
   }
   assert.deepEqual(await store.read(), initialFixture);
-  await page.reload(); await page.getByRole("button", { name: "Comparer", exact: true }).click();
+  await page.reload(); await openManagement(page); await page.getByRole("button", { name: "Comparer", exact: true }).click();
   await page.getByText("Base commune : 11/14 articles", { exact: false }).waitFor();
   assert.deepEqual(await store.read(), initialFixture);
   assert.equal(await page.getByText("Prix manquant", { exact: true }).count(), 4);
@@ -401,7 +402,7 @@ try {
   await articleDetails.waitFor(); await articleDetails.getByRole("button", { name: "Retour aux prix" }).click();
   assert.equal(await firstInfo.evaluate(el => el === document.activeElement), true);
   assert.deepEqual(await store.read(), preservedUnitFixture);
-  await page.reload(); await page.getByRole("button", { name: "Comparer", exact: true }).click();
+  await page.reload(); await openManagement(page); await page.getByRole("button", { name: "Comparer", exact: true }).click();
   await firstArticle.getByText("+33,3 %", { exact: true }).waitFor(); assert.deepEqual(await store.read(), preservedUnitFixture);
   console.log("PASS: unit-ranked article rows preserve pack prices/modes/quality; percentage, mixed units, zero minimum, contrast≥4.5, keyboard/reload/no mutation at320/390/768/1440.");
   // Approved product-detail cards: inspect collapsed/expanded states without writing private data.
@@ -537,7 +538,7 @@ try {
     }
     assert.deepEqual(await store.read(), preservedDenseFixture);
   }
-  await page.reload(); await page.getByRole("button", { name: "Comparer", exact: true }).click();
+  await page.reload(); await openManagement(page); await page.getByRole("button", { name: "Comparer", exact: true }).click();
   await page.getByText("Base commune : 9/10 articles", { exact: false }).waitFor();
   assert.deepEqual(await store.read(), preservedDenseFixture);
   for (const width of [320, 390, 412]) {
