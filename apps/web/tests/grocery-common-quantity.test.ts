@@ -144,3 +144,20 @@ test("Reference quantities: explicit unknown basket quantity stays unknown, inva
   assert.equal(commonQuantityComparison(p, day).referenceCount, 1); assert.equal(p.items[0].basketQuantity, null);
   for (const q of [0, -1, NaN, Infinity]) { p.items[0].basketQuantity = q; assert.equal(commonQuantityComparison(p, day).count, 0); }
 });
+test("Dense basket details: nine long-named articles retain exact normalized amounts and distinct whole-pack purchases", () => {
+  const p = fixture(), originals = p.prices;
+  p.items = Array.from({ length: 9 }, (_, n) => ({ ...item, id: `dense-${n}`, name: `Synthetic long household article ${n + 1} with a descriptive variety and family-sized format`, quantity: n === 8 ? null : 10.5, size: 1, measure: "physical" as const }));
+  p.prices = p.items.flatMap((i, n) => originals.map((o, storeIndex) => ({ ...o, id: `${o.id}-${n}`, itemId: i.id, product: `Synthetic full recorded product ${n + 1} with a long manufacturer description that remains available in expanded details`, size: 6, price: 2.5 + n + storeIndex })));
+  const before = structuredClone(p), c = commonQuantityComparison(p, day), walmart = c.stores.find(s => s.group.name === "Walmart")!;
+  assert.equal(c.count, 9); assert.equal(c.referenceCount, 1);
+  assert.deepEqual(walmart.lines.map(l => l.item.name), p.items.map(i => i.name));
+  assert.deepEqual(walmart.lines.map(l => l.offer.p.product), p.prices.filter(o => o.retailerId === "r0").map(o => o.product));
+  assert.equal(walmart.amount, walmart.lines.reduce((sum, l) => sum + l.normalized, 0));
+  assert.equal(adjustedMoney(walmart.lines[0].normalized, "CAD"), "4,38 CAD");
+  assert.equal(adjustedMoney(walmart.lines[0].purchase, "CAD"), "5,00 CAD");
+  assert.equal(adjustedMoney(walmart.lines[8].normalized, "CAD"), "1,75 CAD");
+  assert.equal(adjustedMoney(walmart.lines[8].purchase, "CAD"), "10,50 CAD");
+  assert.notEqual(walmart.amount, walmart.lines.reduce((sum, l) => sum + l.purchase, 0));
+  for (const store of c.stores.filter(s => s.amount !== null)) assert.deepEqual(store.lines.map(l => [l.item.id, l.quantity, l.reference]), walmart.lines.map(l => [l.item.id, l.quantity, l.reference]));
+  assert.deepEqual(p, before);
+});

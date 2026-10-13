@@ -25,3 +25,9 @@ The common-total count explicitly says “pour le total”. A collapsed store se
 ## Superseded quantity exclusion (2026-10-12)
 
 FH-GROCERY-007 supersedes the exclusion of unknown physical household amounts from the display-only common total. Explicitly labelled equal reference quantities are now allowed by the user. The source, format, currency, dimension, store-selection and recommendation safeguards remain in force. See [FH-GROCERY-007](FH-GROCERY-007.md) and #205.
+
+## Mobile basket detail readability (2026-10-13)
+
+Status: Testing; release pending. The basket sheet puts the proportional total and concise partial coverage/fees/review state first. The initial phone viewport shows several article names, common quantities and aligned proportional amounts. Each article is a collapsed, keyboard-operable disclosure; expanding it reveals the full recorded product, whole-pack/weight purchase cost, calculation, reference-quantity caveat, selection rationale, mode/location/availability and dated source. Method, exclusions and original retailer conditions remain available below the list. This presentation does not change FH-GROCERY-007 equal reference quantities, selected stores, calculations or saved data. The total is explicitly proportional, not a checkout amount.
+
+Validate with at least seven synthetic items and long product names at 320/390/412 phone widths, short viewports, multiple initially visible price rows, scrolling and footer geometry, repeated touch/keyboard disclosures, close/Escape/focus return, reload and unchanged saved plan. No private screenshot content or household records enter repository fixtures.

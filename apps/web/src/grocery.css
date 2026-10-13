@@ -120,3 +120,29 @@
 .grocery-planning-compare > .grocery-section-heading h2 { margin: 0; }
 .grocery-planning-compare .grocery-actions { gap: 8px; align-items: center; }
 .grocery-planning-compare > .grocery-section-heading .button { padding-inline: 12px; }
+
+/* Basket detail: scan prices first; provenance/calculation is progressive disclosure. */
+.grocery-basket-details .sheet-header { padding: 12px 16px; align-items: center; }
+.grocery-basket-details .sheet-header h2 { font-size: 18px; line-height: 1.3; }
+.grocery-basket-details .sheet-content { display: block; padding: 12px 16px; }
+.grocery-basket-details .sheet-footer { padding: 8px 16px max(8px, env(safe-area-inset-bottom)); }
+.grocery-basket-details .sheet-footer .button { width: 100%; }
+.grocery-basket-total { display: grid; gap: 4px; margin-bottom: 12px; }
+.grocery-basket-total > div { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+.grocery-basket-total > div > strong { font-size: 20px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.grocery-basket-total small { color: var(--muted); line-height: 1.35; }
+.grocery-basket-line { border-top: 1px solid var(--line); }
+.grocery-basket-details .grocery-basket-line-summary { display: grid; grid-template-columns: minmax(0, 1fr) auto 12px; align-items: center; gap: 8px; min-height: 72px; padding: 10px 0; cursor: pointer; list-style: none; }
+.grocery-basket-line-summary::-webkit-details-marker { display: none; }
+.grocery-basket-line-name, .grocery-basket-line-price { display: grid; gap: 4px; min-width: 0; }
+.grocery-basket-line-name > strong { overflow-wrap: anywhere; line-height: 1.3; }
+.grocery-basket-line-summary small { color: var(--muted); font-size: 12px; line-height: 1.3; }
+.grocery-basket-line-price { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.grocery-basket-line-price strong { font-size: 15px; }
+.grocery-basket-line-chevron { color: var(--accent); }
+.grocery-basket-line[open] .grocery-basket-line-chevron { transform: rotate(180deg); }
+.grocery-basket-line-detail { display: grid; gap: 10px; padding: 4px 0 16px; overflow-wrap: anywhere; }
+.grocery-basket-details .grocery-basket-line-detail p { margin: 0; font-size: 13px; line-height: 1.45; }
+.grocery-basket-details summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.grocery-basket-details > .sheet-content > .grocery-card-info { border-top: 1px solid var(--line); margin: 0; }
+.grocery-basket-details > .sheet-content > .grocery-card-info > summary { min-height: 44px; padding-block: 12px; }

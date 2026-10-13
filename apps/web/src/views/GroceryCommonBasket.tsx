@@ -35,13 +35,35 @@ export default function GroceryCommonBasket({ plan, renderConditions }: { plan: 
     })}</div>
     {common.participants === 0 && <p>Choisissez au moins un magasin pour calculer le total.</p>}
     </section>
-    <Sheet open={!!store} onClose={() => setSelected(null)} title={`Détails du panier ${selected || ""}`} className="grocery-article-details" footer={<button type="button" className="button secondary" onClick={() => setSelected(null)}>Retour aux prix</button>}>
-      {store && <><p>Même base de {common.count}/{common.total} articles aux mêmes quantités pour les {common.participants} magasins du calcul. Montant proportionnel : {store.amount === null ? "inconnu" : amount(store.amount)}. Écart : {store.gap}.</p>
-        <details className="grocery-card-info"><summary>Info sur le calcul</summary><p>Écart = (montant normalisé / minimum de la même base - 1) × 100. Les quantités de référence indiquées servent uniquement à comparer des montants équivalents ; elles ne modifient pas le panier réel. Les produits liés au même article sont des candidats : marques, variantes, localité, disponibilité et modes restent à revoir. Les paquets différents sont convertis seulement dans la même dimension. Aucun poids, densité ou dose inconnu n'est déduit.</p></details>
-        {store.lines.map(l => { const source = l.offer.p.evidence, link = grocerySourceLink(source.url); return <section className="grocery-product" key={l.item.id}><h3>{l.item.name}</h3><strong>{l.offer.p.product}</strong><p>{modeLabels[l.offer.p.mode ?? "unknown"]} · {l.offer.p.locality || "Localité inconnue"} · {l.offer.p.approved ? "Observation revue" : "Observation non approuvée"} · {l.offer.p.available === "yes" ? "Stock selon source, à reconfirmer" : "Stock non confirmé"}</p><p>{l.selection} {l.reference ? "Quantité de référence pour comparer ; le besoin réel reste inchangé." : l.item.provisional ? "Besoin provisoire à confirmer." : "Quantité enregistrée du panier."}</p><p>Quantité commune : {number(l.quantity)} {l.label}. Format disponible : {number(l.pack)} {l.label} · {amount(l.offer.p.price)} par format.</p><p>Conversion : {number(l.quantity)} / {number(l.pack)} = {number(l.quantity / l.pack)} format(s) proportionnels · {formatUnitRate(l.offer.rate!, plan.currency)}.</p><p>Montant normalisé : {amount(l.normalized)}. Achat {l.offer.p.weighed ? "au poids" : "de paquets entiers"} : {number(l.packs)} format(s), {amount(l.purchase)}, hors frais/taxes/consignes. L'excédent acheté ne mesure pas la consommation.</p><p className="grocery-evidence">{source.title || "Source à préciser"} · {source.date || "Date inconnue"} · {source.until ? `jusqu'au ${source.until}` : "Validité à vérifier"}{link && <a className="grocery-source-action" href={link.href} target="_blank" rel="noopener noreferrer">{link.label}<span className="sr-only"> {source.title || "Source"} (nouvel onglet)</span></a>}</p></section>; })}
-        {!!common.excluded.length && <><h3>Articles exclus de la base commune</h3><ul>{common.exclusionDetails.map(({ item, reason }) => <li key={item.id}>{item.name} : {reason}</li>)}</ul></>}
-        <p>Un article doit avoir une référence compatible dans chaque magasin choisi pour entrer dans le total commun. Cette base partielle ne certifie pas un panier complet ni une économie après frais.</p>
-        <h3>Montants d'achat et conditions enregistrés</h3>{renderConditions(store.group.name)}
+    <Sheet resetScrollOnOpen open={!!store} onClose={() => setSelected(null)} title={`Détails du panier ${selected || ""}`} className="grocery-article-details grocery-basket-details" footer={<button type="button" className="button secondary" onClick={() => setSelected(null)}>Retour aux prix</button>}>
+      {store && <>
+        <div className="grocery-basket-total">
+          <div><span>Total proportionnel</span><strong>{store.amount === null ? "Inconnu" : amount(store.amount)}</strong></div>
+          <small>{common.count}/{common.total} articles{common.count < common.total ? " · Base partielle" : ""} · {store.gap}</small>
+          <small>Hors frais, taxes et consignes{modes.length > 1 ? " · Modes mixtes" : ""}</small>
+          <small>{store.lines.length && store.lines.every(l => l.offer.p.approved) ? "Prix revus" : "Prix à vérifier"} · Stock à confirmer</small>
+          {common.referenceCount > 0 && <small>{common.referenceCount} quantité(s) de référence · Pas le panier réel</small>}
+        </div>
+        <div className="grocery-basket-lines" aria-label="Articles du total proportionnel">
+          {store.lines.map(l => { const source = l.offer.p.evidence, link = grocerySourceLink(source.url); return <details className="grocery-basket-line" key={l.item.id}>
+            <summary className="grocery-basket-line-summary">
+              <span className="grocery-basket-line-name"><strong>{l.item.name}</strong><small>{number(l.quantity)} {l.label}{l.reference ? " · Référence" : ""}</small></span>
+              <span className="grocery-basket-line-price"><strong>{amount(l.normalized)}</strong><small>Proportionnel</small></span>
+              <span className="grocery-basket-line-chevron" aria-hidden="true">⌄</span>
+            </summary>
+            <div className="grocery-basket-line-detail">
+              <strong>{l.offer.p.product}</strong>
+              <p><strong>Achat {l.offer.p.weighed ? "au poids" : "en paquets entiers"} : {amount(l.purchase)}</strong> · {number(l.packs)} format(s) de {number(l.pack)} {l.label}. Hors frais, taxes et consignes.</p>
+              <p>{modeLabels[l.offer.p.mode ?? "unknown"]} · {l.offer.p.locality || "Localité inconnue"} · {l.offer.p.approved ? "Observation revue" : "Observation non approuvée"} · {l.offer.p.available === "yes" ? "Stock selon source, à reconfirmer" : "Stock non confirmé"}</p>
+              <p>{l.selection} {l.reference ? "Quantité de référence pour comparer ; le besoin réel reste inchangé." : l.item.provisional ? "Besoin provisoire à confirmer." : "Quantité enregistrée du panier."}</p>
+              <p>Format : {number(l.pack)} {l.label} · {amount(l.offer.p.price)}. Conversion : {number(l.quantity)} / {number(l.pack)} = {number(l.quantity / l.pack)} format(s) proportionnels · {formatUnitRate(l.offer.rate!, plan.currency)}. Montant normalisé : {amount(l.normalized)}. L’excédent acheté ne mesure pas la consommation.</p>
+              <p className="grocery-evidence">{source.title || "Source à préciser"} · {source.date || "Date inconnue"} · {source.until ? `jusqu’au ${source.until}` : "Validité à vérifier"}{link && <a className="grocery-source-action" href={link.href} target="_blank" rel="noopener noreferrer">{link.label}<span className="sr-only"> {source.title || "Source"} (nouvel onglet)</span></a>}</p>
+            </div>
+          </details>; })}
+        </div>
+        <details className="grocery-card-info"><summary>Info sur le calcul</summary><p>Même base de {common.count}/{common.total} articles aux mêmes quantités pour les {common.participants} magasins du calcul. Écart = (montant normalisé / minimum de la même base - 1) × 100. Les quantités de référence comparent des montants équivalents sans modifier le panier réel. Le total proportionnel n’est pas le montant à payer pour des paquets entiers. Produits, marques, variantes, localité, disponibilité et modes restent à revoir. Conversion dans la même dimension seulement : aucun poids, densité ou dose inconnu n’est déduit.</p></details>
+        {!!common.excluded.length && <details className="grocery-card-info"><summary>Articles exclus ({common.excluded.length})</summary><ul>{common.exclusionDetails.map(({ item, reason }) => <li key={item.id}>{item.name} : {reason}</li>)}</ul><p>Un article doit avoir une référence compatible dans chaque magasin choisi. Une base partielle ne certifie pas un panier complet ni une économie après frais.</p></details>}
+        <details className="grocery-card-info"><summary>Conditions et achats enregistrés</summary>{renderConditions(store.group.name)}</details>
       </>}
     </Sheet>
   </>;
