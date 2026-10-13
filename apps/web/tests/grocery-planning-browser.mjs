@@ -25,7 +25,16 @@ const api = createServer(async (req, res) => {
   } catch (e) { res.writeHead(409); res.end(JSON.stringify({ error: e.message })); }
 });
 const site = createServer(async (req, res) => { const pathname = new URL(req.url, "http://localhost").pathname.replace(/^\/familyhub/, ""), file = resolve(root, "." + (pathname || "/index.html")); if (relative(root, file).startsWith("..")) { res.writeHead(403); res.end(); return; } try { const target = pathname.endsWith("/") ? join(file, "index.html") : file; res.setHeader("Content-Type", ({ ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".svg": "image/svg+xml", ".png": "image/png" })[extname(target)] || "application/octet-stream"); res.end(await readFile(target)); } catch { res.writeHead(404); res.end(); } });
-async function savePlanning(page) { await Promise.all([page.waitForResponse(r => r.url().endsWith("/groceries/planning") && r.request().method() === "POST" && r.status() === 200), page.getByRole("button", { name: "Enregistrer sur le PC" }).click()]); await page.getByText(/Liste et prix conservés sur le PC/).waitFor(); }
+async function showListDetails(page) {
+  const details = page.locator(".grocery-list-details");
+  if (await details.count() && await details.getAttribute("open") === null) await details.locator("summary").click();
+}
+async function clickPlanningControl(page, name) {
+  const control = page.getByRole("button", { name, exact: true });
+  if (!await control.isVisible()) await showListDetails(page);
+  await control.click();
+}
+async function savePlanning(page) { await Promise.all([page.waitForResponse(r => r.url().endsWith("/groceries/planning") && r.request().method() === "POST" && r.status() === 200), clickPlanningControl(page, "Enregistrer sur le PC")]); await page.getByText(/Liste et prix conservés sur le PC/).waitFor(); }
 async function planning(page, base) { await page.goto(base); await page.getByRole("button", { name: "Besoins", exact: true }).click(); await page.getByRole("button", { name: "Ajouter un produit", exact: true }).waitFor(); }
 async function assertCompactBasketLayout(dialog, width, height) {
   const layout = await dialog.evaluate(el => {
@@ -62,18 +71,18 @@ async function assertBasketPriceAboveFooter(line, width) {
 try {
   api.listen(0, "127.0.0.1"); site.listen(0, "127.0.0.1"); await Promise.all([once(api, "listening"), once(site, "listening")]);
   const endpoint = `http://127.0.0.1:${api.address().port}`, base = `http://127.0.0.1:${site.address().port}/familyhub/?view=groceries`;
-  browser = await chromium.launch({ headless: true, channel: process.env.FAMILYHUB_TEST_BROWSER_CHANNEL || undefined }); const context = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, reducedMotion: "reduce" });
+  browser = await chromium.launch({ headless: true, executablePath: process.env.FAMILYHUB_TEST_BROWSER_EXECUTABLE || undefined, channel: process.env.FAMILYHUB_TEST_BROWSER_CHANNEL || undefined }); const context = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, reducedMotion: "reduce" });
   const original = { SchemaVersion: 1, Recipes: [], Meals: [], GroceryItems: [{ Id: "synthetic-plan-id", Name: "Synthetic oats", Quantity: "2 packs, format unknown", Checked: false, Source: "manual" }] };
   await context.addInitScript(({ endpoint, key, original }) => { if (!localStorage.getItem("familyhub.worker.v1")) localStorage.setItem("familyhub.worker.v1", JSON.stringify({ Endpoint: endpoint, ApiKey: key })); if (!localStorage.getItem("familyhub.planner.v1")) localStorage.setItem("familyhub.planner.v1", JSON.stringify(original)); }, { endpoint, key, original });
   page = await context.newPage(); page.on("pageerror", e => errors.push(e.message)); await planning(page, base);
-  await page.getByRole("button", { name: "Copier les produits non cochés de Plan" }).click(); await page.getByText(/Produits non cochés de Plan copiés/).waitFor();
-  await page.getByRole("button", { name: "Copier les produits non cochés de Plan" }).click(); assert.equal(await page.getByRole("button", { name: /Synthetic oats.*Quantité à préciser/ }).count(), 1);
+  await clickPlanningControl(page, "Copier les produits non cochés de Plan"); await page.getByText(/Produits non cochés de Plan copiés/).waitFor();
+  await clickPlanningControl(page, "Copier les produits non cochés de Plan"); assert.equal(await page.getByRole("button", { name: /Synthetic oats.*Quantité à préciser/ }).count(), 1);
   assert.deepEqual(await page.evaluate(() => JSON.parse(localStorage.getItem("familyhub.planner.v1"))), original);
   await page.getByRole("button", { name: /Synthetic oats.*Quantité à préciser/ }).click(); const product = page.getByRole("dialog", { name: "Produit habituel" }); await product.waitFor();
   await product.getByLabel("Quantité habituelle").fill("2"); await product.getByLabel("Taille d'un format souhaité").fill("500"); await product.getByLabel("Unité", { exact: true }).selectOption("g"); await product.getByLabel("Marque / préférences").fill("Synthetic exact brand"); await product.getByRole("button", { name: "Conserver dans la liste" }).click(); await product.waitFor({ state: "hidden" });
-  await page.getByText("Info et filtres", { exact: true }).click(); await page.getByLabel("Ville ou préfixe postal de domicile").fill("Montréal"); await page.getByLabel(/J'ai confirmé la zone réelle/).check();
-  failSave = true; await page.getByRole("button", { name: "Enregistrer sur le PC" }).click(); await page.getByText(/Échec synthétique/).waitFor();
-  await page.reload(); await page.getByRole("button", { name: "Besoins", exact: true }).click(); await page.getByRole("button", { name: /Synthetic oats.*2 x 500 g/ }).waitFor(); await page.getByText("Info et filtres", { exact: true }).click(); assert.equal(await page.getByLabel("Ville ou préfixe postal de domicile").inputValue(), "Montréal");
+  await showListDetails(page); await page.getByLabel("Ville ou préfixe postal de domicile").fill("Montréal"); await page.getByLabel(/J'ai confirmé la zone réelle/).check();
+  failSave = true; await clickPlanningControl(page, "Enregistrer sur le PC"); await page.getByText(/Échec synthétique/).waitFor();
+  await page.reload(); await page.getByRole("button", { name: "Besoins", exact: true }).click(); await page.getByRole("button", { name: /Synthetic oats.*2 x 500 g/ }).waitFor(); await showListDetails(page); assert.equal(await page.getByLabel("Ville ou préfixe postal de domicile").inputValue(), "Montréal");
   await savePlanning(page);
   await page.getByRole("button", { name: "Magasins et prix", exact: true }).click(); await page.getByRole("button", { name: "Ajouter un magasin" }).click(); const retailer = page.getByRole("dialog", { name: "Magasin et conditions" }); await retailer.waitFor(); await retailer.getByLabel("Magasin", { exact: true }).fill("Synthetic market");
   await retailer.getByRole("button", { name: "Conserver le magasin" }).click(); await retailer.waitFor({ state: "hidden" });
@@ -92,7 +101,7 @@ try {
   await savePlanning(page);
   // Supply fully sourced synthetic conditions to test rendering; production defaults remain unknown.
   const p = await store.read(); const until = new Date(Date.now() + 86400000).toISOString().slice(0, 10); Object.assign(p.retailers[0], { delivery: 1, service: 0, servicePercent: 0, feesTaxPercent: 0, minimum: 0, areaConfirmed: true, otherFeesReviewed: true, mode: "delivery", locality: "Synthetic city", slots: "yes", membershipStatus: "none", membershipWeekly: 0, evidence: { title: "Synthetic conditions", url: "https://example.com/terms", date: now, until } }); Object.assign(p.prices[0], { mode: "delivery", locality: "Synthetic city", localityConfirmed: true, depositPerPack: 0, taxPercent: 0, available: "yes", evidence: { title: "Synthetic catalogue", url: "https://example.com/oats", date: now, until } }); await store.save({ plan: p, expectedRevision: p.revision });
-  await page.getByRole("button", { name: "Relire le PC" }).click();
+  await clickPlanningControl(page, "Relire le PC");
   const commonMarket = page.locator(".grocery-common-row").filter({ hasText: "Synthetic market" });
   await commonMarket.getByText("6,00 CAD", { exact: true }).waitFor();
   await basketButton.click(); await basketDetails.waitFor();
@@ -104,7 +113,7 @@ try {
   // Reviewed exact branded product on a matching receipt; no quantity/price needed.
   const brandPlan = await store.read(), brandSnapshot = structuredClone(brandPlan);
   receiptRecords = [{ id: "synthetic-receipt", revision: "r", status: "saved", extraction: "pending", reviewedAt: now, createdAt: now, duplicateOf: null, sources: [], receipt: { store: "Synthetic market", date: now, items: [{ name: "ABBR OATS", product: "ExampleBrand rolled oats", amount: null, quantity: null, size: null, unit: null, uncertain: false, evidence: "Private note. Article rapproché : " + brandPlan.items[0].id + "." }] } }];
-  await page.getByRole("button", { name: "Relire le PC" }).click();
+  await clickPlanningControl(page, "Relire le PC");
   await page.getByLabel("Reprendre un produit identifié sur ticket").selectOption("0");
   assert.equal(await page.getByLabel("Produit public / marque pour la recherche").inputValue(), "ExampleBrand rolled oats");
   assert.equal(await page.getByLabel(/J'ai vérifié le produit, sa marque/).isChecked(), false);
@@ -126,7 +135,7 @@ try {
   await page.setViewportSize({width:1280,height:900});
   // Receipt brands remain separate from the current offer in both comparison detail paths.
   receiptRecords[0].receipt.store = "Other synthetic receipt shop";
-  await page.getByRole("button", {name:"Relire le PC",exact:true}).click();
+  await clickPlanningControl(page, "Relire le PC");
   await page.getByRole("button", {name:"Comparer",exact:true}).click();
   const brandedArticle = page.getByRole("dialog", {name:"Détails de Synthetic oats",exact:true});
   await page.getByRole("button", {name:"Détails de Synthetic oats",exact:true}).click();
@@ -154,11 +163,11 @@ try {
   await page.getByRole("button",{name:"Besoins",exact:true}).click(); await page.setViewportSize({width:1280,height:900});
   const second = await browser.newContext({ viewport: { width: 1280, height: 900 } }); await second.addInitScript(({ endpoint, key }) => localStorage.setItem("familyhub.worker.v1", JSON.stringify({ Endpoint: endpoint, ApiKey: key })), { endpoint, key }); const pc = await second.newPage(); pc.on("pageerror", e => errors.push(e.message)); await planning(pc, base); await pc.getByRole("button", { name: /Synthetic oats.*2 x 500 g/ }).waitFor();
   // Two devices edit the same revision; only the first succeeds. The second draft survives refresh/reload.
-  await page.getByRole("button", { name: "Ma liste", exact: true }).click(); await page.getByText("Info et filtres", { exact: true }).click(); await page.getByLabel("Pourboire optionnel par commande (0 = aucun)").fill("2"); await pc.getByText("Info et filtres", { exact: true }).click(); await pc.getByLabel("Pourboire optionnel par commande (0 = aucun)").fill("1"); await savePlanning(pc);
-  await page.getByRole("button", { name: "Enregistrer sur le PC" }).click(); await page.getByText(/La liste a changé sur le PC/).waitFor(); await page.getByRole("button", { name: "Relire le PC" }).click(); await page.getByRole("heading", { name: "Conflit entre appareils" }).waitFor(); assert.equal(await page.getByLabel("Pourboire optionnel par commande (0 = aucun)").inputValue(), "2");
-  offline = true; await planning(page, base); await page.getByRole("button", { name: /Synthetic oats.*2 x 500 g/ }).waitFor(); await page.getByText("Info et filtres", {exact:true}).click(); assert.equal(await page.getByLabel("Pourboire optionnel par commande (0 = aucun)").inputValue(), "2"); assert.deepEqual(errors, []);
+  await page.getByRole("button", { name: "Ma liste", exact: true }).click(); await showListDetails(page); await page.getByLabel("Pourboire optionnel par commande (0 = aucun)").fill("2"); await showListDetails(pc); await pc.getByLabel("Pourboire optionnel par commande (0 = aucun)").fill("1"); await savePlanning(pc);
+  await clickPlanningControl(page, "Enregistrer sur le PC"); await page.getByText(/La liste a changé sur le PC/).waitFor(); await clickPlanningControl(page, "Relire le PC"); await page.getByRole("heading", { name: "Conflit entre appareils" }).waitFor(); assert.equal(await page.getByLabel("Pourboire optionnel par commande (0 = aucun)").inputValue(), "2");
+  offline = true; await planning(page, base); await page.getByRole("button", { name: /Synthetic oats.*2 x 500 g/ }).waitFor(); await showListDetails(page); assert.equal(await page.getByLabel("Pourboire optionnel par commande (0 = aucun)").inputValue(), "2"); assert.deepEqual(errors, []);
   offline = false;
-  await page.getByRole("button", { name: "Relire le PC" }).click();
+  await clickPlanningControl(page, "Relire le PC");
   await page.getByRole("heading", { name: "Conflit entre appareils" }).waitFor();
   await page.getByRole("button", { name: "Charger le PC, archiver mon brouillon" }).click();
   await page.getByText(/Version PC chargée/).waitFor();
@@ -173,7 +182,7 @@ try {
   await product.getByText("Fréquence et budget", { exact: true }).click();
   await product.getByLabel("Fréquence du besoin").selectOption("month");
   await product.getByRole("button", { name: "Conserver dans la liste" }).click(); await product.waitFor({ state: "hidden" });
-  await page.getByRole("button", { name: "Proposer les besoins de la semaine", exact: true }).click();
+  await clickPlanningControl(page, "Proposer les besoins de la semaine");
   await page.getByRole("button", {name:"Tous les besoins",exact:true}).click();
   assert.equal(await page.getByLabel("Inclure Synthetic monthly coffee dans ce panier", { exact: true }).isChecked(), false);
   assert.equal(await page.getByLabel("Inclure Synthetic oats dans ce panier", { exact: true }).isChecked(), true);
@@ -182,13 +191,13 @@ try {
   await product.getByLabel(/Nombre pour ce panier seulement/).fill("1");
   await product.getByRole("button", { name: "Conserver dans la liste" }).click(); await product.waitFor({ state: "hidden" });
   weeklySupported = false;
-  await page.getByRole("button", { name: "Enregistrer sur le PC" }).click(); await page.getByText(/Mettez à jour le worker/).waitFor();
+  await clickPlanningControl(page, "Enregistrer sur le PC"); await page.getByText(/Mettez à jour le worker/).waitFor();
   assert.equal((await store.read()).items.length, 1);
   weeklySupported = true;
   await savePlanning(page);
   const weekly = await store.read(); assert.equal(weekly.items[0].quantity, 2); assert.equal(weekly.items[0].basketQuantity, 1); assert.equal(weekly.items[1].quantity, 3); assert.equal(weekly.items[1].cadence, "month"); assert.equal(weekly.items[1].active, false);
   await page.reload(); await page.getByRole("button", {name:"Tous les besoins",exact:true}).click(); await page.getByRole("button", { name: /Synthetic monthly coffee.*3 format/ }).waitFor();
-  assert.equal(await page.getByText("Info et filtres", { exact: true }).locator("..").getAttribute("open"), null);
+  assert.equal(await page.getByText("Détails et filtres", { exact: true }).locator("..").getAttribute("open"), null);
   await page.getByRole("button", { name: /Synthetic monthly coffee.*3 format/ }).click();
   await product.getByLabel("Quantité habituelle").fill("99"); await product.getByRole("button", { name: "Close Produit habituel", exact: true }).click();
   await page.getByRole("button", { name: /Synthetic monthly coffee.*3 format/ }).waitFor();
@@ -197,11 +206,11 @@ try {
   await savePlanning(page);
   const stores = (await store.read()).retailers; for (const name of ["Walmart", "Superstore", "Costco", "Fresh St. Market"]) assert.equal(stores.filter(r => r.name === name).length, 1);
   await page.getByRole("button", { name: "Besoins", exact: true }).click();
-  await page.getByRole("button", { name: "Proposer les besoins de la semaine", exact: true }).waitFor();
-  malformedRead = true; await page.getByRole("button", { name: "Relire le PC", exact: true }).click();
+  await showListDetails(page); await page.getByRole("button", { name: "Proposer les besoins de la semaine", exact: true }).waitFor();
+  malformedRead = true; await clickPlanningControl(page, "Relire le PC");
   await page.getByRole("alert").waitFor();
   await page.getByRole("button", { name: /Synthetic oats.*1 x 500 g/ }).waitFor();
-  malformedRead = false; await page.getByRole("button", { name: "Relire le PC", exact: true }).click();
+  malformedRead = false; await clickPlanningControl(page, "Relire le PC");
   await page.getByText("Liste relue depuis le PC.", { exact: true }).waitFor();
   for (const width of [320, 390, 768, 1440]) { await page.setViewportSize({ width, height: 900 }); assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false); await page.screenshot({ path: `artifacts/groceries/weekly-needs-${width}.png`, fullPage: true }); }
   await page.getByRole("button", { name: "Comparer", exact: true }).click();
@@ -212,11 +221,60 @@ try {
   fixture.retailers = ["Fresh St. Market", "Walmart", "Costco", "Superstore"].map((name, n) => ({ ...retailerTemplate(`store-${n}`, name), mode: n === 2 ? "delivery" : "pickup", locality: "Synthetic city" }));
   fixture.prices = fixture.retailers.flatMap((r, index) => fixture.items.slice(0, index === 2 ? 11 : index === 1 ? 13 : 14).map((i, n) => ({ id: `price-${index}-${n}`, itemId: i.id, retailerId: r.id, product: `Synthetic reference ${n + 1}`, price: n === 0 ? 2.5 + index : [4.5, 2.5, 3.5, 5.5][index], size: 6, unit: "each", weighed: false, taxPercent: null, depositPerPack: null, currency: "CAD", available: "unknown", substitution: true, approved: false, kind: "public", mode: r.mode, locality: "Synthetic city", localityConfirmed: false, evidence: { title: "Fictional dated catalogue", url: "https://example.com/synthetic", date: now, until: null } })));
   await store.save({ plan: fixture, expectedRevision: fixture.revision });
-  await page.getByRole("button", { name: "Relire le PC", exact: true }).click();
+  await clickPlanningControl(page, "Relire le PC");
   await page.getByText("Base commune : 11/14 articles", { exact: false }).waitFor();
   assert.equal(await page.locator(".grocery-article-comparison").count(), 14);
   assert.equal(await page.locator(".grocery-common-row").count(), 4);
   const initialFixture = await store.read();
+  // Products-first needs hierarchy: hidden tools, keyboard disclosure, no data mutation.
+  for (const dismiss of await page.getByRole("button", { name: "Dismiss message", exact: true }).all()) await dismiss.click();
+  await page.getByRole("button", { name: "Besoins", exact: true }).click();
+  const needsDetails = page.locator(".grocery-list-details"), needsSummary = needsDetails.locator("summary");
+  assert.equal(await needsDetails.getAttribute("open"), null);
+  assert.equal(await page.getByRole("button", { name: "Relire le PC", exact: true }).isVisible(), false);
+  assert.equal(await page.getByRole("button", { name: "Proposer les besoins de la semaine", exact: true }).isVisible(), false);
+  for (const width of [320, 390, 412, 1440]) {
+    const height = width === 320 ? 740 : 844;
+    await page.setViewportSize({ width, height });
+    await page.evaluate(() => scrollTo(0, 0));
+    const layout = await page.evaluate(() => {
+      const nav = document.querySelector(".bottom-nav"), navTop = getComputedStyle(nav).display === "none" ? innerHeight : nav.getBoundingClientRect().top;
+      const rows = [...document.querySelectorAll(".grocery-need")].map(el => el.getBoundingClientRect());
+      const add = document.querySelector(".grocery-list-toolbar button").getBoundingClientRect();
+      return { firstTop: rows[0].top, visible: rows.filter(r => r.top >= 0 && r.bottom <= navTop).length, overflow: document.documentElement.scrollWidth > innerWidth, addHeight: add.height, addVisible: add.bottom < navTop };
+    });
+    assert.equal(layout.overflow, false, `Needs have no horizontal overflow at ${width}px`);
+    assert.ok(layout.firstTop < 380 && layout.visible >= 3, `Three products appear without scrolling at ${width}px: ${JSON.stringify(layout)}`);
+    assert.ok(layout.addHeight >= 44 && layout.addVisible);
+    await page.screenshot({ path: `artifacts/groceries/products-first-${width}.png` });
+    await needsSummary.focus(); await page.keyboard.press("Enter");
+    assert.notEqual(await needsDetails.getAttribute("open"), null);
+    assert.ok(await page.getByRole("button", { name: "Relire le PC", exact: true }).isVisible());
+    assert.ok(await page.getByRole("button", { name: "Copier les produits non cochés de Plan", exact: true }).isVisible());
+    await needsSummary.focus(); await page.keyboard.press("Enter");
+    assert.equal(await needsDetails.getAttribute("open"), null);
+    assert.equal(await needsSummary.evaluate(el => el === document.activeElement), true);
+    const lastNeed = page.locator(".grocery-need-edit").last();
+    await lastNeed.scrollIntoViewIfNeeded();
+    await page.evaluate(() => scrollTo(0, document.documentElement.scrollHeight));
+    assert.ok(await lastNeed.evaluate(el => { const nav = document.querySelector(".bottom-nav"); return el.getBoundingClientRect().bottom <= (getComputedStyle(nav).display === "none" ? innerHeight : nav.getBoundingClientRect().top) + 1; }), `Last product clears navigation at ${width}px`);
+  }
+  await page.setViewportSize({ width: 390, height: 844 });
+  const firstNeed = page.locator(".grocery-need-edit").first();
+  await firstNeed.click(); await product.waitFor();
+  await product.press("Escape"); await product.waitFor({ state: "hidden" });
+  assert.equal(await firstNeed.evaluate(el => el === document.activeElement), true);
+  await firstNeed.click(); await product.waitFor();
+  await product.getByRole("button", { name: "Close Produit habituel", exact: true }).click();
+  await product.waitFor({ state: "hidden" });
+  await needsSummary.click(); await page.getByLabel("Rechercher un besoin").fill("Fictional article 1");
+  await needsSummary.click(); assert.ok((await needsSummary.innerText()).includes("Filtre actif"));
+  await needsSummary.click(); await page.getByLabel("Rechercher un besoin").fill(""); await needsSummary.click();
+  assert.deepEqual(await store.read(), initialFixture);
+  await page.reload(); await page.getByRole("button", { name: "Besoins", exact: true }).click();
+  assert.equal(await needsDetails.getAttribute("open"), null);
+  assert.equal(await page.locator(".grocery-need").count(), 14);
+  await page.getByRole("button", { name: "Comparer", exact: true }).click();
   await page.getByText("14/14 articles comparables par prix unitaire", { exact: true }).waitFor();
   const totalChoices = page.locator(".grocery-total-stores");
   await page.getByText("Choisir les magasins du total", { exact: true }).click();
@@ -317,7 +375,7 @@ try {
   unitFixture.prices.find(p => p.id === "price-1-0").evidence.url = "https://www.walmart.ca/en/ip/eggs/10052944";
   unitFixture.prices.find(p => p.id === "price-0-0").evidence.url = "https://freshstmarket.com/results?q=eggs";
   await store.save({ plan: unitFixture, expectedRevision: unitFixture.revision });
-  await page.getByRole("button", { name: "Relire le PC", exact: true }).click();
+  await clickPlanningControl(page, "Relire le PC");
   const firstArticle = page.locator(".grocery-article-comparison").filter({ has: page.getByRole("heading", { name: "Fictional article 1", exact: true }) });
   await firstArticle.getByText("+33,3 %", { exact: true }).waitFor();
   const preservedUnitFixture = await store.read();
@@ -419,7 +477,7 @@ try {
   denseFixture.retailers = ["Fresh St. Market", "Walmart"].map((name, n) => ({ ...retailerTemplate(`dense-store-${n}`, name), mode: "pickup", locality: "Synthetic city" }));
   denseFixture.prices = denseFixture.retailers.flatMap((r, storeIndex) => denseFixture.items.slice(0, 9).map((i, n) => ({ id: `dense-price-${storeIndex}-${n}`, itemId: i.id, retailerId: r.id, product: `Synthetic extra-long recorded product reference ${n + 1}: family-size original variety with a detailed manufacturer description and individually wrapped portions`, price: 2.5 + n + storeIndex, size: 6, unit: "each", weighed: false, taxPercent: null, depositPerPack: null, currency: "CAD", available: "unknown", substitution: true, approved: false, kind: "public", mode: "pickup", locality: "Synthetic city", localityConfirmed: false, evidence: { title: `Synthetic dense catalogue ${n + 1}`, url: "https://example.com/synthetic-dense-catalogue", date: now, until: null } })));
   await store.save({ plan: denseFixture, expectedRevision: denseFixture.revision });
-  await page.getByRole("button", { name: "Relire le PC", exact: true }).click();
+  await clickPlanningControl(page, "Relire le PC");
   // The preceding edit/reload regression intentionally leaves a local draft. Explicitly
   // accept the synthetic PC fixture through the normal conflict UI before density checks.
   await page.getByRole("button", { name: "Charger le PC, archiver mon brouillon", exact: true }).click();
