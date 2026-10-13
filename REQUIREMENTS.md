@@ -1,5 +1,9 @@
 # FamilyHub - Canonical Requirements
 
+## Products-first needs list (#155)
+
+[FH-GROCERY-009](docs/requirements/FH-GROCERY-009.md) is the scoped presentation requirement. Status: Testing. Besoins prioritizes products and basket selection; occasional tools and explanatory filters live behind Détails. Unsaved drafts retain a visible Save action. Worker, persistence, receipt brands and comparison calculations are unchanged; CI/mobile screenshot review and deployment remain separate gates.
+
 ## Receipt-backed product brands (#208)
 
 [FH-GROCERY-008](docs/requirements/FH-GROCERY-008.md) is the canonical scoped requirement. Status: Testing. Reviewed exact receipt products appear on matching household articles and can populate the explicitly reviewed public product/brand query. Manual preferences and saved plan remain intact unless explicitly edited. Implementation: `grocery-receipt-products`, `GroceryPlanningView`; release evidence tracked in #208. Comparison details extension #210 adds the same receipt identities with historical store/date in article, store and basket disclosures, separate from current candidate offers; calculations and compact rows remain intact.

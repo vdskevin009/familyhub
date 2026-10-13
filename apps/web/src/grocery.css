@@ -146,3 +146,21 @@
 .grocery-basket-details summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .grocery-basket-details > .sheet-content > .grocery-card-info { border-top: 1px solid var(--line); margin: 0; }
 .grocery-basket-details > .sheet-content > .grocery-card-info > summary { min-height: 44px; padding-block: 12px; }
+
+/* Needs: products and selection first, occasional tools behind one disclosure. */
+.grocery-list-toolbar, .grocery-list-scope, .grocery-list-save { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; }
+.grocery-list-toolbar .button, .grocery-list-save .button { min-height: 44px; padding: 8px 12px; flex-shrink: 0; }
+.grocery-list-toolbar h2 { font-size: 16px; }
+.grocery-list-scope { font-size: 13px; }
+.grocery-list-scope .text-action { min-height: 44px; text-align: right; }
+.grocery-list-save { padding: 8px 10px; background: var(--warning-soft); border-radius: var(--radius-sm); color: var(--warning); font-size: 12px; }
+.grocery-planning-list .grocery-planning-controls { gap: 8px; }
+.grocery-planning-list .segment-tabs { background: transparent; border: 0; padding: 0; border-radius: 0; border-bottom: 1px solid var(--line); }
+.grocery-planning-list .segment-tabs button { min-height: 44px; border-radius: 0; }
+.grocery-planning-list .segment-tabs button.active { background: transparent; box-shadow: inset 0 -2px var(--accent); }
+.grocery-list-details > summary { font-size: 13px; padding-block: 10px; }
+.grocery-list-tools { display: grid; gap: 12px; padding-block: 8px 16px; }
+.grocery-list-tools p { font-size: 13px; }
+.grocery-list-tools > .button { justify-self: start; text-align: left; }
+.grocery-list-group > h3 { font-size: 13px; color: var(--muted); margin-top: 4px; }
+.grocery-list-group .grocery-history { margin-top: 8px; }
