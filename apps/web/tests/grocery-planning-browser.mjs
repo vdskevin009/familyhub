@@ -26,6 +26,38 @@ const api = createServer(async (req, res) => {
 });
 const site = createServer(async (req, res) => { const pathname = new URL(req.url, "http://localhost").pathname.replace(/^\/familyhub/, ""), file = resolve(root, "." + (pathname || "/index.html")); if (relative(root, file).startsWith("..")) { res.writeHead(403); res.end(); return; } try { const target = pathname.endsWith("/") ? join(file, "index.html") : file; res.setHeader("Content-Type", ({ ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".svg": "image/svg+xml", ".png": "image/png" })[extname(target)] || "application/octet-stream"); res.end(await readFile(target)); } catch { res.writeHead(404); res.end(); } });
 async function planning(page, base) { await page.goto(base); await page.getByRole("button", { name: "Besoins", exact: true }).click(); await page.getByRole("button", { name: "Ajouter un produit", exact: true }).waitFor(); }
+async function assertCompactBasketLayout(dialog, width, height) {
+  const layout = await dialog.evaluate(el => {
+    const box = node => { const r = node.getBoundingClientRect(); return { top: r.top, bottom: r.bottom, left: r.left, right: r.right, height: r.height }; };
+    const content = el.querySelector(".sheet-content"), footer = el.querySelector(".sheet-footer");
+    const rows = [...el.querySelectorAll(".grocery-basket-line-summary")].map(summary => {
+      const name = summary.querySelector(".grocery-basket-line-name"), price = summary.querySelector(".grocery-basket-line-price");
+      return { ...box(summary), name: box(name), price: box(price), priceFits: price.scrollWidth <= price.clientWidth + 1 };
+    });
+    return { dialog: box(el), content: box(content), footer: box(footer), total: box(el.querySelector(".grocery-basket-total")), rows, scrollTop: content.scrollTop, overflow: content.scrollWidth > content.clientWidth + 1, pageOverflow: document.documentElement.scrollWidth > innerWidth, back: box(footer.querySelector("button")), footerPadding: parseFloat(getComputedStyle(footer).paddingBottom) };
+  });
+  assert.equal(layout.scrollTop, 0, `Basket opens at the total at ${width}px`);
+  assert.equal(layout.overflow || layout.pageOverflow, false, `No horizontal overflow at ${width}px`);
+  assert.ok(layout.dialog.left >= -1 && layout.dialog.right <= width + 1 && layout.dialog.bottom <= height + 1);
+  assert.ok(layout.total.top >= layout.content.top - 1 && layout.total.bottom <= layout.content.bottom + 1, `Total is fully visible at ${width}px`);
+  assert.ok(layout.content.bottom <= layout.footer.top + 1, `Scrollable content ends above the footer at ${width}px`);
+  assert.ok(layout.back.height >= 44 && layout.back.bottom <= height - 7 && layout.footerPadding >= 8, `Return action has a touch target and bottom clearance at ${width}px`);
+  const visible = layout.rows.filter(r => r.top >= layout.content.top - 1 && r.bottom <= layout.content.bottom + 1 && r.bottom <= layout.footer.top + 1);
+  assert.ok(visible.length >= 3, `At least three complete item summaries and prices are visible at ${width}×${height}; got ${visible.length}`);
+  for (const row of layout.rows) {
+    assert.ok(row.height >= 44, `Item details have a touch target at ${width}px`);
+    assert.ok(row.name.right <= row.price.left - 3 && row.price.right <= layout.content.right + 1 && row.price.left >= layout.content.left - 1 && row.priceFits, `Long names do not overlap, clip or wrap their prices at ${width}px`);
+  }
+}
+async function assertBasketPriceAboveFooter(line, width) {
+  await line.locator("summary").scrollIntoViewIfNeeded();
+  const visible = await line.evaluate(el => {
+    const dialog = el.closest("dialog"), content = dialog.querySelector(".sheet-content").getBoundingClientRect(), footer = dialog.querySelector(".sheet-footer").getBoundingClientRect();
+    const summary = el.querySelector("summary").getBoundingClientRect(), price = el.querySelector(".grocery-basket-line-price").getBoundingClientRect();
+    return summary.top >= content.top - 1 && summary.bottom <= content.bottom + 1 && price.top >= content.top - 1 && price.bottom <= Math.min(content.bottom, footer.top) + 1;
+  });
+  assert.ok(visible, `Every scrolled item and its amount remain above the footer at ${width}px`);
+}
 try {
   api.listen(0, "127.0.0.1"); site.listen(0, "127.0.0.1"); await Promise.all([once(api, "listening"), once(site, "listening")]);
   const endpoint = `http://127.0.0.1:${api.address().port}`, base = `http://127.0.0.1:${site.address().port}/familyhub/?view=groceries`;
@@ -51,6 +83,7 @@ try {
   const basketButton = page.getByRole("button", { name: "Détails du panier Synthetic market", exact: true });
   const basketDetails = page.getByRole("dialog", { name: "Détails du panier Synthetic market", exact: true });
   await basketButton.click(); await basketDetails.waitFor();
+  await basketDetails.getByText("Conditions et achats enregistrés", { exact: true }).click();
   const market = basketDetails.locator(".grocery-store-card").filter({ has: page.getByRole("heading", { name: "Synthetic market", exact: true }) });
   await market.getByText("Montant inconnu", { exact: true }).waitFor();
   await market.locator("summary").click(); await market.getByText(/minimum de commande inconnu/).waitFor();
@@ -61,7 +94,9 @@ try {
   await page.getByRole("button", { name: "Relire le PC" }).click();
   const commonMarket = page.locator(".grocery-common-row").filter({ hasText: "Synthetic market" });
   await commonMarket.getByText("6,00 CAD", { exact: true }).waitFor();
-  await basketButton.click(); await basketDetails.waitFor(); await market.getByText("Panier complet estimé", { exact: true }).waitFor(); await market.getByText("7.00 CAD", {exact:true}).waitFor();
+  await basketButton.click(); await basketDetails.waitFor();
+  await basketDetails.getByText("Conditions et achats enregistrés", { exact: true }).click();
+  await market.getByText("Panier complet estimé", { exact: true }).waitFor(); await market.getByText("7.00 CAD", {exact:true}).waitFor();
   await basketDetails.getByRole("button", { name: "Retour aux prix" }).click();
   await mkdir("artifacts/groceries", { recursive: true }); for (const width of [320, 390, 768, 1280]) { await page.setViewportSize({ width, height: 900 }); assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false); await page.screenshot({ path: `artifacts/groceries/planning-${width}.png`, fullPage: true }); }
   await page.getByRole("button", { name: "Magasins et prix", exact: true }).click(); await page.getByText("Recherche publique", { exact: true }).click(); await page.getByLabel("Produit générique pour la recherche").fill("rolled oats"); await page.getByLabel(/J'ai vérifié le nom générique/).check(); await page.getByRole("button", { name: "Rechercher et revoir les sources" }).click(); await page.getByText("Synthetic catalogue only").waitFor(); assert.deepEqual(researchBody, { product: "rolled oats", area: "Montréal", confirmed: true });
@@ -142,9 +177,12 @@ try {
   await page.getByText("2 article(s) avec une quantité de référence commune. Panier de comparaison, différent du panier réel.", { exact: true }).waitFor();
   await page.getByRole("button", { name: "Détails du panier Fresh St. Market", exact: true }).click();
   const referenceDetails = page.getByRole("dialog", { name: "Détails du panier Fresh St. Market", exact: true });
-  await referenceDetails.getByText("Quantité de référence pour comparer ; le besoin réel reste inchangé.", { exact: false }).first().waitFor();
-  const referenceArticle = referenceDetails.locator(".grocery-product").filter({ has: page.getByRole("heading", { name: "Fictional article 2", exact: true }) });
-  await referenceArticle.getByText(/Quantité commune : 1 unités/).waitFor();
+  const referenceArticle = referenceDetails.locator(".grocery-basket-line").filter({ has: page.locator(".grocery-basket-line-name > strong", { hasText: /^Fictional article 2$/ }) });
+  await referenceArticle.locator("summary").getByText("1 unités · Référence", { exact: true }).waitFor();
+  assert.equal(await referenceArticle.getAttribute("open"), null);
+  await referenceArticle.locator("summary").click();
+  await referenceArticle.getByText("Quantité de référence pour comparer ; le besoin réel reste inchangé.", { exact: false }).waitFor();
+  await referenceArticle.getByText(/Conversion : 1 \/ 6/).waitFor();
   await referenceDetails.press("Escape"); await referenceDetails.waitFor({ state: "hidden" });
   assert.deepEqual(await store.read(), initialFixture);
   for (const width of [320, 390, 768, 1440]) {
@@ -182,6 +220,7 @@ try {
   const commonFreshButton = page.getByRole("button", { name: "Détails du panier Fresh St. Market", exact: true });
   const commonFreshDetails = page.getByRole("dialog", { name: "Détails du panier Fresh St. Market", exact: true });
   await commonFreshButton.click(); await commonFreshDetails.waitFor();
+  await commonFreshDetails.getByText("Conditions et achats enregistrés", { exact: true }).click();
   const storeInfo = page.locator("summary[aria-label='Info Fresh St. Market']");
   await storeInfo.click();
   await storeInfo.locator("..").getByText(/Maison non chiffrable/).waitFor();
@@ -255,14 +294,20 @@ try {
     await firstArticle.scrollIntoViewIfNeeded();
     await page.screenshot({ path: `artifacts/groceries/unit-ranking-${width}.png` });
     await commonFreshButton.click(); await commonFreshDetails.waitFor();
-    await commonFreshDetails.getByText(/Même base de/).waitFor();
+    await commonFreshDetails.locator(".grocery-basket-total").getByText("Total proportionnel", { exact: true }).waitFor();
     const basketBack = commonFreshDetails.getByRole("button", { name: "Retour aux prix", exact: true });
     const basketClose = commonFreshDetails.getByRole("button", { name: "Close Détails du panier Fresh St. Market", exact: true });
     await basketBack.focus(); await basketBack.press("Tab"); assert.equal(await basketClose.evaluate(el => el === document.activeElement), true);
     await basketClose.press("Shift+Tab"); assert.equal(await basketBack.evaluate(el => el === document.activeElement), true);
-    await commonFreshDetails.locator(".grocery-product").filter({ has: page.getByRole("heading", { name: "Fictional article 1", exact: true }) }).getByText(/Conversion : 10,5 \/ 12/).waitFor();
-    await commonFreshDetails.getByText(/Achat de paquets entiers : 1 format/).first().waitFor();
-    await commonFreshDetails.getByText(/Articles exclus de la base commune/).waitFor();
+    const firstBasketLine = commonFreshDetails.locator(".grocery-basket-line").filter({ has: page.locator(".grocery-basket-line-name > strong", { hasText: /^Fictional article 1$/ }) });
+    await firstBasketLine.locator("summary").click();
+    await firstBasketLine.getByText(/Conversion : 10,5 \/ 12/).waitFor();
+    await firstBasketLine.getByText("Achat en paquets entiers : 6,00 CAD", { exact: true }).waitFor();
+    await firstBasketLine.locator("summary").click();
+    await commonFreshDetails.getByText("Info sur le calcul", { exact: true }).click();
+    await commonFreshDetails.getByText(/Même base de/).waitFor();
+    await commonFreshDetails.getByText("Info sur le calcul", { exact: true }).click();
+    await commonFreshDetails.locator("summary").filter({ hasText: /^Articles exclus \(/ }).waitFor();
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
     await page.screenshot({ path: `artifacts/groceries/common-basket-${width}.png` });
     await commonFreshDetails.press("Escape"); await commonFreshDetails.waitFor({ state: "hidden" });
@@ -303,6 +348,103 @@ try {
   await page.reload(); await page.getByRole("button", { name: "Comparer", exact: true }).click();
   await firstArticle.getByText("+33,3 %", { exact: true }).waitFor(); assert.deepEqual(await store.read(), preservedUnitFixture);
   console.log("PASS: unit-ranked article rows preserve pack prices/modes/quality; percentage, mixed units, zero minimum, contrast≥4.5, keyboard/reload/no mutation at320/390/768/1440.");
+  // Dense mobile basket: nine synthetic priced needs plus an explicitly excluded need.
+  // Long household labels stress summary wrapping; longer recorded product names stay behind disclosure.
+  const denseNames = [
+    "Fictional whole-grain breakfast cereal with dried fruit",
+    "Fictional unsweetened oat beverage in family-size cartons",
+    "Fictional plain Greek-style yogurt in individual portions",
+    "Fictional frozen mixed vegetables for weekday dinners",
+    "Fictional brown rice and lentils in resealable pouches",
+    "Fictional whole-wheat sandwich bread with sunflower seeds",
+    "Fictional fragrance-free laundry detergent concentrate",
+    "Fictional recycled paper towels in large household rolls",
+    "Fictional ripe seasonal fruit assortment for lunch boxes",
+  ];
+  const denseFixture = { ...emptyPlan(), revision: (await store.read()).revision, currency: "CAD", area: "Synthetic city", areaConfirmed: true };
+  denseFixture.items = denseNames.map((name, n) => ({ id: `dense-${n}`, name, quantity: n === 8 ? null : 10.5, size: 1, unit: "each", preference: "Synthetic preference retained", substitutions: true, active: true, origin: "synthetic", cadence: "week", measure: "physical", bucket: n === 6 || n === 7 ? "household" : "food" }));
+  denseFixture.items.push({ ...denseFixture.items[0], id: "dense-missing", name: "Fictional excluded article without a recorded compatible price" });
+  denseFixture.retailers = ["Fresh St. Market", "Walmart"].map((name, n) => ({ ...retailerTemplate(`dense-store-${n}`, name), mode: "pickup", locality: "Synthetic city" }));
+  denseFixture.prices = denseFixture.retailers.flatMap((r, storeIndex) => denseFixture.items.slice(0, 9).map((i, n) => ({ id: `dense-price-${storeIndex}-${n}`, itemId: i.id, retailerId: r.id, product: `Synthetic extra-long recorded product reference ${n + 1}: family-size original variety with a detailed manufacturer description and individually wrapped portions`, price: 2.5 + n + storeIndex, size: 6, unit: "each", weighed: false, taxPercent: null, depositPerPack: null, currency: "CAD", available: "unknown", substitution: true, approved: false, kind: "public", mode: "pickup", locality: "Synthetic city", localityConfirmed: false, evidence: { title: `Synthetic dense catalogue ${n + 1}`, url: "https://example.com/synthetic-dense-catalogue", date: now, until: null } })));
+  await store.save({ plan: denseFixture, expectedRevision: denseFixture.revision });
+  await page.getByRole("button", { name: "Relire le PC", exact: true }).click();
+  await page.getByText("Base commune : 9/10 articles", { exact: false }).waitFor();
+  const preservedDenseFixture = await store.read();
+  const denseAmounts = denseFixture.items.slice(0, 9).map((i, n) => `${new Intl.NumberFormat("fr-CA", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format((i.quantity ?? 1) * (2.5 + n) / 6)} CAD`);
+  const denseTotal = await commonFreshButton.locator(".grocery-price-value").innerText();
+  for (const width of [320, 390, 412, 768, 1440]) {
+    const height = width <= 412 ? 740 : 900;
+    await page.setViewportSize({ width, height });
+    await commonFreshButton.focus(); await commonFreshButton.press("Enter"); await commonFreshDetails.waitFor();
+    assert.ok(await commonFreshDetails.evaluate(el => el.classList.contains("grocery-basket-details")));
+    const denseLines = commonFreshDetails.locator(".grocery-basket-line"), total = commonFreshDetails.locator(".grocery-basket-total");
+    assert.equal(await denseLines.count(), 9);
+    assert.equal(await commonFreshDetails.locator("details[open]").count(), 0);
+    assert.deepEqual(await denseLines.locator(".grocery-basket-line-name > strong").allTextContents(), denseNames);
+    assert.deepEqual(await denseLines.locator(".grocery-basket-line-price > strong").allTextContents(), denseAmounts);
+    await total.getByText("Total proportionnel", { exact: true }).waitFor();
+    await total.getByText(denseTotal, { exact: true }).waitFor();
+    await total.getByText(/9\/10 articles.*Base partielle/).waitFor();
+    await total.getByText(/Hors frais, taxes et consignes.*À revoir/).waitFor();
+    await total.getByText(/1 quantité\(s\) de référence.*Pas le panier réel/).waitFor();
+    const methods = commonFreshDetails.locator("summary").filter({ hasText: /^Info sur le calcul$/ });
+    const excluded = commonFreshDetails.locator("summary").filter({ hasText: /^Articles exclus \(1\)$/ });
+    const conditions = commonFreshDetails.locator("summary").filter({ hasText: /^Conditions et achats enregistrés$/ });
+    for (const disclosure of [methods, excluded, conditions]) {
+      assert.equal(await disclosure.locator("..").getAttribute("open"), null);
+      assert.equal(await disclosure.evaluate(el => !!(el.closest("dialog").querySelector(".grocery-basket-lines").compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING)), true);
+    }
+    await assertCompactBasketLayout(commonFreshDetails, width, height);
+    await page.screenshot({ path: `artifacts/groceries/compact-basket-initial-${width}.png` });
+    const firstLine = denseLines.first(), firstSummary = firstLine.locator("summary"), firstDetail = firstLine.locator(".grocery-basket-line-detail");
+    assert.equal(await firstDetail.isVisible(), false);
+    await firstSummary.focus(); await firstSummary.press("Enter");
+    assert.equal(await firstLine.getAttribute("open"), "");
+    await firstDetail.getByText(denseFixture.prices[0].product, { exact: true }).waitFor();
+    await firstDetail.getByText("Achat en paquets entiers : 5,00 CAD", { exact: true }).waitFor();
+    await firstDetail.getByText(/Conversion : 10,5 \/ 6/).waitFor();
+    assert.match(await firstDetail.locator(".grocery-evidence").innerText(), /Synthetic dense catalogue 1/);
+    assert.equal(await firstDetail.getByRole("link").getAttribute("href"), "https://example.com/synthetic-dense-catalogue");
+    assert.equal(await commonFreshDetails.locator(".sheet-content").evaluate(el => el.scrollWidth > el.clientWidth + 1), false, `Expanded long product names do not overflow at ${width}px`);
+    await firstDetail.getByText(/Observation non approuvée/).waitFor();
+    await firstSummary.press("Space");
+    assert.equal(await firstLine.getAttribute("open"), null);
+    assert.equal(await firstDetail.isVisible(), false);
+    await firstSummary.tap(); assert.equal(await firstLine.getAttribute("open"), "");
+    await firstSummary.tap(); assert.equal(await firstLine.getAttribute("open"), null);
+    for (let n = 0; n < 9; n++) await assertBasketPriceAboveFooter(denseLines.nth(n), width);
+    const lastLine = denseLines.last();
+    await lastLine.locator("summary").getByText("1 unités · Référence", { exact: true }).waitFor();
+    await page.screenshot({ path: `artifacts/groceries/compact-basket-last-${width}.png` });
+    await excluded.tap(); await commonFreshDetails.getByText(/Fictional excluded article without a recorded compatible price :/).waitFor(); await excluded.tap();
+    await methods.tap(); await commonFreshDetails.getByText(/Le total proportionnel n’est pas le montant à payer pour des paquets entiers/).waitFor(); await methods.tap();
+    await conditions.tap(); await commonFreshDetails.locator(".grocery-store-card").waitFor(); await conditions.tap();
+    await lastLine.locator("summary").tap();
+    assert.equal(await lastLine.getAttribute("open"), "");
+    const back = commonFreshDetails.getByRole("button", { name: "Retour aux prix", exact: true });
+    const close = commonFreshDetails.getByRole("button", { name: "Close Détails du panier Fresh St. Market", exact: true });
+    await back.focus(); await back.press("Tab"); assert.equal(await close.evaluate(el => el === document.activeElement), true);
+    await close.press("Shift+Tab"); assert.equal(await back.evaluate(el => el === document.activeElement), true);
+    await page.screenshot({ path: `artifacts/groceries/compact-basket-expanded-${width}.png` });
+    await back.tap(); await commonFreshDetails.waitFor({ state: "hidden" });
+    assert.equal(await commonFreshButton.evaluate(el => el === document.activeElement), true);
+    assert.deepEqual(await store.read(), preservedDenseFixture);
+    // Unmounting the details must reset disclosures and scroll, regardless of the closing control.
+    for (const closeWith of ["escape", "close"]) {
+      await commonFreshButton.press("Space"); await commonFreshDetails.waitFor();
+      assert.equal(await commonFreshDetails.locator("details[open]").count(), 0);
+      await assertCompactBasketLayout(commonFreshDetails, width, height);
+      await denseLines.first().locator("summary").tap();
+      if (closeWith === "escape") await commonFreshDetails.press("Escape"); else await close.tap();
+      await commonFreshDetails.waitFor({ state: "hidden" });
+      assert.equal(await commonFreshButton.evaluate(el => el === document.activeElement), true);
+    }
+    assert.deepEqual(await store.read(), preservedDenseFixture);
+  }
+  await page.reload(); await page.getByRole("button", { name: "Comparer", exact: true }).click();
+  await page.getByText("Base commune : 9/10 articles", { exact: false }).waitFor();
+  assert.deepEqual(await store.read(), preservedDenseFixture);
+  console.log("PASS: dense nine-item basket shows total and ≥3 complete names/prices initially at320/390/412×740 and768/1440; long names, proportional/purchase distinction, all prices above footer, keyboard/touch disclosure, bottom clearance, close/Escape/Return/focus/reopen reset, excluded/conditions and unchanged saved plan/reload.");
   assert.deepEqual(errors, []);
   console.log("PASS: explicit Plan copy/dedup/preservation, editable quantity/format/preferences, blank prices, save failure/reload/retry, incomplete and sourced basket, 320/390/768/1280 layouts, minimal public query, shared persistence, stale conflict and offline draft. Weekly/monthly separation, current-basket override, cancel, old-worker capability gate, suggested retailers dedup and 1440px also pass. Zero page errors."); await second.close();
 } catch (error) {
