@@ -141,6 +141,7 @@ export function ArticleComparison({ plan, item, groups, products, showComparison
     <Sheet open={detailsOpen} onClose={() => setDetailsOpen(false)} title="Détails du produit" className="grocery-article-details" resetScrollOnOpen footer={<button type="button" className="button secondary" onClick={() => setDetailsOpen(false)}>Retour aux prix</button>}>
       <div className="grocery-product-heading"><h3>{item.name}</h3><p>Prix et détails par magasin</p></div>
       {identity}
+      {identity && format && <p className="grocery-product-format">Format du catalogue : {format}</p>}
       <div className="grocery-offer-cards">{unitComparison.rows.map(({ group: g, offers: rankedOffers }) => {
         // Retain older observations and separate modes; only current ranked offers get a gap.
         const offers = g.retailers.flatMap(r => plan.prices.filter(p => p.itemId === item.id && p.retailerId === r.id));
