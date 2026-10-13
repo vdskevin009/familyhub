@@ -420,7 +420,7 @@ try {
     const lastLine = denseLines.last();
     await lastLine.locator("summary").getByText("1 unités · Référence", { exact: true }).waitFor();
     await page.screenshot({ path: `artifacts/groceries/compact-basket-last-${width}.png` });
-    await excluded.tap(); await commonFreshDetails.getByText(/Fictional excluded article without a recorded compatible price :/).waitFor(); await excluded.tap();
+    await excluded.tap(); await excluded.locator("..").getByText(/Fictional excluded article without a recorded compatible price :/).waitFor(); await excluded.tap();
     await methods.tap(); await commonFreshDetails.getByText(/Le total proportionnel n’est pas le montant à payer pour des paquets entiers/).waitFor(); await methods.tap();
     await conditions.tap(); await commonFreshDetails.locator(".grocery-store-card").waitFor(); await conditions.tap();
     await lastLine.locator("summary").tap();
