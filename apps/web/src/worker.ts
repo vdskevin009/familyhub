@@ -32,6 +32,8 @@ export const manualReconciliationWorkerVersion = "2.8.0";
 export const bulkDocumentWorkerVersion = "2.11.0";
 export type ClaimPreparation = {
   expenseId: string; insurer: "blue-cross" | "desjardins"; portalUrl: string; blocked: boolean; submitAllowed: false;
+  preparationUrl?: string;
+  coordination?: { required: boolean; ready: boolean; primaryInsurer: string | null; message: string | null };
   fields: { patient: string | null; provider: string | null; practitioner: string | null; serviceDate: string | null; originalAmount: number | null; service: string | null; invoiceNumber: string | null; otherInsurance?: string | null; otherInsurancePaid?: number | null };
   otherInsurer?: string; currency?: string | null; reviewableWarnings?: string[];
   missing: string[]; conflicts: string[];
@@ -39,8 +41,13 @@ export type ClaimPreparation = {
   sourceEmails: { account: string; messageId: string }[];
   duplicate: { status: string; scope: string; checkedAt: string; records: { id: string; reference: string | null; service: string | null; status: string }[] };
 };
-export type ClaimStep = { status: string; revision: string; submitAllowed: false; fields: { key: string; label: string; type: string; kind: string | null; suggested: string | null; options: { value: string; label: string }[] }[] };
-export async function claimAction<T>(config: WorkerConfig, action: "preview" | "open" | "inspect" | "fill" | "close", body: object): Promise<T> {
+export type ClaimStep = { status: string; revision: string; submitAllowed: false;
+  serviceChoices?: { available: boolean; scopeComplete: boolean; warning: string | null };
+  fields: { key: string; label: string; type: string; kind: string | null; suggested: string | null; suggestionSource?: string; suggestionReason?: string; options: { value: string; label: string }[] }[] };
+export type ClaimVerification = { revision: string; readyForManualNext: boolean; scope: string;
+  fields: { key: string; label: string; value: string; optionLabel?: string; actual: string | null; status: "match" | "mismatch" | "unreadable" | "not-filled" }[];
+  attachment: { name: string; status: "verified" | "unverified" | "failed" } | null };
+export async function claimAction<T>(config: WorkerConfig, action: "preview" | "open" | "inspect" | "fill" | "close" | "forget-service-choices" | "suggest-service" | "verify", body: object): Promise<T> {
   if (action !== "close") {
     const health = await testWorker(config);
     if (!workerVersionAtLeast(health.version, "2.17.0")) {

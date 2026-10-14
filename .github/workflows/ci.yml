@@ -96,6 +96,9 @@ jobs:
       - name: Verify invoice collection and worker authorization
         run: npm run test:invoices
 
+      - name: Verify synthetic claim preparation and navigation safeguards
+        run: npm run test:claims && npm run test:claims:browser
+
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '11.0.100-rc.1.26425.128'

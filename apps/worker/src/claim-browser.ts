@@ -6,11 +6,17 @@ import type { ClaimPreparation } from "./claim-preparation.js";
 import { exactServiceOption } from "./claim-preparation.js";
 import { blueCrossComboFields, blueCrossSuggestion, blueCrossTextField } from "./bluecross-claim-form.js";
 import { blueCrossSessionMarker } from "./bluecross-collector.js";
+import { openBlueCrossClaimEntry } from "./bluecross-claim-navigation.js";
+import { savedServiceChoice, rememberServiceChoice, forgetServiceChoices, serviceChoiceScope } from "./claim-service-choices.js";
+import { codexServiceRunner, validatedServiceProposals, type ServiceRunner } from "./claim-service-suggestions.js";
+import { checkedField, uploadEvidence, type ApprovedField, type ObservedField } from "./claim-field-verification.js";
 
 export type Field = { key: string; label: string; type: string; options: { value: string; label: string }[];
-  suggested: string | null; kind: string | null };
+  suggested: string | null; kind: string | null; suggestionSource?: "confirmed-choice" | "invoice" | "codex"; suggestionReason?: string };
+type Target = { locator: Locator; field: Field; signature: string; initialValue: string; dropdown?: Locator; providers?: Locator };
+type ApprovedSnapshot = { revision: string; url: string; entries: { target: Target; approved: ApprovedField; filled: boolean }[]; attachment?: { name: string; selected: boolean } };
 type Session = { id: string; browser: Browser; page: Page; dossier: ClaimPreparation; createdAt: number;
-  fields: Map<string, { locator: Locator; field: Field; signature: string; initialValue: string; dropdown?: Locator; providers?: Locator }>; attemptedAttachments: Set<string>; busy: boolean; revision: string; inspectedUrl: string };
+  fields: Map<string, Target>; attemptedAttachments: Set<string>; busy: boolean; revision: string; inspectedUrl: string; approved?: ApprovedSnapshot };
 let session: Session | undefined;
 const allowed = (url: string, insurer: ClaimPreparation["insurer"]) => {
   const u = new URL(url);
@@ -23,12 +29,12 @@ function current(id: unknown): Session {
 }
 export async function openClaimBrowser(dossier: ClaimPreparation, historyReviewed: unknown, warningsReviewed: unknown = false,
   launch: () => Promise<Browser> = () => chromium.launch({ headless: false, channel: process.platform === "win32" ? dossier.insurer === "desjardins" ? "msedge" : "chrome" : undefined })) {
-  if (dossier.blocked) throw new Error("Resolve the recorded or possible duplicate and source conflicts before preparing a claim.");
+  if (dossier.blocked) throw new Error(dossier.coordination?.message || "Resolve the recorded or possible duplicate and source conflicts before preparing a claim.");
   if (historyReviewed !== true) throw new Error("Review the insurer's current history for this invoice before opening preparation.");
   if (dossier.reviewableWarnings.length && warningsReviewed !== true) throw new Error("Review the original PDF and confirm the shown gross expense and other-insurer payment before preparing this claim.");
   if (session && !session.page.isClosed()) {
     if (session.dossier.expenseId === dossier.expenseId && session.dossier.insurer === dossier.insurer
-      && JSON.stringify(session.dossier.fields) === JSON.stringify(dossier.fields)) return { sessionId: session.id, status: "resumed", submitAllowed: false };
+      && JSON.stringify(session.dossier.fields) === JSON.stringify(dossier.fields)) return { sessionId: session.id, status: "resumed", step: await inspectClaimStep(session.id), submitAllowed: false };
     throw new Error("A claim preparation window is already open. Close it before preparing another invoice.");
   }
   const browser = await launch();
@@ -36,7 +42,7 @@ export async function openClaimBrowser(dossier: ClaimPreparation, historyReviewe
     const context = await browser.newContext();
     // Reuse only previously authorized insurer cookies; no new credentials are saved.
     try {
-      const auth = await loadPrivate<{ cookies?: import("playwright").Cookie[]; session?: { origin: string; value: string } }>(join(dataDirectory, dossier.insurer === "blue-cross" ? "bluecross" : "desjardins", "auth-state.dpapi"));
+      const auth = await loadPrivate<{ cookies?: import("playwright").Cookie[]; session?: { origin: string; value?: string; values?: Record<string, string> } }>(join(dataDirectory, dossier.insurer === "blue-cross" ? "bluecross" : "desjardins", "auth-state.dpapi"));
       const domains = dossier.insurer === "blue-cross" ? /(?:^|\.)pac\.bluecross\.ca$/i : /(?:^|\.)(?:dsf-dfs\.com|desjardins\.com)$/i;
       if (auth.cookies) await context.addCookies(auth.cookies.filter(c => domains.test(c.domain.replace(/^\./, ""))));
       if (dossier.insurer === "blue-cross") {
@@ -44,15 +50,26 @@ export async function openClaimBrowser(dossier: ClaimPreparation, historyReviewe
         if (marker) await context.addInitScript(value => {
           if (location.origin === "https://service.pac.bluecross.ca" && !sessionStorage.getItem("pbcMemberProfileData")) sessionStorage.setItem("pbcMemberProfileData", value);
         }, marker);
+      } else if (auth.session?.origin === "https://www.agea-gbim.dsf-dfs.com" && auth.session.values
+        && Object.keys(auth.session.values).length <= 100 && JSON.stringify(auth.session.values).length <= 100_000) {
+        await context.addInitScript(values => {
+          if (location.origin !== "https://www.agea-gbim.dsf-dfs.com") return;
+          for (const [key, value] of Object.entries(values))
+            if (typeof value === "string" && !sessionStorage.getItem(key)) sessionStorage.setItem(key, value);
+        }, auth.session.values);
       }
     } catch { /* A normal visible login remains available. */ }
     const page = await context.newPage();
-    await page.goto(dossier.portalUrl, { waitUntil: "domcontentloaded" });
+    await page.goto(dossier.preparationUrl || dossier.portalUrl, { waitUntil: "domcontentloaded", timeout: 45_000 });
+    if (dossier.insurer === "blue-cross") {
+      await openBlueCrossClaimEntry(page).catch(() => {}); // Visible manual navigation remains available.
+    }
     session = { id: randomUUID(), browser, page, dossier, createdAt: Date.now(), fields: new Map(), attemptedAttachments: new Set(), busy: false, revision: "", inspectedUrl: "" };
     const timer = setTimeout(() => { if (session?.browser === browser) { session = undefined; void browser.close(); } }, 30 * 60_000);
     timer.unref();
     browser.on("disconnected", () => { clearTimeout(timer); if (session?.browser === browser) session = undefined; });
-    return { sessionId: session.id, status: "opened", submitAllowed: false };
+    const step = await inspectClaimStep(session.id);
+    return { sessionId: session.id, status: "opened", step, submitAllowed: false };
   } catch (error) { await browser.close(); throw error; }
 }
 
@@ -118,7 +135,11 @@ async function inspect(s: Session) {
   for (const locator of locators) {
     if (!await locator.isVisible() || !await locator.isEnabled()) continue;
     const metadata = await locator.evaluate((el: HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement) => ({
-      label: Array.from(el.labels || []).map(l => l.textContent?.trim()).filter(Boolean).join(" ") || el.getAttribute("aria-label") || "",
+      label: el.getAttribute("aria-label") || Array.from(el.labels || []).map(l => {
+        const copy = l.cloneNode(true) as HTMLElement;
+        copy.querySelectorAll("input,select,textarea").forEach(control => control.remove());
+        return copy.textContent?.trim();
+      }).filter(Boolean).join(" "),
       type: el instanceof HTMLSelectElement ? "select" : el instanceof HTMLTextAreaElement ? "textarea" : el.type,
       options: el instanceof HTMLSelectElement ? Array.from(el.options).filter(o => !o.disabled).map(o => ({ value: o.value, label: o.text.trim() })) : [],
       value: el.value, signature: JSON.stringify([el.tagName, el.id, el.getAttribute("name"), el.getAttribute("type"), Array.from(el.labels || []).map(l => l.textContent?.trim()), el.getAttribute("aria-label")])
@@ -146,10 +167,25 @@ async function inspect(s: Session) {
     s.fields.set(field.key, { locator, field, signature: metadata.signature, initialValue: metadata.value }); fields.push(field);
   }
   const allFields = [...s.fields.values()].map(f => f.field);
-  return { status: atReview ? "review" : allFields.length ? "fields" : "navigate", fields: allFields, revision: s.revision, submitAllowed: false };
+  let choiceWarning: string | null = null;
+  for (const field of allFields.filter(f => ["select", "combo"].includes(f.type))) {
+    try {
+      const remembered = await savedServiceChoice(s.dossier, field.kind, field.options);
+      if (remembered != null) { field.suggested = remembered; field.suggestionSource = "confirmed-choice"; }
+    } catch { choiceWarning = "Saved service choices could not be read. Review the current options; nothing was inferred from them."; }
+  }
+  for (const field of allFields.filter(f => ["service", "benefit"].includes(f.kind || ""))) {
+    field.suggestionReason = field.suggestionSource === "confirmed-choice"
+      ? "Your confirmed choice for this insurer, clinic and exact invoice service. Review it for this claim."
+      : field.suggested != null ? "Invoice service supports a unique option currently shown by the insurer. Review this suggestion."
+        : "No unique option is supported by the invoice evidence. Choose from the current portal options or request a Codex suggestion.";
+    if (field.suggested != null && !field.suggestionSource) field.suggestionSource = "invoice";
+  }
+  return { status: atReview ? "review" : allFields.length ? "fields" : "navigate", fields: allFields, revision: s.revision, submitAllowed: false,
+    serviceChoices: { available: true, scopeComplete: serviceChoiceScope(s.dossier) != null, warning: choiceWarning } };
 }
 export async function fillClaimStep(id: unknown, revision: unknown, values: unknown, attachment: unknown,
-  loadAttachment: (id: string, attachmentId: string) => Promise<{ bytes: Buffer; name: string }>) {
+  loadAttachment: (id: string, attachmentId: string) => Promise<{ bytes: Buffer; name: string }>, rememberChoices: unknown = false) {
   const s = current(id);
   if (s.busy || revision !== s.revision || !s.fields.size || s.page.url() !== s.inspectedUrl || !allowed(s.page.url(), s.dossier.insurer)) throw new Error("The portal step changed. Inspect it again before filling.");
   if (!values || typeof values !== "object" || Array.isArray(values)) throw new Error("Provide reviewed field values.");
@@ -162,6 +198,34 @@ export async function fillClaimStep(id: unknown, revision: unknown, values: unkn
       if (["select", "combo", "provider"].includes(target.field.type) && value && !target.field.options.some(o => o.value === value)) throw new Error("The selected portal option is not available.");
     }
     let filled = 0;
+    s.approved = { revision: randomUUID(), url: s.inspectedUrl, entries: entries.filter(([,value]) => !!value).map(([key,value]) => {
+      const target = s.fields.get(key)!;
+      return { target, filled: false, approved: { key, label: target.field.label, kind: target.field.kind, type: target.field.type, value: value as string,
+        optionLabel: target.field.options.find(o => o.value === value)?.label } };
+    }) };
+    if (attachment != null) {
+      const selected = s.dossier.attachments.find(a => `${a.documentId}:${a.attachmentId}` === attachment);
+      if (!selected || [...s.fields.values()].filter(t => t.field.type === "file").length !== 1) throw new Error("Select the correct supporting-document field in the portal.");
+      s.approved.attachment = { name: selected.name, selected: false };
+    }
+    let choicesSaved = 0, choiceSaveWarning = false;
+    const markFilled = (target: Target) => { const entry = s.approved!.entries.find(e => e.target === target); if (entry) entry.filled = true; };
+    const remember = async (target: Target, value: string, verified: boolean) => {
+      if (!verified) return;
+      if (rememberChoices !== true || !["select", "combo"].includes(target.field.type)) return;
+      try { if (await rememberServiceChoice(s.dossier, target.field.kind, target.field.options, value)) choicesSaved++; }
+      catch { choiceSaveWarning = true; }
+    };
+    const finish = async (message: string) => {
+      const verification = await verifySnapshot(s);
+      for (const entry of s.approved!.entries) {
+        const checked = verification.fields.find(f => f.key === entry.approved.key);
+        if (entry.filled) await remember(entry.target, entry.approved.value, checked?.status === "match");
+      }
+      return { status: "filled", filled, choicesSaved, choiceSaveWarning, verification,
+        message: message + (verification.readyForManualNext ? " All approved values were read back and match. Complete any manual fields before choosing Next yourself." : " Do not choose Next yet. Correct or re-read every unverified answer and upload.")
+          + (choiceSaveWarning ? " A service preference could not be saved; do not repeat filling just to save it." : choicesSaved ? " Your verified, confirmed service choice was saved privately for this insurer, clinic and invoice service." : ""), submitAllowed: false };
+    };
     // Fill stable text first; each dropdown can replace the form via postback.
     // Stop after one dropdown selection instead of touching stale controls.
     const order = (key: string) => s.fields.get(key)!.field.type === "combo" ? 2 : s.fields.get(key)!.field.type === "provider" ? 1 : 0;
@@ -174,7 +238,7 @@ export async function fillClaimStep(id: unknown, revision: unknown, values: unkn
         if (JSON.stringify(now) !== target.signature || s.page.url() !== s.inspectedUrl || !allowed(s.page.url(), s.dossier.insurer)) throw new Error("Provider choices changed. Read the form again.");
         const choice = s.page.locator(`[id="${value}"]`);
         if (!await choice.isVisible() || !await choice.isEnabled()) throw new Error("The selected provider is unavailable.");
-        await choice.check(); filled++;
+        await choice.check(); filled++; markFilled(target);
         continue;
       }
       // Refuse to follow postbacks/navigation with stale form locators.
@@ -188,11 +252,12 @@ export async function fillClaimStep(id: unknown, revision: unknown, values: unkn
         await target.locator.click();
         const option = target.dropdown!.getByRole("listitem").filter({ hasText: new RegExp(`^${value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`) });
         if (await option.count() !== 1 || !await option.isVisible()) throw new Error("The portal options changed. Read the form again.");
-        await option.click(); filled++;
-        return { status: "filled", filled, message: "The selected option updates the Blue Cross form. Read its fields again to prepare the remaining details.", submitAllowed: false };
+        await option.click(); filled++; markFilled(target);
+        return await finish("The selected option updates the Blue Cross form. Read its fields again to prepare the remaining details.");
       } else if (target.field.type === "select") await target.locator.selectOption(value as string);
       else { await target.locator.fill(value as string); if (target.field.kind === "serviceDate") await target.locator.press("Tab"); }
       filled++;
+      markFilled(target);
     }
     if (attachment != null) {
       if (typeof attachment !== "string") throw new Error("Choose an invoice PDF.");
@@ -200,6 +265,7 @@ export async function fillClaimStep(id: unknown, revision: unknown, values: unkn
       const targets = [...s.fields.values()].filter(f => f.field.type === "file");
       if (!selected || targets.length !== 1) throw new Error("Select the correct supporting-document field in the portal.");
       const file = await loadAttachment(selected.documentId, selected.attachmentId);
+      s.approved.attachment = { name: file.name, selected: false };
       const hash = createHash("sha256").update(file.bytes).digest("hex");
       if (s.attemptedAttachments.has(hash)) throw new Error("This PDF upload was already attempted. Check its status in Blue Cross; FamilyHub will not repeat an uncertain permanent upload.");
       const target = targets[0];
@@ -210,12 +276,81 @@ export async function fillClaimStep(id: unknown, revision: unknown, values: unkn
       if (s.page.url() !== s.inspectedUrl || !allowed(s.page.url(), s.dossier.insurer)) throw new Error("The portal changed before attaching. Read the form again.");
       s.attemptedAttachments.add(hash);
       await targets[0].locator.setInputFiles({ name: file.name, mimeType: "application/pdf", buffer: file.bytes });
+      s.approved.attachment.selected = true;
       filled++;
     }
-    return { status: "filled", filled, message: attachment != null ? "The PDF was placed in the portal's upload field. Verify the successful-upload indicator in Blue Cross before consent or submission." : "Review these fields in the insurer window, then choose Next yourself. FamilyHub never clicks Next or Submit.", submitAllowed: false };
+    return await finish(attachment != null ? "The PDF was placed in the portal's upload field; file selection alone is not proof of upload." : "Review the actual values below. FamilyHub never clicks Next or Submit.");
   } finally { s.fields.clear(); s.revision = ""; s.busy = false; }
 }
 export function claimSessionExpense(id: unknown) { return current(id).dossier; }
+async function verifySnapshot(s: Session) {
+  if (!s.approved) throw new Error("There are no filled, approved answers to verify.");
+  const validPage = s.page.url() === s.approved.url && allowed(s.page.url(), s.dossier.insurer);
+  const fields = [];
+  for (const entry of s.approved.entries) {
+    let observed: ObservedField | null = null;
+    try {
+      if (validPage && await entry.target.locator.isVisible()) {
+        if (entry.target.providers) {
+          const now = await entry.target.providers.evaluateAll((els: HTMLInputElement[]) => els.map(el => ({ id: el.id, name: el.name, label: Array.from(el.labels || []).map(l => l.textContent?.trim()).filter(Boolean).join(" "), checked: el.checked })));
+          const structure = (values: typeof now) => values.map(({checked: _checked, ...rest}) => rest);
+          const selected = now.filter(value => value.checked);
+          observed = { value: selected.length === 1 ? selected[0].id : "", selectedLabel: selected[0]?.label,
+            signatureMatches: JSON.stringify(structure(now)) === JSON.stringify(structure(JSON.parse(entry.target.signature))) };
+        } else {
+          const metadata = await entry.target.locator.evaluate((el: HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement, combo: boolean) => ({ value: el.value,
+            selectedLabel: el instanceof HTMLSelectElement ? el.selectedOptions[0]?.text.trim() : undefined,
+            signature: JSON.stringify([el.tagName, el.id, el.getAttribute("name"), el.getAttribute("type"), combo ? [] : Array.from(el.labels || []).map(l => l.textContent?.trim()), el.getAttribute("aria-label")]) }), entry.target.field.type === "combo");
+          observed = { value: metadata.value, selectedLabel: metadata.selectedLabel, signatureMatches: metadata.signature === entry.target.signature };
+        }
+      }
+    } catch { /* A missing/stale/unreadable field never gets a green check. */ }
+    fields.push(checkedField(entry.approved, observed, entry.filled));
+  }
+  let attachment: { name: string; status: "verified" | "unverified" | "failed" } | null = null;
+  if (s.approved.attachment) {
+    let status: "verified" | "unverified" | "failed" = "unverified";
+    try {
+      if (validPage && s.approved.attachment.selected) {
+        const visibleText = async (role: string) => s.page.locator(`[role="${role}"]`).evaluateAll(els => els.filter(el => el.getClientRects().length).map(el => (el.textContent || "").trim()));
+        status = uploadEvidence(s.approved.attachment.name, await visibleText("status"), await visibleText("alert"));
+      }
+    } catch { /* Selecting a file is not a successful-upload indicator. */ }
+    attachment = { name: s.approved.attachment.name, status };
+  }
+  return { revision: s.approved.revision, fields, attachment,
+    readyForManualNext: (fields.length > 0 || !!attachment) && fields.every(f => f.status === "match") && (!attachment || attachment.status === "verified"),
+    scope: "Matching against the approved answers only; this does not verify eligibility, coverage or claim submission." };
+}
+export async function verifyClaimStep(id: unknown) {
+  const s = current(id);
+  if (s.busy) throw new Error("Wait for the current preparation action to finish.");
+  s.busy = true;
+  try { return await verifySnapshot(s); } finally { s.busy = false; }
+}
+export async function suggestClaimServiceChoices(id: unknown, revision: unknown, runner: ServiceRunner = codexServiceRunner) {
+  const s = current(id);
+  if (s.busy || revision !== s.revision || s.page.url() !== s.inspectedUrl || !allowed(s.page.url(), s.dossier.insurer)) throw new Error("The portal step changed. Inspect it again.");
+  const service = s.dossier.fields.service;
+  const fields = [...s.fields.values()].map(t => t.field).filter(f => ["service", "benefit"].includes(f.kind || "") && f.suggested == null && ["select", "combo"].includes(f.type) && f.options.length <= 100);
+  if (!service || !fields.length) throw new Error("No unconfirmed service options are available to suggest.");
+  s.busy = true;
+  try {
+    // Only service evidence and service-option labels reach the existing private
+    // ephemeral Codex path. No identity, amounts, insurer answers or documents.
+    const proposals = validatedServiceProposals(await runner(service, fields.map(({key, kind, options}) => ({key, kind, options}))), service, fields);
+    if (s.page.url() !== s.inspectedUrl || revision !== s.revision) throw new Error("The portal changed during analysis. Inspect it again.");
+    for (const p of proposals) { const field = s.fields.get(p.key)!.field; field.suggested = p.value; field.suggestionReason = p.value != null ? `Unconfirmed Codex suggestion: ${p.reason}` : p.reason; if (p.value != null) field.suggestionSource = "codex"; }
+    return { status: "fields", revision: s.revision, fields: [...s.fields.values()].map(t => t.field), submitAllowed: false,
+      serviceChoices: { available: true, scopeComplete: serviceChoiceScope(s.dossier) != null, warning: null } };
+  } finally { s.busy = false; }
+}
+export async function forgetClaimServiceChoices(id: unknown) {
+  const s = current(id);
+  if (s.busy) throw new Error("Wait for the current preparation action to finish.");
+  await forgetServiceChoices(s.dossier);
+  return inspectClaimStep(id);
+}
 export async function closeClaimBrowser(id: unknown) {
   const s = current(id);
   if (s.busy) throw new Error("Wait for the current preparation action to finish.");
