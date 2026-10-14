@@ -15,9 +15,10 @@ import { loginForClaim, authenticatedClaimPages } from "./claim-login.js";
 import { automaticClaimValues } from "./claim-autofill.js";
 import { desjardinsRadioField } from "./desjardins-claim-form.js";
 import { reserveClaimUpload } from "./claim-upload-guard.js";
+import { confirmedInvoiceIllness } from "./claim-invoice-answers.js";
 
 export type Field = { key: string; label: string; type: string; options: { value: string; label: string }[];
-  suggested: string | null; kind: string | null; suggestionSource?: "confirmed-choice" | "invoice" | "codex"; suggestionReason?: string; autoAttachment?: boolean };
+  suggested: string | null; kind: string | null; suggestionSource?: "confirmed-choice" | "confirmed-answer" | "invoice" | "codex"; suggestionReason?: string; autoAttachment?: boolean };
 type Target = { locator: Locator; field: Field; signature: string; initialValue: string; dropdown?: Locator; providers?: Locator };
 type ApprovedSnapshot = { revision: string; url: string; entries: { target: Target; approved: ApprovedField; filled: boolean }[]; attachment?: { name: string; selected: boolean } };
 type Session = { id: string; browser: Browser; page: Page; dossier: ClaimPreparation; createdAt: number;
@@ -217,6 +218,18 @@ async function inspect(s: Session) {
     s.fields.set(field.key, { locator, field, signature: metadata.signature, initialValue: metadata.value }); fields.push(field);
   }
   const allFields = [...s.fields.values()].map(f => f.field);
+  let confirmedIllness: Awaited<ReturnType<typeof confirmedInvoiceIllness>> | undefined;
+  let answerWarning: string | undefined;
+  try {
+    confirmedIllness = await confirmedInvoiceIllness(s.dossier);
+    const illnessFields = allFields.filter(f => f.kind === "natureOfIllness" && ["text", "textarea"].includes(f.type));
+    for (const field of illnessFields.length === 1 ? illnessFields : []) {
+      if (confirmedIllness.value) {
+        field.suggested = confirmedIllness.value; field.suggestionSource = "confirmed-answer";
+        field.suggestionReason = "Your explicit answer for this exact invoice and insurer. It is not an inferred diagnosis.";
+      }
+    }
+  } catch { answerWarning = "Saved invoice answers could not be read. Enter the answer yourself; nothing was inferred."; }
   let choiceWarning: string | null = null;
   for (const field of allFields.filter(f => ["select", "combo"].includes(f.type))) {
     try {
@@ -231,7 +244,7 @@ async function inspect(s: Session) {
         : "No unique option is supported by the invoice evidence. Choose from the current portal options or request a Codex suggestion.";
     if (field.suggested != null && !field.suggestionSource) field.suggestionSource = "invoice";
   }
-  return { status: atReview ? "review" : allFields.length ? "fields" : "navigate", fields: allFields, revision: s.revision, submitAllowed: false,
+  return { status: atReview ? "review" : allFields.length ? "fields" : "navigate", fields: allFields, revision: s.revision, submitAllowed: false, confirmedIllness, answerWarning,
     serviceChoices: { available: true, scopeComplete: serviceChoiceScope(s.dossier) != null, warning: choiceWarning } };
 }
 export async function fillClaimStep(id: unknown, revision: unknown, values: unknown, attachment: unknown,

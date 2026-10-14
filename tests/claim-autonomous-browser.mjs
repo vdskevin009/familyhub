@@ -7,6 +7,7 @@ import { join } from 'node:path';
 const directory=await mkdtemp(join(tmpdir(),'familyhub-auto-claim-'));process.env.FAMILYHUB_WORKER_DATA=directory;
 const {openClaimBrowser,prepareCurrentClaimStep,verifyClaimStep,closeClaimBrowser}=await import('../apps/worker/dist/claim-browser.js');
 const {acquirePortalLock}=await import('../apps/worker/dist/portal-login.js');
+const {confirmedInvoiceIllness,confirmInvoiceIllness}=await import('../apps/worker/dist/claim-invoice-answers.js');
 const dossier={expenseId:'synthetic',insurer:'blue-cross',portalUrl:'https://service.pac.bluecross.ca/ACESWeb/Pages/Claims/eClaim.aspx',blocked:false,reviewableWarnings:[],fields:{patient:null,provider:'Synthetic Clinic',service:'Physiotherapy',originalAmount:100,otherInsurance:'Yes',otherInsurancePaid:0},attachments:[{documentId:'synthetic',attachmentId:'pdf',name:'synthetic.pdf'}]};
 let page,session,uploads=0,contacts=0;
 const launch=async()=>{
@@ -39,6 +40,12 @@ try{
  assert.equal(result.step.fields.some(f=>f.kind==='natureOfIllness'),true);
  assert.ok(freshChecks>=3);assert.equal(uploads,1);
  await prepare();assert.equal(uploads,1,'Resuming must not repeat a selected PDF');
+ const answer=await confirmedInvoiceIllness(dossier);
+ await confirmInvoiceIllness(dossier,{confirmed:true,expectedScope:answer.scope,expectedRevision:answer.revision,value:'Owner-described symptom'});
+ const withAnswer=await prepare();
+ assert.equal(await page.locator('#form_txtIllness').inputValue(),'Owner-described symptom');
+ assert.equal(withAnswer.verification.fields.find(f=>f.kind==='natureOfIllness').status,'match');
+ assert.equal(uploads,1,'Saving an answer cannot replay the PDF');
  await page.locator('#form_txtOtherPlanAmt').fill('80.00');
  assert.equal((await verifyClaimStep(session)).readyForManualNext,false);
  assert.equal((await prepare()).verification.fields.find(f=>f.kind==='otherInsurancePaid').status,'mismatch');

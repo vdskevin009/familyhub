@@ -13,12 +13,14 @@ export default function PrepareClaim({ expenseId, initialInsurer, config, onClos
   const [attachment, setAttachment] = useState("");
   const [reviewed, setReviewed] = useState(false), [validated, setValidated] = useState(false);
   const [rememberServiceChoices, setRememberServiceChoices] = useState(false);
+  const [illness, setIllness] = useState(""), [illnessConfirmed, setIllnessConfirmed] = useState(false);
   const [ownerAmount, setOwnerAmount] = useState(""), [ownerReason, setOwnerReason] = useState(""), [ownerReviewed, setOwnerReviewed] = useState(false);
   const [busy, setBusy] = useState(true), [error, setError] = useState(""), [message, setMessage] = useState("");
   const opening = useRef<{ key: string; promise: Promise<PreparedClaim> } | undefined>(undefined);
   function accept(result: PreparedClaim) {
     setDossier(result.preparation); setSessionId(result.sessionId || ""); setStep(result.step); setVerification(result.verification);
     setValues({}); setAttachment(""); setReviewed(false); setValidated(false); setMessage(result.warning || "");
+    setIllness(result.step.confirmedIllness?.value || ""); setIllnessConfirmed(false);
     setOwnerAmount(result.preparation.coordination?.ownerConfirmation ? String(result.preparation.coordination.ownerConfirmation.amount) : "");
     setOwnerReason(result.preparation.coordination?.ownerConfirmation?.reason || ""); setOwnerReviewed(false);
   }
@@ -83,6 +85,22 @@ export default function PrepareClaim({ expenseId, initialInsurer, config, onClos
           {step?.status === "inspect-required" && <Notice error>The portal changed during preparation. Re-read it before continuing.</Notice>}
           {step?.status === "review" && <Notice>Final review reached. FamilyHub stops here. Only you may accept the attestation and submit.</Notice>}
           {step?.status === "complete" && <Notice>The portal reports completion. FamilyHub did not submit this claim.</Notice>}
+          {step?.answerWarning && <Notice error>{step.answerWarning}</Notice>}
+          {step?.confirmedIllness && !["review", "complete"].includes(step.status) && <details>
+            <summary>Illness or injury for this invoice</summary>
+            <label>Your answer<input value={illness} maxLength={500} onChange={e => { setIllness(e.target.value); setIllnessConfirmed(false); }} /></label>
+            <p>Saved privately for this exact invoice and insurer. It will not be reused for another invoice or overwrite an answer already entered in the portal.</p>
+            <label className="prepare-check"><input type="checkbox" checked={illnessConfirmed} onChange={e => setIllnessConfirmed(e.target.checked)} />I confirm this is my answer for this invoice and want it reused during preparation.</label>
+            <button type="button" className="button secondary" disabled={busy || !illnessConfirmed || !illness.trim()} onClick={() => void run(async () => {
+              await claimAction(config, "invoice-answer", { expenseId, insurer, action: "save", value: illness, confirmed: true, expectedScope: step.confirmedIllness!.scope, expectedRevision: step.confirmedIllness!.revision });
+              accept(await claimAction<PreparedClaim>(config, "resume", { sessionId, prepareAuthorized: true }));
+            })}>Save for this invoice and prepare</button>
+            {step.confirmedIllness.value && <button type="button" className="text-action" disabled={busy} onClick={() => void run(async () => {
+              await claimAction(config, "invoice-answer", { expenseId, insurer, action: "remove", confirmed: true, expectedScope: step.confirmedIllness!.scope, expectedRevision: step.confirmedIllness!.revision });
+              const fresh = await claimAction<ClaimStep>(config, "inspect", { sessionId }); setStep(fresh); setIllness(""); setIllnessConfirmed(false); setVerification(undefined);
+              setMessage("Saved answer cleared. The current portal value was left unchanged.");
+            })}>Clear saved invoice answer</button>}
+          </details>}
           {step?.serviceChoices?.scopeComplete && <button type="button" className="text-action" disabled={busy} onClick={() => void run(async () => {
             setStep(await claimAction<ClaimStep>(config, "forget-service-choices", { sessionId })); setVerification(undefined); setMessage("Saved service choices cleared. Existing portal values remain unchanged.");
           })}>Reset saved service choices for this service</button>}
