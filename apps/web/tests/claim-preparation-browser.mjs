@@ -15,7 +15,7 @@ const server=createServer(async(req,res)=>{
 });
 server.listen(0,'127.0.0.1');await once(server,'listening');
 const base=`http://127.0.0.1:${server.address().port}/familyhub/`;
-const expense={Id:'synthetic-expense',Category:0,DocumentRole:'expense',Member:'Kevin',ServiceDate:'2026-09-01',ReceivedAt:'2026-09-01T12:00:00Z',BilledAmount:100,Provider:'Sample Clinic',AccountEmail:'test@example.test',SourceMessageId:'synthetic-email',Attachments:[],Healthcare:{ServiceType:'Physiotherapy'},WorkerManaged:true,Status:0,Sender:'test@example.test',Subject:'Synthetic receipt',Reasons:[],Currency:'CAD'};
+const expense={Id:'synthetic-expense',Category:0,DocumentRole:'expense',Member:'Kevin',ServiceDate:'2026-09-01',ReceivedAt:'2026-09-01T12:00:00Z',BilledAmount:100,Provider:'Sample Clinic',AccountEmail:'test@example.test',SourceMessageId:'synthetic-email',Attachments:[],Healthcare:{ServiceType:'Physiotherapy',InvoiceNumber:'SYN-001'},WorkerManaged:true,Status:0,Sender:'test@example.test',Subject:'Synthetic receipt',Reasons:[],Currency:'CAD'};
 const entry={Id:'synthetic-case',DocumentIds:[expense.Id],ExpenseDocumentId:expense.Id,Member:'Kevin',ServiceDate:expense.ServiceDate,OriginalAmount:100,WorkflowStatus:'open',AutomaticWorkflowStatus:'open',MatchAssignments:[],Provider:expense.Provider,ServiceType:'Physiotherapy',PrimaryInsurer:'Desjardins',SecondaryInsurer:'Blue Cross',PrimaryReimbursedAmount:null,SecondaryReimbursedAmount:null,DesjardinsReimbursedAmount:null,BlueCrossReimbursedAmount:null,ReimbursedAmount:0,PotentialRemaining:100,Currency:'CAD',Status:'waiting-primary',Action:'submit-primary',NextInsurer:'Desjardins',Evidence:{},Reasons:[]};
 let browser;
 try{
@@ -36,6 +36,12 @@ try{
    if(req.method()==='POST')posts.push({path,body:req.postDataJSON()});
    if(path==='/health')return reply({status:'ok',version:'2.25.3'});
    if(path==='/invoices')return reply({items:[expense],reconciliations:[c],unmatchedReimbursements:[],accounts:[]});
+   if(path==='/claim-preparation/confirm-adjudication'){
+    const body=req.postDataJSON();assert.equal(body.confirmed,true);assert.equal(body.expectedInvoiceNumber,'SYN-001');assert.equal(body.expectedServiceDate,'2026-09-01');assert.equal(body.insurer,'desjardins');
+    c.DesjardinsReimbursedAmount=body.remove?null:body.amount;c.OwnerAdjudicationRevisions={desjardins:body.remove?2:1};
+    c.OwnerAdjudications=body.remove?[]:[{insurer:'desjardins',amount:body.amount,reason:body.reason,at:'2026-09-02T12:00:00Z',revision:1,provenance:'owner-confirmed'}];
+    return reply({saved:true,changed:true,preparation:prepareClaim(expense.Id,'blue-cross',[expense],[c])});
+   }
    if(path==='/claim-preparation/preview'){const p=prepareClaim(expense.Id,req.postDataJSON().insurer,[expense],[c]);if(scenario==='upload-failed')p.attachments=[{documentId:expense.Id,attachmentId:'pdf',name:'synthetic.pdf'}];return reply(p)}
    if(path==='/claim-preparation/open')return reply({sessionId:'synthetic-session',step});
    if(path==='/claim-preparation/inspect'||path==='/claim-preparation/forget-service-choices')return reply(step);
@@ -49,9 +55,20 @@ try{
   if(!ready){
    await dialog.getByRole('combobox').first().selectOption('blue-cross');
    await page.getByRole('dialog',{name:'Prepare Blue Cross claim',exact:true}).waitFor();
-   await page.getByText(/Its confirmed response\/payment is missing/).waitFor();
-   assert.equal(await page.getByRole('button',{name:'Open preparation window on PC',exact:true}).isDisabled(),true);
+   await page.getByText(/response\/payment is not recorded.*open preparation/).waitFor();
+   const panel=page.getByRole('dialog',{name:'Prepare Blue Cross claim',exact:true});
+   await panel.getByLabel(/I checked the current insurer history/).check();
+   assert.equal(await page.getByRole('button',{name:'Open preparation window on PC',exact:true}).isDisabled(),false);
    assert.equal(posts.filter(p=>p.path.endsWith('/open')).length,0);
+   await panel.getByText('Review / correct your other-insurer response',{exact:true}).click();
+   await panel.getByLabel('Amount paid by first insurer (CAD)',{exact:true}).fill('0');await panel.getByLabel('Reason for the confirmed response',{exact:true}).fill('Limit exhausted');
+   assert.equal(await panel.getByRole('button',{name:'Save owner-confirmed response',exact:true}).isDisabled(),true);
+   await panel.getByLabel(/I received this adjudication for this exact invoice/).check();await panel.getByRole('button',{name:'Save owner-confirmed response',exact:true}).click();
+   await panel.getByText(/Your adjudication confirmation was saved privately/).waitFor();await panel.getByText(/Owner-confirmed Desjardins: 0.00 CAD/).waitFor();
+   assert.equal(await panel.getByRole('button',{name:'Open preparation window on PC',exact:true}).isDisabled(),false);
+   await panel.getByRole('button',{name:'Clear owner-confirmed response',exact:true}).click();await panel.getByRole('button',{name:'Clear owner-confirmed response',exact:true}).waitFor({state:'hidden'});
+   assert.equal(await panel.getByLabel('Amount paid by first insurer (CAD)',{exact:true}).inputValue(),'');assert.equal(await panel.getByRole('button',{name:'Open preparation window on PC',exact:true}).isDisabled(),false);
+   assert.equal(posts.filter(p=>p.path.endsWith('/confirm-adjudication')).length,2);
   }else{
    await dialog.getByLabel(/I checked the current insurer history/).check();
    await dialog.getByRole('button',{name:'Open preparation window on PC',exact:true}).click();
@@ -85,5 +102,5 @@ try{
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false,scenario+' mobile overflow');
   assert.deepEqual(errors,[]);await page.screenshot({path:join(output,`claim-preparation-${scenario}.png`),fullPage:true});await context.close();
  }
- console.log(JSON.stringify({passed:6,scenarios:['primary-block','confirmed-zero-review','partial-mismatch-readback-correction-reset','failed-upload-no-readiness','manual-login','manual-navigation'],providerContact:false,submission:false,screenshots:output}));
+ console.log(JSON.stringify({passed:6,scenarios:['primary-warning-and-owner-zero-save-clear','confirmed-zero-review','partial-mismatch-readback-correction-reset','failed-upload-no-readiness','manual-login','manual-navigation'],providerContact:false,submission:false,screenshots:output}));
 }finally{await browser?.close();server.close();}

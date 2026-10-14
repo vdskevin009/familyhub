@@ -33,7 +33,8 @@ export const bulkDocumentWorkerVersion = "2.11.0";
 export type ClaimPreparation = {
   expenseId: string; insurer: "blue-cross" | "desjardins"; portalUrl: string; blocked: boolean; submitAllowed: false;
   preparationUrl?: string;
-  coordination?: { required: boolean; ready: boolean; primaryInsurer: string | null; message: string | null };
+  coordination?: { required: boolean; ready: boolean; primaryInsurer: string | null; message: string | null; importedStatementAvailable?: boolean; ownerConfirmationRevision?: number;
+    ownerConfirmation?: { insurer: "desjardins" | "blue-cross"; amount: number; reason: string; at: string; revision: number; provenance: "owner-confirmed" } | null };
   fields: { patient: string | null; provider: string | null; practitioner: string | null; serviceDate: string | null; originalAmount: number | null; service: string | null; invoiceNumber: string | null; otherInsurance?: string | null; otherInsurancePaid?: number | null };
   otherInsurer?: string; currency?: string | null; reviewableWarnings?: string[];
   missing: string[]; conflicts: string[];
@@ -47,7 +48,7 @@ export type ClaimStep = { status: string; revision: string; submitAllowed: false
 export type ClaimVerification = { revision: string; readyForManualNext: boolean; scope: string;
   fields: { key: string; label: string; value: string; optionLabel?: string; actual: string | null; status: "match" | "mismatch" | "unreadable" | "not-filled" }[];
   attachment: { name: string; status: "verified" | "unverified" | "failed" } | null };
-export async function claimAction<T>(config: WorkerConfig, action: "preview" | "open" | "inspect" | "fill" | "close" | "forget-service-choices" | "suggest-service" | "verify", body: object): Promise<T> {
+export async function claimAction<T>(config: WorkerConfig, action: "preview" | "open" | "inspect" | "fill" | "close" | "forget-service-choices" | "suggest-service" | "verify" | "confirm-adjudication", body: object): Promise<T> {
   if (action !== "close") {
     const health = await testWorker(config);
     if (!workerVersionAtLeast(health.version, "2.17.0")) {

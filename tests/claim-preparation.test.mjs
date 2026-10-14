@@ -61,15 +61,15 @@ test('other-insurer money preserves zero and unknown and does not sum duplicated
  assert.equal(prepareClaim('expense','blue-cross',[receipt],[{...entry,DesjardinsReimbursedAmount:70}]).blocked,true);
 });
 
-test('secondary preparation waits for a confirmed primary response; zero is valid and unknown stays unknown', () => {
+test('secondary preparation warns about missing evidence; zero is valid and unknown stays unknown', () => {
  const secondary={...entry,PrimaryInsurer:'Desjardins',SecondaryInsurer:'Blue Cross',DesjardinsReimbursedAmount:null};
  const missing=prepareClaim('expense','blue-cross',[expense],[secondary]);
- assert.equal(missing.blocked,true);assert.equal(missing.coordination.required,true);assert.equal(missing.coordination.ready,false);
- assert.match(missing.coordination.message,/Desjardins.*confirmed response\/payment.*missing/);assert.ok(missing.conflicts.includes(missing.coordination.message));
+ assert.equal(missing.blocked,false);assert.equal(missing.coordination.required,true);assert.equal(missing.coordination.ready,false);
+ assert.match(missing.coordination.message,/response\/payment is not recorded.*open preparation/);assert.equal(missing.conflicts.includes(missing.coordination.message),false);
  assert.equal(missing.fields.otherInsurancePaid,null);assert.equal(missing.fields.otherInsurance,null);
  assert.equal(prepareClaim('expense','desjardins',[expense],[secondary]).coordination.required,false);
  for(const paid of [0,80]){const ready=prepareClaim('expense','blue-cross',[expense],[{...secondary,DesjardinsReimbursedAmount:paid}]);assert.equal(ready.blocked,false);assert.equal(ready.coordination.ready,true);assert.equal(ready.fields.otherInsurancePaid,paid);assert.equal(ready.fields.otherInsurance,'Yes')}
- const unresolved=prepareClaim('expense','blue-cross',[expense],[{...secondary,DesjardinsReimbursedAmount:80,HasUnresolvedReimbursementEvidence:true}]);assert.equal(unresolved.blocked,true);
+ const unresolved=prepareClaim('expense','blue-cross',[expense],[{...secondary,DesjardinsReimbursedAmount:80,HasUnresolvedReimbursementEvidence:true}]);assert.equal(unresolved.fields.otherInsurancePaid,null);assert.equal(unresolved.coordination.ready,false);
 });
 
 test('Blue Cross preparation starts at the trusted member entry, without a legacy deep link',()=>{

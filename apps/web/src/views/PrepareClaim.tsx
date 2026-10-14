@@ -16,11 +16,12 @@ export default function PrepareClaim({ expenseId, initialInsurer = "blue-cross",
   const [attachment, setAttachment] = useState("");
   const [answersReviewed, setAnswersReviewed] = useState(false), [rememberServiceChoices, setRememberServiceChoices] = useState(true);
   const [verification, setVerification] = useState<ClaimVerification>();
+  const [ownerAmount, setOwnerAmount] = useState(""), [ownerReason, setOwnerReason] = useState(""), [ownerReviewed, setOwnerReviewed] = useState(false);
   const [busy, setBusy] = useState(false), [error, setError] = useState(""), [message, setMessage] = useState("");
   useEffect(() => {
     let active = true;
     setDossier(undefined); setReviewed(false); setWarningsReviewed(false); setStep(undefined); setError(""); setBusy(true);
-    claimAction<ClaimPreparation>(config, "preview", { expenseId, insurer }).then(value => { if (active) setDossier(value); })
+    claimAction<ClaimPreparation>(config, "preview", { expenseId, insurer }).then(value => { if (active) { setDossier(value); setOwnerAmount(value.coordination?.ownerConfirmation ? String(value.coordination.ownerConfirmation.amount) : ""); setOwnerReason(value.coordination?.ownerConfirmation?.reason || ""); setOwnerReviewed(false); } })
       .catch(e => { if (active) setError(e instanceof Error ? e.message : "Preparation failed."); })
       .finally(() => { if (active) setBusy(false); });
     return () => { active = false; };
@@ -40,7 +41,23 @@ export default function PrepareClaim({ expenseId, initialInsurer = "blue-cross",
       {error && <Notice error>{error}</Notice>}{message && <Notice>{message}</Notice>}
       {busy && <p role="status">Checking…</p>}
       {dossier && <>
-        {dossier.coordination?.message && <Notice error>{dossier.coordination.message}</Notice>}
+        {dossier.coordination?.message && <p role="note" className="privacy-note">Warning: {dossier.coordination.message}</p>}
+        {!sessionId && dossier.coordination?.required && <details><summary>Review / correct your other-insurer response</summary>
+          {dossier.coordination.ownerConfirmation && <p>Owner-confirmed {dossier.coordination.primaryInsurer}: {dossier.coordination.ownerConfirmation.amount.toFixed(2)} {dossier.currency}. Reason: {dossier.coordination.ownerConfirmation.reason}. This is your statement, not an insurer-imported record.</p>}
+          <label>Amount paid by first insurer (CAD)<input inputMode="decimal" value={ownerAmount} onChange={e => { setOwnerAmount(e.target.value); setOwnerReviewed(false); }} placeholder="Leave unknown blank; enter 0 only if confirmed" /></label>
+          <label>Reason for the confirmed response<input value={ownerReason} onChange={e => { setOwnerReason(e.target.value); setOwnerReviewed(false); }} maxLength={500} /></label>
+          <label className="prepare-check"><input type="checkbox" checked={ownerReviewed} onChange={e => setOwnerReviewed(e.target.checked)} />I received this adjudication for this exact invoice and confirm the stated amount and reason.</label>
+          <button type="button" className="button secondary" disabled={busy || !ownerReviewed || !/^\d+(?:\.\d{1,2})?$/.test(ownerAmount) || !ownerReason.trim() || !dossier.fields.invoiceNumber || !dossier.fields.serviceDate || dossier.fields.originalAmount == null} onClick={() => void run(async () => {
+            const result = await claimAction<{ preparation: ClaimPreparation }>(config, "confirm-adjudication", { expenseId, insurer: dossier.otherInsurer, amount: Number(ownerAmount), reason: ownerReason.trim(), confirmed: true,
+              expectedInvoiceNumber: dossier.fields.invoiceNumber, expectedServiceDate: dossier.fields.serviceDate, expectedAmount: dossier.fields.originalAmount, expectedRevision: dossier.coordination?.ownerConfirmationRevision ?? 0 });
+            setDossier(result.preparation); setOwnerReviewed(false); setMessage("Your adjudication confirmation was saved privately. No insurer statement was created and no claim was submitted.");
+          })}>Save owner-confirmed response</button>
+          {dossier.coordination.ownerConfirmation && <button type="button" className="text-action" disabled={busy} onClick={() => void run(async () => {
+            const result = await claimAction<{ preparation: ClaimPreparation }>(config, "confirm-adjudication", { expenseId, insurer: dossier.otherInsurer, remove: true, reason: "Owner cleared the confirmation", confirmed: true,
+              expectedInvoiceNumber: dossier.fields.invoiceNumber, expectedServiceDate: dossier.fields.serviceDate, expectedAmount: dossier.fields.originalAmount, expectedRevision: dossier.coordination?.ownerConfirmationRevision });
+            setDossier(result.preparation); setOwnerAmount(""); setOwnerReason(""); setOwnerReviewed(false);
+          })}>Clear owner-confirmed response</button>}
+        </details>}
         <dl className="claim-preparation-facts">{Object.entries(dossier.fields).map(([key, value]) => <div key={key}><dt>{({ patient: "Patient", provider: "Clinic / provider", practitioner: "Practitioner", serviceDate: "Service date", originalAmount: "Original expense", service: "Invoice service", invoiceNumber: "Invoice number", otherInsurance: "Submitted to other insurer", otherInsurancePaid: `Paid by ${dossier.otherInsurer === "desjardins" ? "Desjardins" : "Blue Cross"}` } as Record<string, string>)[key]}</dt><dd>{value == null ? "To confirm" : typeof value === "number" ? `${value.toFixed(2)} ${dossier.currency || "(currency to confirm)"}` : String(value)}</dd></div>)}</dl>
         <section aria-label="Original receipts"><strong>Original receipt</strong>{dossier.attachments.length ? dossier.attachments.map((a, i) => <div key={`${a.documentId}:${a.attachmentId}`}><span>{a.name}{dossier.attachments.filter(b => b.name === a.name).length > 1 ? ` · source ${i + 1}` : ""}</span><div><button type="button" className="text-action" disabled={busy} onClick={() => void run(() => viewWorkerAttachment(config, receiptSource(a), 0))}>Review PDF</button><button type="button" className="text-action" disabled={busy} onClick={() => void run(() => downloadWorkerAttachment(config, receiptSource(a), 0))}>Download receipt</button></div></div>) : <p>No original PDF is indexed. Find the original receipt before uploading documents.</p>}</section>
         <Notice error={dossier.duplicate.status !== "not-verified"}>{dossier.duplicate.status === "recorded" ? "This insurer has already processed or recorded this expense. Review the existing claim instead of submitting it again." : dossier.duplicate.status === "possible" ? "A same-day insurer record may be this expense. Resolve that possible duplicate first." : "No duplicate was identified in saved records. Check the insurer's current history, including pending claims, before continuing."}</Notice>
