@@ -41,8 +41,13 @@ export type ClaimPreparation = {
   sourceEmails: { account: string; messageId: string }[];
   duplicate: { status: string; scope: string; checkedAt: string; records: { id: string; reference: string | null; service: string | null; status: string }[] };
 };
-export type ClaimStep = { status: string; revision: string; submitAllowed: false; fields: { key: string; label: string; type: string; kind: string | null; suggested: string | null; options: { value: string; label: string }[] }[] };
-export async function claimAction<T>(config: WorkerConfig, action: "preview" | "open" | "inspect" | "fill" | "close", body: object): Promise<T> {
+export type ClaimStep = { status: string; revision: string; submitAllowed: false;
+  serviceChoices?: { available: boolean; scopeComplete: boolean; warning: string | null };
+  fields: { key: string; label: string; type: string; kind: string | null; suggested: string | null; suggestionSource?: string; suggestionReason?: string; options: { value: string; label: string }[] }[] };
+export type ClaimVerification = { revision: string; readyForManualNext: boolean; scope: string;
+  fields: { key: string; label: string; value: string; optionLabel?: string; actual: string | null; status: "match" | "mismatch" | "unreadable" | "not-filled" }[];
+  attachment: { name: string; status: "verified" | "unverified" | "failed" } | null };
+export async function claimAction<T>(config: WorkerConfig, action: "preview" | "open" | "inspect" | "fill" | "close" | "forget-service-choices" | "suggest-service" | "verify", body: object): Promise<T> {
   if (action !== "close") {
     const health = await testWorker(config);
     if (!workerVersionAtLeast(health.version, "2.17.0")) {

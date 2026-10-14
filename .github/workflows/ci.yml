@@ -97,7 +97,7 @@ jobs:
         run: npm run test:invoices
 
       - name: Verify synthetic claim preparation and navigation safeguards
-        run: npm run test:claims:browser
+        run: npm run test:claims && npm run test:claims:browser
 
       - uses: actions/setup-dotnet@v4
         with:

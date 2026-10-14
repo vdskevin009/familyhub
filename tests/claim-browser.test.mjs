@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 const directory = await mkdtemp(join(tmpdir(),'familyhub-claim-test-'));
 process.env.FAMILYHUB_WORKER_DATA = directory;
-const { openClaimBrowser, inspectClaimStep, fillClaimStep, closeClaimBrowser } = await import('../apps/worker/dist/claim-browser.js');
+const { openClaimBrowser, inspectClaimStep, fillClaimStep, closeClaimBrowser, verifyClaimStep } = await import('../apps/worker/dist/claim-browser.js');
 test.after(() => rm(directory,{recursive:true,force:true}));
 const dossier = { expenseId:'invoice',insurer:'blue-cross',portalUrl:'https://service.pac.bluecross.ca/member/',blocked:false,reviewableWarnings:[],
  fields:{patient:'Kevin',provider:'Sample Clinic',practitioner:'Sample Therapist',serviceDate:'2026-09-01',originalAmount:100,service:'Physiotherapy - 30 Min Follow Up Visit (30 minutes)',invoiceNumber:'INV-test',otherInsurance:'Yes',otherInsurancePaid:80},
@@ -16,9 +16,9 @@ function fixture({body='Claim Details',fields=[],providers=[]}={}) {
  for(const f of fields) { f.type ||= 'text';f.value ||= '';f.open=false; }
  function field(f) { return {count:async()=>f?1:0,isVisible:async()=>!!f,isEnabled:async()=>true,
    getAttribute:async key=>key==='id'?f.id:null,
-   evaluate:async()=>({id:f.id,value:f.value,label:f.label||'',type:f.type,options:f.options||[],signature:signature(f)}),
+   evaluate:async()=>{if(f.unreadable)throw Error('unreadable');return {id:f.id,value:f.value,label:f.label||'',type:f.type,options:f.options||[],signature:f.stale?'changed':signature(f)}},
    click:async()=>{calls.push(['open-menu',f.id]);f.open=true;},press:async key=>{if(key==='Escape')f.open=false;calls.push(['key',f.id,key]);},
-   fill:async value=>{calls.push(['fill',f.id,value]);f.value=value;},
+   fill:async value=>{calls.push(['fill',f.id,value]);f.value=f.forcedValue??value;},
    check:async()=>{calls.push(['provider',f.id]);providers.forEach(p=>p.checked=p.id===f.id);},
    setInputFiles:async file=>{calls.push(['file',file.name]);f.value=file.name;} }; }
  function list(values) { return {all:async()=>values.map(field),filter(){return this;},evaluateAll:async()=>providers,
@@ -103,4 +103,14 @@ test('review screen allows only a selected original PDF; consent and claim value
 test('processed confirmation has no writable fields or upload action',async()=>{
  const f=fixture({body:'Your claim has been processed.',fields:[{id:'upload',type:'file'}]});const id=await opened(f);
  try {const step=await inspectClaimStep(id);assert.equal(step.status,'complete');assert.deepEqual(step.fields,[]);assert.equal(step.submitAllowed,false);}finally{await closeClaimBrowser(id);}
+});
+
+test('read-back reports each mismatch and unreadable field; a changed page invalidates prior matches',async()=>{
+ const f=fixture({fields:[{id:'form_txtAmount',label:'Total amount of expense'},{id:'form_txtOtherPlanAmt',label:'Other insurance amount',forcedValue:'80.00'}]});const id=await opened(f);
+ try{const step=await inspectClaimStep(id);const values=Object.fromEntries(step.fields.map(x=>[x.key,x.suggested]));const result=await fillClaimStep(id,step.revision,values,null,async()=>{});
+  assert.equal(result.verification.fields.find(x=>x.kind==='originalAmount').status,'match');assert.equal(result.verification.fields.find(x=>x.kind==='otherInsurancePaid').status,'match');
+  f.fields[1].value='64.00';const mismatch=await verifyClaimStep(id);assert.equal(mismatch.readyForManualNext,false);assert.equal(mismatch.fields[1].status,'mismatch');
+  f.fields[0].unreadable=true;assert.equal((await verifyClaimStep(id)).fields[0].status,'unreadable');f.fields[0].unreadable=false;f.fields[0].stale=true;assert.equal((await verifyClaimStep(id)).fields[0].status,'unreadable');
+  f.setUrl('https://unexpected.test/');assert.equal((await verifyClaimStep(id)).fields.every(x=>x.status==='unreadable'),true);
+ }finally{await closeClaimBrowser(id)}
 });

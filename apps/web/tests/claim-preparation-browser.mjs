@@ -20,9 +20,13 @@ const entry={Id:'synthetic-case',DocumentIds:[expense.Id],ExpenseDocumentId:expe
 let browser;
 try{
  browser=await chromium.launch({headless:true,channel:process.platform==='win32'?'msedge':undefined});
- for(const scenario of ['missing-primary','zero-primary','login-required','navigate']){
+ for(const scenario of ['missing-primary','zero-primary','partial-mismatch','upload-failed','login-required','navigate']){
   const context=await browser.newContext({viewport:{width:390,height:900},serviceWorkers:'block'}),page=await context.newPage(),errors=[],posts=[];
-  const ready=scenario!=='missing-primary', c={...entry,NextInsurer:ready?'Blue Cross':'Desjardins',DesjardinsReimbursedAmount:ready?0:null,Status:ready?'waiting-secondary':'waiting-primary',Action:ready?'submit-secondary':'submit-primary'};
+  const ready=scenario!=='missing-primary', paid=scenario==='partial-mismatch'?'64.00':'0.00', c={...entry,NextInsurer:ready?'Blue Cross':'Desjardins',DesjardinsReimbursedAmount:ready?Number(paid):null,Status:ready?'waiting-secondary':'waiting-primary',Action:ready?'submit-secondary':'submit-primary'};
+  const formScenarios=['zero-primary','partial-mismatch','upload-failed'];
+  const formFields=[{key:'amount',label:'Total amount of expense',type:'text',kind:'originalAmount',options:[],suggested:'100.00'},{key:'paid',label:'Amount paid by another insurance plan',type:'text',kind:'otherInsurancePaid',options:[],suggested:paid},{key:'service',label:'Type of expense',type:'select',kind:'service',options:[{value:'follow',label:'Physiotherapy follow-up'},{value:'initial',label:'Initial assessment'}],suggested:'follow',suggestionSource:'confirmed-choice',suggestionReason:'Your confirmed choice for this insurer, clinic and exact invoice service. Review it for this claim.'},{key:'unknown',label:'Unknown clinical detail',type:'text',kind:null,options:[],suggested:null},...(scenario==='upload-failed'?[{key:'file',label:'Invoice PDF',type:'file',kind:null,options:[],suggested:null}]:[])];
+  const step={status:formScenarios.includes(scenario)?'fields':scenario,revision:'synthetic-revision',submitAllowed:false,fields:formScenarios.includes(scenario)?formFields:[],serviceChoices:{available:true,scopeComplete:true,warning:null}};
+  const verification=corrected=>({revision:'approved',readyForManualNext:scenario!=='upload-failed'&&(scenario!=='partial-mismatch'||corrected),scope:'Matching only; no eligibility or coverage verification.',fields:formFields.filter(f=>f.kind).map(f=>({key:f.key,label:f.label,value:f.suggested,optionLabel:f.options.find(o=>o.value===f.suggested)?.label,actual:f.key==='paid'&&scenario==='partial-mismatch'&&!corrected?'80.00':f.suggested,status:f.key==='paid'&&scenario==='partial-mismatch'&&!corrected?'mismatch':'match'})),attachment:scenario==='upload-failed'?{name:'synthetic.pdf',status:'failed'}:null});
   page.on('pageerror',e=>errors.push(e.message));
   await page.addInitScript(()=>localStorage.setItem('familyhub.worker.v1',JSON.stringify({Endpoint:'https://synthetic-worker.invalid',ApiKey:'synthetic-key'})));
   await page.route('https://synthetic-worker.invalid/**',async route=>{
@@ -32,9 +36,11 @@ try{
    if(req.method()==='POST')posts.push({path,body:req.postDataJSON()});
    if(path==='/health')return reply({status:'ok',version:'2.25.3'});
    if(path==='/invoices')return reply({items:[expense],reconciliations:[c],unmatchedReimbursements:[],accounts:[]});
-   if(path==='/claim-preparation/preview')return reply(prepareClaim(expense.Id,req.postDataJSON().insurer,[expense],[c]));
-   if(path==='/claim-preparation/open')return reply({sessionId:'synthetic-session',step:{status:['login-required','navigate'].includes(scenario)?scenario:'fields',revision:'synthetic-revision',submitAllowed:false,fields:scenario==='zero-primary'?[{key:'amount',label:'Total amount of expense',type:'text',kind:'originalAmount',options:[],suggested:'100.00'},{key:'paid',label:'Amount paid by another insurance plan',type:'text',kind:'otherInsurancePaid',options:[],suggested:'0.00'},{key:'unknown',label:'Unknown clinical detail',type:'text',kind:null,options:[],suggested:null}]:[]}});
-   if(path==='/claim-preparation/fill')return reply({message:'Reviewed fields filled. Check them in the preparation window; click Next yourself.'});
+   if(path==='/claim-preparation/preview'){const p=prepareClaim(expense.Id,req.postDataJSON().insurer,[expense],[c]);if(scenario==='upload-failed')p.attachments=[{documentId:expense.Id,attachmentId:'pdf',name:'synthetic.pdf'}];return reply(p)}
+   if(path==='/claim-preparation/open')return reply({sessionId:'synthetic-session',step});
+   if(path==='/claim-preparation/inspect'||path==='/claim-preparation/forget-service-choices')return reply(step);
+   if(path==='/claim-preparation/verify')return reply(verification(true));
+   if(path==='/claim-preparation/fill')return reply({message:'Reviewed fields filled.',verification:verification(false)});
    return reply({state:'idle',accounts:[]});
   });
   await page.goto(base);await page.getByRole('button',{name:ready?'Prepare Blue Cross claim':'Prepare claim',exact:true}).click();
@@ -49,16 +55,28 @@ try{
   }else{
    await dialog.getByLabel(/I checked the current insurer history/).check();
    await dialog.getByRole('button',{name:'Open preparation window on PC',exact:true}).click();
-   if(scenario==='zero-primary'){
+   if(formScenarios.includes(scenario)){
     await dialog.getByLabel('Total amount of expense',{exact:true}).waitFor();
     assert.equal(await dialog.getByLabel('Total amount of expense',{exact:true}).inputValue(),'100.00');
-    assert.equal(await dialog.getByLabel('Amount paid by another insurance plan',{exact:true}).inputValue(),'0.00');
+    assert.equal(await dialog.getByLabel('Amount paid by another insurance plan',{exact:true}).inputValue(),paid);
     assert.equal(posts.filter(p=>p.path.endsWith('/inspect')).length,0,'Open already provides the first inspection');
     assert.equal(await dialog.getByLabel('Unknown clinical detail',{exact:true}).count(),0);
+    await dialog.getByText(/Unknown clinical detail: complete this directly/).waitFor();
+    const fill=dialog.getByRole('button',{name:scenario==='upload-failed'?'Valider et préremplir et joindre le PDF':'Valider et préremplir',exact:true});
+    if(scenario==='upload-failed')await dialog.getByRole('combobox').last().selectOption(`${expense.Id}:pdf`);
+    assert.equal(await fill.isDisabled(),true);
+    await dialog.getByLabel(/I reviewed every proposed answer/).check();
+    await dialog.getByLabel('Total amount of expense',{exact:true}).fill('101.00');assert.equal(await fill.isDisabled(),true);
+    await dialog.getByLabel('Total amount of expense',{exact:true}).fill('100.00');await dialog.getByLabel(/I reviewed every proposed answer/).check();
+    if(scenario==='upload-failed'){assert.equal(await fill.isDisabled(),true);await dialog.getByLabel(/Upload this selected original PDF/).check()}
     await page.screenshot({path:join(output,'claim-preparation-reviewed-values.png'),fullPage:true});
-    await dialog.getByRole('button',{name:'Fill reviewed fields',exact:true}).click();
+    await fill.click();
     await dialog.getByText(/Reviewed fields filled/).waitFor();
-    assert.deepEqual(posts.find(p=>p.path.endsWith('/fill')).body.values,{amount:'100.00',paid:'0.00'});
+    assert.deepEqual(posts.find(p=>p.path.endsWith('/fill')).body.values,{amount:'100.00',paid,service:'follow'});assert.equal(posts.find(p=>p.path.endsWith('/fill')).body.rememberServiceChoices,true);
+    const verified=dialog.getByRole('region',{name:'Verified portal answers'});
+    if(scenario==='partial-mismatch'){await verified.getByText(/Mismatch: Amount paid/).waitFor();await verified.getByRole('button',{name:'Re-read filled answers to verify',exact:true}).click();await verified.getByText(/Every approved answer matches/).waitFor();await dialog.getByRole('button',{name:'Read current form fields',exact:true}).click();await dialog.getByLabel('Total amount of expense',{exact:true}).waitFor();assert.equal(await dialog.getByRole('region',{name:'Verified portal answers'}).count(),0,'New answer review invalidates prior checks');await dialog.getByRole('button',{name:'Reset saved service choices for this service',exact:true}).click();await dialog.getByText(/Saved service choices cleared/).waitFor();assert.equal(posts.filter(p=>p.path.endsWith('/forget-service-choices')).length,1)}
+    else if(scenario==='upload-failed'){await verified.getByText(/Upload failed: synthetic.pdf/).waitFor();await verified.getByText(/Do not choose Next yet/).waitFor()}
+    else await verified.getByText(/Every approved answer matches/).waitFor();
    }else if(scenario==='login-required')await dialog.getByText(/Complete sign-in in the preparation window on your PC/).waitFor();
    else await dialog.getByText(/The preparation window is open on your PC. Open the claim form there/).waitFor();
    assert.equal(posts.filter(p=>p.path.endsWith('/open')).length,1);
@@ -67,5 +85,5 @@ try{
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false,scenario+' mobile overflow');
   assert.deepEqual(errors,[]);await page.screenshot({path:join(output,`claim-preparation-${scenario}.png`),fullPage:true});await context.close();
  }
- console.log(JSON.stringify({passed:4,scenarios:['primary-default-and-secondary-block','confirmed-zero-and-open-inspection','manual-login-handoff','manual-navigation-handoff'],providerContact:false,submission:false,screenshots:output}));
+ console.log(JSON.stringify({passed:6,scenarios:['primary-block','confirmed-zero-review','partial-mismatch-readback-correction-reset','failed-upload-no-readiness','manual-login','manual-navigation'],providerContact:false,submission:false,screenshots:output}));
 }finally{await browser?.close();server.close();}
