@@ -428,7 +428,9 @@ export default function ReimbursementsView({ hub }: Props) {
   ];
 
   return <div className="view-stack reimbursement-app-view">
-    {preparingExpense && <PrepareClaim expenseId={preparingExpense} config={hub.worker} onClose={() => setPreparingExpense("")} />}
+    {preparingExpense && <PrepareClaim key={preparingExpense} expenseId={preparingExpense}
+      initialInsurer={hub.reimbursements.Reconciliations?.find(entry => entry.ExpenseDocumentId === preparingExpense || entry.ExpenseDocumentIds?.includes(preparingExpense))?.NextInsurer === "Desjardins" ? "desjardins" : "blue-cross"}
+      config={hub.worker} onClose={() => setPreparingExpense("")} />}
     <PageHeader title="Claims" subtitle={paired ? lastSuccess ? `Updated ${new Date(lastSuccess).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : "Saved results" : "Saved on this device"}>
       <button type="button" className="button secondary" onClick={() => setSourcesOpen(true)} aria-haspopup="dialog">Sources{blueCrossStatus?.state === "error" || desjardinsStatus?.state === "error" || blueCrossStatus?.state === "login-required" || desjardinsStatus?.state === "login-required" ? " · !" : ""}</button>
       <button type="button" className="icon-button" aria-label="Refresh reimbursements" disabled={!paired || busy || pending.length > 0 || bulkIgnoring} onClick={() => void refresh()}><RefreshCw size={18} className={busy ? "spin" : ""} /></button>

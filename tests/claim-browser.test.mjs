@@ -49,6 +49,14 @@ test('opening requires duplicate review and corroborated warning review before b
  await assert.rejects(openClaimBrowser(dossier,false,false,launch),/history/);
  await assert.rejects(openClaimBrowser({...dossier,reviewableWarnings:['Gross extraction warning']},true,false,launch),/original PDF/);
  await assert.rejects(openClaimBrowser({...dossier,blocked:true},true,true,launch),/duplicate/);assert.equal(launches,0);
+ await assert.rejects(openClaimBrowser({...dossier,blocked:true,coordination:{required:true,ready:false,message:'Import the confirmed primary insurer response first.'}},true,true,launch),/primary insurer response/);assert.equal(launches,0);
+});
+
+test('open uses the preparation destination and returns inspectable fields without filling or submission',async()=>{
+ const f=fixture({fields:[{id:'form_txtAmount',label:'Total amount of expense'}]});let destination;f.page.goto=async url=>{destination=url};
+ const claim={...dossier,preparationUrl:'https://service.pac.bluecross.ca/member/'};
+ const opened=await openClaimBrowser(claim,true,false,async()=>f.browser);
+ try{assert.equal(destination,claim.preparationUrl);assert.equal(opened.step.status,'fields');assert.equal(opened.step.fields[0].suggested,'100.00');assert.equal(opened.submitAllowed,false);assert.equal(f.calls.filter(c=>c[0]==='fill'||c[0]==='file').length,0)}finally{await closeClaimBrowser(opened.sessionId)}
 });
 test('Telerik selection stops after one postback; text and calendar prefill remain source backed',async()=>{
  const f=fixture({fields:[{id:'form_cmbCoveredLife_Input',options:[{value:'k',label:'Kevin - Jan 01, 2000'}]},

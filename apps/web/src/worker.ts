@@ -32,6 +32,8 @@ export const manualReconciliationWorkerVersion = "2.8.0";
 export const bulkDocumentWorkerVersion = "2.11.0";
 export type ClaimPreparation = {
   expenseId: string; insurer: "blue-cross" | "desjardins"; portalUrl: string; blocked: boolean; submitAllowed: false;
+  preparationUrl?: string;
+  coordination?: { required: boolean; ready: boolean; primaryInsurer: string | null; message: string | null };
   fields: { patient: string | null; provider: string | null; practitioner: string | null; serviceDate: string | null; originalAmount: number | null; service: string | null; invoiceNumber: string | null; otherInsurance?: string | null; otherInsurancePaid?: number | null };
   otherInsurer?: string; currency?: string | null; reviewableWarnings?: string[];
   missing: string[]; conflicts: string[];

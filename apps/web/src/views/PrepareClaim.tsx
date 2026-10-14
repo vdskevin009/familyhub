@@ -3,8 +3,8 @@ import type { WorkerConfig } from "../types";
 import { claimAction, viewWorkerAttachment, downloadWorkerAttachment, type ClaimPreparation, type ClaimStep } from "../worker";
 import { Notice, Sheet } from "../ui/primitives";
 
-export default function PrepareClaim({ expenseId, config, onClose }: { expenseId: string; config: WorkerConfig; onClose: () => void }) {
-  const [insurer, setInsurer] = useState<"blue-cross" | "desjardins">("blue-cross");
+export default function PrepareClaim({ expenseId, initialInsurer = "blue-cross", config, onClose }: { expenseId: string; initialInsurer?: "blue-cross" | "desjardins"; config: WorkerConfig; onClose: () => void }) {
+  const [insurer, setInsurer] = useState<"blue-cross" | "desjardins">(initialInsurer);
   const [dossier, setDossier] = useState<ClaimPreparation>();
   const [reviewed, setReviewed] = useState(false);
   const [warningsReviewed, setWarningsReviewed] = useState(false), [uploadConfirmed, setUploadConfirmed] = useState(false);
@@ -26,6 +26,9 @@ export default function PrepareClaim({ expenseId, config, onClose }: { expenseId
   async function run(action: () => Promise<void>) { setBusy(true); setError(""); setMessage(""); try { await action(); } catch (e) { setError(e instanceof Error ? e.message : "Preparation failed."); } finally { setBusy(false); } }
   async function inspect() {
     const next = await claimAction<ClaimStep>(config, "inspect", { sessionId });
+    acceptStep(next);
+  }
+  function acceptStep(next: ClaimStep) {
     setStep(next); setValues(Object.fromEntries(next.fields.filter(f => f.suggested != null || f.kind === "natureOfIllness" && reason).map(f => [f.key, f.suggested ?? reason]))); setAttachment(""); setUploadConfirmed(false);
   }
   function receiptSource(a: ClaimPreparation["attachments"][number]) { return { Id: a.documentId, Attachments: [{ Id: a.attachmentId, FileName: a.name, MimeType: "application/pdf", Size: 0 }] }; }
@@ -35,11 +38,12 @@ export default function PrepareClaim({ expenseId, config, onClose }: { expenseId
       {error && <Notice error>{error}</Notice>}{message && <Notice>{message}</Notice>}
       {busy && <p role="status">Checking…</p>}
       {dossier && <>
+        {dossier.coordination?.message && <Notice error>{dossier.coordination.message}</Notice>}
         <dl className="claim-preparation-facts">{Object.entries(dossier.fields).map(([key, value]) => <div key={key}><dt>{({ patient: "Patient", provider: "Clinic / provider", practitioner: "Practitioner", serviceDate: "Service date", originalAmount: "Original expense", service: "Invoice service", invoiceNumber: "Invoice number", otherInsurance: "Submitted to other insurer", otherInsurancePaid: `Paid by ${dossier.otherInsurer === "desjardins" ? "Desjardins" : "Blue Cross"}` } as Record<string, string>)[key]}</dt><dd>{value == null ? "To confirm" : typeof value === "number" ? `${value.toFixed(2)} ${dossier.currency || "(currency to confirm)"}` : String(value)}</dd></div>)}</dl>
         <section aria-label="Original receipts"><strong>Original receipt</strong>{dossier.attachments.length ? dossier.attachments.map((a, i) => <div key={`${a.documentId}:${a.attachmentId}`}><span>{a.name}{dossier.attachments.filter(b => b.name === a.name).length > 1 ? ` · source ${i + 1}` : ""}</span><div><button type="button" className="text-action" disabled={busy} onClick={() => void run(() => viewWorkerAttachment(config, receiptSource(a), 0))}>Review PDF</button><button type="button" className="text-action" disabled={busy} onClick={() => void run(() => downloadWorkerAttachment(config, receiptSource(a), 0))}>Download receipt</button></div></div>) : <p>No original PDF is indexed. Find the original receipt before uploading documents.</p>}</section>
-        <Notice error={dossier.blocked}>{dossier.duplicate.status === "recorded" ? "This insurer has already processed or recorded this expense. Review the existing claim instead of submitting it again." : dossier.duplicate.status === "possible" ? "A same-day insurer record may be this expense. Resolve that possible duplicate first." : "No duplicate was identified in saved records. Check the insurer’s current history, including pending claims, before continuing."}</Notice>
+        <Notice error={dossier.duplicate.status !== "not-verified"}>{dossier.duplicate.status === "recorded" ? "This insurer has already processed or recorded this expense. Review the existing claim instead of submitting it again." : dossier.duplicate.status === "possible" ? "A same-day insurer record may be this expense. Resolve that possible duplicate first." : "No duplicate was identified in saved records. Check the insurer's current history, including pending claims, before continuing."}</Notice>
         {!!dossier.missing.length && <p>Missing source fields: {dossier.missing.join(", ")}. Confirm these from the invoice.</p>}
-        {dossier.conflicts.map(c => <p key={c}>{c}</p>)}
+        {dossier.conflicts.filter(c => c !== dossier.coordination?.message).map(c => <p key={c}>{c}</p>)}
         {!!dossier.reviewableWarnings?.length && <label className="prepare-check"><input type="checkbox" checked={warningsReviewed} disabled={!!sessionId || busy} onChange={e => setWarningsReviewed(e.target.checked)} />I reviewed the original PDF and confirmed the gross expense and other-insurer payment shown above. The conflicting extracted copy remains unchanged in FamilyHub.</label>}
         <details><summary>Source emails and duplicate-check details</summary><p>{dossier.duplicate.scope}</p>{dossier.sourceEmails.map(s => <p key={s.messageId}><a href={`https://mail.google.com/mail/u/?authuser=${encodeURIComponent(s.account)}#all/${encodeURIComponent(s.messageId)}`} target="_blank" rel="noreferrer">Source email · {s.account}</a></p>)}{dossier.duplicate.records.map(r => <p key={r.id}>{r.reference || "Recorded claim"} · {r.service || "Service to confirm"} · {r.status}</p>)}</details>
         {!sessionId && <>
@@ -48,8 +52,13 @@ export default function PrepareClaim({ expenseId, config, onClose }: { expenseId
           <label className="prepare-check"><input type="checkbox" disabled={dossier.blocked} checked={reviewed} onChange={e => setReviewed(e.target.checked)} />I checked the current insurer history: this invoice has not already been claimed with this insurer.</label>
           <button type="button" className="button" disabled={busy || dossier.blocked || !reviewed || !!dossier.reviewableWarnings?.length && !warningsReviewed} onClick={() => void run(async () => {
             if (rememberReason) { try { localStorage.setItem("familyhub.claim-reason.v1", reason); } catch { /* Optional device preference. */ } }
-            const opened = await claimAction<{ sessionId: string }>(config, "open", { expenseId, insurer, historyReviewed: reviewed, warningsReviewed }); setSessionId(opened.sessionId);
-            setMessage("A preparation window opened on the PC running FamilyHub. Sign in if needed and navigate to the claim form, then inspect its fields here.");
+            const opened = await claimAction<{ sessionId: string; step?: ClaimStep }>(config, "open", { expenseId, insurer, historyReviewed: reviewed, warningsReviewed }); setSessionId(opened.sessionId);
+            if (opened.step) acceptStep(opened.step);
+            setMessage(opened.step?.status === "fields"
+              ? "The claim form is open on your PC. Review the suggested values below, then select Fill reviewed fields."
+              : opened.step?.status === "login-required"
+                ? "Complete sign-in in the preparation window on your PC, then select Read current form fields."
+                : "The preparation window is open on your PC. Open the claim form there, then select Read current form fields.");
           })}>Open preparation window on PC</button>
         </>}
         {!!sessionId && <>

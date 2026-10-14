@@ -6,6 +6,7 @@ import type { ClaimPreparation } from "./claim-preparation.js";
 import { exactServiceOption } from "./claim-preparation.js";
 import { blueCrossComboFields, blueCrossSuggestion, blueCrossTextField } from "./bluecross-claim-form.js";
 import { blueCrossSessionMarker } from "./bluecross-collector.js";
+import { openBlueCrossClaimEntry } from "./bluecross-claim-navigation.js";
 
 export type Field = { key: string; label: string; type: string; options: { value: string; label: string }[];
   suggested: string | null; kind: string | null };
@@ -23,12 +24,12 @@ function current(id: unknown): Session {
 }
 export async function openClaimBrowser(dossier: ClaimPreparation, historyReviewed: unknown, warningsReviewed: unknown = false,
   launch: () => Promise<Browser> = () => chromium.launch({ headless: false, channel: process.platform === "win32" ? dossier.insurer === "desjardins" ? "msedge" : "chrome" : undefined })) {
-  if (dossier.blocked) throw new Error("Resolve the recorded or possible duplicate and source conflicts before preparing a claim.");
+  if (dossier.blocked) throw new Error(dossier.coordination?.message || "Resolve the recorded or possible duplicate and source conflicts before preparing a claim.");
   if (historyReviewed !== true) throw new Error("Review the insurer's current history for this invoice before opening preparation.");
   if (dossier.reviewableWarnings.length && warningsReviewed !== true) throw new Error("Review the original PDF and confirm the shown gross expense and other-insurer payment before preparing this claim.");
   if (session && !session.page.isClosed()) {
     if (session.dossier.expenseId === dossier.expenseId && session.dossier.insurer === dossier.insurer
-      && JSON.stringify(session.dossier.fields) === JSON.stringify(dossier.fields)) return { sessionId: session.id, status: "resumed", submitAllowed: false };
+      && JSON.stringify(session.dossier.fields) === JSON.stringify(dossier.fields)) return { sessionId: session.id, status: "resumed", step: await inspectClaimStep(session.id), submitAllowed: false };
     throw new Error("A claim preparation window is already open. Close it before preparing another invoice.");
   }
   const browser = await launch();
@@ -36,7 +37,7 @@ export async function openClaimBrowser(dossier: ClaimPreparation, historyReviewe
     const context = await browser.newContext();
     // Reuse only previously authorized insurer cookies; no new credentials are saved.
     try {
-      const auth = await loadPrivate<{ cookies?: import("playwright").Cookie[]; session?: { origin: string; value: string } }>(join(dataDirectory, dossier.insurer === "blue-cross" ? "bluecross" : "desjardins", "auth-state.dpapi"));
+      const auth = await loadPrivate<{ cookies?: import("playwright").Cookie[]; session?: { origin: string; value?: string; values?: Record<string, string> } }>(join(dataDirectory, dossier.insurer === "blue-cross" ? "bluecross" : "desjardins", "auth-state.dpapi"));
       const domains = dossier.insurer === "blue-cross" ? /(?:^|\.)pac\.bluecross\.ca$/i : /(?:^|\.)(?:dsf-dfs\.com|desjardins\.com)$/i;
       if (auth.cookies) await context.addCookies(auth.cookies.filter(c => domains.test(c.domain.replace(/^\./, ""))));
       if (dossier.insurer === "blue-cross") {
@@ -44,15 +45,26 @@ export async function openClaimBrowser(dossier: ClaimPreparation, historyReviewe
         if (marker) await context.addInitScript(value => {
           if (location.origin === "https://service.pac.bluecross.ca" && !sessionStorage.getItem("pbcMemberProfileData")) sessionStorage.setItem("pbcMemberProfileData", value);
         }, marker);
+      } else if (auth.session?.origin === "https://www.agea-gbim.dsf-dfs.com" && auth.session.values
+        && Object.keys(auth.session.values).length <= 100 && JSON.stringify(auth.session.values).length <= 100_000) {
+        await context.addInitScript(values => {
+          if (location.origin !== "https://www.agea-gbim.dsf-dfs.com") return;
+          for (const [key, value] of Object.entries(values))
+            if (typeof value === "string" && !sessionStorage.getItem(key)) sessionStorage.setItem(key, value);
+        }, auth.session.values);
       }
     } catch { /* A normal visible login remains available. */ }
     const page = await context.newPage();
-    await page.goto(dossier.portalUrl, { waitUntil: "domcontentloaded" });
+    await page.goto(dossier.preparationUrl || dossier.portalUrl, { waitUntil: "domcontentloaded", timeout: 45_000 });
+    if (dossier.insurer === "blue-cross") {
+      await openBlueCrossClaimEntry(page).catch(() => {}); // Visible manual navigation remains available.
+    }
     session = { id: randomUUID(), browser, page, dossier, createdAt: Date.now(), fields: new Map(), attemptedAttachments: new Set(), busy: false, revision: "", inspectedUrl: "" };
     const timer = setTimeout(() => { if (session?.browser === browser) { session = undefined; void browser.close(); } }, 30 * 60_000);
     timer.unref();
     browser.on("disconnected", () => { clearTimeout(timer); if (session?.browser === browser) session = undefined; });
-    return { sessionId: session.id, status: "opened", submitAllowed: false };
+    const step = await inspectClaimStep(session.id);
+    return { sessionId: session.id, status: "opened", step, submitAllowed: false };
   } catch (error) { await browser.close(); throw error; }
 }
 

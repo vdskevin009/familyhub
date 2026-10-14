@@ -6,6 +6,10 @@ export const claimPortals = {
   "blue-cross": "https://service.pac.bluecross.ca/member/",
   desjardins: "https://www.agea-gbim.dsf-dfs.com/AGEA-GBIM/Athntfctn/Authentification_Authentication.aspx?bhcp=1&cltr=fr-CA"
 } as const;
+export const claimPreparationPortals = {
+  ...claimPortals,
+  "blue-cross": "https://service.pac.bluecross.ca/member/"
+} as const;
 const clean = (value = "") => value.normalize("NFKC").toLowerCase().replace(/\s+/g, " ").trim();
 export function prepareClaim(expenseId: string, insurer: Insurer, invoices: Invoice[], cases: ReconciliationCase[]) {
   if (!(insurer in claimPortals)) throw new Error("Choose a supported insurer.");
@@ -46,6 +50,13 @@ export function prepareClaim(expenseId: string, insurer: Insurer, invoices: Invo
   const payments = [...new Set([namedPayment, ...directPayments].filter((x): x is number => x != null))];
   if (payments.length > 1) conflicts.push("Other-insurer payment differs between saved evidence.");
   const otherInsurancePaid = !entry?.HasUnresolvedReimbursementEvidence && payments.length === 1 ? payments[0] : null;
+  const insurerLabel = insurer === "blue-cross" ? "Blue Cross" : "Desjardins";
+  const coordinationRequired = entry?.PrimaryInsurer != null && entry.PrimaryInsurer !== insurerLabel;
+  const coordination = { required: coordinationRequired, ready: !coordinationRequired || otherInsurancePaid != null,
+    primaryInsurer: entry?.PrimaryInsurer ?? null,
+    message: coordinationRequired && otherInsurancePaid == null
+      ? `${entry!.PrimaryInsurer} is the configured first insurer for this invoice. Its confirmed response/payment is missing. Complete that claim and import or match its response in Sources & sync before preparing ${insurerLabel}. A recorded zero-payment response also qualifies.`
+      : null };
   const fields = { patient: member === "unknown" ? null : member,
     provider: sourceField("Provider") || sources.find(x => x.AccountLabel !== "Local Desjardins import" && x.Provider)?.Provider || expense.Provider || null,
     practitioner: sourceField("Practitioner"), serviceDate: date || null,
@@ -65,11 +76,14 @@ export function prepareClaim(expenseId: string, insurer: Insurer, invoices: Invo
         && Math.abs(amount! - otherInsurancePaid - x.Healthcare.AmountNotCovered) < .005);
   });
   const blockingConflicts = conflicts.filter(c => !reviewableWarnings.includes(c));
-  return { expenseId, insurer, portalUrl: claimPortals[insurer], fields, missing, conflicts, attachments,
+  // Existing PWA versions already render preparation conflicts. Keep the
+  // prerequisite visible there until the enhanced panel is deployed.
+  const preparationConflicts = coordination.message ? [...conflicts, coordination.message] : conflicts;
+  return { expenseId, insurer, portalUrl: claimPortals[insurer], preparationUrl: claimPreparationPortals[insurer], coordination, fields, missing, conflicts: preparationConflicts, attachments,
     otherInsurer, currency: entry?.Currency || expense.Currency || null, reviewableWarnings,
     duplicate: { status: duplicateStatus, checkedAt: new Date().toISOString(), scope: "Saved local invoice and insurer records only; current portal history has not been verified.",
       records: [...recorded, ...possible].map(x => ({ id: x.Id, reference: x.PortalClaimId || x.Healthcare?.ClaimReference || null, service: x.ClaimedService || x.Healthcare?.ServiceType || null, status: x.PortalClaimStatus || "recorded" })) },
-    blocked: duplicateStatus !== "not-verified" || blockingConflicts.length > 0 || expense.IgnoredAt != null || entry?.WorkflowStatus === "ignore",
+    blocked: !coordination.ready || duplicateStatus !== "not-verified" || blockingConflicts.length > 0 || expense.IgnoredAt != null || entry?.WorkflowStatus === "ignore",
     sourceEmails: sources.filter(x => ids.has(x.Id)).map(x => ({ account: x.AccountEmail, messageId: x.SourceMessageId })),
     submitAllowed: false as const };
 }
