@@ -1,7 +1,7 @@
 import type { Page } from "playwright";
 
 /** Open only the observed member-home navigation. Never a claim-form submit. */
-export async function openBlueCrossClaimEntry(page: Page): Promise<boolean> {
+export async function openBlueCrossClaimEntry(page: Page, beforeClick: () => void = () => {}): Promise<boolean> {
   const url = new URL(page.url());
   if (url.origin !== "https://service.pac.bluecross.ca" || !/^\/member\/?$/i.test(url.pathname)) return false;
   const entry = page.locator("div.caresnet-link > div.quick-nav__item--claim").filter({ hasText: /^SUBMIT\s*CLAIMS\s*&\s*FORMS$/i });
@@ -17,6 +17,7 @@ export async function openBlueCrossClaimEntry(page: Page): Promise<boolean> {
   // remains a manual handoff rather than replaying a portal action.
   const changed = page.waitForURL(u => u.href !== url.href, { timeout: 10_000 }).catch(() => {});
   const opened = page.context().waitForEvent("page", { timeout: 10_000 }).catch(() => undefined);
+  beforeClick();
   await entry.click({ noWaitAfter: true, timeout: 7_000 });
   await Promise.all([changed, opened]);
   for (const tab of page.context().pages())
