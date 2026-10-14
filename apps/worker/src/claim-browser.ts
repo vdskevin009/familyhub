@@ -10,34 +10,52 @@ import { openBlueCrossClaimEntry } from "./bluecross-claim-navigation.js";
 import { savedServiceChoice, rememberServiceChoice, forgetServiceChoices, serviceChoiceScope } from "./claim-service-choices.js";
 import { codexServiceRunner, validatedServiceProposals, type ServiceRunner } from "./claim-service-suggestions.js";
 import { checkedField, uploadEvidence, type ApprovedField, type ObservedField } from "./claim-field-verification.js";
+import { acquirePortalLock, classifyLoginScreen, type LoginReason } from "./portal-login.js";
+import { loginForClaim } from "./claim-login.js";
+import { automaticClaimValues } from "./claim-autofill.js";
+import { desjardinsRadioField } from "./desjardins-claim-form.js";
+import { reserveClaimUpload } from "./claim-upload-guard.js";
 
 export type Field = { key: string; label: string; type: string; options: { value: string; label: string }[];
   suggested: string | null; kind: string | null; suggestionSource?: "confirmed-choice" | "invoice" | "codex"; suggestionReason?: string };
 type Target = { locator: Locator; field: Field; signature: string; initialValue: string; dropdown?: Locator; providers?: Locator };
 type ApprovedSnapshot = { revision: string; url: string; entries: { target: Target; approved: ApprovedField; filled: boolean }[]; attachment?: { name: string; selected: boolean } };
 type Session = { id: string; browser: Browser; page: Page; dossier: ClaimPreparation; createdAt: number;
-  fields: Map<string, Target>; attemptedAttachments: Set<string>; busy: boolean; revision: string; inspectedUrl: string; approved?: ApprovedSnapshot };
+  fields: Map<string, Target>; attemptedAttachments: Set<string>; busy: boolean; revision: string; inspectedUrl: string; approved?: ApprovedSnapshot;
+  authReason?: LoginReason; release?: () => Promise<void> };
 let session: Session | undefined;
+let opening = false;
 const allowed = (url: string, insurer: ClaimPreparation["insurer"]) => {
   const u = new URL(url);
-  return u.protocol === "https:" && (insurer === "blue-cross" ? u.hostname === "service.pac.bluecross.ca"
-    : u.hostname === "www.agea-gbim.dsf-dfs.com");
+  return !u.username && !u.password && u.origin === (insurer === "blue-cross" ? "https://service.pac.bluecross.ca"
+    : "https://www.agea-gbim.dsf-dfs.com");
 };
 function current(id: unknown): Session {
   if (!session || id !== session.id || Date.now() - session.createdAt > 30 * 60_000 || session.page.isClosed()) throw new Error("Claim preparation expired. Open a new preparation session.");
   return session;
 }
 export async function openClaimBrowser(dossier: ClaimPreparation, historyReviewed: unknown, warningsReviewed: unknown = false,
-  launch: () => Promise<Browser> = () => chromium.launch({ headless: false, channel: process.platform === "win32" ? dossier.insurer === "desjardins" ? "msedge" : "chrome" : undefined })) {
+  launch?: () => Promise<Browser>, autonomous = false) {
+  if (opening) throw new Error("A preparation window is already opening. Wait before resuming it.");
+  opening = true;
+  try { return await openBrowser(dossier, historyReviewed, warningsReviewed, launch, autonomous); }
+  finally { opening = false; }
+}
+async function openBrowser(dossier: ClaimPreparation, historyReviewed: unknown, warningsReviewed: unknown,
+  launch: () => Promise<Browser> = () => chromium.launch({ headless: false, channel: process.platform === "win32" ? dossier.insurer === "desjardins" ? "msedge" : "chrome" : undefined }), autonomous = false) {
   if (dossier.blocked) throw new Error(dossier.coordination?.message || "Resolve the recorded or possible duplicate and source conflicts before preparing a claim.");
-  if (historyReviewed !== true) throw new Error("Review the insurer's current history for this invoice before opening preparation.");
-  if (dossier.reviewableWarnings.length && warningsReviewed !== true) throw new Error("Review the original PDF and confirm the shown gross expense and other-insurer payment before preparing this claim.");
+  if (!autonomous && historyReviewed !== true) throw new Error("Review the insurer's current history for this invoice before opening preparation.");
+  if (!autonomous && dossier.reviewableWarnings.length && warningsReviewed !== true) throw new Error("Review the original PDF and confirm the shown gross expense and other-insurer payment before preparing this claim.");
   if (session && !session.page.isClosed()) {
     if (session.dossier.expenseId === dossier.expenseId && session.dossier.insurer === dossier.insurer
       && JSON.stringify(session.dossier.fields) === JSON.stringify(dossier.fields)) return { sessionId: session.id, status: "resumed", step: await inspectClaimStep(session.id), submitAllowed: false };
     throw new Error("A claim preparation window is already open. Close it before preparing another invoice.");
   }
-  const browser = await launch();
+  const unlock = await acquirePortalLock(dossier.insurer === "blue-cross" ? "bluecross" : "desjardins");
+  let released: Promise<void> | undefined;
+  const release = () => released ||= unlock();
+  let browser: Browser;
+  try { browser = await launch(); } catch { await release(); throw new Error("The insurer preparation browser could not open."); }
   try {
     const context = await browser.newContext();
     // Reuse only previously authorized insurer cookies; no new credentials are saved.
@@ -61,20 +79,21 @@ export async function openClaimBrowser(dossier: ClaimPreparation, historyReviewe
     } catch { /* A normal visible login remains available. */ }
     const page = await context.newPage();
     await page.goto(dossier.preparationUrl || dossier.portalUrl, { waitUntil: "domcontentloaded", timeout: 45_000 });
+    const authReason = autonomous ? await loginForClaim(page, dossier.insurer) : undefined;
     if (dossier.insurer === "blue-cross") {
       await openBlueCrossClaimEntry(page).catch(() => {}); // Visible manual navigation remains available.
     }
-    session = { id: randomUUID(), browser, page, dossier, createdAt: Date.now(), fields: new Map(), attemptedAttachments: new Set(), busy: false, revision: "", inspectedUrl: "" };
+    session = { id: randomUUID(), browser, page, dossier, createdAt: Date.now(), fields: new Map(), attemptedAttachments: new Set(), busy: false, revision: "", inspectedUrl: "", authReason, release };
     const timer = setTimeout(() => { if (session?.browser === browser) { session = undefined; void browser.close(); } }, 30 * 60_000);
     timer.unref();
-    browser.on("disconnected", () => { clearTimeout(timer); if (session?.browser === browser) session = undefined; });
+    browser.on("disconnected", () => { clearTimeout(timer); if (session?.browser === browser) session = undefined; void release().catch(() => {}); });
     const step = await inspectClaimStep(session.id);
     return { sessionId: session.id, status: "opened", step, submitAllowed: false };
-  } catch (error) { await browser.close(); throw error; }
+  } catch { await browser.close(); await release(); throw new Error("Preparation could not open safely. Check the insurer window or retry status; credentials are never returned."); }
 }
 
 function fieldKind(label: string): string | null {
-  const name = label.toLowerCase().replace(/[\s:*]+/g, " ").trim();
+  const name = label.normalize("NFC").toLowerCase().replace(/[\s:*]+/g, " ").trim();
   if (/^(?:patient|claimant|covered person|personne assurée|bénéficiaire|personne concernée)$/.test(name)) return "patient";
   if (/^(?:service date|date of service|date du service|date des soins|date du traitement)$/.test(name)) return "serviceDate";
   if (/^(?:service|benefit|service type|type of service|type de service|catégorie de soins|type de soins)$/.test(name)) return "service";
@@ -94,13 +113,16 @@ async function inspect(s: Session) {
   // A portal may open its form in a new tab. Never target another origin.
   const candidates = s.page.context().pages().filter(p => !p.isClosed() && allowed(p.url(), s.dossier.insurer));
   if (candidates.length) s.page = candidates[candidates.length - 1];
-  if (!allowed(s.page.url(), s.dossier.insurer) || await s.page.locator('input[type="password"]').isVisible().catch(() => false)) return { status: "login-required", fields: [], revision: "", submitAllowed: false };
+  s.fields.clear(); s.revision = "";
+  if (!allowed(s.page.url(), s.dossier.insurer) || await s.page.locator('input[type="password"]').isVisible().catch(() => false)) return { status: s.authReason === "human-required" ? "human-required" : "login-required", authReason: s.authReason, fields: [], revision: "", submitAllowed: false };
   const body = (await s.page.locator("body").innerText()).slice(0, 30_000);
+  if (classifyLoginScreen(body) === "human-required") return { status: "human-required", fields: [], revision: "", submitAllowed: false };
   const completed = /your claim has been (?:processed|submitted)|réclamation a été (?:transmise|soumise)/i.test(body);
   const atReview = completed || /review (?:your )?claim|claim summary|I confirm all the information above is correct and I have read and agree|vérifi(?:ez|cation).*réclamation|résumé de (?:la|votre) réclamation/i.test(body);
   s.fields.clear();
   s.revision = randomUUID();
   s.inspectedUrl = s.page.url();
+  if (s.approved && s.approved.url !== s.inspectedUrl) s.approved = undefined;
   if (completed) return { status: "complete", fields: [], revision: s.revision, submitAllowed: false };
   if (s.dossier.insurer === "blue-cross" && /\/Claims\/eClaim\.aspx$/i.test(new URL(s.page.url()).pathname) && !atReview) {
     for (const definition of blueCrossComboFields) {
@@ -128,6 +150,18 @@ async function inspect(s: Session) {
       const field: Field = { key: randomUUID(), label: "Saved provider — verify name and address against the receipt", kind: "practitioner", type: "provider", options,
         suggested: blueCrossSuggestion("practitioner", s.dossier, options) };
       s.fields.set(field.key, { locator: providers.first(), providers, field, signature: JSON.stringify(providerMetadata), initialValue: "" });
+    }
+  }
+  if (s.dossier.insurer === "desjardins" && !atReview) {
+    const definition = desjardinsRadioField(new URL(s.page.url()).pathname);
+    if (definition) {
+      const choices = s.page.locator(`main input[type="radio"][name="${definition.name}"]`).filter({ visible: true });
+      const metadata = await choices.evaluateAll((els: HTMLInputElement[]) => els.map(el => ({ id: el.id, name: el.name, label: Array.from(el.labels || []).map(l => l.textContent?.trim()).filter(Boolean).join(" "), checked: el.checked })));
+      if (metadata.length && !metadata.some(o => o.checked)) {
+        const options = metadata.filter(o => o.id && o.label).map(o => ({ value: o.id, label: o.label }));
+        const field: Field = { key: randomUUID(), label: definition.label, kind: definition.kind, type: "radio", options, suggested: null };
+        s.fields.set(field.key, { locator: choices.first(), providers: choices, field, signature: JSON.stringify(metadata), initialValue: "" });
+      }
     }
   }
   const locators = await s.page.locator("input:not([type=hidden]):not([type=password]):not([type=submit]):not([type=button]):not([type=checkbox]):not([type=radio]), select, textarea").all();
@@ -195,7 +229,7 @@ export async function fillClaimStep(id: unknown, revision: unknown, values: unkn
     for (const [key, value] of entries) {
       const target = s.fields.get(key);
       if (!target || !target.field.kind || typeof value !== "string" || value.length > 500 || target.field.type === "file") throw new Error("Invalid reviewed field.");
-      if (["select", "combo", "provider"].includes(target.field.type) && value && !target.field.options.some(o => o.value === value)) throw new Error("The selected portal option is not available.");
+      if (["select", "combo", "provider", "radio"].includes(target.field.type) && value && !target.field.options.some(o => o.value === value)) throw new Error("The selected portal option is not available.");
     }
     let filled = 0;
     const previous = s.approved?.url === s.inspectedUrl ? s.approved : undefined;
@@ -234,7 +268,7 @@ export async function fillClaimStep(id: unknown, revision: unknown, values: unkn
     };
     // Fill stable text first; each dropdown can replace the form via postback.
     // Stop after one dropdown selection instead of touching stale controls.
-    const order = (key: string) => s.fields.get(key)!.field.type === "combo" ? 2 : s.fields.get(key)!.field.type === "provider" ? 1 : 0;
+    const order = (key: string) => ["combo", "select"].includes(s.fields.get(key)!.field.type) ? 2 : ["provider", "radio"].includes(s.fields.get(key)!.field.type) ? 1 : 0;
     const ordered = entries.slice().sort(([a], [b]) => order(a) - order(b));
     for (const [key, value] of ordered) {
       if (!value) continue;
@@ -245,7 +279,7 @@ export async function fillClaimStep(id: unknown, revision: unknown, values: unkn
         const choice = s.page.locator(`[id="${value}"]`);
         if (!await choice.isVisible() || !await choice.isEnabled()) throw new Error("The selected provider is unavailable.");
         await choice.check(); filled++; markFilled(target);
-        continue;
+        return await finish("The selected choice may update the form. Read its fields again.");
       }
       // Refuse to follow postbacks/navigation with stale form locators.
       if (!await target.locator.isVisible() || !await target.locator.isEnabled()) throw new Error("Portal fields changed. Inspect the next step again.");
@@ -264,6 +298,7 @@ export async function fillClaimStep(id: unknown, revision: unknown, values: unkn
       else { await target.locator.fill(value as string); if (target.field.kind === "serviceDate") await target.locator.press("Tab"); }
       filled++;
       markFilled(target);
+      if (target.field.type === "select") return await finish("The selected option may update the form. Read its fields again.");
     }
     if (attachment != null) {
       if (typeof attachment !== "string") throw new Error("Choose an invoice PDF.");
@@ -281,6 +316,7 @@ export async function fillClaimStep(id: unknown, revision: unknown, values: unkn
         || !await target.locator.isVisible() || !await target.locator.isEnabled()) throw new Error("The attachment field changed. Inspect again before attaching.");
       if (s.page.url() !== s.inspectedUrl || !allowed(s.page.url(), s.dossier.insurer)) throw new Error("The portal changed before attaching. Read the form again.");
       s.attemptedAttachments.add(hash);
+      await reserveClaimUpload(s.dossier, hash);
       await targets[0].locator.setInputFiles({ name: file.name, mimeType: "application/pdf", buffer: file.bytes });
       s.approved.attachment.selected = true;
       filled++;
@@ -326,7 +362,7 @@ async function verifySnapshot(s: Session) {
   }
   return { revision: s.approved.revision, fields, attachment,
     readyForManualNext: (fields.length > 0 || !!attachment) && fields.every(f => f.status === "match") && (!attachment || attachment.status === "verified"),
-    scope: "Matching against the approved answers only; this does not verify eligibility, coverage or claim submission." };
+    scope: "Read-back against the values prepared from invoice evidence or your answers. This does not verify eligibility, coverage, current claim history or submission." };
 }
 export async function verifyClaimStep(id: unknown) {
   const s = current(id);
@@ -362,5 +398,46 @@ export async function closeClaimBrowser(id: unknown) {
   if (s.busy) throw new Error("Wait for the current preparation action to finish.");
   session = undefined;
   await s.browser.close();
+  await s.release?.();
   return { status: "closed", submitAllowed: false };
+}
+
+/** Bounded preparation of this page only. Never clicks Next, consent or Submit. */
+export async function prepareCurrentClaimStep(id: unknown,
+  loadAttachment: (id: string, attachmentId: string) => Promise<{ bytes: Buffer; name: string }>,
+  assertFresh: () => void = () => {}) {
+  const s = current(id);
+  let step: Awaited<ReturnType<typeof inspectClaimStep>> = { status: "inspect-required", fields: [], revision: "", submitAllowed: false };
+  let verification: Awaited<ReturnType<typeof verifySnapshot>> | undefined;
+  let warning: string | undefined;
+  try {
+    step = await inspectClaimStep(id);
+    verification = s.approved ? await verifySnapshot(s) : undefined;
+    for (let pass = 0; pass < 12 && step.status === "fields"; pass++) {
+      assertFresh();
+      // Never automatically retry a field whose previous write could not be verified.
+      if (verification?.fields.some(f => f.status !== "match")) break;
+      const candidates = automaticClaimValues(step.fields, s.dossier);
+      const texts = step.fields.filter(f => f.key in candidates && !["select", "combo", "provider", "radio"].includes(f.type));
+      const chosen = texts.length ? texts : step.fields.filter(f => f.key in candidates).slice(0, 1);
+      const values = Object.fromEntries(chosen.map(f => [f.key, candidates[f.key]]));
+      const receipt = s.dossier.attachments.length === 1 ? s.dossier.attachments[0] : undefined;
+      const attachment = !chosen.length && receipt && !s.attemptedAttachments.size && !s.approved?.attachment
+        && step.fields.filter(f => f.type === "file").length === 1
+        ? `${receipt.documentId}:${receipt.attachmentId}` : null;
+      if (!Object.keys(values).length && !attachment) break;
+      const before = step.fields.map(f => [f.label, f.type, f.suggested]);
+      await fillClaimStep(id, step.revision, values, attachment, loadAttachment);
+      await s.page.waitForLoadState("domcontentloaded", { timeout: 5000 }).catch(() => {});
+      step = await inspectClaimStep(id);
+      verification = s.approved ? await verifySnapshot(s) : undefined;
+      if (JSON.stringify(before) === JSON.stringify(step.fields.map(f => [f.label, f.type, f.suggested]))) break;
+    }
+  } catch {
+    // A write may have happened. Return the session and read-back, never replay it.
+    warning = "Preparation stopped after the portal changed or a value could not be verified. Check the actual results before continuing; do not repeat an uncertain upload.";
+    step = { status: "inspect-required", fields: [], revision: "", submitAllowed: false };
+    verification = s.approved ? await verifySnapshot(s).catch(() => undefined) : undefined;
+  }
+  return { sessionId: s.id, step, verification, warning, submitAllowed: false };
 }

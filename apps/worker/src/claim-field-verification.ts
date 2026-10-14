@@ -10,7 +10,7 @@ export function checkedField(approved: ApprovedField, observed: ObservedField | 
   if (!observed || !observed.signatureMatches) return { ...approved, actual: null, status: "unreadable" };
   const monetary = ["originalAmount", "otherInsurancePaid"].includes(approved.kind || "");
   const equal = monetary ? amount(approved.value) != null && amount(approved.value) === amount(observed.value) : approved.value === observed.value;
-  const selectedEqual = !["select", "provider"].includes(approved.type) || !!approved.optionLabel && approved.optionLabel === observed.selectedLabel;
+  const selectedEqual = !["select", "provider", "radio"].includes(approved.type) || !!approved.optionLabel && approved.optionLabel === observed.selectedLabel;
   return { ...approved, actual: observed.value, status: equal && selectedEqual ? "match" : "mismatch" };
 }
 export function uploadEvidence(name: string, statuses: string[], alerts: string[]): "verified" | "unverified" | "failed" {
