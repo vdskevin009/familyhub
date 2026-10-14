@@ -8,8 +8,7 @@ export default function PrepareClaim({ expenseId, initialInsurer = "blue-cross",
   const [dossier, setDossier] = useState<ClaimPreparation>();
   const [reviewed, setReviewed] = useState(false);
   const [warningsReviewed, setWarningsReviewed] = useState(false), [uploadConfirmed, setUploadConfirmed] = useState(false);
-  const [reason, setReason] = useState(() => { try { return localStorage.getItem("familyhub.claim-reason.v1") || ""; } catch { return ""; } });
-  const [rememberReason, setRememberReason] = useState(false);
+  const [reason, setReason] = useState("");
   const [sessionId, setSessionId] = useState("");
   const [step, setStep] = useState<ClaimStep>();
   const [values, setValues] = useState<Record<string, string>>({});
@@ -20,7 +19,7 @@ export default function PrepareClaim({ expenseId, initialInsurer = "blue-cross",
   const [busy, setBusy] = useState(false), [error, setError] = useState(""), [message, setMessage] = useState("");
   useEffect(() => {
     let active = true;
-    setDossier(undefined); setReviewed(false); setWarningsReviewed(false); setStep(undefined); setError(""); setBusy(true);
+    setDossier(undefined); setReviewed(false); setWarningsReviewed(false); setReason(""); setStep(undefined); setError(""); setBusy(true);
     claimAction<ClaimPreparation>(config, "preview", { expenseId, insurer }).then(value => { if (active) { setDossier(value); setOwnerAmount(value.coordination?.ownerConfirmation ? String(value.coordination.ownerConfirmation.amount) : ""); setOwnerReason(value.coordination?.ownerConfirmation?.reason || ""); setOwnerReviewed(false); } })
       .catch(e => { if (active) setError(e instanceof Error ? e.message : "Preparation failed."); })
       .finally(() => { if (active) setBusy(false); });
@@ -31,9 +30,10 @@ export default function PrepareClaim({ expenseId, initialInsurer = "blue-cross",
     const next = await claimAction<ClaimStep>(config, "inspect", { sessionId });
     acceptStep(next);
   }
-  function acceptStep(next: ClaimStep) {
-    setStep(next); setValues(Object.fromEntries(next.fields.filter(f => f.suggested != null || f.kind === "natureOfIllness" && reason).map(f => [f.key, f.suggested ?? reason]))); setAttachment(""); setUploadConfirmed(false); setAnswersReviewed(false); setVerification(undefined);
+  function acceptStep(next: ClaimStep, retainVerification = false) {
+    setStep(next); setValues(Object.fromEntries(next.fields.filter(f => f.suggested != null || f.kind === "natureOfIllness" && reason).map(f => [f.key, f.suggested ?? reason]))); setAttachment(""); setUploadConfirmed(false); setAnswersReviewed(false); if (!retainVerification) setVerification(undefined);
   }
+  const pendingFields = step?.status === "fields" && step.fields.some(f => f.type !== "file");
   function receiptSource(a: ClaimPreparation["attachments"][number]) { return { Id: a.documentId, Attachments: [{ Id: a.attachmentId, FileName: a.name, MimeType: "application/pdf", Size: 0 }] }; }
   return <Sheet open onClose={onClose} title={insurer === "blue-cross" ? "Prepare Blue Cross claim" : "Prepare Desjardins claim"} description="Review the receipt and amounts, then fill the insurer form on your PC.">
     <div className="prepare-claim">
@@ -66,11 +66,10 @@ export default function PrepareClaim({ expenseId, initialInsurer = "blue-cross",
         {!!dossier.reviewableWarnings?.length && <label className="prepare-check"><input type="checkbox" checked={warningsReviewed} disabled={!!sessionId || busy} onChange={e => setWarningsReviewed(e.target.checked)} />I reviewed the original PDF and confirmed the gross expense and other-insurer payment shown above. The conflicting extracted copy remains unchanged in FamilyHub.</label>}
         <details><summary>Source emails and duplicate-check details</summary><p>{dossier.duplicate.scope}</p>{dossier.sourceEmails.map(s => <p key={s.messageId}><a href={`https://mail.google.com/mail/u/?authuser=${encodeURIComponent(s.account)}#all/${encodeURIComponent(s.messageId)}`} target="_blank" rel="noreferrer">Source email · {s.account}</a></p>)}{dossier.duplicate.records.map(r => <p key={r.id}>{r.reference || "Recorded claim"} · {r.service || "Service to confirm"} · {r.status}</p>)}</details>
         {!sessionId && <>
-          {insurer === "blue-cross" && <><label>Nature of illness / injury<input value={reason} placeholder="Enter your answer, for example Back pain" onChange={e => setReason(e.target.value)} maxLength={500} /></label><label className="prepare-check"><input type="checkbox" checked={rememberReason} onChange={e => setRememberReason(e.target.checked)} />Remember this answer on this device for review on future claims.</label></>}
+          {insurer === "blue-cross" && <><label>Nature of illness / injury<input value={reason} placeholder="Enter your answer for this claim" onChange={e => setReason(e.target.value)} maxLength={500} /></label><p className="privacy-note">Your answer is used only for this claim. FamilyHub does not infer it from the receipt or reuse it on another claim.</p></>}
           <a className="button secondary" href={dossier.portalUrl} target="_blank" rel="noreferrer">Open insurer to check history</a>
           <label className="prepare-check"><input type="checkbox" disabled={dossier.blocked} checked={reviewed} onChange={e => setReviewed(e.target.checked)} />I checked the current insurer history: this invoice has not already been claimed with this insurer.</label>
           <button type="button" className="button" disabled={busy || dossier.blocked || !reviewed || !!dossier.reviewableWarnings?.length && !warningsReviewed} onClick={() => void run(async () => {
-            if (rememberReason) { try { localStorage.setItem("familyhub.claim-reason.v1", reason); } catch { /* Optional device preference. */ } }
             const opened = await claimAction<{ sessionId: string; step?: ClaimStep }>(config, "open", { expenseId, insurer, historyReviewed: reviewed, warningsReviewed }); setSessionId(opened.sessionId);
             if (opened.step) acceptStep(opened.step);
             setMessage(opened.step?.status === "fields"
@@ -83,7 +82,7 @@ export default function PrepareClaim({ expenseId, initialInsurer = "blue-cross",
         {!!sessionId && <>
           <button type="button" className="button secondary" disabled={busy} onClick={() => void run(inspect)}>Read current form fields</button>
           {verification && <section aria-label="Verified portal answers">
-            <Notice error={!verification.readyForManualNext}>{verification.readyForManualNext ? "Every approved answer matches the portal. Complete any manual fields before choosing Next yourself." : "Do not choose Next yet. Correct or re-read the unverified answers or upload below."}</Notice>
+            <Notice error={!verification.readyForManualNext || pendingFields || !step}>{!step ? "Do not choose Next yet. Read the refreshed form before continuing." : pendingFields ? "Do not choose Next yet. Review the remaining portal fields below and validate the next fill." : verification.readyForManualNext ? "Every approved answer matches the portal. Complete any manual fields before choosing Next yourself." : "Do not choose Next yet. Correct or re-read the unverified answers or upload below."}</Notice>
             {verification.fields.map(f => <Notice key={f.key} error={f.status !== "match"}>{f.status === "match" ? "✓ Verified match" : f.status === "mismatch" ? "Mismatch" : f.status === "not-filled" ? "Not filled yet" : "Unreadable / changed field"}: {f.label}. Approved: {f.optionLabel || f.value}. {f.actual != null && f.status !== "match" ? `Portal: ${f.actual || "blank"}.` : ""}</Notice>)}
             {verification.attachment && <Notice error={verification.attachment.status !== "verified"}>{verification.attachment.status === "verified" ? "✓ Upload success observed" : verification.attachment.status === "failed" ? "Upload failed" : "Upload unverified"}: {verification.attachment.name}. File selection alone does not verify upload.</Notice>}
             <p className="privacy-note">{verification.scope}</p>
@@ -109,7 +108,14 @@ export default function PrepareClaim({ expenseId, initialInsurer = "blue-cross",
             <label className="prepare-check"><input type="checkbox" checked={answersReviewed} onChange={e => setAnswersReviewed(e.target.checked)} />I reviewed every proposed answer and the selected document for this step. Fill only these reviewed values.</label>
             <button type="button" className="button" disabled={busy || !answersReviewed || !Object.values(values).some(Boolean) && !attachment || !!attachment && insurer === "blue-cross" && !uploadConfirmed} onClick={() => void run(async () => {
               const result = await claimAction<{ message: string; verification?: ClaimVerification }>(config, "fill", { sessionId, revision: step.revision, values, attachment: attachment || null, uploadConfirmed, answersReviewed, rememberServiceChoices: !!step.serviceChoices?.scopeComplete && rememberServiceChoices });
-              setMessage(result.message); setVerification(result.verification); setStep(undefined); setValues({}); setAttachment(""); setAnswersReviewed(false);
+              setMessage(result.message); setVerification(result.verification); setStep(undefined); setValues({}); setAttachment(""); setUploadConfirmed(false); setAnswersReviewed(false);
+              try {
+                const next = await claimAction<ClaimStep>(config, "inspect", { sessionId });
+                acceptStep(next, true);
+                if (next.status === "fields" && next.fields.some(f => f.type !== "file")) setMessage("The portal refreshed. Review the remaining answers below, then select Valider et préremplir again. Existing portal values are preserved.");
+              } catch {
+                setMessage("The reviewed fill finished, but the refreshed form could not be read. Select Read current form fields before continuing; do not repeat the previous fill.");
+              }
             })}>Valider et préremplir{attachment ? " et joindre le PDF" : ""}</button>
           </>}
           <p className="privacy-note">Review the filled fields in the insurer window. Click Next yourself, then read the next step here. Closing this panel does not close that window. The preparation session expires after 30 minutes.</p>
