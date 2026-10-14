@@ -427,9 +427,10 @@ export default function ReimbursementsView({ hub }: Props) {
     ...[...filters].map(filter => ({ id: filter, label: detailLabels[filter], clear: () => toggleFilter(filter) }))
   ];
 
+  const preparingNextInsurer = hub.reimbursements.Reconciliations?.find(entry => entry.ExpenseDocumentId === preparingExpense || entry.ExpenseDocumentIds?.includes(preparingExpense))?.NextInsurer;
   return <div className="view-stack reimbursement-app-view">
     {preparingExpense && <PrepareClaim key={preparingExpense} expenseId={preparingExpense}
-      initialInsurer={hub.reimbursements.Reconciliations?.find(entry => entry.ExpenseDocumentId === preparingExpense || entry.ExpenseDocumentIds?.includes(preparingExpense))?.NextInsurer === "Desjardins" ? "desjardins" : "blue-cross"}
+      initialInsurer={preparingNextInsurer === "Desjardins" ? "desjardins" : preparingNextInsurer === "Blue Cross" ? "blue-cross" : undefined}
       config={hub.worker} onClose={() => setPreparingExpense("")} />}
     <PageHeader title="Claims" subtitle={paired ? lastSuccess ? `Updated ${new Date(lastSuccess).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : "Saved results" : "Saved on this device"}>
       <button type="button" className="button secondary" onClick={() => setSourcesOpen(true)} aria-haspopup="dialog">Sources{blueCrossStatus?.state === "error" || desjardinsStatus?.state === "error" || blueCrossStatus?.state === "login-required" || desjardinsStatus?.state === "login-required" ? " · !" : ""}</button>

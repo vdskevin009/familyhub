@@ -25,6 +25,20 @@ test('invoice endpoints require pairing/origin checks and report unconfigured Gm
     }
     assert.ok(ready, logs);
     assert.equal((await call('/invoices')).status, 401);
+    for (const action of ['prepare', 'resume', 'correct', 'validate']) {
+      assert.equal((await call(`/claim-preparation/${action}`, { method: 'POST', body: '{}' })).status, 401);
+      assert.equal((await call(`/claim-preparation/${action}`, { method: 'POST', headers: { ...headers, Origin: 'https://evil.example' }, body: '{}' })).status, 403);
+      assert.equal((await call(`/claim-preparation/${action}`, { method: 'POST', headers, body: '{}' })).status, 400);
+    }
+    for (const action of ['next', 'submit', 'attest']) {
+      const refused = await call(`/claim-preparation/${action}`, { method: 'POST', headers, body: '{}' });
+      assert.equal(refused.status, 400);
+      assert.match((await refused.json()).error, /Submission is not supported/);
+    }
+    // A prior rejected request releases the operation guard; it cannot grant a session.
+    const missing = await call('/claim-preparation/prepare', { method: 'POST', headers, body: JSON.stringify({ expenseId: 'missing', insurer: 'blue-cross', prepareAuthorized: true }) });
+    assert.equal(missing.status, 400);
+    assert.doesNotMatch((await missing.json()).error, /busy/);
     assert.equal((await call('/savings/research', { method: 'POST', body: '{}' })).status, 401);
     assert.equal((await call('/savings/research', { method: 'POST', headers: { ...headers, Origin: 'https://evil.example' }, body: '{}' })).status, 403);
     assert.equal((await call('/savings/research', { method: 'POST', headers, body: '{}' })).status, 400);

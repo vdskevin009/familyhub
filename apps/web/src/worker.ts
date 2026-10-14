@@ -43,19 +43,21 @@ export type ClaimPreparation = {
   duplicate: { status: string; scope: string; checkedAt: string; records: { id: string; reference: string | null; service: string | null; status: string }[] };
 };
 export type ClaimStep = { status: string; revision: string; submitAllowed: false;
+  authReason?: string;
   serviceChoices?: { available: boolean; scopeComplete: boolean; warning: string | null };
   fields: { key: string; label: string; type: string; kind: string | null; suggested: string | null; suggestionSource?: string; suggestionReason?: string; options: { value: string; label: string }[] }[] };
 export type ClaimVerification = { revision: string; readyForManualNext: boolean; scope: string;
   fields: { key: string; label: string; value: string; optionLabel?: string; actual: string | null; status: "match" | "mismatch" | "unreadable" | "not-filled" }[];
   attachment: { name: string; status: "verified" | "unverified" | "failed" } | null };
-export async function claimAction<T>(config: WorkerConfig, action: "preview" | "open" | "inspect" | "fill" | "close" | "forget-service-choices" | "suggest-service" | "verify" | "confirm-adjudication", body: object): Promise<T> {
+export type PreparedClaim = { preparation: ClaimPreparation; sessionId?: string; step: ClaimStep; verification?: ClaimVerification; warning?: string; submitAllowed: false };
+export async function claimAction<T>(config: WorkerConfig, action: "validate" | "prepare" | "resume" | "correct" | "preview" | "open" | "inspect" | "fill" | "close" | "forget-service-choices" | "suggest-service" | "verify" | "confirm-adjudication", body: object): Promise<T> {
   if (action !== "close") {
     const health = await testWorker(config);
-    if (!workerVersionAtLeast(health.version, "2.17.0")) {
-      throw new Error(`Your PC worker is ${health.version || "an older version"}. Claim preparation requires worker 2.17.0 or later. Update and restart the FamilyHub worker on the PC, then reopen this panel.`);
+    if (!workerVersionAtLeast(health.version, "2.26.0")) {
+      throw new Error(`Your PC worker is ${health.version || "an older version"}. Autonomous claim preparation requires worker 2.26.0 or later. Update and restart the existing FamilyHub worker, then reopen this panel.`);
     }
   }
-  return request(config, `/claim-preparation/${action}`, { method: "POST", body: JSON.stringify(body) }, 90_000);
+  return request(config, `/claim-preparation/${action}`, { method: "POST", body: JSON.stringify(body) }, 180_000);
 }
 
 export function workerVersionAtLeast(version: string, minimum: string): boolean {

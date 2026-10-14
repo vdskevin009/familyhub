@@ -33,7 +33,7 @@ test("claim preparation blocks an older worker before sending expense data", asy
     requests.push(url);
     return Response.json({ version: "2.16.1" });
   });
-  await assert.rejects(claimAction({ Endpoint: "http://worker.test", ApiKey: "test-only" }, "preview", { expenseId: "fixture-expense" }), /restart.*2\.17|2\.17.*restart/i);
+  await assert.rejects(claimAction({ Endpoint: "http://worker.test", ApiKey: "test-only" }, "preview", { expenseId: "fixture-expense" }), /restart.*2\.26|2\.26.*restart/i);
   assert.deepEqual(requests, ["http://worker.test/health"]);
 });
 
@@ -41,7 +41,7 @@ test("claim preparation sends the reviewed request to a supported worker", async
   const requests: { url: string; body?: string }[] = [];
   t.mock.method(globalThis, "fetch", async (url: string, init: RequestInit) => {
     requests.push({ url, body: init.body as string | undefined });
-    return Response.json(url.endsWith("/health") ? { version: "2.17.0" } : { submitAllowed: false });
+    return Response.json(url.endsWith("/health") ? { version: "2.26.0" } : { submitAllowed: false });
   });
   const body = { expenseId: "fixture-expense", insurer: "blue-cross" };
   assert.deepEqual(await claimAction({ Endpoint: "http://worker.test", ApiKey: "test-only" }, "preview", body), { submitAllowed: false });
