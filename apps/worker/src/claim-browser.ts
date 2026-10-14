@@ -17,7 +17,7 @@ import { desjardinsRadioField } from "./desjardins-claim-form.js";
 import { reserveClaimUpload } from "./claim-upload-guard.js";
 
 export type Field = { key: string; label: string; type: string; options: { value: string; label: string }[];
-  suggested: string | null; kind: string | null; suggestionSource?: "confirmed-choice" | "invoice" | "codex"; suggestionReason?: string };
+  suggested: string | null; kind: string | null; suggestionSource?: "confirmed-choice" | "invoice" | "codex"; suggestionReason?: string; autoAttachment?: boolean };
 type Target = { locator: Locator; field: Field; signature: string; initialValue: string; dropdown?: Locator; providers?: Locator };
 type ApprovedSnapshot = { revision: string; url: string; entries: { target: Target; approved: ApprovedField; filled: boolean }[]; attachment?: { name: string; selected: boolean } };
 type Session = { id: string; browser: Browser; page: Page; dossier: ClaimPreparation; createdAt: number;
@@ -203,6 +203,8 @@ async function inspect(s: Session) {
     if (kind === "serviceDate" && metadata.type !== "date" && !blueCross) suggested = null;
     if (metadata.type === "file") suggested = null;
     const field: Field = { key: randomUUID(), label: blueCross?.label || metadata.label || (metadata.type === "file" ? "Supporting document" : "Unlabelled field — fill in the portal"), type: metadata.type, options: metadata.options, kind, suggested };
+    if (metadata.type === "file") field.autoAttachment = /invoice|receipt|supporting document|facture|reçu|pièce justificative/i.test(metadata.label)
+      && !/explanation|benefit statement|other insurer|décompte|autre assureur|coordination/i.test(metadata.label);
     s.fields.set(field.key, { locator, field, signature: metadata.signature, initialValue: metadata.value }); fields.push(field);
   }
   const allFields = [...s.fields.values()].map(f => f.field);
@@ -428,7 +430,7 @@ export async function prepareCurrentClaimStep(id: unknown,
       const values = Object.fromEntries(chosen.map(f => [f.key, candidates[f.key]]));
       const receipt = s.dossier.attachments.length === 1 ? s.dossier.attachments[0] : undefined;
       const attachment = !chosen.length && receipt && !s.attemptedAttachments.size && !s.approved?.attachment
-        && step.fields.filter(f => f.type === "file").length === 1
+        && step.fields.filter(f => f.type === "file").length === 1 && step.fields.some(f => f.type === "file" && f.autoAttachment)
         ? `${receipt.documentId}:${receipt.attachmentId}` : null;
       if (!Object.keys(values).length && !attachment) break;
       const before = step.fields.map(f => [f.label, f.type, f.suggested]);

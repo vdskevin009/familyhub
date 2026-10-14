@@ -3,8 +3,8 @@ import type { WorkerConfig } from "../types";
 import { claimAction, viewWorkerAttachment, type ClaimPreparation, type ClaimStep, type ClaimVerification, type PreparedClaim } from "../worker";
 import { Notice, Sheet } from "../ui/primitives";
 
-export default function PrepareClaim({ expenseId, initialInsurer = "blue-cross", config, onClose }: { expenseId: string; initialInsurer?: "blue-cross" | "desjardins"; config: WorkerConfig; onClose: () => void }) {
-  const [insurer, setInsurer] = useState(initialInsurer);
+export default function PrepareClaim({ expenseId, initialInsurer, config, onClose }: { expenseId: string; initialInsurer?: "blue-cross" | "desjardins"; config: WorkerConfig; onClose: () => void }) {
+  const [insurer, setInsurer] = useState<"" | "blue-cross" | "desjardins">(initialInsurer || "");
   const [dossier, setDossier] = useState<ClaimPreparation>();
   const [sessionId, setSessionId] = useState("");
   const [step, setStep] = useState<ClaimStep>();
@@ -23,6 +23,7 @@ export default function PrepareClaim({ expenseId, initialInsurer = "blue-cross",
     setOwnerReason(result.preparation.coordination?.ownerConfirmation?.reason || ""); setOwnerReviewed(false);
   }
   useEffect(() => {
+    if (!insurer) { setBusy(false); return; }
     let active = true;
     const key = JSON.stringify([expenseId, insurer, config.Endpoint, config.ApiKey]);
     setBusy(true); setError(""); setStep(undefined); setVerification(undefined); setValidated(false);
@@ -41,9 +42,10 @@ export default function PrepareClaim({ expenseId, initialInsurer = "blue-cross",
   const pending = !!step?.fields.some(f => f.type !== "file");
   const canReview = !!verification?.readyForManualNext && !!step && !pending && ["fields", "navigate"].includes(step.status);
   const labels: Record<string, string> = { patient: "Patient", provider: "Clinic / provider", practitioner: "Practitioner", serviceDate: "Service date", originalAmount: "Original expense", service: "Invoice service", invoiceNumber: "Invoice number", otherInsurance: "Other insurance", otherInsurancePaid: "Paid by other insurer" };
-  return <Sheet open onClose={busy ? () => {} : onClose} title={insurer === "blue-cross" ? "Prepare Blue Cross claim" : "Prepare Desjardins claim"} description="The PC prepares the insurer form and original receipt. Review the actual results before continuing.">
+  return <Sheet open onClose={busy ? () => {} : onClose} title={insurer === "blue-cross" ? "Prepare Blue Cross claim" : insurer === "desjardins" ? "Prepare Desjardins claim" : "Prepare claim"} description="The PC prepares the insurer form and original receipt. Review the actual results before continuing.">
     <div className="prepare-claim">
-      <label>Insurer<select value={insurer} disabled={busy || !!sessionId} onChange={e => setInsurer(e.target.value as typeof insurer)}><option value="blue-cross">Blue Cross</option><option value="desjardins">Desjardins</option></select></label>
+      <label>Insurer<select value={insurer} disabled={busy || !!sessionId} onChange={e => setInsurer(e.target.value as typeof insurer)}><option value="" disabled>Choose insurer</option><option value="blue-cross">Blue Cross</option><option value="desjardins">Desjardins</option></select></label>
+      {!insurer && <Notice>The next insurer is unknown. Choose where to prepare this invoice before opening its portal.</Notice>}
       {busy && <p role="status">Preparing and reading back the insurer form…</p>}
       {error && <Notice error>{error}</Notice>}{message && <Notice>{message}</Notice>}
       {dossier && <>

@@ -47,6 +47,11 @@ try{
  await assert.rejects(access(join(directory,'bluecross','login-control.json')),'A reused session must not write the login latch');
  await closeClaimBrowser(session);session=undefined;
  const unlock=await acquirePortalLock('bluecross');await unlock();
+ // A single upload input can request another insurer's explanation, not the invoice.
+ const explanation=await openClaimBrowser({...dossier,expenseId:'explanation-test'},false,false,launch,true);session=explanation.sessionId;
+ await page.locator('#upload').evaluate(el=>el.parentElement.firstChild.textContent='Other insurer explanation of benefits');
+ const abstained=await prepare();assert.equal(abstained.verification.attachment,null);assert.equal(uploads,1);
+ await closeClaimBrowser(session);session=undefined;
  // Multiple source PDFs must abstain, without losing the rest of preparation.
  const again=await openClaimBrowser({...dossier,attachments:[...dossier.attachments,{documentId:'copy',attachmentId:'pdf',name:'copy.pdf'}]},false,false,launch,true);session=again.sessionId;
  const multi=await prepare();assert.equal(multi.verification.attachment,null);assert.equal(uploads,1);
@@ -54,5 +59,5 @@ try{
  await page.locator('h1').evaluate(el=>el.textContent='Review your claim');
  const review=await prepare();assert.equal(review.step.status,'review');assert.equal(uploads,1);
  assert.equal(await page.evaluate(()=>!!window.sent||!!window.next),false);
- console.log(JSON.stringify({passed:3,coverage:['automatic-text-select-dependent-zero','unique-upload-readback-no-replay','unknown-diagnosis','cumulative-mismatch','shared-login-lock','session-reuse-no-credentials','ambiguous-documents','final-review-no-submit'],interceptedRequests:contacts,insurerContact:false}));
+ console.log(JSON.stringify({passed:4,coverage:['automatic-text-select-dependent-zero','unique-upload-readback-no-replay','unknown-diagnosis','cumulative-mismatch','shared-login-lock','session-reuse-no-credentials','ambiguous-documents','explanation-upload-is-not-receipt','final-review-no-submit'],interceptedRequests:contacts,insurerContact:false}));
 }finally{if(session)await closeClaimBrowser(session);await rm(directory,{recursive:true,force:true});}

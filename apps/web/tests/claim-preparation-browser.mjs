@@ -20,9 +20,9 @@ const entry={Id:'synthetic-case',DocumentIds:[expense.Id],ExpenseDocumentId:expe
 let browser;
 try {
  browser=await chromium.launch({headless:true,channel:process.platform==='win32'?'msedge':undefined});
- for(const scenario of ['prepared','unknown','mismatch','upload-failed','human-required','login-required','blocked','old-worker','refresh-failed','owner-zero']) {
+ for(const scenario of ['prepared','unknown','mismatch','upload-failed','human-required','login-required','blocked','old-worker','refresh-failed','owner-zero','unknown-insurer']) {
   const context=await browser.newContext({viewport:{width:390,height:900},serviceWorkers:'block'}),page=await context.newPage(),posts=[],errors=[];
-  const c={...entry,NextInsurer:'Blue Cross',DesjardinsReimbursedAmount:scenario==='owner-zero'?null:0};
+  const c={...entry,NextInsurer:scenario==='unknown-insurer'?null:'Blue Cross',DesjardinsReimbursedAmount:scenario==='owner-zero'?null:0};
   const preparation=prepareClaim(expense.Id,'blue-cross',[expense],[c]);
   preparation.attachments=[{documentId:expense.Id,attachmentId:'pdf',name:'synthetic.pdf'}];preparation.blocked=scenario==='blocked';
   let step={status:['human-required','login-required','blocked'].includes(scenario)?scenario:'fields',fields:scenario==='unknown'?[{key:'illness',kind:'natureOfIllness',label:'Nature of illness/injury',type:'text',options:[],suggested:null}]:[],revision:'step',submitAllowed:false};
@@ -51,7 +51,12 @@ try {
    }
    return reply({state:'idle',accounts:[]});
   });
-  await page.goto(base);await page.getByRole('button',{name:'Prepare Blue Cross claim',exact:true}).click();
+  await page.goto(base);await page.getByRole('button',{name:scenario==='unknown-insurer'?'Prepare claim':'Prepare Blue Cross claim',exact:true}).click();
+  if(scenario==='unknown-insurer') {
+    const choice=page.getByRole('dialog',{name:'Prepare claim',exact:true});await choice.getByText(/The next insurer is unknown/).waitFor();
+    assert.equal(posts.length,0,'Unknown insurer must not silently prepare/upload to Blue Cross');
+    await choice.getByRole('combobox').first().selectOption('blue-cross');
+  }
   const dialog=page.getByRole('dialog',{name:'Prepare Blue Cross claim',exact:true});await dialog.waitFor();
   await dialog.getByText('Preparing and reading back the insurer form…',{exact:true}).waitFor({state:'hidden'});
   if(scenario==='old-worker'){await dialog.getByText(/requires worker 2.26.0/).waitFor();assert.equal(posts.length,0);}
@@ -89,5 +94,5 @@ try {
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false,scenario+' mobile overflow');
   await page.screenshot({path:join(output,`claim-autonomous-${scenario}.png`),fullPage:true});await context.close();
  }
- console.log(JSON.stringify({passed:10,providerContact:false,submission:false,screenshots:output}));
+ console.log(JSON.stringify({passed:11,providerContact:false,submission:false,screenshots:output}));
 }finally{await browser?.close();server.close();}
