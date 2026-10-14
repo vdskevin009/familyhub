@@ -37,6 +37,13 @@ test("claim preparation blocks an older worker before sending expense data", asy
   assert.deepEqual(requests, ["http://worker.test/health"]);
 });
 
+test("invoice-specific answers require the new worker before sending health text", async t => {
+  const requests: string[] = [];
+  t.mock.method(globalThis, "fetch", async (url: string) => { requests.push(url); return Response.json({ version: "2.26.1" }); });
+  await assert.rejects(claimAction({ Endpoint: "http://worker.test", ApiKey: "test-only" }, "invoice-answer", { value: "Synthetic owner answer" }), /2.26.2/);
+  assert.deepEqual(requests, ["http://worker.test/health"]);
+});
+
 test("claim preparation sends the reviewed request to a supported worker", async t => {
   const requests: { url: string; body?: string }[] = [];
   t.mock.method(globalThis, "fetch", async (url: string, init: RequestInit) => {
