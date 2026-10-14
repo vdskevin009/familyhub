@@ -14,13 +14,17 @@ export default function PrepareClaim({ expenseId, initialInsurer, config, onClos
   const [reviewed, setReviewed] = useState(false), [validated, setValidated] = useState(false);
   const [rememberServiceChoices, setRememberServiceChoices] = useState(false);
   const [illness, setIllness] = useState(""), [illnessConfirmed, setIllnessConfirmed] = useState(false);
+  const [allInvoices, setAllInvoices] = useState(false);
   const [ownerAmount, setOwnerAmount] = useState(""), [ownerReason, setOwnerReason] = useState(""), [ownerReviewed, setOwnerReviewed] = useState(false);
   const [busy, setBusy] = useState(true), [error, setError] = useState(""), [message, setMessage] = useState("");
   const opening = useRef<{ key: string; promise: Promise<PreparedClaim> } | undefined>(undefined);
+  const activeSession = useRef(""); activeSession.current = sessionId;
+  const mounted = useRef(true);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   function accept(result: PreparedClaim) {
     setDossier(result.preparation); setSessionId(result.sessionId || ""); setStep(result.step); setVerification(result.verification);
     setValues({}); setAttachment(""); setReviewed(false); setValidated(false); setMessage(result.warning || "");
-    setIllness(result.step.confirmedIllness?.value || ""); setIllnessConfirmed(false);
+    setIllness((allInvoices ? result.step.confirmedIllness?.defaultValue : result.step.confirmedIllness?.value) || ""); setIllnessConfirmed(false);
     setOwnerAmount(result.preparation.coordination?.ownerConfirmation ? String(result.preparation.coordination.ownerConfirmation.amount) : "");
     setOwnerReason(result.preparation.coordination?.ownerConfirmation?.reason || ""); setOwnerReviewed(false);
   }
@@ -36,6 +40,23 @@ export default function PrepareClaim({ expenseId, initialInsurer, config, onClos
       .finally(() => { if (active) setBusy(false); });
     return () => { active = false; };
   }, [expenseId, insurer, config.Endpoint, config.ApiKey]);
+  useEffect(() => {
+    if (busy || !sessionId || !step || !["login-required", "human-required"].includes(step.status)) return;
+    const timer = window.setTimeout(() => {
+      const current = () => mounted.current && activeSession.current === sessionId;
+      setBusy(true); setError("");
+      void claimAction<ClaimStep>(config, "inspect", { sessionId }).then(async fresh => {
+        if (!current()) return;
+        if (fresh.status === "fields") {
+          const prepared = await claimAction<PreparedClaim>(config, "resume", { sessionId, prepareAuthorized: true });
+          if (current()) accept(prepared);
+        } else setStep(fresh);
+      }).catch(e => {
+        if (current()) { setStep(undefined); setError(e instanceof Error ? e.message : "Could not re-read sign-in. Resume preparation when ready."); }
+      }).finally(() => { if (current()) setBusy(false); });
+    }, 3000);
+    return () => window.clearTimeout(timer);
+  }, [busy, sessionId, step, config.Endpoint, config.ApiKey]);
   async function run(action: () => Promise<void>) {
     setBusy(true); setError(""); setValidated(false); setReviewed(false);
     try { await action(); } catch (e) { setStep(undefined); setVerification(undefined); setError(e instanceof Error ? e.message : "Preparation failed. Re-read the portal before continuing."); }
@@ -79,27 +100,36 @@ export default function PrepareClaim({ expenseId, initialInsurer, config, onClos
         {dossier.attachments.length > 1 && <p>Several original PDFs are indexed. Choose the correct receipt when its upload field is available.</p>}
         {!!sessionId && <>
           <button type="button" className="button secondary" disabled={busy} onClick={() => void run(async () => { accept(await claimAction<PreparedClaim>(config, "resume", { sessionId, prepareAuthorized: true })); })}>Read and prepare current step</button>
-          {step?.status === "human-required" && <Notice>Complete the verification challenge in the insurer window, then read and prepare this step again.</Notice>}
-          {step?.status === "login-required" && <Notice>Sign-in needs attention on the PC{step.authReason ? ` (${step.authReason})` : ""}. Complete sign-in in that window, then resume.</Notice>}
+          {step?.status === "human-required" && <Notice>Complete the verification challenge in the insurer window. Preparation resumes automatically when the form becomes available.</Notice>}
+          {step?.status === "login-required" && <Notice>Sign-in needs attention on the PC{step.authReason ? ` (${step.authReason})` : ""}. Complete sign-in in that window; preparation resumes automatically.</Notice>}
           {step?.status === "navigate" && <p>Open the claim form in the insurer window, then read and prepare the current step.</p>}
           {step?.status === "inspect-required" && <Notice error>The portal changed during preparation. Re-read it before continuing.</Notice>}
           {step?.status === "review" && <Notice>Final review reached. FamilyHub stops here. Only you may accept the attestation and submit.</Notice>}
           {step?.status === "complete" && <Notice>The portal reports completion. FamilyHub did not submit this claim.</Notice>}
           {step?.answerWarning && <Notice error>{step.answerWarning}</Notice>}
           {step?.confirmedIllness && !["review", "complete"].includes(step.status) && <details>
-            <summary>Illness or injury for this invoice</summary>
+            <summary>Illness or injury</summary>
+            <label>Reuse answer for<select value={allInvoices ? "all" : "invoice"} onChange={e => {
+              const all = e.target.value === "all"; setAllInvoices(all); setIllnessConfirmed(false);
+              setIllness((all ? step.confirmedIllness?.defaultValue : step.confirmedIllness?.value) || "");
+            }}><option value="invoice">This invoice only</option><option value="all">All invoices — default</option></select></label>
             <label>Your answer<input value={illness} maxLength={500} onChange={e => { setIllness(e.target.value); setIllnessConfirmed(false); }} /></label>
-            <p>Saved privately for this exact invoice and insurer. It will not be reused for another invoice or overwrite an answer already entered in the portal.</p>
-            <label className="prepare-check"><input type="checkbox" checked={illnessConfirmed} onChange={e => setIllnessConfirmed(e.target.checked)} />I confirm this is my answer for this invoice and want it reused during preparation.</label>
+            <p>{allInvoices ? "Saved privately as the default for all invoices and both insurers. An invoice-specific answer takes priority." : "Saved privately for this exact invoice and insurer. Clearing it also disables the default for this invoice."} An answer already entered in the portal is preserved.</p>
+            {step.confirmedIllness.source === "default" && <p>This invoice currently uses your default answer.</p>}
+            <label className="prepare-check"><input type="checkbox" checked={illnessConfirmed} onChange={e => setIllnessConfirmed(e.target.checked)} />{allInvoices ? "I confirm this answer should be the default for all my invoices." : "I confirm this is my answer for this invoice and want it reused during preparation."}</label>
             <button type="button" className="button secondary" disabled={busy || !illnessConfirmed || !illness.trim()} onClick={() => void run(async () => {
-              await claimAction(config, "invoice-answer", { expenseId, insurer, action: "save", value: illness, confirmed: true, expectedScope: step.confirmedIllness!.scope, expectedRevision: step.confirmedIllness!.revision });
+              await claimAction(config, "invoice-answer", { expenseId, insurer, action: "save", value: illness, confirmed: true, allInvoices,
+                expectedScope: allInvoices ? step.confirmedIllness!.defaultScope : step.confirmedIllness!.scope,
+                expectedRevision: allInvoices ? step.confirmedIllness!.defaultRevision : step.confirmedIllness!.revision });
               accept(await claimAction<PreparedClaim>(config, "resume", { sessionId, prepareAuthorized: true }));
-            })}>Save for this invoice and prepare</button>
-            {step.confirmedIllness.value && <button type="button" className="text-action" disabled={busy} onClick={() => void run(async () => {
-              await claimAction(config, "invoice-answer", { expenseId, insurer, action: "remove", confirmed: true, expectedScope: step.confirmedIllness!.scope, expectedRevision: step.confirmedIllness!.revision });
+            })}>{allInvoices ? "Save default and prepare" : "Save for this invoice and prepare"}</button>
+            {(allInvoices ? step.confirmedIllness.defaultValue : step.confirmedIllness.value) && <button type="button" className="text-action" disabled={busy} onClick={() => void run(async () => {
+              await claimAction(config, "invoice-answer", { expenseId, insurer, action: "remove", confirmed: true, allInvoices,
+                expectedScope: allInvoices ? step.confirmedIllness!.defaultScope : step.confirmedIllness!.scope,
+                expectedRevision: allInvoices ? step.confirmedIllness!.defaultRevision : step.confirmedIllness!.revision });
               const fresh = await claimAction<ClaimStep>(config, "inspect", { sessionId }); setStep(fresh); setIllness(""); setIllnessConfirmed(false); setVerification(undefined);
               setMessage("Saved answer cleared. The current portal value was left unchanged.");
-            })}>Clear saved invoice answer</button>}
+            })}>{allInvoices ? "Clear default answer" : "Clear saved invoice answer"}</button>}
           </details>}
           {step?.serviceChoices?.scopeComplete && <button type="button" className="text-action" disabled={busy} onClick={() => void run(async () => {
             setStep(await claimAction<ClaimStep>(config, "forget-service-choices", { sessionId })); setVerification(undefined); setMessage("Saved service choices cleared. Existing portal values remain unchanged.");
@@ -112,7 +142,8 @@ export default function PrepareClaim({ expenseId, initialInsurer, config, onClos
           </section>}
           {step?.fields.some(f => f.kind || f.type === "file") && <section aria-label="Uncertain or missing answers">
             <strong>Answers still needed</strong>
-            {step.fields.filter(f => f.kind && f.type !== "file").map(f => <label key={f.key}>{f.label}{["select", "combo", "provider", "radio"].includes(f.type) ? <select value={values[f.key] || ""} onChange={e => setValues(v => ({ ...v, [f.key]: e.target.value }))}><option value="">Choose / leave blank</option>{f.options.filter(o => o.value).map(o => <option key={o.value} value={o.value}>{o.label}</option>)}</select> : <input type={f.type === "date" ? "date" : "text"} value={values[f.key] || ""} onChange={e => setValues(v => ({ ...v, [f.key]: e.target.value }))} />}{f.suggestionReason && <small>{f.suggestionReason}</small>}</label>)}
+            {step.fields.filter(f => f.kind && !["file", "checkbox"].includes(f.type)).map(f => <label key={f.key}>{f.label}{["select", "combo", "provider", "radio"].includes(f.type) ? <select value={values[f.key] || ""} onChange={e => setValues(v => ({ ...v, [f.key]: e.target.value }))}><option value="">Choose / leave blank</option>{f.options.filter(o => o.value).map(o => <option key={o.value} value={o.value}>{o.label}</option>)}</select> : <input type={f.type === "date" ? "date" : "text"} value={values[f.key] || ""} onChange={e => setValues(v => ({ ...v, [f.key]: e.target.value }))} />}{f.suggestionReason && <small>{f.suggestionReason}</small>}</label>)}
+            {step.fields.filter(f => f.type === "checkbox").map(f => <p key={f.key}>{f.label}: review the original PDF and complete this confirmation in the insurer window.</p>)}
             {step.fields.filter(f => f.type === "file").length === 1 && !verification?.attachment && <label>Original receipt<select value={attachment} onChange={e => setAttachment(e.target.value)}><option value="">Choose / leave unchanged</option>{dossier.attachments.map(a => <option key={`${a.documentId}:${a.attachmentId}`} value={`${a.documentId}:${a.attachmentId}`}>{a.name}</option>)}</select></label>}
             {step.fields.some(f => ["service", "benefit"].includes(f.kind || "")) && <label className="prepare-check"><input type="checkbox" checked={rememberServiceChoices} onChange={e => setRememberServiceChoices(e.target.checked)} />Remember my service choice privately for this insurer, clinic and invoice service.</label>}
             <button type="button" className="button" disabled={busy || !Object.values(values).some(Boolean) && !attachment} onClick={() => void run(async () => { accept(await claimAction<PreparedClaim>(config, "correct", { sessionId, revision: step.revision, values, attachment: attachment || null, prepareAuthorized: true, rememberServiceChoices })); })}>Prepare these answers{attachment ? " and attach receipt" : ""}</button>

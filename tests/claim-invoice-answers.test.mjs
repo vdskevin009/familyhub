@@ -34,6 +34,25 @@ test('only an explicit confirmed-answer provenance permits illness autofill',()=
  for(const suggestionSource of [undefined,'invoice','codex','confirmed-choice'])assert.deepEqual(automaticClaimValues([{...field,suggestionSource}],dossier),{});
  assert.deepEqual(automaticClaimValues([{...field,suggestionSource:'confirmed-answer'}],dossier),{illness:field.suggested});
 });
+test('explicit global default applies across invoices and insurers, with private overrides and independent revisions',async()=>{
+ const other={...dossier,expenseId:'synthetic-default'}, initial=await confirmedInvoiceIllness(other);
+ const input={confirmed:true,allInvoices:true,expectedScope:initial.defaultScope,expectedRevision:initial.defaultRevision,value:'Synthetic default answer'};
+ await assert.rejects(confirmInvoiceIllness(other,{...input,allInvoices:'true'}),/scope explicitly/);
+ await assert.rejects(confirmInvoiceIllness(other,{...input,allInvoices:false}),/explicitly confirm/);
+ const saved=await confirmInvoiceIllness(other,input);
+ assert.equal(saved.value,input.value);assert.equal(saved.source,'default');assert.equal(saved.defaultRevision,1);
+ for(const changed of [{...other,expenseId:'another'},{...other,insurer:'desjardins'},{...other,fields:{...other.fields,originalAmount:200}}])assert.equal((await confirmedInvoiceIllness(changed)).value,input.value);
+ assert.equal((await confirmedInvoiceIllness(dossier)).value,'Owner-described symptom','Existing invoice overrides are not broadened or replaced');
+ await assert.rejects(confirmInvoiceIllness(other,input),/changed/);
+ const suppressed=await confirmInvoiceIllness(other,{confirmed:true,expectedScope:saved.scope,expectedRevision:0,remove:true});
+ assert.equal(suppressed.value,null);assert.equal(suppressed.source,'invoice');assert.equal(suppressed.defaultValue,input.value);
+ await confirmInvoiceIllness(other,{...input,expectedRevision:1,value:'Revised synthetic default'});
+ assert.equal((await confirmedInvoiceIllness(other)).value,null,'Invoice removal continues to suppress revised defaults');
+ const fresh={...other,expenseId:'fresh'};assert.equal((await confirmedInvoiceIllness(fresh)).value,'Revised synthetic default');
+ await confirmInvoiceIllness(other,{...input,expectedRevision:2,remove:true});
+ assert.equal((await confirmedInvoiceIllness(fresh)).value,null);
+ assert.equal((await confirmedInvoiceIllness(dossier)).value,'Owner-described symptom');
+});
 test('corrupt saved answers abstain and cannot be overwritten',async()=>{
  await writeFile(join(dir,'claim-invoice-answers.json'),'broken-store');
  await assert.rejects(confirmedInvoiceIllness(dossier));

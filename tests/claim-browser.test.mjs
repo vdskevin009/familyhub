@@ -27,6 +27,7 @@ function fixture({body='Claim Details',fields=[],providers=[]}={}) {
    locator(selector){
     if(selector==='body')return {innerText:async()=>body};
     if(selector==='input[type="password"]')return {isVisible:async()=>false};
+    if(selector==='input[type="checkbox"]')return list([]);
     if(selector.startsWith('input[type="radio"]'))return list(providers);
     if(selector.startsWith('input:not('))return list(fields);
     const id=selector.match(/^\[id="([^"]+)"\]$/)?.[1];

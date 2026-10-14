@@ -16,6 +16,7 @@ import { automaticClaimValues } from "./claim-autofill.js";
 import { desjardinsRadioField } from "./desjardins-claim-form.js";
 import { reserveClaimUpload } from "./claim-upload-guard.js";
 import { confirmedInvoiceIllness } from "./claim-invoice-answers.js";
+import { blueCrossReceiptCheckbox, verifyDetailedReceipt } from "./bluecross-receipt-checklist.js";
 
 export type Field = { key: string; label: string; type: string; options: { value: string; label: string }[];
   suggested: string | null; kind: string | null; suggestionSource?: "confirmed-choice" | "confirmed-answer" | "invoice" | "codex"; suggestionReason?: string; autoAttachment?: boolean };
@@ -217,6 +218,20 @@ async function inspect(s: Session) {
       && !/explanation|benefit statement|other insurer|décompte|autre assureur|coordination/i.test(metadata.label);
     s.fields.set(field.key, { locator, field, signature: metadata.signature, initialValue: metadata.value }); fields.push(field);
   }
+  if (s.dossier.insurer === "blue-cross" && !atReview) {
+    const receipt = await blueCrossReceiptCheckbox(s.page);
+    if (receipt && !receipt.checked) {
+      const field: Field = { key: randomUUID(), label: "Detailed payment receipt available", type: "checkbox", kind: "supportingReceipt", options: [], suggested: null };
+      s.fields.set(field.key, { locator: receipt.locator, field, signature: receipt.signature, initialValue: "false" });
+    }
+    for (const locator of await s.page.locator('input[type="checkbox"]').all()) {
+      if (!await locator.isVisible() || !await locator.isEnabled() || await locator.isChecked()) continue;
+      if (receipt && await locator.evaluate((el, known) => el === known, await receipt.locator.elementHandle())) continue;
+      const label = await locator.evaluate((el: HTMLInputElement) => el.getAttribute("aria-label") || Array.from(el.labels || []).map(l => l.innerText).join(" "));
+      const field: Field = { key: randomUUID(), label: label || "Portal confirmation", type: "checkbox", kind: null, options: [], suggested: null };
+      s.fields.set(field.key, { locator, field, signature: "manual-checkbox", initialValue: "false" });
+    }
+  }
   const allFields = [...s.fields.values()].map(f => f.field);
   let confirmedIllness: Awaited<ReturnType<typeof confirmedInvoiceIllness>> | undefined;
   let answerWarning: string | undefined;
@@ -226,7 +241,9 @@ async function inspect(s: Session) {
     for (const field of illnessFields.length === 1 ? illnessFields : []) {
       if (confirmedIllness.value) {
         field.suggested = confirmedIllness.value; field.suggestionSource = "confirmed-answer";
-        field.suggestionReason = "Your explicit answer for this exact invoice and insurer. It is not an inferred diagnosis.";
+        field.suggestionReason = confirmedIllness.source === "default"
+          ? "Your explicitly confirmed default for all invoices. Review it for this claim."
+          : "Your explicit answer for this exact invoice and insurer. It is not an inferred diagnosis.";
       }
     }
   } catch { answerWarning = "Saved invoice answers could not be read. Enter the answer yourself; nothing was inferred."; }
@@ -258,6 +275,7 @@ export async function fillClaimStep(id: unknown, revision: unknown, values: unkn
     for (const [key, value] of entries) {
       const target = s.fields.get(key);
       if (!target || !target.field.kind || typeof value !== "string" || value.length > 500 || target.field.type === "file") throw new Error("Invalid reviewed field.");
+      if (target.field.type === "checkbox" && (target.field.kind !== "supportingReceipt" || value !== "true")) throw new Error("Unsupported confirmation.");
       if (["select", "combo", "provider", "radio"].includes(target.field.type) && value && !target.field.options.some(o => o.value === value)) throw new Error("The selected portal option is not available.");
     }
     let filled = 0;
@@ -302,6 +320,17 @@ export async function fillClaimStep(id: unknown, revision: unknown, values: unkn
     for (const [key, value] of ordered) {
       if (!value) continue;
       const target = s.fields.get(key)!;
+      if (target.field.type === "checkbox") {
+        // The same PDF checks also apply to manually supplied API values.
+        const receipt = s.dossier.attachments.length === 1 ? s.dossier.attachments[0] : undefined;
+        if (!receipt || !await verifyDetailedReceipt((await loadAttachment(receipt.documentId, receipt.attachmentId)).bytes, s.dossier))
+          throw new Error("The original PDF does not establish every item in the receipt checklist. Review it in the portal.");
+        const observed = await blueCrossReceiptCheckbox(s.page);
+        if (!observed || observed.checked || observed.signature !== target.signature || s.page.url() !== s.inspectedUrl)
+          throw new Error("The receipt checklist changed. Read the form again.");
+        await observed.locator.check(); filled++; markFilled(target);
+        return await finish("The detailed-receipt checklist was confirmed against the original PDF.");
+      }
       if (target.providers) {
         const now = await target.providers.evaluateAll((els: HTMLInputElement[]) => els.map(el => ({ id: el.id, name: el.name, label: Array.from(el.labels || []).map(l => l.textContent?.trim()).filter(Boolean).join(" "), checked: el.checked })));
         if (JSON.stringify(now) !== target.signature || s.page.url() !== s.inspectedUrl || !allowed(s.page.url(), s.dossier.insurer)) throw new Error("Provider choices changed. Read the form again.");
@@ -362,7 +391,10 @@ async function verifySnapshot(s: Session) {
     let observed: ObservedField | null = null;
     try {
       if (validPage && await entry.target.locator.isVisible()) {
-        if (entry.target.providers) {
+        if (entry.target.field.type === "checkbox") {
+          const receipt = await blueCrossReceiptCheckbox(s.page);
+          if (receipt) observed = { value: String(receipt.checked), signatureMatches: receipt.signature === entry.target.signature };
+        } else if (entry.target.providers) {
           const now = await entry.target.providers.evaluateAll((els: HTMLInputElement[]) => els.map(el => ({ id: el.id, name: el.name, label: Array.from(el.labels || []).map(l => l.textContent?.trim()).filter(Boolean).join(" "), checked: el.checked })));
           const structure = (values: typeof now) => values.map(({checked: _checked, ...rest}) => rest);
           const selected = now.filter(value => value.checked);
@@ -447,6 +479,15 @@ export async function prepareCurrentClaimStep(id: unknown,
       // Never automatically retry a field whose previous write could not be verified.
       if (verification?.fields.some(f => f.status !== "match")) break;
       const candidates = automaticClaimValues(step.fields, s.dossier);
+      const receiptCheckboxes = step.fields.filter(f => f.kind === "supportingReceipt");
+      if (receiptCheckboxes.length === 1) {
+        const receipt = s.dossier.attachments.length === 1 ? s.dossier.attachments[0] : undefined;
+        let verified = false;
+        try { verified = !!receipt && await verifyDetailedReceipt((await loadAttachment(receipt.documentId, receipt.attachmentId)).bytes, s.dossier); }
+        catch { /* Missing/unreadable source leaves the confirmation pending. */ }
+        if (verified) candidates[receiptCheckboxes[0].key] = "true";
+        else warning = "The detailed-receipt checklist needs review: the PDF could not establish every required detail.";
+      }
       const texts = step.fields.filter(f => f.key in candidates && !["select", "combo", "provider", "radio"].includes(f.type));
       const chosen = texts.length ? texts : step.fields.filter(f => f.key in candidates).slice(0, 1);
       const values = Object.fromEntries(chosen.map(f => [f.key, candidates[f.key]]));

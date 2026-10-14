@@ -44,7 +44,7 @@ export type ClaimPreparation = {
 };
 export type ClaimStep = { status: string; revision: string; submitAllowed: false;
   authReason?: string;
-  confirmedIllness?: { scope: string; value: string | null; revision: number }; answerWarning?: string;
+  confirmedIllness?: { scope: string; value: string | null; revision: number; source: "invoice" | "default" | null; defaultScope: string; defaultValue: string | null; defaultRevision: number }; answerWarning?: string;
   serviceChoices?: { available: boolean; scopeComplete: boolean; warning: string | null };
   fields: { key: string; label: string; type: string; kind: string | null; suggested: string | null; suggestionSource?: string; suggestionReason?: string; options: { value: string; label: string }[] }[] };
 export type ClaimVerification = { revision: string; readyForManualNext: boolean; scope: string;

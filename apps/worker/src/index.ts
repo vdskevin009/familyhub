@@ -321,7 +321,7 @@ const server = createServer(async (request, response) => {
       claimOperationBusy = true;
       try {
       if (parts[1] === "invoice-answer") {
-        const body = await readJson<{ expenseId?: unknown; insurer?: unknown; action?: unknown; confirmed?: unknown; expectedScope?: unknown; expectedRevision?: unknown; value?: unknown }>(request);
+        const body = await readJson<{ expenseId?: unknown; insurer?: unknown; action?: unknown; confirmed?: unknown; expectedScope?: unknown; expectedRevision?: unknown; value?: unknown; allInvoices?: unknown }>(request);
         const preparation = claimPreparation(body.expenseId, body.insurer);
         if (preparation.blocked) throw new Error("Resolve the invoice's duplicate or source conflicts before saving an answer.");
         if (body.action === "read") { json(response, 200, { answer: await confirmedInvoiceIllness(preparation) }, origin); return; }

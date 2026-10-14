@@ -20,13 +20,14 @@ const entry={Id:'synthetic-case',DocumentIds:[expense.Id],ExpenseDocumentId:expe
 let browser;
 try {
  browser=await chromium.launch({headless:true,channel:process.platform==='win32'?'msedge':undefined});
- for(const scenario of ['prepared','unknown','mismatch','upload-failed','human-required','login-required','blocked','old-worker','refresh-failed','owner-zero','unknown-insurer','confirmed-illness']) {
+ for(const scenario of ['prepared','unknown','mismatch','upload-failed','human-required','login-required','blocked','old-worker','refresh-failed','owner-zero','unknown-insurer','confirmed-illness','default-illness','auto-login']) {
   const context=await browser.newContext({viewport:{width:390,height:900},serviceWorkers:'block'}),page=await context.newPage(),posts=[],errors=[];
   const c={...entry,NextInsurer:scenario==='unknown-insurer'?null:'Blue Cross',DesjardinsReimbursedAmount:scenario==='owner-zero'?null:0};
   const preparation=prepareClaim(expense.Id,'blue-cross',[expense],[c]);
   preparation.attachments=[{documentId:expense.Id,attachmentId:'pdf',name:'synthetic.pdf'}];preparation.blocked=scenario==='blocked';
   let step={status:['human-required','login-required','blocked'].includes(scenario)?scenario:'fields',fields:scenario==='unknown'?[{key:'illness',kind:'natureOfIllness',label:'Nature of illness/injury',type:'text',options:[],suggested:null}]:[],revision:'step',submitAllowed:false};
-  if(scenario==='confirmed-illness')step.confirmedIllness={scope:'a'.repeat(64),value:null,revision:0};
+  if(['confirmed-illness','default-illness'].includes(scenario))step.confirmedIllness={scope:'a'.repeat(64),value:null,revision:0,source:null,defaultScope:'b'.repeat(64),defaultValue:null,defaultRevision:0};
+  if(scenario==='auto-login')step.status='login-required';
   const verification={revision:'prepared',readyForManualNext:!['mismatch','upload-failed'].includes(scenario),scope:'Read-back only; not eligibility or submission.',fields:[{key:'gross',label:'Total expense',value:'100.00',actual:scenario==='mismatch'?'80.00':'100.00',status:scenario==='mismatch'?'mismatch':'match'}],attachment:{name:'synthetic.pdf',status:scenario==='upload-failed'?'failed':'verified'}};
   const result=()=>({preparation,sessionId:scenario==='blocked'?undefined:'synthetic-session',step,verification:['human-required','login-required','blocked'].includes(scenario)?undefined:verification,submitAllowed:false});
   page.on('pageerror',e=>errors.push(e.message));
@@ -39,11 +40,15 @@ try {
    if(path==='/health')return reply({status:'ok',version:scenario==='old-worker'?'2.25.3':'2.26.2'});
    if(path==='/invoices')return reply({items:[expense],reconciliations:[c],unmatchedReimbursements:[],accounts:[]});
    if(path==='/claim-preparation/prepare')return reply(result());
-   if(path==='/claim-preparation/inspect')return reply(step);
+   if(path==='/claim-preparation/inspect'){
+    if(scenario==='auto-login')step={...step,status:'fields'};
+    return reply(step);
+   }
    if(path==='/claim-preparation/invoice-answer'){
     const b=request.postDataJSON();assert.equal(b.expenseId,expense.Id);assert.equal(b.insurer,'blue-cross');assert.equal(b.confirmed,true);
-    assert.equal(b.expectedScope,step.confirmedIllness.scope);assert.equal(b.expectedRevision,step.confirmedIllness.revision);
-    step={...step,confirmedIllness:{...step.confirmedIllness,value:b.action==='remove'?null:b.value,revision:step.confirmedIllness.revision+1}};
+    const all=scenario==='default-illness',answer=step.confirmedIllness,value=b.action==='remove'?null:b.value;
+    assert.equal(b.allInvoices,all);assert.equal(b.expectedScope,all?answer.defaultScope:answer.scope);assert.equal(b.expectedRevision,all?answer.defaultRevision:answer.revision);
+    step={...step,confirmedIllness:{...answer,value,source:all?'default':'invoice',...(all?{defaultValue:value,defaultRevision:answer.defaultRevision+1}:{revision:answer.revision+1})}};
     return reply({answer:step.confirmedIllness});
    }
    if(path==='/claim-preparation/resume'){
@@ -76,6 +81,11 @@ try {
    else if(scenario==='login-required')await dialog.getByText(/Sign-in needs attention/).waitFor();
    else if(scenario==='blocked')await dialog.getByText(/possible duplicate or conflicting source/).waitFor();
    else {
+    if(scenario==='auto-login'){
+     await dialog.getByText(/Sign-in needs attention/).waitFor();
+     await dialog.getByText(/Sign-in needs attention/).waitFor({state:'hidden'});
+     assert.equal(posts.filter(p=>p.path.endsWith('/resume')).length,1,'Login completion resumes automatically once');
+    }
     await dialog.getByRole('region',{name:'Prepared portal answers'}).waitFor();
     const validate=dialog.getByRole('button',{name:'Validate prepared step',exact:true});assert.equal(await validate.isDisabled(),true);
     if(scenario==='unknown'){
@@ -90,14 +100,16 @@ try {
      await dialog.getByText(scenario==='mismatch'?/Needs attention — mismatch/:/Upload failed/).waitFor();
     } else if(scenario==='refresh-failed') {
      await dialog.getByRole('button',{name:'Read and prepare current step',exact:true}).click();await dialog.getByText(/Read failed/).waitFor();assert.equal(await validate.count(),0);
-    } else if(scenario==='confirmed-illness') {
-     await dialog.getByText('Illness or injury for this invoice',{exact:true}).click();
-     const save=dialog.getByRole('button',{name:'Save for this invoice and prepare',exact:true});
+    } else if(['confirmed-illness','default-illness'].includes(scenario)) {
+     const all=scenario==='default-illness';
+     await dialog.getByText('Illness or injury',{exact:true}).click();
+     if(all)await dialog.getByLabel('Reuse answer for').selectOption('all');
+     const save=dialog.getByRole('button',{name:all?'Save default and prepare':'Save for this invoice and prepare',exact:true});
      await dialog.getByLabel('Your answer',{exact:true}).fill('Owner-described symptom');assert.equal(await save.isDisabled(),true);
-     await dialog.getByLabel(/I confirm this is my answer for this invoice/).check();await save.click();
-     await dialog.getByRole('button',{name:'Clear saved invoice answer',exact:true}).waitFor();
+     await dialog.getByLabel(all?/I confirm this answer should be the default/:/I confirm this is my answer for this invoice/).check();await save.click();
+     await dialog.getByRole('button',{name:all?'Clear default answer':'Clear saved invoice answer',exact:true}).waitFor();
      assert.equal(await dialog.getByLabel('Your answer',{exact:true}).inputValue(),'Owner-described symptom');
-     await dialog.getByRole('button',{name:'Clear saved invoice answer',exact:true}).click();
+     await dialog.getByRole('button',{name:all?'Clear default answer':'Clear saved invoice answer',exact:true}).click();
      await dialog.getByText('Saved answer cleared. The current portal value was left unchanged.',{exact:true}).waitFor();
      assert.equal(await dialog.getByLabel('Your answer',{exact:true}).inputValue(),'');
      assert.equal(posts.filter(p=>p.path.endsWith('/invoice-answer')).length,2);
@@ -113,5 +125,5 @@ try {
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false,scenario+' mobile overflow');
   await page.screenshot({path:join(output,`claim-autonomous-${scenario}.png`),fullPage:true});await context.close();
  }
- console.log(JSON.stringify({passed:12,providerContact:false,submission:false,screenshots:output}));
+ console.log(JSON.stringify({passed:14,providerContact:false,submission:false,screenshots:output}));
 }finally{await browser?.close();server.close();}
