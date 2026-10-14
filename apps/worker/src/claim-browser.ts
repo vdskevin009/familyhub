@@ -198,11 +198,17 @@ export async function fillClaimStep(id: unknown, revision: unknown, values: unkn
       if (["select", "combo", "provider"].includes(target.field.type) && value && !target.field.options.some(o => o.value === value)) throw new Error("The selected portal option is not available.");
     }
     let filled = 0;
-    s.approved = { revision: randomUUID(), url: s.inspectedUrl, entries: entries.filter(([,value]) => !!value).map(([key,value]) => {
+    const previous = s.approved?.url === s.inspectedUrl ? s.approved : undefined;
+    const approvedEntries = entries.filter(([,value]) => !!value).map(([key,value]) => {
       const target = s.fields.get(key)!;
       return { target, filled: false, approved: { key, label: target.field.label, kind: target.field.kind, type: target.field.type, value: value as string,
         optionLabel: target.field.options.find(o => o.value === value)?.label } };
-    }) };
+    });
+    // Preserve the approved answers from earlier postbacks in this claim only.
+    // Re-read every prior answer; a later fill must not erase an earlier mismatch.
+    s.approved = { revision: randomUUID(), url: s.inspectedUrl,
+      entries: [...(previous?.entries || []).filter(old => !approvedEntries.some(next => next.target.signature === old.target.signature)), ...approvedEntries],
+      ...(previous?.attachment ? { attachment: previous.attachment } : {}) };
     if (attachment != null) {
       const selected = s.dossier.attachments.find(a => `${a.documentId}:${a.attachmentId}` === attachment);
       if (!selected || [...s.fields.values()].filter(t => t.field.type === "file").length !== 1) throw new Error("Select the correct supporting-document field in the portal.");

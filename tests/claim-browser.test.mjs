@@ -14,7 +14,7 @@ function fixture({body='Claim Details',fields=[],providers=[]}={}) {
  const calls=[];let url='https://service.pac.bluecross.ca/ACESWeb/Pages/Claims/eClaim.aspx',closed=false,disconnect;
  const signature=f=>JSON.stringify(['INPUT',f.id,f.id,f.type||'text',f.label?[f.label]:[],null]);
  for(const f of fields) { f.type ||= 'text';f.value ||= '';f.open=false; }
- function field(f) { return {count:async()=>f?1:0,isVisible:async()=>!!f,isEnabled:async()=>true,
+ function field(f) { return {count:async()=>f?1:0,isVisible:async()=>!!f,isEnabled:async()=>f?.disabled!==true,
    getAttribute:async key=>key==='id'?f.id:null,
    evaluate:async()=>{if(f.unreadable)throw Error('unreadable');return {id:f.id,value:f.value,label:f.label||'',type:f.type,options:f.options||[],signature:f.stale?'changed':signature(f)}},
    click:async()=>{calls.push(['open-menu',f.id]);f.open=true;},press:async key=>{if(key==='Escape')f.open=false;calls.push(['key',f.id,key]);},
@@ -33,7 +33,7 @@ function fixture({body='Claim Details',fields=[],providers=[]}={}) {
     if(id?.endsWith('_DropDown')) {
      const f=fields.find(f=>f.id===id.replace(/_DropDown$/,'_Input'));
      return {isVisible:async()=>!!f?.open,locator:()=>({allTextContents:async()=>f.options.map(o=>o.label)}),
-       getByRole:()=>({filter({hasText}){const matches=f.options.filter(o=>hasText.test(o.label));return {count:async()=>matches.length,isVisible:async()=>f.open,click:async()=>{calls.push(['choose',f.id,matches[0].label]);f.value=matches[0].label;f.open=false;}};}})};
+       getByRole:()=>({filter({hasText}){const matches=f.options.filter(o=>hasText.test(o.label));return {count:async()=>matches.length,isVisible:async()=>f.open,click:async()=>{calls.push(['choose',f.id,matches[0].label]);f.value=matches[0].label;f.open=false;f.onChoose?.();}};}})};
     }
     if(id)return field([...fields,...providers].find(f=>f.id===id));
     const suffix=selector.match(/id\$="_([^"]+)"/)?.[1];return field(fields.find(f=>f.id.endsWith('_'+suffix)));
@@ -73,6 +73,34 @@ test('Telerik selection stops after one postback; text and calendar prefill rema
   assert.equal(f.calls.some(c=>/submit|next|consent/i.test(c[0])),false);
  }finally{await closeClaimBrowser(id);}
 });
+test('reviewed postback stages retain and recheck every prior approved answer',async()=>{
+ const f=fixture({fields:[
+  {id:'form_cmbBenefit_Input',options:[{value:'c',label:'Chiropractor'}]},
+  {id:'form_cmbExpenseType_Input',options:[{value:'s',label:'Chiropractic - In Person - Subsequent Treatment'}]},
+  {id:'form_cmbOtherInsurancePlan_Input',options:[{value:'y',label:'Yes'},{value:'n',label:'No'}]},
+  {id:'form_txtAmount',label:'Total amount of expense'},
+  {id:'form_txtOtherPlanAmt',label:'Amount paid by another insurance plan',disabled:true}]});
+ f.fields.find(x=>x.id==='form_cmbOtherInsurancePlan_Input').onChoose=()=>{f.fields.find(x=>x.id==='form_txtOtherPlanAmt').disabled=false};
+ const id=await opened(f,{...dossier,fields:{...dossier.fields,service:'20 min Chiropractic Return',otherInsurancePaid:0}});
+ try {
+  for(let stage=0;stage<3;stage++){
+   const step=await inspectClaimStep(id),values=Object.fromEntries(step.fields.filter(x=>x.suggested!=null).map(x=>[x.key,x.suggested]));
+   const result=await fillClaimStep(id,step.revision,values,null,async()=>{});
+   assert.equal(f.calls.filter(c=>c[0]==='choose').length,stage+1);
+   assert.equal(result.verification.fields.length,4,'A new stage must retain earlier approved answers');
+   assert.equal(result.verification.readyForManualNext,stage===2);
+  }
+  assert.equal(f.fields.find(x=>x.id==='form_cmbExpenseType_Input').value,'Chiropractic - In Person - Subsequent Treatment');
+  assert.equal(f.fields.find(x=>x.id==='form_cmbOtherInsurancePlan_Input').value,'Yes');
+  const dependent=await inspectClaimStep(id),paid=dependent.fields.find(x=>x.kind==='otherInsurancePaid');assert.equal(paid.suggested,'0.00');
+  const result=await fillClaimStep(id,dependent.revision,{[paid.key]:paid.suggested},null,async()=>{});
+  assert.equal(result.verification.fields.length,5);assert.equal(result.verification.readyForManualNext,true);assert.equal(f.fields.find(x=>x.id==='form_txtOtherPlanAmt').value,'0.00');
+  f.fields.find(x=>x.id==='form_txtAmount').value='101.00';
+  const checks=await verifyClaimStep(id);assert.equal(checks.readyForManualNext,false);assert.equal(checks.fields.find(x=>x.kind==='originalAmount').status,'mismatch');
+  assert.equal(f.calls.some(c=>/submit|next|consent/i.test(c[0])),false);
+ }finally{await closeClaimBrowser(id);}
+});
+
 test('operator edits and a changed origin invalidate fill rather than overwriting or transmitting',async()=>{
  for(const change of ['edit','origin']){
   const f=fixture({fields:[{id:'form_txtAmount',label:'Total amount of expense'}]});const id=await opened(f);

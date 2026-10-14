@@ -54,9 +54,13 @@ export function prepareClaim(expenseId: string, insurer: Insurer, invoices: Invo
   const coordinationRequired = entry?.PrimaryInsurer != null && entry.PrimaryInsurer !== insurerLabel;
   const coordination = { required: coordinationRequired, ready: !coordinationRequired || otherInsurancePaid != null,
     primaryInsurer: entry?.PrimaryInsurer ?? null,
+    ownerConfirmation: entry?.OwnerAdjudications?.find(row => row.insurer === otherInsurer) ?? null,
+    ownerConfirmationRevision: entry?.OwnerAdjudicationRevisions?.[otherInsurer] ?? 0,
+    importedStatementAvailable: (entry?.MatchAssignments || []).some(a => a.Insurer === otherInsurer),
     message: coordinationRequired && otherInsurancePaid == null
-      ? `${entry!.PrimaryInsurer} is the configured first insurer for this invoice. Its confirmed response/payment is missing. Complete that claim and import or match its response in Sources & sync before preparing ${insurerLabel}. A recorded zero-payment response also qualifies.`
-      : null };
+      ? `${entry!.PrimaryInsurer}'s response/payment is not recorded. You can open preparation, but unknown answers stay blank. Confirm a known adjudication amount, including zero, if you received a response. Provide the genuine explanation document if ${insurerLabel} requires it.`
+      : entry?.OwnerAdjudications?.some(row => row.insurer === otherInsurer)
+        ? `The other-insurer response is owner-confirmed, not an imported insurer statement. Preparation is allowed. Provide the genuine explanation document if ${insurerLabel} requires it; an app screenshot is not that document.` : null };
   const fields = { patient: member === "unknown" ? null : member,
     provider: sourceField("Provider") || sources.find(x => x.AccountLabel !== "Local Desjardins import" && x.Provider)?.Provider || expense.Provider || null,
     practitioner: sourceField("Practitioner"), serviceDate: date || null,
@@ -78,12 +82,12 @@ export function prepareClaim(expenseId: string, insurer: Insurer, invoices: Invo
   const blockingConflicts = conflicts.filter(c => !reviewableWarnings.includes(c));
   // Existing PWA versions already render preparation conflicts. Keep the
   // prerequisite visible there until the enhanced panel is deployed.
-  const preparationConflicts = coordination.message ? [...conflicts, coordination.message] : conflicts;
+  const preparationConflicts = conflicts;
   return { expenseId, insurer, portalUrl: claimPortals[insurer], preparationUrl: claimPreparationPortals[insurer], coordination, fields, missing, conflicts: preparationConflicts, attachments,
     otherInsurer, currency: entry?.Currency || expense.Currency || null, reviewableWarnings,
     duplicate: { status: duplicateStatus, checkedAt: new Date().toISOString(), scope: "Saved local invoice and insurer records only; current portal history has not been verified.",
       records: [...recorded, ...possible].map(x => ({ id: x.Id, reference: x.PortalClaimId || x.Healthcare?.ClaimReference || null, service: x.ClaimedService || x.Healthcare?.ServiceType || null, status: x.PortalClaimStatus || "recorded" })) },
-    blocked: !coordination.ready || duplicateStatus !== "not-verified" || blockingConflicts.length > 0 || expense.IgnoredAt != null || entry?.WorkflowStatus === "ignore",
+    blocked: duplicateStatus !== "not-verified" || blockingConflicts.length > 0 || expense.IgnoredAt != null || entry?.WorkflowStatus === "ignore",
     sourceEmails: sources.filter(x => ids.has(x.Id)).map(x => ({ account: x.AccountEmail, messageId: x.SourceMessageId })),
     submitAllowed: false as const };
 }

@@ -19,7 +19,7 @@ import { extractGrocery } from "./grocery-extraction.js";
 import { GroceryPlanningStore } from "./grocery-planning-store.js";
 import { groceryExpandedListCapability, groceryPlanningMaxBytes } from "./grocery-planning.js";
 import { GroceryResearch } from "./grocery-research.js";
-import { importConnectorMessage, claimPreparation } from "./invoices.js";
+import { importConnectorMessage, claimPreparation, confirmOwnerAdjudication } from "./invoices.js";
 import { parseLoginRecoveryRequest } from "./portal-login-recovery.js";
 import { portalReconnectStatus, startPortalReconnect } from "./portal-reconnect.js";
 import { openClaimBrowser, inspectClaimStep, fillClaimStep, claimSessionExpense, closeClaimBrowser, forgetClaimServiceChoices, suggestClaimServiceChoices, verifyClaimStep } from "./claim-browser.js";
@@ -315,6 +315,7 @@ const server = createServer(async (request, response) => {
       }
     }
     if (parts[0] === "claim-preparation" && request.method === "POST" && parts.length === 2) {
+      if (parts[1] === "confirm-adjudication") { json(response, 200, await confirmOwnerAdjudication(await readJson(request)), origin); return; }
       const body = await readJson<{ expenseId?: unknown; insurer?: unknown; historyReviewed?: unknown; warningsReviewed?: unknown; sessionId?: unknown; revision?: unknown; values?: unknown; attachment?: unknown; uploadConfirmed?: unknown; rememberServiceChoices?: unknown; answersReviewed?: unknown }>(request);
       if (parts[1] === "preview") { json(response, 200, claimPreparation(body.expenseId, body.insurer), origin); return; }
       if (parts[1] === "open") { json(response, 200, await openClaimBrowser(claimPreparation(body.expenseId, body.insurer), body.historyReviewed, body.warningsReviewed), origin); return; }

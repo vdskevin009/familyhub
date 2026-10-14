@@ -36,6 +36,8 @@ export type ReconciliationCase = {
   ReconciliationConfidence?: number;
   MatchAssignments?: MatchAssignment[];
   HasUnresolvedReimbursementEvidence?: boolean;
+  OwnerAdjudications?: Array<{ insurer: "desjardins" | "blue-cross"; amount: number; reason: string; at: string; revision: number; provenance: "owner-confirmed" }>;
+  OwnerAdjudicationRevisions?: Partial<Record<"desjardins" | "blue-cross", number>>;
   WorkflowStatus?: "open" | "closed" | "ignore";
   WorkflowOrigin?: "automatic" | "manual";
   WorkflowChangedAt?: string;
@@ -623,7 +625,7 @@ export function buildReconciliationSnapshot(items: Invoice[], matchDecisions: Ma
         source: evidence.FieldSources?.ServiceType || matched.find(item => healthcareEvidence(item).ServiceType)?.Id || "unknown", confidence: evidence.ServiceType || matched.some(item => healthcareEvidence(item).ServiceType) ? "confirmed" : "unknown" },
       PatientBalance: { value: residual, source: evidence.FieldSources?.PatientBalance || evidence.FieldSources?.AmountNotCovered || "unknown", confidence: evidence.FieldStates?.PatientBalance || evidence.FieldStates?.AmountNotCovered || "unknown" },
       PrimaryPaid: { value: primaryKnown,
-        source: matched.find(item => item.Insurer === order[0])?.Id || (directPrimary != null ? "receipt-explicit-payment" : explicitPrimaryProcessed ? "receipt-insurer-processing" : "not found"),
+        source: directPrimary != null && evidence.FieldSources?.[`InsurerPayments.${order[0]}`] === "manual" ? "owner-confirmed-adjudication" : matched.find(item => item.Insurer === order[0])?.Id || (directPrimary != null ? "receipt-explicit-payment" : explicitPrimaryProcessed ? "receipt-insurer-processing" : "not found"),
         confidence: primaryKnown != null ? "confirmed" : matched.some(item => item.Insurer === order[0]) ? "unknown" : explicitPrimaryProcessed ? "inferred" : "not-found" },
       SecondaryPaid: { value: secondaryKnown,
         source: matched.find(item => item.Insurer === order[1])?.Id || (directSecondary != null ? "receipt-explicit-payment" : explicitSecondaryProcessed ? "receipt-insurer-processing" : "no matching Blue Cross record"),

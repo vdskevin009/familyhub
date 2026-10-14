@@ -21,6 +21,7 @@ import { prepareConnectorMessage, saveConnectorFiles, readConnectorFile, invoice
 import { prepareClaim } from "./claim-preparation.js";
 import { calendarDate } from "./healthcare-evidence.js";
 import { multipleServiceDates, withConfirmedServiceDates, type ServiceDateConfirmations } from "./service-date-confirmation.js";
+import { latestOwnerAdjudications, withOwnerAdjudications, ownerAdjudicationApplies, type OwnerAdjudication } from "./owner-adjudication.js";
 
 type Window = { after: number; before: number; page?: string };
 /** A learned category is a preference, never a replacement for freshly extracted facts. */
@@ -43,9 +44,9 @@ const empty = (): State => ({ items: [], corrections: [], decisions: [], matchDe
 
 function activeReconciliationItems(): Invoice[] {
   const ignored = new Set(state.unmatchedDecisions.map(item => item.reimbursementId));
-  return withConfirmedServiceDates(state.items.filter(item => !ignored.has(item.Id)), state.confirmedServiceDates);
+  return withOwnerAdjudications(withConfirmedServiceDates(state.items.filter(item => !ignored.has(item.Id)), state.confirmedServiceDates), state.ownerAdjudications);
 }
-let state = empty();
+let state: State & { ownerAdjudications?: OwnerAdjudication[] } = empty();
 let busy = false;
 let mutation = Promise.resolve();
 let blueCrossBusy = false;
@@ -368,6 +369,10 @@ function decorateWorkflowCase(entry: ReconciliationCase): ReconciliationCase {
   const status = record?.ManualStatus ?? record?.AutomaticStatus ?? automatic;
   return {
     ...entry,
+    OwnerAdjudications: latestOwnerAdjudications(state.ownerAdjudications).filter(row => entry.DocumentIds.includes(row.expenseId)
+      && withConfirmedServiceDates(state.items, state.confirmedServiceDates).some(item => ownerAdjudicationApplies(row, item)))
+      .map(({ insurer, amount, reason, at, revision, provenance }) => ({ insurer, amount: amount!, reason, at, revision, provenance })),
+    OwnerAdjudicationRevisions: Object.fromEntries(latestOwnerAdjudications(state.ownerAdjudications).filter(row => entry.DocumentIds.includes(row.expenseId)).map(row => [row.insurer, row.revision])),
     WorkflowStatus: status,
     WorkflowOrigin: record?.ManualStatus ? "manual" : "automatic",
     WorkflowChangedAt: record?.ChangedAt,
@@ -709,7 +714,46 @@ export async function classifyHistorical(mail: Mail, _email: string, _label?: st
 export function claimPreparation(expenseId: unknown, insurer: unknown) {
   if (typeof expenseId !== "string" || !["blue-cross", "desjardins"].includes(String(insurer))) throw new Error("Choose an invoice and insurer.");
   const cases = buildReconciliationSnapshot(activeReconciliationItems(), state.matchDecisions).cases.map(decorateWorkflowCase);
-  return prepareClaim(expenseId, insurer as "blue-cross" | "desjardins", withConfirmedServiceDates(state.items, state.confirmedServiceDates), cases);
+  return prepareClaim(expenseId, insurer as "blue-cross" | "desjardins", withOwnerAdjudications(withConfirmedServiceDates(state.items, state.confirmedServiceDates), state.ownerAdjudications), cases);
+}
+
+export async function confirmOwnerAdjudication(input: unknown) {
+  const x = input as { expenseId?: unknown; insurer?: unknown; amount?: unknown; reason?: unknown; confirmed?: unknown;
+    expectedInvoiceNumber?: unknown; expectedServiceDate?: unknown; expectedAmount?: unknown; expectedRevision?: unknown; statement?: unknown; contextLibraryFileId?: unknown; remove?: unknown };
+  if (!x || x.confirmed !== true || typeof x.expenseId !== "string" || !["desjardins", "blue-cross"].includes(String(x.insurer))
+    || typeof x.reason !== "string" || !x.reason.trim() || x.reason.length > 500
+    || typeof x.expectedInvoiceNumber !== "string" || typeof x.expectedServiceDate !== "string" || typeof x.expectedAmount !== "number"
+    || !Number.isInteger(x.expectedRevision) || Number(x.expectedRevision) < 0
+    || x.remove !== true && (typeof x.amount !== "number" || !Number.isFinite(x.amount) || x.amount < 0 || x.amount > x.expectedAmount)
+    || x.statement != null && (typeof x.statement !== "string" || x.statement.length > 2000)
+    || x.contextLibraryFileId != null && (typeof x.contextLibraryFileId !== "string" || !/^libfile_[a-f0-9]{32}$/.test(x.contextLibraryFileId))) throw new Error("Confirm a known adjudication amount and exact current invoice; unknown responses remain unknown.");
+  if (busy || blueCrossBusy || desjardinsBusy) throw new Error("Collection is running. Retry after it finishes.");
+  let changed = false;
+  await edit(async () => {
+    const expense = withConfirmedServiceDates(state.items, state.confirmedServiceDates).find(item => item.Id === x.expenseId);
+    if (!expense || expense.Category !== 0 || expense.DocumentRole !== "expense" || expense.IgnoredAt
+      || expense.Healthcare?.InvoiceNumber !== x.expectedInvoiceNumber || expense.ServiceDate !== x.expectedServiceDate
+      || (expense.Healthcare?.OriginalBilledAmount ?? expense.BilledAmount) !== x.expectedAmount) throw new Error("Invoice identity or facts changed. Review the exact invoice before confirming.");
+    const latest = latestOwnerAdjudications(state.ownerAdjudications).find(row => row.expenseId === x.expenseId && row.insurer === x.insurer);
+    const amount = x.remove === true ? null : x.amount as number;
+    const invoice = { number: x.expectedInvoiceNumber as string, serviceDate: x.expectedServiceDate as string, originalAmount: x.expectedAmount as number };
+    if (latest && latest.amount === amount && latest.reason === x.reason && latest.action === (x.remove === true ? "remove" : "confirm") && JSON.stringify(latest.invoice) === JSON.stringify(invoice)) return;
+    if ((latest?.revision ?? 0) !== x.expectedRevision) throw new Error("The owner confirmation changed. Refresh before editing it.");
+    const entry = buildReconciliationSnapshot(activeReconciliationItems(), state.matchDecisions).cases.find(c => c.DocumentIds.includes(expense.Id));
+    const insurer = x.insurer as "desjardins" | "blue-cross";
+    if (x.remove !== true) {
+      const matched = (entry?.MatchAssignments || []).filter(a => a.Insurer === insurer).map(a => state.items.find(i => i.Id === a.ReimbursementDocumentId));
+      if (matched.some(item => item?.ReimbursedAmount != null && item.ReimbursedAmount !== amount)) throw new Error("The owner amount conflicts with existing insurer evidence. Review it without replacing the statement.");
+      const direct = expense.Healthcare?.InsurerPayments?.[insurer];
+      if (direct != null && direct !== amount) throw new Error("The owner amount conflicts with original receipt evidence. Review it without overwriting the receipt.");
+    }
+    await atomicJson(join(dataDirectory, "backups", `owner-adjudication-${Date.now()}-${randomUUID()}.json`), state);
+    state.ownerAdjudications = [...(state.ownerAdjudications || []), { expenseId: expense.Id, insurer, amount, reason: x.reason as string,
+      action: x.remove === true ? "remove" : "confirm", at: new Date().toISOString(), revision: (latest?.revision ?? 0) + 1, provenance: "owner-confirmed", invoice,
+      ...(typeof x.statement === "string" ? { statement: x.statement } : {}), ...(typeof x.contextLibraryFileId === "string" ? { contextLibraryFileId: x.contextLibraryFileId } : {}) }];
+    changed = true;
+  });
+  return { saved: true, changed, preparation: claimPreparation(x.expenseId, x.insurer === "desjardins" ? "blue-cross" : "desjardins") };
 }
 
 /** Explicit connector intake uses the same evidence and reconciliation as PC Gmail.
