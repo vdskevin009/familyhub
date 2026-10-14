@@ -17,13 +17,22 @@ export async function loginForClaim(page: Page, insurer: "blue-cross" | "desjard
         throw new Error("Saved insurer profile preference cannot be unlocked.");
       }
     });
-    const url = new URL(page.url());
-    if (url.username || url.password || url.origin !== (insurer === "blue-cross" ? "https://service.pac.bluecross.ca" : "https://www.agea-gbim.dsf-dfs.com")) return false;
-    if (await page.locator('input[type="password"]').first().isVisible().catch(() => false)) return false;
-    const marker = insurer === "blue-cross"
-      ? page.locator('div.caresnet-link > div.quick-nav__item--claim, table[id*="grdClaimsGrid"], input[id$="_cmbCoveredLife_Input"]')
-      : page.locator('table.tableau-donnees, input[name="typeReclamation"], input[name="personneAssuree"]');
-    return await marker.first().isVisible().catch(() => false);
+    return (await authenticatedClaimPages(page, insurer)).length === 1;
   };
   return tryPortalLogin(page, insurer === "blue-cross" ? "bluecross" : "desjardins", ready);
+}
+
+/** Login can open a new tab; require unique visible authenticated evidence in this context. */
+export async function authenticatedClaimPages(page: Page, insurer: "blue-cross" | "desjardins") {
+  const ready: Page[] = [];
+  for (const candidate of page.context().pages().filter(p => !p.isClosed())) {
+    const url = new URL(candidate.url());
+    if (url.username || url.password || url.origin !== (insurer === "blue-cross" ? "https://service.pac.bluecross.ca" : "https://www.agea-gbim.dsf-dfs.com")) continue;
+    if (await candidate.locator('input[type="password"]').first().isVisible().catch(() => false)) continue;
+    const marker = insurer === "blue-cross"
+      ? candidate.locator('div.caresnet-link > div.quick-nav__item--claim, table[id*="grdClaimsGrid"], input[id$="_cmbCoveredLife_Input"]')
+      : candidate.locator('table.tableau-donnees, input[name="typeReclamation"], input[name="personneAssuree"]');
+    if (await marker.first().isVisible().catch(() => false)) ready.push(candidate);
+  }
+  return ready;
 }

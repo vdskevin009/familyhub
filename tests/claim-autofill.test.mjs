@@ -7,6 +7,7 @@ import { join } from 'node:path';
 const directory=await mkdtemp(join(tmpdir(),'claim-upload-guard-'));
 process.env.FAMILYHUB_WORKER_DATA=directory;
 const {reserveClaimUpload}=await import('../apps/worker/dist/claim-upload-guard.js');
+const {authenticatedClaimPages}=await import('../apps/worker/dist/claim-login.js');
 test.after(()=>rm(directory,{recursive:true,force:true}));
 const field=(key,kind,suggested,extra={})=>({key,kind,suggested,type:'text',options:[],...extra});
 test('automatic preparation abstains on diagnosis, Codex proposals, uncertain money and ambiguous options',()=>{
@@ -23,4 +24,12 @@ test('upload reservations survive a new session and refuse concurrent or uncerta
  assert.equal(outcomes.filter(r=>r.status==='fulfilled').length,1);
  await assert.rejects(reserveClaimUpload(dossier,'hash'),/already attempted/);
  await reserveClaimUpload({...dossier,insurer:'desjardins'},'hash');
+});
+test('claim login observes a trusted authenticated new tab and exposes ambiguous candidates',async()=>{
+ const page=(url,password,marker)=>({url:()=>url,isClosed:()=>false,locator:selector=>({first:()=>({isVisible:async()=>selector.includes('password')?password:marker})})});
+ const login=page('https://service.pac.bluecross.ca/member/login',true,false),ready=page('https://service.pac.bluecross.ca/member/',false,true),foreign=page('https://evil.example/member/',false,true);
+ login.context=()=>({pages:()=>[login,ready,foreign]});
+ assert.deepEqual(await authenticatedClaimPages(login,'blue-cross'),[ready]);
+ const other=page('https://service.pac.bluecross.ca/member/',false,true);login.context=()=>({pages:()=>[login,ready,other]});
+ assert.equal((await authenticatedClaimPages(login,'blue-cross')).length,2);
 });

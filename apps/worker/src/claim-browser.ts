@@ -11,7 +11,7 @@ import { savedServiceChoice, rememberServiceChoice, forgetServiceChoices, servic
 import { codexServiceRunner, validatedServiceProposals, type ServiceRunner } from "./claim-service-suggestions.js";
 import { checkedField, uploadEvidence, type ApprovedField, type ObservedField } from "./claim-field-verification.js";
 import { acquirePortalLock, classifyLoginScreen, type LoginReason } from "./portal-login.js";
-import { loginForClaim } from "./claim-login.js";
+import { loginForClaim, authenticatedClaimPages } from "./claim-login.js";
 import { automaticClaimValues } from "./claim-autofill.js";
 import { desjardinsRadioField } from "./desjardins-claim-form.js";
 import { reserveClaimUpload } from "./claim-upload-guard.js";
@@ -77,9 +77,14 @@ async function openBrowser(dossier: ClaimPreparation, historyReviewed: unknown, 
         }, auth.session.values);
       }
     } catch { /* A normal visible login remains available. */ }
-    const page = await context.newPage();
+    let page = await context.newPage();
     await page.goto(dossier.preparationUrl || dossier.portalUrl, { waitUntil: "domcontentloaded", timeout: 45_000 });
     const authReason = autonomous ? await loginForClaim(page, dossier.insurer) : undefined;
+    if (autonomous) {
+      const authenticated = await authenticatedClaimPages(page, dossier.insurer);
+      if (authenticated.length > 1) throw new Error("Several authenticated insurer tabs are open.");
+      if (authenticated.length === 1) page = authenticated[0];
+    }
     if (dossier.insurer === "blue-cross") {
       await openBlueCrossClaimEntry(page).catch(() => {}); // Visible manual navigation remains available.
     }
