@@ -22,7 +22,7 @@ type Target = { locator: Locator; field: Field; signature: string; initialValue:
 type ApprovedSnapshot = { revision: string; url: string; entries: { target: Target; approved: ApprovedField; filled: boolean }[]; attachment?: { name: string; selected: boolean } };
 type Session = { id: string; browser: Browser; page: Page; dossier: ClaimPreparation; createdAt: number;
   fields: Map<string, Target>; attemptedAttachments: Set<string>; busy: boolean; revision: string; inspectedUrl: string; approved?: ApprovedSnapshot;
-  authReason?: LoginReason; release?: () => Promise<void> };
+  authReason?: LoginReason; release?: () => Promise<void>; claimEntryAttempted?: boolean };
 let session: Session | undefined;
 let opening = false;
 const allowed = (url: string, insurer: ClaimPreparation["insurer"]) => {
@@ -85,9 +85,6 @@ async function openBrowser(dossier: ClaimPreparation, historyReviewed: unknown, 
       if (authenticated.length > 1) throw new Error("Several authenticated insurer tabs are open.");
       if (authenticated.length === 1) page = authenticated[0];
     }
-    if (dossier.insurer === "blue-cross") {
-      await openBlueCrossClaimEntry(page).catch(() => {}); // Visible manual navigation remains available.
-    }
     session = { id: randomUUID(), browser, page, dossier, createdAt: Date.now(), fields: new Map(), attemptedAttachments: new Set(), busy: false, revision: "", inspectedUrl: "", authReason, release };
     const timer = setTimeout(() => { if (session?.browser === browser) { session = undefined; void browser.close(); } }, 30 * 60_000);
     timer.unref();
@@ -122,6 +119,18 @@ async function inspect(s: Session) {
   if (!allowed(s.page.url(), s.dossier.insurer) || await s.page.locator('input[type="password"]').isVisible().catch(() => false)) return { status: s.authReason === "human-required" ? "human-required" : "login-required", authReason: s.authReason, fields: [], revision: "", submitAllowed: false };
   const body = (await s.page.locator("body").innerText()).slice(0, 30_000);
   if (classifyLoginScreen(body) === "human-required") return { status: "human-required", fields: [], revision: "", submitAllowed: false };
+  // Manual login can return to member home after the original open request.
+  // Its search/preferences controls are not claim fields. Attempt only the
+  // observed navigation tile, once per session, including uncertain outcomes.
+  if (s.dossier.insurer === "blue-cross" && /^\/member\/?$/i.test(new URL(s.page.url()).pathname)) {
+    if (!s.claimEntryAttempted) {
+      await openBlueCrossClaimEntry(s.page, () => { s.claimEntryAttempted = true; }).catch(() => {});
+      const pages = s.page.context().pages().filter(p => !p.isClosed() && allowed(p.url(), s.dossier.insurer));
+      if (pages.length) s.page = pages[pages.length - 1];
+      if (!/^\/member\/?$/i.test(new URL(s.page.url()).pathname)) return inspect(s);
+    }
+    return { status: "navigate", fields: [], revision: "", submitAllowed: false };
+  }
   const completed = /your claim has been (?:processed|submitted)|réclamation a été (?:transmise|soumise)/i.test(body);
   const atReview = completed || /review (?:your )?claim|claim summary|I confirm all the information above is correct and I have read and agree|vérifi(?:ez|cation).*réclamation|résumé de (?:la|votre) réclamation/i.test(body);
   s.fields.clear();
