@@ -157,7 +157,7 @@ export default function PrepareClaim({ expenseId, initialInsurer, config, onClos
             })}>Validate prepared step</button>
             {validated && <Notice>Prepared values rechecked. You may choose Next in the insurer window, then prepare its next step here. Final attestation and submission remain yours.</Notice>}
           </>}
-          <p className="privacy-note">Preparation may attach the original receipt to the insurer record. It never clicks Next, accepts an attestation or submits. Closing this panel keeps the PC window open for up to 30 minutes.</p>
+          <p className="privacy-note">Preparation may attach the original receipt to the insurer record. Blue Cross category selection advances automatically; Next after claim details, attestations and submission remain yours. Closing this panel keeps the PC window open for up to 30 minutes.</p>
           <button type="button" className="text-action" disabled={busy} onClick={() => void run(async () => { await claimAction(config, "close", { sessionId }); setSessionId(""); setStep(undefined); setVerification(undefined); setMessage("Preparation window closed. No claim was submitted by FamilyHub."); })}>Close preparation window</button>
         </>}
       </>}
