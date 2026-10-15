@@ -6,7 +6,7 @@ import type { ClaimPreparation } from "./claim-preparation.js";
 import { exactServiceOption } from "./claim-preparation.js";
 import { blueCrossComboFields, blueCrossSuggestion, blueCrossTextField } from "./bluecross-claim-form.js";
 import { blueCrossSessionMarker } from "./bluecross-collector.js";
-import { openBlueCrossClaimEntry } from "./bluecross-claim-navigation.js";
+import { isBlueCrossMemberPage, openBlueCrossClaimEntry } from "./bluecross-claim-navigation.js";
 import { savedServiceChoice, rememberServiceChoice, forgetServiceChoices, serviceChoiceScope } from "./claim-service-choices.js";
 import { codexServiceRunner, validatedServiceProposals, type ServiceRunner } from "./claim-service-suggestions.js";
 import { checkedField, uploadEvidence, type ApprovedField, type ObservedField } from "./claim-field-verification.js";
@@ -124,12 +124,13 @@ async function inspect(s: Session) {
   // Manual login can return to member home after the original open request.
   // Its search/preferences controls are not claim fields. Attempt only the
   // observed navigation tile, once per session, including uncertain outcomes.
-  if (s.dossier.insurer === "blue-cross" && /^\/member\/?$/i.test(new URL(s.page.url()).pathname)) {
+  if (s.dossier.insurer === "blue-cross" && isBlueCrossMemberPage(s.page.url())) {
     if (!s.claimEntryAttempted) {
+      const previousPage = s.page, previousUrl = s.page.url();
       await openBlueCrossClaimEntry(s.page, () => { s.claimEntryAttempted = true; }).catch(() => {});
       const pages = s.page.context().pages().filter(p => !p.isClosed() && allowed(p.url(), s.dossier.insurer));
       if (pages.length) s.page = pages[pages.length - 1];
-      if (!/^\/member\/?$/i.test(new URL(s.page.url()).pathname)) return inspect(s);
+      if (s.page !== previousPage || s.page.url() !== previousUrl) return inspect(s);
     }
     return { status: "navigate", fields: [], revision: "", submitAllowed: false };
   }
@@ -200,6 +201,10 @@ async function inspect(s: Session) {
     if (atReview && metadata.type !== "file") continue;
     if ([...s.fields.values()].some(f => f.locator === locator)) continue;
     const id = await locator.getAttribute("id") || "";
+    // locator.all() captures positions. Dependent form fields can move those
+    // positions after a postback; retain the observed unique control identity.
+    const byId = id ? s.page.locator(`[id=${JSON.stringify(id)}]`) : undefined;
+    const stableLocator = byId && await byId.count() === 1 ? byId : locator;
     if (s.dossier.insurer === "blue-cross" && blueCrossComboFields.some(f => id.endsWith(`_${f.suffix}`))) continue;
     const blueCross = s.dossier.insurer === "blue-cross" && /\/Claims\/eClaim\.aspx$/i.test(new URL(s.page.url()).pathname) ? blueCrossTextField(id) : null;
     const kind = blueCross?.kind || fieldKind(metadata.label);
@@ -216,7 +221,7 @@ async function inspect(s: Session) {
     const field: Field = { key: randomUUID(), label: blueCross?.label || metadata.label || (metadata.type === "file" ? "Supporting document" : "Unlabelled field — fill in the portal"), type: metadata.type, options: metadata.options, kind, suggested };
     if (metadata.type === "file") field.autoAttachment = /invoice|receipt|supporting document|facture|reçu|pièce justificative/i.test(metadata.label)
       && !/explanation|benefit statement|other insurer|décompte|autre assureur|coordination/i.test(metadata.label);
-    s.fields.set(field.key, { locator, field, signature: metadata.signature, initialValue: metadata.value }); fields.push(field);
+    s.fields.set(field.key, { locator: stableLocator, field, signature: metadata.signature, initialValue: metadata.value }); fields.push(field);
   }
   if (s.dossier.insurer === "blue-cross" && !atReview) {
     const receipt = await blueCrossReceiptCheckbox(s.page);
