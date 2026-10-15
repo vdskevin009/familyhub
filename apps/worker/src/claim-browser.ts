@@ -17,6 +17,7 @@ import { desjardinsRadioField } from "./desjardins-claim-form.js";
 import { reserveClaimUpload } from "./claim-upload-guard.js";
 import { confirmedInvoiceIllness } from "./claim-invoice-answers.js";
 import { blueCrossReceiptCheckbox, verifyDetailedReceipt } from "./bluecross-receipt-checklist.js";
+import { isBlueCrossClaimKindPage, openBlueCrossHealthcareClaim } from "./bluecross-claim-kind.js";
 
 export type Field = { key: string; label: string; type: string; options: { value: string; label: string }[];
   suggested: string | null; kind: string | null; suggestionSource?: "confirmed-choice" | "confirmed-answer" | "invoice" | "codex"; suggestionReason?: string; autoAttachment?: boolean };
@@ -24,7 +25,7 @@ type Target = { locator: Locator; field: Field; signature: string; initialValue:
 type ApprovedSnapshot = { revision: string; url: string; entries: { target: Target; approved: ApprovedField; filled: boolean }[]; attachment?: { name: string; selected: boolean } };
 type Session = { id: string; browser: Browser; page: Page; dossier: ClaimPreparation; createdAt: number;
   fields: Map<string, Target>; attemptedAttachments: Set<string>; busy: boolean; revision: string; inspectedUrl: string; approved?: ApprovedSnapshot;
-  authReason?: LoginReason; release?: () => Promise<void>; claimEntryAttempted?: boolean };
+  authReason?: LoginReason; release?: () => Promise<void>; claimEntryAttempted?: boolean; claimKindAttempted?: boolean };
 let session: Session | undefined;
 let opening = false;
 const allowed = (url: string, insurer: ClaimPreparation["insurer"]) => {
@@ -121,6 +122,14 @@ async function inspect(s: Session) {
   if (!allowed(s.page.url(), s.dossier.insurer) || await s.page.locator('input[type="password"]').isVisible().catch(() => false)) return { status: s.authReason === "human-required" ? "human-required" : "login-required", authReason: s.authReason, fields: [], revision: "", submitAllowed: false };
   const body = (await s.page.locator("body").innerText()).slice(0, 30_000);
   if (classifyLoginScreen(body) === "human-required") return { status: "human-required", fields: [], revision: "", submitAllowed: false };
+  if (s.dossier.insurer === "blue-cross" && /what kind of claim would you like to submit\?/i.test(body.replace(/\s+/g, " "))
+    && await isBlueCrossClaimKindPage(s.page)) {
+    if (!s.claimKindAttempted) {
+      const opened = await openBlueCrossHealthcareClaim(s.page, s.dossier, () => { s.claimKindAttempted = true; }).catch(() => false);
+      if (opened) return inspect(s);
+    }
+    return { status: "navigate", fields: [], revision: "", submitAllowed: false };
+  }
   // Manual login can return to member home after the original open request.
   // Its search/preferences controls are not claim fields. Attempt only the
   // observed navigation tile, once per session, including uncertain outcomes.
