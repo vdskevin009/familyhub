@@ -6,8 +6,9 @@ export const claimKindHeading = "What kind of claim would you like to submit?";
 const choices = [/^Healthcare$/i, /^Drugs$/i, /^Vision\s+Care$/i, /^Dental\s*\(Orthodontic\)$/i,
   /^I\s+don['’]t\s+see\s+the\s+expense\s+listed$/i];
 const trusted = (page: Page) => new URL(page.url()).origin === "https://service.pac.bluecross.ca";
+const details = (page: Page) => page.locator('input[id$="_txtAmount"], input[id$="_cmbCoveredLife_Input"]').filter({ visible: true });
 export async function isBlueCrossClaimKindPage(page: Page) {
-  if (!trusted(page)) return false;
+  if (!trusted(page) || await details(page).count()) return false;
   const heading = page.getByText(claimKindHeading, { exact: true }).filter({ visible: true });
   return await heading.count() === 1;
 }
@@ -29,13 +30,14 @@ export async function openBlueCrossHealthcareClaim(page: Page, dossier: ClaimPre
   if (!await entry.isEnabled() || page.url() !== url) return false;
   const heading = page.getByText(claimKindHeading, { exact: true }).filter({ visible: true });
   const changed = heading.waitFor({ state: "hidden", timeout: 10_000 }).catch(() => {});
+  const ready = details(page).first().waitFor({ state: "visible", timeout: 10_000 }).catch(() => {});
   const opened = page.context().waitForEvent("page", { timeout: 10_000 }).then(async tab => {
     await tab.waitForURL(value => value.origin === "https://service.pac.bluecross.ca", { timeout: 10_000 }).catch(() => {});
   }).catch(() => {});
   // Reserve the choice before dispatch; an uncertain result cannot be replayed.
   beforeClick();
   await entry.click({ noWaitAfter: true, timeout: 7000 });
-  await Promise.race([changed, opened]);
+  await Promise.race([changed, ready, opened]);
   for (const tab of page.context().pages())
     await tab.waitForLoadState("domcontentloaded", { timeout: 10_000 }).catch(() => {});
   return true;

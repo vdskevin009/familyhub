@@ -14,7 +14,7 @@ const marker='<table id="grdClaimsGrid"><tr><td>Authenticated synthetic marker</
 const form=marker+'<h1>Claim Details</h1><label>Amount<input id="form_txtAmount"></label><label>Nature of illness/injury<input id="form_txtIllness"></label><button onclick="window.next=true">Next</button><button onclick="window.sent=true">Submit</button><label><input type="checkbox">Final attestation</label>';
 let session,selectedPage;
 try{
- const scenarios=['healthcare','physiotherapy','new-tab','home-chain','hidden-copy','unknown-service','ambiguous','changed-options','wrong-heading','uncertain','password'];
+ const scenarios=['healthcare','physiotherapy','new-tab','home-chain','hidden-copy','persistent-heading','unknown-service','ambiguous','changed-options','wrong-heading','uncertain','password'];
  for(const scenario of scenarios){
   let choices=0,homes=0,contacts=0;
   const dossier={...base,expenseId:'synthetic-'+scenario,fields:{...base.fields,service:scenario==='unknown-service'?'Dental cleaning':scenario==='physiotherapy'?'Physiotherapy - 30 Min Follow Up Visit (30 minutes)':base.fields.service},...(scenario==='home-chain'?{portalUrl:'https://service.pac.bluecross.ca/member/'}:{})};
@@ -27,7 +27,7 @@ try{
      if(url.pathname==='/member/')body=marker+'<h1>Member home</h1><div class="caresnet-link"><div class="quick-nav__item--claim" onclick="recordHome();location.href=\'/ACESWeb/Pages/Claims/eClaim.aspx\'">SUBMIT CLAIMS &amp; FORMS</div></div>';
      else if(url.searchParams.has('details'))body=form;
      else{
-      const action=scenario==='uncertain'?'':scenario==='new-tab'?"window.open('/ACESWeb/Pages/Claims/eClaim.aspx?details=1')":"document.body.innerHTML=window.formHTML";
+      const action=scenario==='uncertain'?'':scenario==='new-tab'?"window.open('/ACESWeb/Pages/Claims/eClaim.aspx?details=1')":scenario==='persistent-heading'?"document.body.insertAdjacentHTML('beforeend',window.formHTML)":"document.body.innerHTML=window.formHTML";
       const health=`<button onclick="recordKind();${action}">Healthcare</button>`;
       body=marker+`<script>window.formHTML=${JSON.stringify(form)}</script><h1>${scenario==='wrong-heading'?'Review your claim':'What kind of claim would you like to submit?'}</h1>`
        +(scenario==='hidden-copy'?'<div hidden>'+health+'</div>':'')+health+(scenario==='ambiguous'?health:'')
@@ -37,7 +37,7 @@ try{
      return route.fulfill({contentType:'text/html; charset=utf-8',body});
     });context.on('page',page=>selectedPage=page);return context;};return browser;};
   const opened=await openClaimBrowser(dossier,false,false,launch,true);session=opened.sessionId;
-  const success=['healthcare','physiotherapy','new-tab','home-chain','hidden-copy'].includes(scenario);
+  const success=['healthcare','physiotherapy','new-tab','home-chain','hidden-copy','persistent-heading'].includes(scenario);
   if(success)assert.equal(opened.step.status,'fields',scenario);
   const prepared=await prepareCurrentClaimStep(session,async()=>{throw Error('Unexpected upload')});
   assert.equal(choices,success||scenario==='uncertain'?1:0,scenario);
