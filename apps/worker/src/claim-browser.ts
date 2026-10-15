@@ -393,7 +393,7 @@ export async function fillClaimStep(id: unknown, revision: unknown, values: unkn
       s.approved.attachment.selected = true;
       filled++;
     }
-    return await finish(attachment != null ? "The PDF was placed in the portal's upload field; file selection alone is not proof of upload." : "Review the actual values below. FamilyHub never clicks Next or Submit.");
+    return await finish(attachment != null ? "The PDF was placed in the portal's upload field; file selection alone is not proof of upload." : "Review the actual values below. Next after claim details and Submit remain manual.");
   } finally { s.fields.clear(); s.revision = ""; s.busy = false; }
 }
 export function claimSessionExpense(id: unknown) { return current(id).dossier; }
