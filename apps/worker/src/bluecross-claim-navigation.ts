@@ -1,9 +1,14 @@
 import type { Page } from "playwright";
 
+export function isBlueCrossMemberPage(value: string) {
+  const url = new URL(value);
+  return url.origin === "https://service.pac.bluecross.ca" && /^\/member(?:\/|$)/i.test(url.pathname);
+}
+
 /** Open only the observed member-home navigation. Never a claim-form submit. */
 export async function openBlueCrossClaimEntry(page: Page, beforeClick: () => void = () => {}): Promise<boolean> {
   const url = new URL(page.url());
-  if (url.origin !== "https://service.pac.bluecross.ca" || !/^\/member\/?$/i.test(url.pathname)) return false;
+  if (!isBlueCrossMemberPage(url.href) || await page.locator('input[type="password"]').isVisible().catch(() => false)) return false;
   const label = /^SUBMIT\s*CLAIMS\s*&\s*FORMS$/i;
   // Responsive home layouts can retain a hidden copy or render a different
   // wrapper. Prefer the known tile, then the exact visible label confirmed by

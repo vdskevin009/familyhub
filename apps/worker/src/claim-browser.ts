@@ -6,7 +6,7 @@ import type { ClaimPreparation } from "./claim-preparation.js";
 import { exactServiceOption } from "./claim-preparation.js";
 import { blueCrossComboFields, blueCrossSuggestion, blueCrossTextField } from "./bluecross-claim-form.js";
 import { blueCrossSessionMarker } from "./bluecross-collector.js";
-import { openBlueCrossClaimEntry } from "./bluecross-claim-navigation.js";
+import { isBlueCrossMemberPage, openBlueCrossClaimEntry } from "./bluecross-claim-navigation.js";
 import { savedServiceChoice, rememberServiceChoice, forgetServiceChoices, serviceChoiceScope } from "./claim-service-choices.js";
 import { codexServiceRunner, validatedServiceProposals, type ServiceRunner } from "./claim-service-suggestions.js";
 import { checkedField, uploadEvidence, type ApprovedField, type ObservedField } from "./claim-field-verification.js";
@@ -124,12 +124,13 @@ async function inspect(s: Session) {
   // Manual login can return to member home after the original open request.
   // Its search/preferences controls are not claim fields. Attempt only the
   // observed navigation tile, once per session, including uncertain outcomes.
-  if (s.dossier.insurer === "blue-cross" && /^\/member\/?$/i.test(new URL(s.page.url()).pathname)) {
+  if (s.dossier.insurer === "blue-cross" && isBlueCrossMemberPage(s.page.url())) {
     if (!s.claimEntryAttempted) {
+      const previousPage = s.page, previousUrl = s.page.url();
       await openBlueCrossClaimEntry(s.page, () => { s.claimEntryAttempted = true; }).catch(() => {});
       const pages = s.page.context().pages().filter(p => !p.isClosed() && allowed(p.url(), s.dossier.insurer));
       if (pages.length) s.page = pages[pages.length - 1];
-      if (!/^\/member\/?$/i.test(new URL(s.page.url()).pathname)) return inspect(s);
+      if (s.page !== previousPage || s.page.url() !== previousUrl) return inspect(s);
     }
     return { status: "navigate", fields: [], revision: "", submitAllowed: false };
   }

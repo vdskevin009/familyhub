@@ -10,9 +10,10 @@ const {openClaimBrowser,prepareCurrentClaimStep,closeClaimBrowser}=await import(
 const dossier={expenseId:'synthetic',insurer:'blue-cross',portalUrl:'https://service.pac.bluecross.ca/member/login/',blocked:false,reviewableWarnings:[],fields:{originalAmount:100},attachments:[]};
 let session,page,clicks=0,uploads=0;
 try{
- const scenarios=['redirect','new-tab','hidden-copy','alternate-wrapper','uncertain','ambiguous'];
+ const scenarios=['redirect','new-tab','hidden-copy','alternate-wrapper','member-subroute','login-path-home','uncertain','ambiguous'];
  for(const scenario of scenarios){
   clicks=0;
+  let loggedIn=false;
   const launch=async()=>{
    const browser=await chromium.launch({headless:true,channel:process.platform==='win32'?'msedge':undefined}),original=browser.newContext.bind(browser);
    browser.newContext=async()=>{
@@ -21,9 +22,9 @@ try{
     await context.route('**/*',route=>{
      const path=new URL(route.request().url()).pathname;
      let body;
-     if(path==='/member/login/')body='<h1>Login</h1><input id="password" type="password">';
-     else if(path==='/member/'){
-      const action=['redirect','hidden-copy','alternate-wrapper'].includes(scenario)?"location.href='/ACESWeb/Pages/Claims/eClaim.aspx'":scenario==='new-tab'?"window.open('/ACESWeb/Pages/Claims/eClaim.aspx')":'';
+     if(path==='/member/login/'&&!loggedIn)body='<h1>Login</h1><input id="password" type="password">';
+     else if(path.startsWith('/member/')){
+      const action=['redirect','hidden-copy','alternate-wrapper','member-subroute','login-path-home'].includes(scenario)?"location.href='/ACESWeb/Pages/Claims/eClaim.aspx'":scenario==='new-tab'?"window.open('/ACESWeb/Pages/Claims/eClaim.aspx')":'';
       const entry=`<div class="caresnet-link"><div class="quick-nav__item--claim" onclick="recordEntry();${action}">SUBMIT CLAIMS &amp; FORMS</div></div>`;
       const home=scenario==='hidden-copy'?'<div hidden>'+entry+'</div>'+entry:scenario==='alternate-wrapper'?`<button onclick="recordEntry();${action}"><span>Submit Claims &amp; Forms</span></button>`:entry+(scenario==='ambiguous'?entry:'');
       body='<h1>Member home</h1><input id="unlabelled-search">'+home;
@@ -35,11 +36,12 @@ try{
   };
   const opened=await openClaimBrowser(dossier,false,false,launch,true);session=opened.sessionId;
   assert.equal(opened.step.status,'login-required');assert.equal(clicks,0);
-  await page.goto('https://service.pac.bluecross.ca/member/');
+  loggedIn=true;
+  await page.goto('https://service.pac.bluecross.ca/member/'+(scenario==='member-subroute'?'home/':scenario==='login-path-home'?'login/':''));
   const prepare=()=>prepareCurrentClaimStep(session,async()=>{uploads++;throw Error('Unexpected upload')});
   const result=await prepare();
   assert.equal(clicks,scenario==='ambiguous'?0:1);
-  if(['redirect','new-tab','hidden-copy','alternate-wrapper'].includes(scenario)){
+  if(['redirect','new-tab','hidden-copy','alternate-wrapper','member-subroute','login-path-home'].includes(scenario)){
    const form=page.context().pages().find(p=>p.url().includes('/Claims/eClaim.aspx'));
    assert.equal(await form.locator('#form_txtAmount').inputValue(),'100.00');
    assert.equal(await form.evaluate(()=>!!window.submitted||!!window.next),false);
