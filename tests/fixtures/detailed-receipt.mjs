@@ -25,3 +25,28 @@ export function receiptPdf(text){
  const xref=Buffer.byteLength(pdf);pdf+=`xref\n0 6\n0000000000 65535 f \n${offsets.slice(1).map(n=>String(n).padStart(10,'0')+' 00000 n ').join('\n')}\ntrailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF`;
  return Buffer.from(pdf);
 }
+
+export const visaReceiptDossier={...receiptDossier,fields:{...receiptDossier.fields,practitioner:null,serviceDate:'2026-10-01',originalAmount:100,invoiceNumber:'SYN-VISA'}};
+export const visaReceiptText=`Synthetic Clinic
+126 Sample Street, Suite 110, Example City, BC, V1A 2B3
+Tel: 555-0100 Email: test@example.test
+Sample Patient
+Tel: 555-0101
+Email: patient@example.test
+Receipt
+Items and Payments
+Items Details Amount
+October 1, 2026 - 1:20pm, Physiotherapy - 30 Min Follow Up Visit (30
+minutes)
+Sample Practitioner PT, License #TEST123, MSP #TEST456
+Invoice #SYN-VISA
+1x synthetic service
+Amount not covered: $100.00
+Synthetic insurer reference
+$100.00
+Subtotal $100.00
+Payer Total $100.00
+Payments
+Thursday October 1, 2026 - 1:56pm Visa Sample Patient $100.00
+Synthetic Clinic - 555-0100 - test@example.test - Printed at: October 1, 2026 - 1:56pm
+`;

@@ -15,6 +15,7 @@ import { loginForClaim, authenticatedClaimPages, preserveBlueCrossClaimSession }
 import { automaticClaimValues } from "./claim-autofill.js";
 import { desjardinsRadioField } from "./desjardins-claim-form.js";
 import { reserveClaimUpload, reserveClaimUploadRetry } from "./claim-upload-guard.js";
+import { confirmedInvoicePractitioner } from "./claim-practitioner-answers.js";
 import { confirmedInvoiceIllness } from "./claim-invoice-answers.js";
 import { blueCrossReceiptCheckbox, verifyDetailedReceipt } from "./bluecross-receipt-checklist.js";
 import { advanceBlueCrossDetails, advanceBlueCrossExpenses } from "./bluecross-claim-progress.js";
@@ -28,7 +29,7 @@ type Target = { locator: Locator; field: Field; signature: string; initialValue:
 type ApprovedSnapshot = { revision: string; url: string; entries: { target: Target; approved: ApprovedField; filled: boolean }[]; attachment?: { name: string; selected: boolean; blocked?: boolean } };
 type Session = { id: string; browser: Browser; page: Page; dossier: ClaimPreparation; createdAt: number;
   fields: Map<string, Target>; attemptedAttachments: Set<string>; busy: boolean; revision: string; inspectedUrl: string; approved?: ApprovedSnapshot;
-  authenticate?: typeof loginForClaim; autonomous?: boolean; loginRefreshAttempted?: boolean; authPersistenceAttempted?: boolean; authReason?: LoginReason; release?: () => Promise<void>; claimEntryAttempted?: boolean; claimKindAttempted?: boolean; claimCauseAttempted?: boolean; detailsNextAttempted?: boolean; detailsNextVerified?: boolean; summaryNextAttempted?: boolean; receiptRetryUsed?: boolean; authorizedRetryHash?: string; uploadEntryAttempted?: boolean };
+  authenticate?: typeof loginForClaim; autonomous?: boolean; loginRefreshAttempted?: boolean; authPersistenceAttempted?: boolean; authReason?: LoginReason; release?: () => Promise<void>; claimEntryAttempted?: boolean; claimKindAttempted?: boolean; claimCauseAttempted?: boolean; detailsNextAttempted?: boolean; detailsReadBackVerified?: boolean; detailsNextVerified?: boolean; summaryNextAttempted?: boolean; receiptRetryUsed?: boolean; authorizedRetryHash?: string; uploadEntryAttempted?: boolean };
 let session: Session | undefined;
 let opening = false;
 const allowed = (url: string, insurer: ClaimPreparation["insurer"]) => {
@@ -261,9 +262,9 @@ async function inspect(s: Session) {
   }
   if (s.dossier.insurer === "blue-cross" && !atReview) {
     const receipt = await blueCrossReceiptCheckbox(s.page);
-    if (receipt && !receipt.checked) {
+    if (receipt && (!receipt.checked || !s.approved?.entries.some(e => e.filled && e.target.field.kind === "supportingReceipt" && e.target.signature === receipt.signature))) {
       const field: Field = { key: randomUUID(), label: "Detailed payment receipt available", type: "checkbox", kind: "supportingReceipt", options: [], suggested: null };
-      s.fields.set(field.key, { locator: receipt.locator, field, signature: receipt.signature, initialValue: "false" });
+      s.fields.set(field.key, { locator: receipt.locator, field, signature: receipt.signature, initialValue: String(receipt.checked) });
     }
     for (const locator of await s.page.locator('input[type="checkbox"]').all()) {
       if (!await locator.isVisible() || !await locator.isEnabled() || await locator.isChecked()) continue;
@@ -274,6 +275,14 @@ async function inspect(s: Session) {
     }
   }
   const allFields = [...s.fields.values()].map(f => f.field);
+  let confirmedPractitioner: Awaited<ReturnType<typeof confirmedInvoicePractitioner>> | undefined;
+  try {
+    if (s.dossier.insurer === "blue-cross") confirmedPractitioner = await confirmedInvoicePractitioner(s.dossier);
+    for (const field of allFields.filter(f => f.kind === "practitioner" && f.type === "provider")) {
+      const matching = !s.dossier.fields.practitioner ? field.options.filter(o => o.label.split(/\s+-\s+/)[0].trim() === confirmedPractitioner?.value) : [];
+      if (matching.length === 1) { field.suggested = matching[0].value; field.suggestionSource = "confirmed-choice"; }
+    }
+  } catch { /* Corrupt practitioner answers never supply a suggestion. */ }
   let confirmedIllness: Awaited<ReturnType<typeof confirmedInvoiceIllness>> | undefined;
   let answerWarning: string | undefined;
   try {
@@ -302,7 +311,9 @@ async function inspect(s: Session) {
         : "No unique option is supported by the invoice evidence. Choose from the current portal options or request a Codex suggestion.";
     if (field.suggested != null && !field.suggestionSource) field.suggestionSource = "invoice";
   }
-  return { status: atReview ? "review" : allFields.length ? "fields" : "navigate", fields: allFields, revision: s.revision, submitAllowed: false, confirmedIllness, answerWarning,
+  const portalStage = !atReview && s.dossier.insurer === "blue-cross" && !allFields.length && /\bYour Expenses\b/.test(body)
+    && await s.page.getByRole("heading", { name: "Your Expenses", exact: true }).filter({ visible: true }).count() === 1 ? "expense-summary" as const : undefined;
+  return { status: atReview ? "review" : allFields.length ? "fields" : "navigate", portalStage, fields: allFields, revision: s.revision, submitAllowed: false, confirmedIllness, confirmedPractitioner, answerWarning,
     serviceChoices: { available: true, scopeComplete: serviceChoiceScope(s.dossier) != null, warning: choiceWarning } };
 }
 export async function fillClaimStep(id: unknown, revision: unknown, values: unknown, attachment: unknown,
@@ -367,10 +378,11 @@ export async function fillClaimStep(id: unknown, revision: unknown, values: unkn
         if (!receipt || !await verifyDetailedReceipt((await loadAttachment(receipt.documentId, receipt.attachmentId)).bytes, s.dossier))
           throw new Error("The original PDF does not establish every item in the receipt checklist. Review it in the portal.");
         const observed = await blueCrossReceiptCheckbox(s.page);
-        if (!observed || observed.checked || observed.signature !== target.signature || s.page.url() !== s.inspectedUrl)
+        if (!observed || observed.checked !== (target.initialValue === "true") || observed.signature !== target.signature || s.page.url() !== s.inspectedUrl)
           throw new Error("The receipt checklist changed. Read the form again.");
-        await observed.locator.check(); filled++; markFilled(target);
-        return await finish("The detailed-receipt checklist was confirmed against the original PDF.");
+        if (!observed.checked) { await observed.locator.check(); filled++; }
+        markFilled(target);
+        return await finish(observed.checked ? "The existing detailed-receipt confirmation was verified against the original PDF." : "The detailed-receipt checklist was confirmed against the original PDF.");
       }
       if (target.providers) {
         const now = await target.providers.evaluateAll((els: HTMLInputElement[]) => els.map(el => ({ id: el.id, name: el.name, label: Array.from(el.labels || []).map(l => l.textContent?.trim()).filter(Boolean).join(" "), checked: el.checked })));
@@ -554,6 +566,7 @@ export async function prepareCurrentClaimStep(id: unknown,
   let warning: string | undefined;
   try {
     step = await inspectClaimStep(id);
+    if (step.status === "fields") s.detailsReadBackVerified = false;
     // A restored SPA can briefly look authenticated before the server rejects
     // stale cookies. Recheck once, using the unchanged durable login gate.
     if (s.autonomous && s.dossier.insurer === "blue-cross" && step.status === "login-required" && !s.authReason && !s.loginRefreshAttempted
@@ -567,10 +580,11 @@ export async function prepareCurrentClaimStep(id: unknown,
     verification = s.approved ? await verifySnapshot(s) : undefined;
     for (let pass = 0; pass < 16 && ["fields", "review", "navigate"].includes(step.status); pass++) {
       assertFresh();
-      if (step.status === "navigate" && s.detailsNextVerified && !s.summaryNextAttempted) {
+      if (step.status === "navigate" && (s.detailsNextVerified || s.detailsReadBackVerified) && !s.summaryNextAttempted) {
         const illness = s.approved?.entries.find(e => e.target.field.kind === "natureOfIllness" && e.filled)?.approved.value;
-        const advanced = await advanceBlueCrossExpenses(s.page, s.dossier, illness, () => { s.summaryNextAttempted = true; });
-        if (!advanced) break;
+        const practitioner = s.approved?.entries.find(e => e.target.field.kind === "practitioner" && e.filled)?.approved.optionLabel;
+        const advanced = await advanceBlueCrossExpenses(s.page, s.dossier, illness, () => { s.summaryNextAttempted = true; }, practitioner);
+        if (!advanced) { warning = "The current expense summary could not be matched to this invoice and the verified prepared answers. Automatic continuation stopped."; break; }
         step = await inspectClaimStep(id); verification = s.approved ? await verifySnapshot(s) : undefined; continue;
       }
       // Never automatically retry a field whose previous write could not be verified.
@@ -598,6 +612,7 @@ export async function prepareCurrentClaimStep(id: unknown,
         const prepared = new Set(s.approved?.entries.filter(e => e.filled).map(e => e.target.field.kind));
         const ready = step.status === "fields" && !!verification?.readyForManualNext && !step.fields.some(f => !f.optional)
           && required.every(kind => prepared.has(kind)) && s.dossier.attachments.length === 1 && !s.dossier.blocked;
+        if (ready && s.dossier.insurer === "blue-cross") s.detailsReadBackVerified = true;
         if (s.dossier.insurer === "blue-cross" && !s.detailsNextAttempted
           && await advanceBlueCrossDetails(s.page, ready, () => { s.detailsNextAttempted = true; })) {
           s.detailsNextVerified = true; step = await inspectClaimStep(id); verification = s.approved ? await verifySnapshot(s) : undefined; continue;

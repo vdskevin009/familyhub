@@ -37,8 +37,11 @@ export async function blueCrossExpenseRow(page: Page, dossier: ClaimPreparation)
   if (row.length !== 7) return null;
   const date = calendarDate(dossier.fields.serviceDate?.slice(0, 10));
   const displayDate = date && `${["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][Number(date.slice(5, 7)) - 1]} ${Number(date.slice(8))}, ${date.slice(0, 4)}`;
+  // The same observed portal renders one-digit days with or without a leading zero.
+  // Normalize only that exact English display format; do not parse arbitrary dates.
+  const shownDate = row[4].replace(/^([A-Z][a-z]{2}) 0([1-9]), (\d{4})$/, "$1 $2, $3");
   const amount = row[5].replace(/^\$/, "").replace(/,/g, "");
-  return !!date && row[4] === displayDate && memberName(row[0]) !== "unknown" && memberName(row[0]) === dossier.fields.patient
+  return !!date && shownDate === displayDate && memberName(row[0]) !== "unknown" && memberName(row[0]) === dossier.fields.patient
     && /^\d+\.\d{2}$/.test(amount) && dossier.fields.originalAmount != null
     && Math.round(Number(amount) * 100) === Math.round(dossier.fields.originalAmount * 100) ? row : null;
 }

@@ -42,8 +42,9 @@ export type ClaimPreparation = {
   sourceEmails: { account: string; messageId: string }[];
   duplicate: { status: string; scope: string; checkedAt: string; records: { id: string; reference: string | null; service: string | null; status: string }[] };
 };
-export type ClaimStep = { status: string; revision: string; submitAllowed: false;
+export type ClaimStep = { status: string; revision: string; submitAllowed: false; portalStage?: "expense-summary";
   authReason?: string;
+  confirmedPractitioner?: { scope: string; value: string | null; revision: number };
   confirmedIllness?: { scope: string; value: string | null; revision: number; source: "invoice" | "default" | null; defaultScope: string; defaultValue: string | null; defaultRevision: number }; answerWarning?: string;
   serviceChoices?: { available: boolean; scopeComplete: boolean; warning: string | null };
   fields: { key: string; label: string; type: string; kind: string | null; suggested: string | null; suggestionSource?: string; suggestionReason?: string; optional?: boolean; options: { value: string; label: string }[] }[] };
@@ -52,9 +53,10 @@ export type ClaimVerification = { revision: string; readyForManualNext: boolean;
   fields: { key: string; label: string; value: string; optionLabel?: string; actual: string | null; status: "match" | "mismatch" | "unreadable" | "not-filled" }[];
   attachment: { name: string; status: "verified" | "unverified" | "failed"; selected?: boolean; blocked?: boolean } | null };
 export type PreparedClaim = { preparation: ClaimPreparation; sessionId?: string; step: ClaimStep; verification?: ClaimVerification; warning?: string; submitAllowed: false };
-export async function claimAction<T>(config: WorkerConfig, action: "retry-receipt" | "invoice-answer" | "validate" | "prepare" | "resume" | "correct" | "preview" | "open" | "inspect" | "fill" | "close" | "forget-service-choices" | "suggest-service" | "verify" | "confirm-adjudication", body: object): Promise<T> {
+export async function claimAction<T>(config: WorkerConfig, action: "practitioner-answer" | "retry-receipt" | "invoice-answer" | "validate" | "prepare" | "resume" | "correct" | "preview" | "open" | "inspect" | "fill" | "close" | "forget-service-choices" | "suggest-service" | "verify" | "confirm-adjudication", body: object): Promise<T> {
   if (action !== "close") {
     const health = await testWorker(config);
+    if (action === "practitioner-answer" && !workerVersionAtLeast(health.version, "2.26.8")) throw new Error("Invoice-specific practitioner answers need the updated PC worker.");
     if (action === "retry-receipt" && !workerVersionAtLeast(health.version, "2.26.6")) throw new Error("Receipt recovery needs the updated PC worker. Do not retry through another action.");
     if (action === "invoice-answer" && !workerVersionAtLeast(health.version, "2.26.2")) throw new Error("Saving invoice-specific answers requires PC worker 2.26.2 or later.");
     if (!workerVersionAtLeast(health.version, "2.26.0")) {
