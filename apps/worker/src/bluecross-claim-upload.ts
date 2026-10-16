@@ -17,23 +17,28 @@ export async function blueCrossReceiptFile(page: Page) {
   return await file.count() === 1 && await file.isEnabled() ? file : null;
 }
 
-/** Match the visible single expense before attaching a permanent receipt. */
-export async function blueCrossReceiptMatches(page: Page, dossier: ClaimPreparation) {
-  if (!trusted(page) || dossier.blocked || dossier.attachments.length !== 1) return false;
-  const consent = page.locator('input[type="checkbox"][id$="_ucSubmitClaim_chkConsent"]').filter({ visible: true });
-  if (await consent.count() !== 1 || await consent.isChecked()) return false;
+/** Read the visible single source-matched expense; no navigation or upload. */
+export async function blueCrossExpenseRow(page: Page, dossier: ClaimPreparation) {
+  if (!trusted(page) || dossier.blocked || dossier.attachments.length !== 1) return null;
   const grid = page.locator('table[id$="_ucClaimExpenseGrid_grdExpenseGrid"]').filter({ visible: true });
-  if (await grid.count() !== 1) return false;
+  if (await grid.count() !== 1) return null;
   const rows = await grid.locator("tr").evaluateAll(els => els.filter(el => el.getClientRects().length)
     .map(el => Array.from(el.querySelectorAll("td")).map(cell => cell.innerText.replace(/\s+/g, " ").trim()))
     .filter(cells => cells.length === 7));
-  if (rows.length !== 1) return false;
+  if (rows.length !== 1) return null;
   const row = rows[0], date = calendarDate(dossier.fields.serviceDate?.slice(0, 10));
   const displayDate = date && `${["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][Number(date.slice(5, 7)) - 1]} ${Number(date.slice(8))}, ${date.slice(0, 4)}`;
   const amount = row[5].replace(/^\$/, "").replace(/,/g, "");
   return !!date && row[4] === displayDate && memberName(row[0]) !== "unknown" && memberName(row[0]) === dossier.fields.patient
     && /^\d+\.\d{2}$/.test(amount) && dossier.fields.originalAmount != null
-    && Math.round(Number(amount) * 100) === Math.round(dossier.fields.originalAmount * 100);
+    && Math.round(Number(amount) * 100) === Math.round(dossier.fields.originalAmount * 100) ? row : null;
+}
+
+/** Match the visible single expense before attaching a permanent receipt. */
+export async function blueCrossReceiptMatches(page: Page, dossier: ClaimPreparation) {
+  if (!await blueCrossExpenseRow(page, dossier)) return false;
+  const consent = page.locator('input[type="checkbox"][id$="_ucSubmitClaim_chkConsent"]').filter({ visible: true });
+  return await consent.count() === 1 && !await consent.isChecked();
 }
 
 export async function openBlueCrossReceiptUpload(page: Page, dossier: ClaimPreparation, reserve: () => void) {

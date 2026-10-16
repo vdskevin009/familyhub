@@ -50,11 +50,12 @@ export type ClaimStep = { status: string; revision: string; submitAllowed: false
 export type ClaimVerification = { revision: string; readyForManualNext: boolean; scope: string;
   receiptUploadAvailable?: boolean;
   fields: { key: string; label: string; value: string; optionLabel?: string; actual: string | null; status: "match" | "mismatch" | "unreadable" | "not-filled" }[];
-  attachment: { name: string; status: "verified" | "unverified" | "failed" } | null };
+  attachment: { name: string; status: "verified" | "unverified" | "failed"; selected?: boolean; blocked?: boolean } | null };
 export type PreparedClaim = { preparation: ClaimPreparation; sessionId?: string; step: ClaimStep; verification?: ClaimVerification; warning?: string; submitAllowed: false };
-export async function claimAction<T>(config: WorkerConfig, action: "invoice-answer" | "validate" | "prepare" | "resume" | "correct" | "preview" | "open" | "inspect" | "fill" | "close" | "forget-service-choices" | "suggest-service" | "verify" | "confirm-adjudication", body: object): Promise<T> {
+export async function claimAction<T>(config: WorkerConfig, action: "retry-receipt" | "invoice-answer" | "validate" | "prepare" | "resume" | "correct" | "preview" | "open" | "inspect" | "fill" | "close" | "forget-service-choices" | "suggest-service" | "verify" | "confirm-adjudication", body: object): Promise<T> {
   if (action !== "close") {
     const health = await testWorker(config);
+    if (action === "retry-receipt" && !workerVersionAtLeast(health.version, "2.26.6")) throw new Error("Receipt recovery needs the updated PC worker. Do not retry through another action.");
     if (action === "invoice-answer" && !workerVersionAtLeast(health.version, "2.26.2")) throw new Error("Saving invoice-specific answers requires PC worker 2.26.2 or later.");
     if (!workerVersionAtLeast(health.version, "2.26.0")) {
       throw new Error(`Your PC worker is ${health.version || "an older version"}. Autonomous claim preparation requires worker 2.26.0 or later. Update and restart the existing FamilyHub worker, then reopen this panel.`);

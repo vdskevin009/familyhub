@@ -161,7 +161,9 @@ export default function PrepareClaim({ expenseId, initialInsurer, config, onClos
             <strong>Actually prepared in the portal</strong>
             {step?.status === "review" && verification.fields.some(f => f.status === "unreadable") && <p>The earlier form controls are no longer on this page. Check those answers in the insurer's final claim summary.</p>}
             {verification.fields.filter(f => step?.status !== "review" || f.status !== "unreadable").map(f => <Notice key={f.key} error={f.status !== "match"}>{f.label}: {f.status === "match" ? f.optionLabel || f.actual : f.actual ?? "Unreadable"}. {f.status === "match" ? "✓ Read back and matched" : `Needs attention — ${f.status}; expected ${f.optionLabel || f.value}`}</Notice>)}
-            {verification.attachment && <Notice error={verification.attachment.status !== "verified"}>{verification.attachment.name}: {verification.attachment.status === "verified" ? "✓ Upload success observed" : verification.attachment.status === "failed" ? "Upload failed" : "Selected; upload not yet verified. Do not upload again."}</Notice>}
+            {verification.attachment && <Notice error={verification.attachment.status !== "verified"}>{verification.attachment.name}: {verification.attachment.blocked ? "Not attached — an earlier upload attempt is recorded or its guard is unavailable. Review the prior claim before authorizing recovery." : verification.attachment.selected === false ? "Not selected; no upload success observed." : verification.attachment.status === "verified" ? "✓ Upload success observed" : verification.attachment.status === "failed" ? "Upload failed" : "Selected; upload not yet verified. Do not upload again."}</Notice>}
+            {verification.attachment?.blocked && <><p>The earlier file may remain in Blue Cross. Use recovery only after checking that the earlier claim was not submitted and this preparation has no receipt. This sends the original PDF once to the current preparation.</p><button type="button" className="button secondary" disabled={busy} onClick={() => void run(async () => { accept(await claimAction<PreparedClaim>(config, "retry-receipt", { sessionId, revision: verification.revision, receiptName: verification.attachment!.name, retryReviewed: true, prepareAuthorized: true })); })}>Attach receipt to this preparation</button></>}
+
             <p className="privacy-note">{verification.scope}</p>
           </section>}
           {step?.fields.some(f => f.kind || f.type === "file") && <section aria-label="Uncertain or missing answers">
@@ -181,7 +183,7 @@ export default function PrepareClaim({ expenseId, initialInsurer, config, onClos
             })}>Validate prepared step</button>
             {validated && <Notice>Prepared values rechecked. You may choose Next in the insurer window, then prepare its next step here. Final attestation and submission remain yours.</Notice>}
           </>}
-          <p className="privacy-note">Preparation may attach the original receipt to the insurer record. Blue Cross category selection advances automatically; Next after claim details, attestations and submission remain yours. Closing this panel keeps the PC window open for up to 30 minutes.</p>
+          <p className="privacy-note">Preparation may attach the original receipt to the insurer record. Known Blue Cross preparation steps may advance after verified read-back. Final consent and submission remain yours. Closing this panel keeps the PC window open for up to 30 minutes.</p>
           <button type="button" className="text-action" disabled={busy} onClick={() => void run(async () => { await claimAction(config, "close", { sessionId }); setSessionId(""); setStep(undefined); setVerification(undefined); setMessage("Preparation window closed. No claim was submitted by FamilyHub."); })}>Close preparation window</button>
         </>}
       </>}
