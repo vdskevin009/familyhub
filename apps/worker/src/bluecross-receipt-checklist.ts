@@ -25,17 +25,45 @@ export async function blueCrossReceiptCheckbox(page: Page) {
   return matches.length === 1 ? matches[0] : null;
 }
 
-/** Recognizes only the observed single-item, fully paid card-receipt format.
+/** The observed suite-address receipt shows one full Visa payment rather than a gateway status. */
+function visaReceiptEvidence(lines: string[], dossier: ClaimPreparation, printedDate: string): boolean {
+  const f = dossier.fields, money = '$' + f.originalAmount!.toFixed(2);
+  const receipt = lines.indexOf('Receipt'), items = lines.indexOf('Items Details Amount'), payments = lines.indexOf('Payments');
+  const payer = lines[payments + 1]?.match(/^(?:Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday) (.+) - ((?:0?[1-9]|1[0-2]):[0-5]\d(?:am|pm)) Visa ([\p{L} .'-]+) (\$\d+\.\d{2})$/u);
+  const invoice = lines.filter(l => /^Invoice #/.test(l));
+  const footer = lines[payments + 2] || '';
+  return lines[0] === normalize(f.provider!)
+    && /^\d[\p{L}\d .'-]+, Suite [\p{L}\d-]+, [\p{L} .'-]+, [A-Z]{2}, [A-Z]\d[A-Z] ?\d[A-Z]\d$/u.test(lines[1] || '')
+    && receipt > 2 && items > receipt && lines.includes('Items and Payments') && payments > items
+    && !!payer && payer[1] === printedDate && payer[4] === money
+    && payer[3].split(/\s+/).length >= 2 && payer[3].split(/\s+/)[0].toLowerCase() === f.patient!.toLowerCase()
+    && lines.slice(2, receipt).filter(l => l === payer[3]).length === 1
+    && lines[items + 1]?.startsWith(printedDate + ' - ')
+    && lines.slice(items + 2, payments).filter(l => /^[\p{L} .'-]+ PT, License #[A-Z0-9]+(?:, MSP #[A-Z0-9]+)?$/u.test(l)).length === 1
+    && invoice.length === 1 && invoice[0] === 'Invoice #' + f.invoiceNumber
+    && lines.filter(l => l === 'Amount not covered: ' + money).length === 1
+    && lines.filter(l => /^Subtotal /.test(l)).length === 1 && lines.includes('Subtotal ' + money)
+    && lines.filter(l => /^Payer Total /.test(l)).length === 1 && lines.includes('Payer Total ' + money)
+    && lines.slice(items + 2, payments).filter(l => /^\$\d+\.\d{2}$/.test(l)).length === 1
+    && lines.slice(items + 2, payments).includes(money)
+    && lines.filter(l => / Visa /.test(l)).length === 1 && lines.filter(l => l === 'Payments').length === 1
+    && footer.startsWith(normalize(f.provider!) + ' - ') && footer.endsWith('Printed at: ' + printedDate + ' - ' + payer[2])
+    && lines.slice(payments + 3).every(l => /^-- 1 of 1 --$/.test(l));
+}
+
+/** Recognizes only the observed single-item, fully paid card-receipt formats.
  * No diagnosis, eligibility or payment is inferred from a filename or invoice total.
  */
 export function detailedReceiptEvidence(text: string, dossier: ClaimPreparation): boolean {
   const f = dossier.fields;
-  if (dossier.blocked || !f.provider || !f.patient || !f.invoiceNumber || !f.serviceDate || !f.practitioner
+  if (dossier.blocked || !f.provider || !f.patient || !f.invoiceNumber || !f.serviceDate
     || f.originalAmount == null || f.originalAmount <= 0 || text.length > 30_000) return false;
   const lines = text.split(/\r?\n/).map(normalize).filter(Boolean);
   const date = new Date(`${f.serviceDate.slice(0, 10)}T12:00:00Z`);
-  if (!Number.isFinite(date.getTime())) return false;
+  if (!Number.isFinite(date.getTime()) || date.toISOString().slice(0, 10) !== f.serviceDate.slice(0, 10)) return false;
   const printedDate = date.toLocaleDateString("en-US", { timeZone: "UTC", month: "long", day: "numeric", year: "numeric" });
+  if (!/\b(?:refund|reversed|void|unpaid|declined|balance due)\b/i.test(text) && visaReceiptEvidence(lines, dossier, printedDate)) return true;
+  if (!f.practitioner) return false;
   const invoice = lines.filter(line => /^Invoice #/.test(line));
   const totals = lines.filter(line => /^Payer Total /.test(line));
   const amounts = lines.filter(line => /^Amount: /.test(line));

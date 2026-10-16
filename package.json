@@ -27,6 +27,6 @@
     "test:notifications:browser": "node apps/web/tests/notifications-browser.mjs",
     "test:groceries": "npm run build:worker && node --test tests/groceries.test.mjs tests/grocery-planning.test.mjs tests/grocery-weekly.test.mjs tests/grocery-large-plan.test.mjs",
     "test:groceries:browser": "node apps/web/tests/groceries-browser.mjs && node apps/web/tests/grocery-planning-browser.mjs && node apps/web/tests/grocery-catalogue-browser.mjs",
-    "test:claims": "node --test tests/claim-receipt-retry.test.mjs tests/claim-preparation.test.mjs tests/claim-browser.test.mjs tests/claim-service-choices.test.mjs tests/claim-service-suggestions.test.mjs tests/claim-field-verification.test.mjs tests/owner-adjudication.test.mjs tests/claim-autofill.test.mjs tests/claim-invoice-answers.test.mjs tests/bluecross-receipt-checklist.test.mjs"
+    "test:claims": "node --test tests/claim-practitioner-answers.test.mjs tests/claim-receipt-retry.test.mjs tests/claim-preparation.test.mjs tests/claim-browser.test.mjs tests/claim-service-choices.test.mjs tests/claim-service-suggestions.test.mjs tests/claim-field-verification.test.mjs tests/owner-adjudication.test.mjs tests/claim-autofill.test.mjs tests/claim-invoice-answers.test.mjs tests/bluecross-receipt-checklist.test.mjs"
   }
 }

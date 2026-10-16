@@ -19,6 +19,7 @@ try{
   const load=async()=>({name:'synthetic.pdf',bytes:receiptPdf(scenario==='unpaid'?receiptText.replace('Amount: $80.00','Amount: $40.00'):receiptText)});
   const result=await prepareCurrentClaimStep(session,load);
   assert.equal(await page.locator('#receipt').isChecked(),['verified','already-checked'].includes(scenario),scenario);
+  if(scenario==='already-checked'){assert.equal(result.verification.fields.find(f=>f.kind==='supportingReceipt').status,'match','An existing checked receipt is verified without toggling');}
   if(scenario==='verified'){
    assert.equal(result.verification.fields.find(f=>f.kind==='supportingReceipt').status,'match');
    await prepareCurrentClaimStep(session,load);

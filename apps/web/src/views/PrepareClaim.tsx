@@ -88,6 +88,7 @@ export default function PrepareClaim({ expenseId, initialInsurer, config, onClos
   const answerFields = step?.fields.filter(f => f.kind && !["file", "checkbox"].includes(f.type)) || [];
   const confirmationFields = step?.fields.filter(f => f.type === "checkbox") || [];
   const chooseReceipt = step?.fields.filter(f => f.type === "file").length === 1 && !verification?.attachment;
+  const summaryPage = step?.portalStage === "expense-summary";
   const pending = !!step?.fields.some(f => f.type !== "file" && !f.optional);
   const canReview = !!verification?.readyForManualNext && !!step && !pending && ["fields", "navigate"].includes(step.status);
   const labels: Record<string, string> = { patient: "Patient", provider: "Clinic / provider", practitioner: "Practitioner", serviceDate: "Service date", originalAmount: "Original expense", service: "Invoice service", invoiceNumber: "Invoice number", otherInsurance: "Other insurance", otherInsurancePaid: "Paid by other insurer" };
@@ -128,7 +129,8 @@ export default function PrepareClaim({ expenseId, initialInsurer, config, onClos
           <button type="button" className="button secondary" disabled={busy} onClick={() => void run(async () => { accept(await claimAction<PreparedClaim>(config, "resume", { sessionId, prepareAuthorized: true })); })}>Read and prepare current step</button>
           {step?.status === "human-required" && <Notice>Complete the verification challenge in the insurer window. Preparation resumes automatically when the form becomes available.</Notice>}
           {step?.status === "login-required" && <Notice>Sign-in needs attention on the PC{step.authReason ? ` (${step.authReason})` : ""}. Complete sign-in in that window; preparation resumes automatically.</Notice>}
-          {step?.status === "navigate" && <p>Open the claim form in the insurer window, then read and prepare the current step.</p>}
+          {step?.status === "navigate" && !summaryPage && <p>Open the claim form in the insurer window, then read and prepare the current step.</p>}
+          {summaryPage && <Notice>The insurer expense summary is open. FamilyHub must match this summary to the invoice and the verified details before continuing. The earlier form controls are no longer on this page.</Notice>}
           {step?.status === "inspect-required" && <Notice error>The portal changed during preparation. Re-read it before continuing.</Notice>}
           {step?.status === "review" && <Notice>Review the final claim in the insurer window. FamilyHub may attach the original receipt, but only you may accept the attestation and submit. FamilyHub validation is not required to continue there.</Notice>}
           {step?.status === "complete" && <Notice>The portal reports completion. FamilyHub did not submit this claim.</Notice>}
@@ -157,13 +159,20 @@ export default function PrepareClaim({ expenseId, initialInsurer, config, onClos
               setMessage("Saved answer cleared. The current portal value was left unchanged.");
             })}>{allInvoices ? "Clear default answer" : "Clear saved invoice answer"}</button>}
           </details>}
+          {step?.confirmedPractitioner?.value && <details><summary>Practitioner confirmed for this invoice</summary>
+            <p>{step.confirmedPractitioner.value}. Your invoice-specific answer; the original receipt and source records are unchanged.</p>
+            <button type="button" className="text-action" disabled={busy} onClick={() => void run(async () => {
+              await claimAction(config, "practitioner-answer", { expenseId, insurer, action: "remove", confirmed: true, expectedScope: step.confirmedPractitioner!.scope, expectedRevision: step.confirmedPractitioner!.revision });
+              setStep(await claimAction<ClaimStep>(config, "inspect", { sessionId })); setVerification(undefined); setMessage("Saved practitioner cleared. The current portal selection was preserved.");
+            })}>Clear saved practitioner for this invoice</button>
+          </details>}
           {step?.serviceChoices?.scopeComplete && <button type="button" className="text-action" disabled={busy} onClick={() => void run(async () => {
             setStep(await claimAction<ClaimStep>(config, "forget-service-choices", { sessionId })); setVerification(undefined); setMessage("Saved service choices cleared. Existing portal values remain unchanged.");
           })}>Reset saved service choices for this service</button>}
           {verification && <section aria-label="Prepared portal answers">
             <strong>Actually prepared in the portal</strong>
-            {step?.status === "review" && verification.fields.some(f => f.status === "unreadable") && <p>The earlier form controls are no longer on this page. Check those answers in the insurer's final claim summary.</p>}
-            {verification.fields.filter(f => step?.status !== "review" || f.status !== "unreadable").map(f => <Notice key={f.key} error={f.status !== "match"}>{f.label}: {f.status === "match" ? f.optionLabel || f.actual : f.actual ?? "Unreadable"}. {f.status === "match" ? "✓ Read back and matched" : `Needs attention — ${f.status}; expected ${f.optionLabel || f.value}`}</Notice>)}
+            {(step?.status === "review" || summaryPage) && verification.fields.some(f => f.status === "unreadable") && <p>The earlier form controls are no longer on this page. Check those answers in the insurer's final claim summary.</p>}
+            {verification.fields.filter(f => step?.status !== "review" && !summaryPage || f.status !== "unreadable").map(f => <Notice key={f.key} error={f.status !== "match"}>{f.label}: {f.status === "match" ? f.optionLabel || f.actual : f.actual ?? "Unreadable"}. {f.status === "match" ? "✓ Read back and matched" : `Needs attention — ${f.status}; expected ${f.optionLabel || f.value}`}</Notice>)}
             {verification.attachment && <Notice error={verification.attachment.status !== "verified"}>{verification.attachment.name}: {verification.attachment.blocked ? "Not attached — an earlier upload attempt is recorded or its guard is unavailable. Review the prior claim before authorizing recovery." : verification.attachment.selected === false ? "Not selected; no upload success observed." : verification.attachment.status === "verified" ? "✓ Upload success observed" : verification.attachment.status === "failed" ? "Upload failed" : "Selected; upload not yet verified. Do not upload again."}</Notice>}
             {verification.attachment?.blocked && <><p>The earlier file may remain in Blue Cross. Use recovery only after checking that the earlier claim was not submitted and this preparation has no receipt. This sends the original PDF once to the current preparation.</p><button type="button" className="button secondary" disabled={busy} onClick={() => void run(async () => { accept(await claimAction<PreparedClaim>(config, "retry-receipt", { sessionId, revision: verification.revision, receiptName: verification.attachment!.name, retryReviewed: true, prepareAuthorized: true })); })}>Attach receipt to this preparation</button></>}
 
@@ -178,13 +187,13 @@ export default function PrepareClaim({ expenseId, initialInsurer, config, onClos
             {(!!answerFields.length || chooseReceipt) && <button type="button" className="button" disabled={busy || !Object.values(values).some(Boolean) && !attachment} onClick={() => void run(async () => { accept(await claimAction<PreparedClaim>(config, "correct", { sessionId, revision: step.revision, values, attachment: attachment || null, prepareAuthorized: true, rememberServiceChoices })); })}>Prepare these answers{attachment ? " and attach receipt" : ""}</button>}
           </section>}
           {step?.fields.filter(f => !f.kind && f.type !== "file").map(f => <p key={f.key}>{f.label}: {f.optional ? "optional; leave blank if it does not apply, or complete it in the insurer window." : "complete this directly in the insurer window."}</p>)}
-          {verification && step?.status !== "review" && step?.status !== "complete" && <>
+          {verification && step?.status !== "review" && step?.status !== "complete" && !summaryPage && <>
             <label className="prepare-check"><input type="checkbox" checked={reviewed} disabled={busy || !canReview} onChange={e => { setReviewed(e.target.checked); setValidated(false); }} />I checked the prepared values, remaining manual fields, original receipt and current insurer history, including pending claims.</label>
             <button type="button" className="button" disabled={busy || !reviewed || !canReview} onClick={() => void run(async () => {
               const fresh = await claimAction<{ step: ClaimStep; verification: ClaimVerification }>(config, "validate", { sessionId, revision: verification.revision, answersReviewed: true });
               setStep(fresh.step); setVerification(fresh.verification); setReviewed(fresh.verification.readyForManualNext); setValidated(fresh.verification.readyForManualNext);
             })}>Validate prepared step</button>
-            {validated && <Notice>Prepared values rechecked. You may choose Next in the insurer window, then prepare its next step here. Final attestation and submission remain yours.</Notice>}
+            {validated && <Notice>Prepared values rechecked. {insurer === "blue-cross" ? "Use Read and prepare current step to continue the verified preparation." : "You may choose Next in the insurer window, then prepare its next step here."} Final attestation and submission remain yours.</Notice>}
           </>}
           <p className="privacy-note">Preparation may attach the original receipt to the insurer record. Known Blue Cross preparation steps may advance after verified read-back. Final consent and submission remain yours. Closing this panel keeps the PC window open for up to 30 minutes.</p>
           <button type="button" className="text-action" disabled={busy} onClick={() => void run(async () => { await claimAction(config, "close", { sessionId }); setSessionId(""); setStep(undefined); setVerification(undefined); setMessage("Preparation window closed. No claim was submitted by FamilyHub."); })}>Close preparation window</button>
