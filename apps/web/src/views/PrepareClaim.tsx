@@ -17,11 +17,14 @@ export default function PrepareClaim({ expenseId, initialInsurer, config, onClos
   const [allInvoices, setAllInvoices] = useState(false);
   const [ownerAmount, setOwnerAmount] = useState(""), [ownerReason, setOwnerReason] = useState(""), [ownerReviewed, setOwnerReviewed] = useState(false);
   const [busy, setBusy] = useState(true), [error, setError] = useState(""), [message, setMessage] = useState("");
+  const [uploadWatch, setUploadWatch] = useState(0);
+  const actionEpoch = useRef(0);
   const opening = useRef<{ key: string; promise: Promise<PreparedClaim> } | undefined>(undefined);
   const activeSession = useRef(""); activeSession.current = sessionId;
   const mounted = useRef(true);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   function accept(result: PreparedClaim) {
+    actionEpoch.current++;
     setDossier(result.preparation); setSessionId(result.sessionId || ""); setStep(result.step); setVerification(result.verification);
     setValues({}); setAttachment(""); setReviewed(false); setValidated(false); setMessage(result.warning || "");
     setIllness((allInvoices ? result.step.confirmedIllness?.defaultValue : result.step.confirmedIllness?.value) || ""); setIllnessConfirmed(false);
@@ -57,12 +60,32 @@ export default function PrepareClaim({ expenseId, initialInsurer, config, onClos
     }, 3000);
     return () => window.clearTimeout(timer);
   }, [busy, sessionId, step, config.Endpoint, config.ApiKey]);
+  useEffect(() => {
+    if (busy || !sessionId || !verification || verification.receiptUploadAvailable === undefined || verification.attachment
+      || !step || !["fields", "navigate"].includes(step.status)) return;
+    let active = true;
+    const epoch = actionEpoch.current;
+    const initiated = () => mounted.current && activeSession.current === sessionId && actionEpoch.current === epoch;
+    const current = () => active && initiated();
+    const timer = window.setTimeout(() => {
+      void claimAction<ClaimVerification>(config, "verify", { sessionId }).then(async fresh => {
+        if (!current() || !fresh.receiptUploadAvailable) return;
+        setBusy(true);
+        try { const prepared = await claimAction<PreparedClaim>(config, "resume", { sessionId, prepareAuthorized: true }); if (initiated()) accept(prepared); }
+        catch (e) { if (initiated()) { setVerification(undefined); setError(e instanceof Error ? e.message : "Receipt preparation could not be verified. Read the portal; do not repeat the upload."); } }
+        finally { if (mounted.current && activeSession.current === sessionId) setBusy(false); }
+      }).catch(() => { /* Read-only watch must not clear a manual answer or repeat an upload. */ })
+        .finally(() => { if (current()) setUploadWatch(value => value + 1); });
+    }, 5000);
+    return () => { active = false; window.clearTimeout(timer); };
+  }, [busy, sessionId, step, verification, uploadWatch, config.Endpoint, config.ApiKey]);
   async function run(action: () => Promise<void>) {
+    actionEpoch.current++;
     setBusy(true); setError(""); setValidated(false); setReviewed(false);
     try { await action(); } catch (e) { setStep(undefined); setVerification(undefined); setError(e instanceof Error ? e.message : "Preparation failed. Re-read the portal before continuing."); }
     finally { setBusy(false); }
   }
-  const pending = !!step?.fields.some(f => f.type !== "file");
+  const pending = !!step?.fields.some(f => f.type !== "file" && !f.optional);
   const canReview = !!verification?.readyForManualNext && !!step && !pending && ["fields", "navigate"].includes(step.status);
   const labels: Record<string, string> = { patient: "Patient", provider: "Clinic / provider", practitioner: "Practitioner", serviceDate: "Service date", originalAmount: "Original expense", service: "Invoice service", invoiceNumber: "Invoice number", otherInsurance: "Other insurance", otherInsurancePaid: "Paid by other insurer" };
   return <Sheet open onClose={busy ? () => {} : onClose} title={insurer === "blue-cross" ? "Prepare Blue Cross claim" : insurer === "desjardins" ? "Prepare Desjardins claim" : "Prepare claim"} description="The PC prepares the insurer form and original receipt. Review the actual results before continuing.">
@@ -104,7 +127,7 @@ export default function PrepareClaim({ expenseId, initialInsurer, config, onClos
           {step?.status === "login-required" && <Notice>Sign-in needs attention on the PC{step.authReason ? ` (${step.authReason})` : ""}. Complete sign-in in that window; preparation resumes automatically.</Notice>}
           {step?.status === "navigate" && <p>Open the claim form in the insurer window, then read and prepare the current step.</p>}
           {step?.status === "inspect-required" && <Notice error>The portal changed during preparation. Re-read it before continuing.</Notice>}
-          {step?.status === "review" && <Notice>Final review reached. FamilyHub stops here. Only you may accept the attestation and submit.</Notice>}
+          {step?.status === "review" && <Notice>Review the final claim in the insurer window. FamilyHub may attach the original receipt, but only you may accept the attestation and submit. FamilyHub validation is not required to continue there.</Notice>}
           {step?.status === "complete" && <Notice>The portal reports completion. FamilyHub did not submit this claim.</Notice>}
           {step?.answerWarning && <Notice error>{step.answerWarning}</Notice>}
           {step?.confirmedIllness && !["review", "complete"].includes(step.status) && <details>
@@ -136,7 +159,8 @@ export default function PrepareClaim({ expenseId, initialInsurer, config, onClos
           })}>Reset saved service choices for this service</button>}
           {verification && <section aria-label="Prepared portal answers">
             <strong>Actually prepared in the portal</strong>
-            {verification.fields.map(f => <Notice key={f.key} error={f.status !== "match"}>{f.label}: {f.status === "match" ? f.optionLabel || f.actual : f.actual ?? "Unreadable"}. {f.status === "match" ? "✓ Read back and matched" : `Needs attention — ${f.status}; expected ${f.optionLabel || f.value}`}</Notice>)}
+            {step?.status === "review" && verification.fields.some(f => f.status === "unreadable") && <p>The earlier form controls are no longer on this page. Check those answers in the insurer's final claim summary.</p>}
+            {verification.fields.filter(f => step?.status !== "review" || f.status !== "unreadable").map(f => <Notice key={f.key} error={f.status !== "match"}>{f.label}: {f.status === "match" ? f.optionLabel || f.actual : f.actual ?? "Unreadable"}. {f.status === "match" ? "✓ Read back and matched" : `Needs attention — ${f.status}; expected ${f.optionLabel || f.value}`}</Notice>)}
             {verification.attachment && <Notice error={verification.attachment.status !== "verified"}>{verification.attachment.name}: {verification.attachment.status === "verified" ? "✓ Upload success observed" : verification.attachment.status === "failed" ? "Upload failed" : "Selected; upload not yet verified. Do not upload again."}</Notice>}
             <p className="privacy-note">{verification.scope}</p>
           </section>}
@@ -148,8 +172,8 @@ export default function PrepareClaim({ expenseId, initialInsurer, config, onClos
             {step.fields.some(f => ["service", "benefit"].includes(f.kind || "")) && <label className="prepare-check"><input type="checkbox" checked={rememberServiceChoices} onChange={e => setRememberServiceChoices(e.target.checked)} />Remember my service choice privately for this insurer, clinic and invoice service.</label>}
             <button type="button" className="button" disabled={busy || !Object.values(values).some(Boolean) && !attachment} onClick={() => void run(async () => { accept(await claimAction<PreparedClaim>(config, "correct", { sessionId, revision: step.revision, values, attachment: attachment || null, prepareAuthorized: true, rememberServiceChoices })); })}>Prepare these answers{attachment ? " and attach receipt" : ""}</button>
           </section>}
-          {step?.fields.filter(f => !f.kind && f.type !== "file").map(f => <p key={f.key}>{f.label}: complete this directly in the insurer window.</p>)}
-          {verification && <>
+          {step?.fields.filter(f => !f.kind && f.type !== "file").map(f => <p key={f.key}>{f.label}: {f.optional ? "optional; leave blank if it does not apply, or complete it in the insurer window." : "complete this directly in the insurer window."}</p>)}
+          {verification && step?.status !== "review" && step?.status !== "complete" && <>
             <label className="prepare-check"><input type="checkbox" checked={reviewed} disabled={busy || !canReview} onChange={e => { setReviewed(e.target.checked); setValidated(false); }} />I checked the prepared values, remaining manual fields, original receipt and current insurer history, including pending claims.</label>
             <button type="button" className="button" disabled={busy || !reviewed || !canReview} onClick={() => void run(async () => {
               const fresh = await claimAction<{ step: ClaimStep; verification: ClaimVerification }>(config, "validate", { sessionId, revision: verification.revision, answersReviewed: true });

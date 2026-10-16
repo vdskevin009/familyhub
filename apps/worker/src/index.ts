@@ -50,7 +50,7 @@ type ResearchWatch = {
 };
 type PersistedState = { watches: ResearchWatch[] };
 
-const version = "2.26.4";
+const version = "2.26.5";
 let claimOperationBusy = false;
 const host = process.env.FAMILYHUB_WORKER_HOST?.trim() || "127.0.0.1";
 const port = Number(process.env.FAMILYHUB_WORKER_PORT || "4713");
@@ -357,7 +357,7 @@ const server = createServer(async (request, response) => {
         const step = await inspectClaimStep(body.sessionId);
         const verification = await verifyClaimStep(body.sessionId);
         if (body.revision !== verification.revision) throw new Error("The prepared answers changed. Review them again.");
-        verification.readyForManualNext = verification.readyForManualNext && ["fields", "navigate"].includes(step.status) && !step.fields.some(f => f.type !== "file");
+        verification.readyForManualNext = verification.readyForManualNext && ["fields", "navigate"].includes(step.status) && !step.fields.some(f => f.type !== "file" && !f.optional);
         json(response, 200, { step, verification }, origin); return;
       }
       if (parts[1] === "verify") {
