@@ -20,7 +20,7 @@ const entry={Id:'synthetic-case',DocumentIds:[expense.Id],ExpenseDocumentId:expe
 let browser;
 try {
  browser=await chromium.launch({headless:true,channel:process.platform==='win32'?'msedge':undefined});
- for(const scenario of ['prepared','unknown','mismatch','upload-failed','human-required','login-required','blocked','old-worker','refresh-failed','owner-zero','unknown-insurer','confirmed-illness','default-illness','auto-login','optional','required','review','blocked-upload','watch-upload']) {
+ for(const scenario of ['prepared','unknown','mismatch','upload-failed','human-required','login-required','blocked','old-worker','refresh-failed','owner-zero','unknown-insurer','confirmed-illness','default-illness','auto-login','optional','required','review','blocked-upload','review-missing','review-no-verification','watch-upload']) {
   const context=await browser.newContext({viewport:{width:390,height:900},serviceWorkers:'block'}),page=await context.newPage(),posts=[],errors=[];
   const c={...entry,NextInsurer:scenario==='unknown-insurer'?null:'Blue Cross',DesjardinsReimbursedAmount:scenario==='owner-zero'?null:0};
   const preparation=prepareClaim(expense.Id,'blue-cross',[expense],[c]);
@@ -29,8 +29,10 @@ try {
   if(['confirmed-illness','default-illness'].includes(scenario))step.confirmedIllness={scope:'a'.repeat(64),value:null,revision:0,source:null,defaultScope:'b'.repeat(64),defaultValue:null,defaultRevision:0};
   if(scenario==='auto-login')step.status='login-required';
   if(['optional','required'].includes(scenario))step.fields=[{key:'public-plan',kind:null,label:'Amount paid by public or provincial plan',type:'text',options:[],suggested:null,optional:scenario==='optional'}];
-  if(['review','blocked-upload'].includes(scenario))step.status='review';
+  if(['review','blocked-upload','review-missing','review-no-verification'].includes(scenario)){step.status='review';step.fields=[{key:'receipt',kind:null,label:'Receipt',type:'file',options:[],suggested:null}];}
+  if(scenario==='review-missing')step.fields.push({key:'illness',kind:'natureOfIllness',label:'Nature of illness/injury',type:'text',options:[],suggested:null});
   const verification={revision:'prepared',readyForManualNext:!['mismatch','upload-failed'].includes(scenario),scope:'Read-back only; not eligibility or submission.',fields:[{key:'gross',label:'Total expense',value:'100.00',actual:scenario==='mismatch'?'80.00':'100.00',status:scenario==='mismatch'?'mismatch':'match'}],attachment:{name:'synthetic.pdf',status:scenario==='upload-failed'?'failed':'verified'}};
+  if(scenario==='review-no-verification')verification.attachment=null;
   if(scenario==='blocked-upload'){verification.attachment={name:'synthetic.pdf',status:'unverified',selected:false,blocked:true};verification.readyForManualNext=false;}
   if(scenario==='watch-upload'){verification.attachment=null;verification.receiptUploadAvailable=false;}
   const result=()=>({preparation,sessionId:scenario==='blocked'?undefined:'synthetic-session',step,verification:['human-required','login-required','blocked'].includes(scenario)?undefined:verification,submitAllowed:false});
@@ -103,8 +105,12 @@ try {
      await dialog.getByText(/Upload success observed/).waitFor();assert.equal(posts.some(p=>/submit|claim-create|next/.test(p.path)),false);assert.deepEqual(errors,[]);await context.close();continue;
     }
     const validate=dialog.getByRole('button',{name:'Validate prepared step',exact:true});
-    if(['review','blocked-upload'].includes(scenario)){
+    if(['review','blocked-upload','review-missing','review-no-verification'].includes(scenario)){
      if(scenario==='blocked-upload'){await dialog.getByText(/Not attached — an earlier upload attempt/).waitFor();assert.equal(await dialog.getByText(/Selected; upload not yet verified/).count(),0);await dialog.getByRole('button',{name:'Attach receipt to this preparation',exact:true}).click();await dialog.getByText(/Upload success observed/).waitFor();assert.equal(posts.filter(p=>p.path.endsWith('/retry-receipt')).length,1);}
+     const missing=dialog.getByRole('region',{name:'Uncertain or missing answers'});
+     assert.equal(await missing.count(),['review-missing','review-no-verification'].includes(scenario)?1:0,'Only render pending controls; a verified or blocked file has its own result panel');
+     if(scenario==='review-missing')assert.equal(await dialog.getByLabel('Nature of illness/injury').count(),1,'Required answers remain visible after verified upload');
+     if(scenario==='review-no-verification')assert.equal(await dialog.getByRole('combobox',{name:/Original receipt/}).count(),1,'An unprepared receipt remains selectable');
      assert.equal(await validate.count(),0);await dialog.getByText(/FamilyHub validation is not required/).waitFor();
      assert.equal(posts.some(p=>/submit|claim-create|next/.test(p.path)),false);assert.deepEqual(errors,[]);await context.close();continue;
     }
@@ -148,5 +154,5 @@ try {
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false,scenario+' mobile overflow');
   await page.screenshot({path:join(output,`claim-autonomous-${scenario}.png`),fullPage:true});await context.close();
  }
- console.log(JSON.stringify({passed:19,providerContact:false,submission:false,screenshots:output}));
+ console.log(JSON.stringify({passed:21,providerContact:false,submission:false,screenshots:output}));
 }finally{await browser?.close();server.close();}

@@ -85,6 +85,9 @@ export default function PrepareClaim({ expenseId, initialInsurer, config, onClos
     try { await action(); } catch (e) { setStep(undefined); setVerification(undefined); setError(e instanceof Error ? e.message : "Preparation failed. Re-read the portal before continuing."); }
     finally { setBusy(false); }
   }
+  const answerFields = step?.fields.filter(f => f.kind && !["file", "checkbox"].includes(f.type)) || [];
+  const confirmationFields = step?.fields.filter(f => f.type === "checkbox") || [];
+  const chooseReceipt = step?.fields.filter(f => f.type === "file").length === 1 && !verification?.attachment;
   const pending = !!step?.fields.some(f => f.type !== "file" && !f.optional);
   const canReview = !!verification?.readyForManualNext && !!step && !pending && ["fields", "navigate"].includes(step.status);
   const labels: Record<string, string> = { patient: "Patient", provider: "Clinic / provider", practitioner: "Practitioner", serviceDate: "Service date", originalAmount: "Original expense", service: "Invoice service", invoiceNumber: "Invoice number", otherInsurance: "Other insurance", otherInsurancePaid: "Paid by other insurer" };
@@ -166,13 +169,13 @@ export default function PrepareClaim({ expenseId, initialInsurer, config, onClos
 
             <p className="privacy-note">{verification.scope}</p>
           </section>}
-          {step?.fields.some(f => f.kind || f.type === "file") && <section aria-label="Uncertain or missing answers">
+          {step && (!!answerFields.length || !!confirmationFields.length || chooseReceipt) && <section aria-label="Uncertain or missing answers">
             <strong>Answers still needed</strong>
-            {step.fields.filter(f => f.kind && !["file", "checkbox"].includes(f.type)).map(f => <label key={f.key}>{f.label}{["select", "combo", "provider", "radio"].includes(f.type) ? <select value={values[f.key] || ""} onChange={e => setValues(v => ({ ...v, [f.key]: e.target.value }))}><option value="">Choose / leave blank</option>{f.options.filter(o => o.value).map(o => <option key={o.value} value={o.value}>{o.label}</option>)}</select> : <input type={f.type === "date" ? "date" : "text"} value={values[f.key] || ""} onChange={e => setValues(v => ({ ...v, [f.key]: e.target.value }))} />}{f.suggestionReason && <small>{f.suggestionReason}</small>}</label>)}
-            {step.fields.filter(f => f.type === "checkbox").map(f => <p key={f.key}>{f.label}: review the original PDF and complete this confirmation in the insurer window.</p>)}
-            {step.fields.filter(f => f.type === "file").length === 1 && !verification?.attachment && <label>Original receipt<select value={attachment} onChange={e => setAttachment(e.target.value)}><option value="">Choose / leave unchanged</option>{dossier.attachments.map(a => <option key={`${a.documentId}:${a.attachmentId}`} value={`${a.documentId}:${a.attachmentId}`}>{a.name}</option>)}</select></label>}
+            {answerFields.map(f => <label key={f.key}>{f.label}{["select", "combo", "provider", "radio"].includes(f.type) ? <select value={values[f.key] || ""} onChange={e => setValues(v => ({ ...v, [f.key]: e.target.value }))}><option value="">Choose / leave blank</option>{f.options.filter(o => o.value).map(o => <option key={o.value} value={o.value}>{o.label}</option>)}</select> : <input type={f.type === "date" ? "date" : "text"} value={values[f.key] || ""} onChange={e => setValues(v => ({ ...v, [f.key]: e.target.value }))} />}{f.suggestionReason && <small>{f.suggestionReason}</small>}</label>)}
+            {confirmationFields.map(f => <p key={f.key}>{f.label}: review the original PDF and complete this confirmation in the insurer window.</p>)}
+            {chooseReceipt && <label>Original receipt<select value={attachment} onChange={e => setAttachment(e.target.value)}><option value="">Choose / leave unchanged</option>{dossier.attachments.map(a => <option key={`${a.documentId}:${a.attachmentId}`} value={`${a.documentId}:${a.attachmentId}`}>{a.name}</option>)}</select></label>}
             {step.fields.some(f => ["service", "benefit"].includes(f.kind || "")) && <label className="prepare-check"><input type="checkbox" checked={rememberServiceChoices} onChange={e => setRememberServiceChoices(e.target.checked)} />Remember my service choice privately for this insurer, clinic and invoice service.</label>}
-            <button type="button" className="button" disabled={busy || !Object.values(values).some(Boolean) && !attachment} onClick={() => void run(async () => { accept(await claimAction<PreparedClaim>(config, "correct", { sessionId, revision: step.revision, values, attachment: attachment || null, prepareAuthorized: true, rememberServiceChoices })); })}>Prepare these answers{attachment ? " and attach receipt" : ""}</button>
+            {(!!answerFields.length || chooseReceipt) && <button type="button" className="button" disabled={busy || !Object.values(values).some(Boolean) && !attachment} onClick={() => void run(async () => { accept(await claimAction<PreparedClaim>(config, "correct", { sessionId, revision: step.revision, values, attachment: attachment || null, prepareAuthorized: true, rememberServiceChoices })); })}>Prepare these answers{attachment ? " and attach receipt" : ""}</button>}
           </section>}
           {step?.fields.filter(f => !f.kind && f.type !== "file").map(f => <p key={f.key}>{f.label}: {f.optional ? "optional; leave blank if it does not apply, or complete it in the insurer window." : "complete this directly in the insurer window."}</p>)}
           {verification && step?.status !== "review" && step?.status !== "complete" && <>
