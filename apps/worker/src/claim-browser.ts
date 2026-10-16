@@ -311,7 +311,7 @@ async function inspect(s: Session) {
         : "No unique option is supported by the invoice evidence. Choose from the current portal options or request a Codex suggestion.";
     if (field.suggested != null && !field.suggestionSource) field.suggestionSource = "invoice";
   }
-  const portalStage = !atReview && s.dossier.insurer === "blue-cross" && !allFields.length
+  const portalStage = !atReview && s.dossier.insurer === "blue-cross" && !allFields.length && /\bYour Expenses\b/.test(body)
     && await s.page.getByRole("heading", { name: "Your Expenses", exact: true }).filter({ visible: true }).count() === 1 ? "expense-summary" as const : undefined;
   return { status: atReview ? "review" : allFields.length ? "fields" : "navigate", portalStage, fields: allFields, revision: s.revision, submitAllowed: false, confirmedIllness, confirmedPractitioner, answerWarning,
     serviceChoices: { available: true, scopeComplete: serviceChoiceScope(s.dossier) != null, warning: choiceWarning } };
