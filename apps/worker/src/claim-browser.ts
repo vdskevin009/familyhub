@@ -18,14 +18,15 @@ import { reserveClaimUpload } from "./claim-upload-guard.js";
 import { confirmedInvoiceIllness } from "./claim-invoice-answers.js";
 import { blueCrossReceiptCheckbox, verifyDetailedReceipt } from "./bluecross-receipt-checklist.js";
 import { isBlueCrossClaimKindPage, openBlueCrossHealthcareClaim } from "./bluecross-claim-kind.js";
+import { blueCrossReceiptFile, blueCrossReceiptMatches, openBlueCrossReceiptUpload, blueCrossReceiptAlreadyListed, blueCrossReceiptUploadEvidence, blueCrossReceiptUploadAvailable } from "./bluecross-claim-upload.js";
 
 export type Field = { key: string; label: string; type: string; options: { value: string; label: string }[];
-  suggested: string | null; kind: string | null; suggestionSource?: "confirmed-choice" | "confirmed-answer" | "invoice" | "codex"; suggestionReason?: string; autoAttachment?: boolean };
+  suggested: string | null; kind: string | null; suggestionSource?: "confirmed-choice" | "confirmed-answer" | "invoice" | "codex"; suggestionReason?: string; autoAttachment?: boolean; optional?: boolean };
 type Target = { locator: Locator; field: Field; signature: string; initialValue: string; dropdown?: Locator; providers?: Locator };
 type ApprovedSnapshot = { revision: string; url: string; entries: { target: Target; approved: ApprovedField; filled: boolean }[]; attachment?: { name: string; selected: boolean } };
 type Session = { id: string; browser: Browser; page: Page; dossier: ClaimPreparation; createdAt: number;
   fields: Map<string, Target>; attemptedAttachments: Set<string>; busy: boolean; revision: string; inspectedUrl: string; approved?: ApprovedSnapshot;
-  authReason?: LoginReason; release?: () => Promise<void>; claimEntryAttempted?: boolean; claimKindAttempted?: boolean };
+  authReason?: LoginReason; release?: () => Promise<void>; claimEntryAttempted?: boolean; claimKindAttempted?: boolean; uploadEntryAttempted?: boolean };
 let session: Session | undefined;
 let opening = false;
 const allowed = (url: string, insurer: ClaimPreparation["insurer"]) => {
@@ -150,6 +151,11 @@ async function inspect(s: Session) {
   s.inspectedUrl = s.page.url();
   if (s.approved && s.approved.url !== s.inspectedUrl) s.approved = undefined;
   if (completed) return { status: "complete", fields: [], revision: s.revision, submitAllowed: false };
+  if (atReview && body.includes("Additional Information Required") && s.dossier.insurer === "blue-cross" && !s.uploadEntryAttempted && !s.attemptedAttachments.size && !s.approved?.attachment) {
+    const opened = await openBlueCrossReceiptUpload(s.page, s.dossier, () => { s.uploadEntryAttempted = true; }).catch(() => false);
+    if (opened) return inspect(s);
+  }
+  const receiptFile = s.dossier.insurer === "blue-cross" && body.includes("Claim Documentation Required") ? await blueCrossReceiptFile(s.page) : null;
   if (s.dossier.insurer === "blue-cross" && /\/Claims\/eClaim\.aspx$/i.test(new URL(s.page.url()).pathname) && !atReview) {
     for (const definition of blueCrossComboFields) {
       const locator = s.page.locator(`input[id$="_${definition.suffix}"]`);
@@ -202,7 +208,7 @@ async function inspect(s: Session) {
       }).filter(Boolean).join(" "),
       type: el instanceof HTMLSelectElement ? "select" : el instanceof HTMLTextAreaElement ? "textarea" : el.type,
       options: el instanceof HTMLSelectElement ? Array.from(el.options).filter(o => !o.disabled).map(o => ({ value: o.value, label: o.text.trim() })) : [],
-      value: el.value, signature: JSON.stringify([el.tagName, el.id, el.getAttribute("name"), el.getAttribute("type"), Array.from(el.labels || []).map(l => l.textContent?.trim()), el.getAttribute("aria-label")])
+      value: el.value, required: el.hasAttribute("required") || el.getAttribute("aria-required") === "true", signature: JSON.stringify([el.tagName, el.id, el.getAttribute("name"), el.getAttribute("type"), Array.from(el.labels || []).map(l => l.textContent?.trim()), el.getAttribute("aria-label")])
     }));
     // Never overwrite a value the operator already entered, except placeholder selects.
     if (metadata.type !== "select" && metadata.type !== "file" && metadata.value) continue;
@@ -230,6 +236,13 @@ async function inspect(s: Session) {
     const field: Field = { key: randomUUID(), label: blueCross?.label || metadata.label || (metadata.type === "file" ? "Supporting document" : "Unlabelled field — fill in the portal"), type: metadata.type, options: metadata.options, kind, suggested };
     if (metadata.type === "file") field.autoAttachment = /invoice|receipt|supporting document|facture|reçu|pièce justificative/i.test(metadata.label)
       && !/explanation|benefit statement|other insurer|décompte|autre assureur|coordination/i.test(metadata.label);
+    if (metadata.type === "file" && receiptFile && await receiptFile.getAttribute("id") === id) {
+      field.label = "Original receipt — Blue Cross document uploader";
+      field.autoAttachment = await blueCrossReceiptMatches(s.page, s.dossier)
+        && !await blueCrossReceiptAlreadyListed(s.page, s.dossier.attachments[0].name);
+    }
+    if (s.dossier.insurer === "blue-cross" && !metadata.required && metadata.type === "text"
+      && /^Amount paid by public or provincial plan\s*\$?$/i.test(metadata.label.trim())) field.optional = true;
     s.fields.set(field.key, { locator: stableLocator, field, signature: metadata.signature, initialValue: metadata.value }); fields.push(field);
   }
   if (s.dossier.insurer === "blue-cross" && !atReview) {
@@ -391,6 +404,9 @@ export async function fillClaimStep(id: unknown, revision: unknown, values: unkn
       await reserveClaimUpload(s.dossier, hash);
       await targets[0].locator.setInputFiles({ name: file.name, mimeType: "application/pdf", buffer: file.bytes });
       s.approved.attachment.selected = true;
+      if (s.dossier.insurer === "blue-cross" && (await s.page.locator("body").innerText()).includes("Claim Documentation Required") && await blueCrossReceiptFile(s.page))
+        await s.page.locator('[id$="_ucSubmitClaim_radAsyncUpload"] .ruUploadSuccess, [id$="_ucSubmitClaim_radAsyncUpload"] .ruUploadFailure')
+          .filter({ hasText: file.name }).first().waitFor({ state: "visible", timeout: 10_000 }).catch(() => {});
       filled++;
     }
     return await finish(attachment != null ? "The PDF was placed in the portal's upload field; file selection alone is not proof of upload." : "Review the actual values below. Next after claim details and Submit remain manual.");
@@ -431,11 +447,20 @@ async function verifySnapshot(s: Session) {
       if (validPage && s.approved.attachment.selected) {
         const visibleText = async (role: string) => s.page.locator(`[role="${role}"]`).evaluateAll(els => els.filter(el => el.getClientRects().length).map(el => (el.textContent || "").trim()));
         status = uploadEvidence(s.approved.attachment.name, await visibleText("status"), await visibleText("alert"));
+        if (s.dossier.insurer === "blue-cross") {
+          const receiptStatus = await blueCrossReceiptUploadEvidence(s.page, s.approved.attachment.name);
+          if (status !== "failed" && receiptStatus !== "unverified") status = receiptStatus;
+        }
       }
     } catch { /* Selecting a file is not a successful-upload indicator. */ }
     attachment = { name: s.approved.attachment.name, status };
   }
-  return { revision: s.approved.revision, fields, attachment,
+  const body = validPage ? await s.page.locator("body").innerText() : "";
+  const receiptUploadAvailable = s.dossier.insurer === "blue-cross" && !attachment && !s.attemptedAttachments.size
+    && !/your claim has been (?:processed|submitted)/i.test(body)
+    && /Additional Information Required|Claim Documentation Required/.test(body)
+    && await blueCrossReceiptUploadAvailable(s.page, s.dossier);
+  return { revision: s.approved.revision, fields, attachment, receiptUploadAvailable,
     readyForManualNext: (fields.length > 0 || !!attachment) && fields.every(f => f.status === "match") && (!attachment || attachment.status === "verified"),
     scope: "Read-back against the values prepared from invoice evidence or your answers. This does not verify eligibility, coverage, current claim history or submission." };
 }
@@ -488,11 +513,11 @@ export async function prepareCurrentClaimStep(id: unknown,
   try {
     step = await inspectClaimStep(id);
     verification = s.approved ? await verifySnapshot(s) : undefined;
-    for (let pass = 0; pass < 12 && step.status === "fields"; pass++) {
+    for (let pass = 0; pass < 12 && ["fields", "review"].includes(step.status); pass++) {
       assertFresh();
       // Never automatically retry a field whose previous write could not be verified.
-      if (verification?.fields.some(f => f.status !== "match")) break;
-      const candidates = automaticClaimValues(step.fields, s.dossier);
+      if (step.status !== "review" && verification?.fields.some(f => f.status !== "match")) break;
+      const candidates = step.status === "review" ? {} as Record<string, string> : automaticClaimValues(step.fields, s.dossier);
       const receiptCheckboxes = step.fields.filter(f => f.kind === "supportingReceipt");
       if (receiptCheckboxes.length === 1) {
         const receipt = s.dossier.attachments.length === 1 ? s.dossier.attachments[0] : undefined;
@@ -508,6 +533,7 @@ export async function prepareCurrentClaimStep(id: unknown,
       const receipt = s.dossier.attachments.length === 1 ? s.dossier.attachments[0] : undefined;
       const attachment = !chosen.length && receipt && !s.attemptedAttachments.size && !s.approved?.attachment
         && step.fields.filter(f => f.type === "file").length === 1 && step.fields.some(f => f.type === "file" && f.autoAttachment)
+        && (step.status !== "review" || s.dossier.insurer === "blue-cross" && await blueCrossReceiptMatches(s.page, s.dossier) && !!await blueCrossReceiptFile(s.page))
         ? `${receipt.documentId}:${receipt.attachmentId}` : null;
       if (!Object.keys(values).length && !attachment) break;
       const before = step.fields.map(f => [f.label, f.type, f.suggested]);

@@ -46,8 +46,9 @@ export type ClaimStep = { status: string; revision: string; submitAllowed: false
   authReason?: string;
   confirmedIllness?: { scope: string; value: string | null; revision: number; source: "invoice" | "default" | null; defaultScope: string; defaultValue: string | null; defaultRevision: number }; answerWarning?: string;
   serviceChoices?: { available: boolean; scopeComplete: boolean; warning: string | null };
-  fields: { key: string; label: string; type: string; kind: string | null; suggested: string | null; suggestionSource?: string; suggestionReason?: string; options: { value: string; label: string }[] }[] };
+  fields: { key: string; label: string; type: string; kind: string | null; suggested: string | null; suggestionSource?: string; suggestionReason?: string; optional?: boolean; options: { value: string; label: string }[] }[] };
 export type ClaimVerification = { revision: string; readyForManualNext: boolean; scope: string;
+  receiptUploadAvailable?: boolean;
   fields: { key: string; label: string; value: string; optionLabel?: string; actual: string | null; status: "match" | "mismatch" | "unreadable" | "not-filled" }[];
   attachment: { name: string; status: "verified" | "unverified" | "failed" } | null };
 export type PreparedClaim = { preparation: ClaimPreparation; sessionId?: string; step: ClaimStep; verification?: ClaimVerification; warning?: string; submitAllowed: false };
