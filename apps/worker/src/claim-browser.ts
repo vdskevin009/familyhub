@@ -11,7 +11,7 @@ import { savedServiceChoice, rememberServiceChoice, forgetServiceChoices, servic
 import { codexServiceRunner, validatedServiceProposals, type ServiceRunner } from "./claim-service-suggestions.js";
 import { checkedField, uploadEvidence, type ApprovedField, type ObservedField } from "./claim-field-verification.js";
 import { acquirePortalLock, classifyLoginScreen, type LoginReason } from "./portal-login.js";
-import { loginForClaim, authenticatedClaimPages } from "./claim-login.js";
+import { loginForClaim, authenticatedClaimPages, preserveBlueCrossClaimSession } from "./claim-login.js";
 import { automaticClaimValues } from "./claim-autofill.js";
 import { desjardinsRadioField } from "./desjardins-claim-form.js";
 import { reserveClaimUpload, reserveClaimUploadRetry } from "./claim-upload-guard.js";
@@ -28,7 +28,7 @@ type Target = { locator: Locator; field: Field; signature: string; initialValue:
 type ApprovedSnapshot = { revision: string; url: string; entries: { target: Target; approved: ApprovedField; filled: boolean }[]; attachment?: { name: string; selected: boolean; blocked?: boolean } };
 type Session = { id: string; browser: Browser; page: Page; dossier: ClaimPreparation; createdAt: number;
   fields: Map<string, Target>; attemptedAttachments: Set<string>; busy: boolean; revision: string; inspectedUrl: string; approved?: ApprovedSnapshot;
-  authReason?: LoginReason; release?: () => Promise<void>; claimEntryAttempted?: boolean; claimKindAttempted?: boolean; claimCauseAttempted?: boolean; detailsNextAttempted?: boolean; detailsNextVerified?: boolean; summaryNextAttempted?: boolean; receiptRetryUsed?: boolean; authorizedRetryHash?: string; uploadEntryAttempted?: boolean };
+  authenticate?: typeof loginForClaim; autonomous?: boolean; loginRefreshAttempted?: boolean; authPersistenceAttempted?: boolean; authReason?: LoginReason; release?: () => Promise<void>; claimEntryAttempted?: boolean; claimKindAttempted?: boolean; claimCauseAttempted?: boolean; detailsNextAttempted?: boolean; detailsNextVerified?: boolean; summaryNextAttempted?: boolean; receiptRetryUsed?: boolean; authorizedRetryHash?: string; uploadEntryAttempted?: boolean };
 let session: Session | undefined;
 let opening = false;
 const allowed = (url: string, insurer: ClaimPreparation["insurer"]) => {
@@ -41,14 +41,14 @@ function current(id: unknown): Session {
   return session;
 }
 export async function openClaimBrowser(dossier: ClaimPreparation, historyReviewed: unknown, warningsReviewed: unknown = false,
-  launch?: () => Promise<Browser>, autonomous = false) {
+  launch?: () => Promise<Browser>, autonomous = false, authenticate: typeof loginForClaim = loginForClaim) {
   if (opening) throw new Error("A preparation window is already opening. Wait before resuming it.");
   opening = true;
-  try { return await openBrowser(dossier, historyReviewed, warningsReviewed, launch, autonomous); }
+  try { return await openBrowser(dossier, historyReviewed, warningsReviewed, launch, autonomous, authenticate); }
   finally { opening = false; }
 }
 async function openBrowser(dossier: ClaimPreparation, historyReviewed: unknown, warningsReviewed: unknown,
-  launch: () => Promise<Browser> = () => chromium.launch({ headless: false, channel: process.platform === "win32" ? dossier.insurer === "desjardins" ? "msedge" : "chrome" : undefined }), autonomous = false) {
+  launch: () => Promise<Browser> = () => chromium.launch({ headless: false, channel: process.platform === "win32" ? dossier.insurer === "desjardins" ? "msedge" : "chrome" : undefined }), autonomous = false, authenticate: typeof loginForClaim = loginForClaim) {
   if (dossier.blocked) throw new Error(dossier.coordination?.message || "Resolve the recorded or possible duplicate and source conflicts before preparing a claim.");
   if (!autonomous && historyReviewed !== true) throw new Error("Review the insurer's current history for this invoice before opening preparation.");
   if (!autonomous && dossier.reviewableWarnings.length && warningsReviewed !== true) throw new Error("Review the original PDF and confirm the shown gross expense and other-insurer payment before preparing this claim.");
@@ -85,13 +85,13 @@ async function openBrowser(dossier: ClaimPreparation, historyReviewed: unknown, 
     } catch { /* A normal visible login remains available. */ }
     let page = await context.newPage();
     await page.goto(dossier.preparationUrl || dossier.portalUrl, { waitUntil: "domcontentloaded", timeout: 45_000 });
-    const authReason = autonomous ? await loginForClaim(page, dossier.insurer) : undefined;
+    const authReason = autonomous ? await authenticate(page, dossier.insurer) : undefined;
     if (autonomous) {
       const authenticated = await authenticatedClaimPages(page, dossier.insurer);
       if (authenticated.length > 1) throw new Error("Several authenticated insurer tabs are open.");
       if (authenticated.length === 1) page = authenticated[0];
     }
-    session = { id: randomUUID(), browser, page, dossier, createdAt: Date.now(), fields: new Map(), attemptedAttachments: new Set(), busy: false, revision: "", inspectedUrl: "", authReason, release };
+    session = { id: randomUUID(), browser, page, dossier, createdAt: Date.now(), fields: new Map(), attemptedAttachments: new Set(), busy: false, revision: "", inspectedUrl: "", authReason, release, autonomous, authenticate };
     const timer = setTimeout(() => { if (session?.browser === browser) { session = undefined; void browser.close(); } }, 30 * 60_000);
     timer.unref();
     browser.on("disconnected", () => { clearTimeout(timer); if (session?.browser === browser) session = undefined; void release().catch(() => {}); });
@@ -125,6 +125,11 @@ async function inspect(s: Session) {
   if (!allowed(s.page.url(), s.dossier.insurer) || await s.page.locator('input[type="password"]').isVisible().catch(() => false)) return { status: s.authReason === "human-required" ? "human-required" : "login-required", authReason: s.authReason, fields: [], revision: "", submitAllowed: false };
   const body = (await s.page.locator("body").innerText()).slice(0, 30_000);
   if (classifyLoginScreen(body) === "human-required") return { status: "human-required", fields: [], revision: "", submitAllowed: false };
+  if (s.autonomous && s.dossier.insurer === "blue-cross" && !s.authPersistenceAttempted
+    && /\/ACESWeb\/Pages\/Claims\/eClaim\.aspx$/.test(new URL(s.page.url()).pathname)) {
+    s.authPersistenceAttempted = true;
+    await preserveBlueCrossClaimSession(s.page).catch(() => false);
+  }
   if (s.dossier.insurer === "blue-cross" && /what kind of claim would you like to submit\?/i.test(body.replace(/\s+/g, " "))
     && await isBlueCrossClaimKindPage(s.page)) {
     if (!s.claimKindAttempted) {
@@ -549,6 +554,16 @@ export async function prepareCurrentClaimStep(id: unknown,
   let warning: string | undefined;
   try {
     step = await inspectClaimStep(id);
+    // A restored SPA can briefly look authenticated before the server rejects
+    // stale cookies. Recheck once, using the unchanged durable login gate.
+    if (s.autonomous && s.dossier.insurer === "blue-cross" && step.status === "login-required" && !s.authReason && !s.loginRefreshAttempted
+      && !s.approved && !s.claimKindAttempted && !s.claimCauseAttempted && !s.detailsNextAttempted) {
+      s.loginRefreshAttempted = true;
+      s.authReason = await (s.authenticate || loginForClaim)(s.page, s.dossier.insurer);
+      if (!s.authReason && isBlueCrossMemberPage(s.page.url())
+        && (await authenticatedClaimPages(s.page, s.dossier.insurer)).length === 1) s.claimEntryAttempted = false;
+      step = await inspectClaimStep(id);
+    }
     verification = s.approved ? await verifySnapshot(s) : undefined;
     for (let pass = 0; pass < 16 && ["fields", "review", "navigate"].includes(step.status); pass++) {
       assertFresh();
