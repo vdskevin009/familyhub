@@ -63,7 +63,18 @@ export async function claimAction<T>(config: WorkerConfig, action: "practitioner
       throw new Error(`Your PC worker is ${health.version || "an older version"}. Autonomous claim preparation requires worker 2.26.0 or later. Update and restart the existing FamilyHub worker, then reopen this panel.`);
     }
   }
-  return request(config, `/claim-preparation/${action}`, { method: "POST", body: JSON.stringify(body) }, 180_000);
+  // Saved-session login, dependent portal postbacks and receipt verification can
+  // legitimately outlast the old three-minute client deadline. Never replay a
+  // preparation request when its response is lost: the PC may still be working.
+  const preparesPortal = ["prepare", "resume", "correct", "open", "fill", "retry-receipt"].includes(action);
+  try {
+    return await request<T>(config, `/claim-preparation/${action}`, { method: "POST", body: JSON.stringify(body) }, preparesPortal ? 15 * 60_000 : 180_000);
+  } catch (error) {
+    if (preparesPortal && error instanceof Error && error.message.startsWith("Cannot reach your FamilyHub PC.")) {
+      throw new Error("The preparation response was not received. Your PC may still be preparing the claim or attaching its receipt. Check the existing insurer window before continuing; do not restart preparation or upload the receipt again. No final submission was requested.");
+    }
+    throw error;
+  }
 }
 
 export function workerVersionAtLeast(version: string, minimum: string): boolean {
