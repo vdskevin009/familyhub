@@ -3,7 +3,7 @@ import type { ClaimPreparation } from "./claim-preparation.js";
 import { blueCrossSuggestion } from "./bluecross-claim-form.js";
 
 export const claimKindHeading = "What kind of claim would you like to submit?";
-const choices = [/^Healthcare$/i, /^Drugs$/i, /^Vision\s+Care$/i, /^Dental\s*\(Orthodontic\)$/i,
+const choices = [/^Health\s*Care$/i, /^Drugs$/i, /^Vision\s+Care$/i, /^Dental\s*\(Orthodontic\)$/i,
   /^I\s+don['’]t\s+see\s+the\s+expense\s+listed$/i];
 const trusted = (page: Page) => new URL(page.url()).origin === "https://service.pac.bluecross.ca";
 const details = (page: Page) => page.locator('input[id$="_txtAmount"], input[id$="_cmbCoveredLife_Input"]').filter({ visible: true });
@@ -25,9 +25,6 @@ export async function openBlueCrossHealthcareClaim(page: Page, dossier: ClaimPre
   ]);
   if (!service) return false;
   const url = page.url();
-  for (const label of choices) {
-    if (await page.getByText(label).filter({ visible: true }).count() !== 1) return false;
-  }
   const controls = choices.map(name => page.getByRole("checkbox", { name }).or(page.getByRole("radio", { name })).filter({ visible: true }));
   for (const control of controls) if (await control.count() !== 1) return false;
   const entry = controls[0];
@@ -41,15 +38,14 @@ export async function openBlueCrossHealthcareClaim(page: Page, dossier: ClaimPre
   if (page.url() !== url || !await isBlueCrossClaimKindPage(page) || !await entry.isChecked()
     || await next.count() !== 1 || !await next.isEnabled()) return false;
   for (const control of controls.slice(1)) if (await control.isChecked()) return false;
-  const heading = page.getByText(claimKindHeading, { exact: true }).filter({ visible: true });
-  const changed = heading.waitFor({ state: "hidden", timeout: 10_000 }).catch(() => {});
+  const causeReady = page.locator('input[id$="_ucClaimCause_optClaimCauseNo"]').filter({ visible: true }).waitFor({ state: "visible", timeout: 10_000 }).catch(() => {});
   const ready = details(page).first().waitFor({ state: "visible", timeout: 10_000 }).catch(() => {});
   const opened = page.context().waitForEvent("page", { timeout: 10_000 }).then(async tab => {
     await tab.waitForURL(value => value.origin === "https://service.pac.bluecross.ca", { timeout: 10_000 }).catch(() => {});
   }).catch(() => {});
   // This Next belongs only to category navigation, never prepared claim fields.
   await next.click({ noWaitAfter: true, timeout: 7000 });
-  await Promise.race([changed, ready, opened]);
+  await Promise.race([causeReady, ready, opened]);
   for (const tab of page.context().pages())
     await tab.waitForLoadState("domcontentloaded", { timeout: 10_000 }).catch(() => {});
   return true;

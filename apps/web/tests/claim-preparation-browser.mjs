@@ -20,7 +20,7 @@ const entry={Id:'synthetic-case',DocumentIds:[expense.Id],ExpenseDocumentId:expe
 let browser;
 try {
  browser=await chromium.launch({headless:true,channel:process.platform==='win32'?'msedge':undefined});
- for(const scenario of ['prepared','unknown','mismatch','upload-failed','human-required','login-required','blocked','old-worker','refresh-failed','owner-zero','unknown-insurer','confirmed-illness','default-illness','auto-login','optional','required','review','watch-upload']) {
+ for(const scenario of ['prepared','unknown','mismatch','upload-failed','human-required','login-required','blocked','old-worker','refresh-failed','owner-zero','unknown-insurer','confirmed-illness','default-illness','auto-login','optional','required','review','blocked-upload','watch-upload']) {
   const context=await browser.newContext({viewport:{width:390,height:900},serviceWorkers:'block'}),page=await context.newPage(),posts=[],errors=[];
   const c={...entry,NextInsurer:scenario==='unknown-insurer'?null:'Blue Cross',DesjardinsReimbursedAmount:scenario==='owner-zero'?null:0};
   const preparation=prepareClaim(expense.Id,'blue-cross',[expense],[c]);
@@ -29,8 +29,9 @@ try {
   if(['confirmed-illness','default-illness'].includes(scenario))step.confirmedIllness={scope:'a'.repeat(64),value:null,revision:0,source:null,defaultScope:'b'.repeat(64),defaultValue:null,defaultRevision:0};
   if(scenario==='auto-login')step.status='login-required';
   if(['optional','required'].includes(scenario))step.fields=[{key:'public-plan',kind:null,label:'Amount paid by public or provincial plan',type:'text',options:[],suggested:null,optional:scenario==='optional'}];
-  if(scenario==='review')step.status='review';
+  if(['review','blocked-upload'].includes(scenario))step.status='review';
   const verification={revision:'prepared',readyForManualNext:!['mismatch','upload-failed'].includes(scenario),scope:'Read-back only; not eligibility or submission.',fields:[{key:'gross',label:'Total expense',value:'100.00',actual:scenario==='mismatch'?'80.00':'100.00',status:scenario==='mismatch'?'mismatch':'match'}],attachment:{name:'synthetic.pdf',status:scenario==='upload-failed'?'failed':'verified'}};
+  if(scenario==='blocked-upload'){verification.attachment={name:'synthetic.pdf',status:'unverified',selected:false,blocked:true};verification.readyForManualNext=false;}
   if(scenario==='watch-upload'){verification.attachment=null;verification.receiptUploadAvailable=false;}
   const result=()=>({preparation,sessionId:scenario==='blocked'?undefined:'synthetic-session',step,verification:['human-required','login-required','blocked'].includes(scenario)?undefined:verification,submitAllowed:false});
   page.on('pageerror',e=>errors.push(e.message));
@@ -40,7 +41,7 @@ try {
    const reply=body=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(body),headers:{'Access-Control-Allow-Origin':'*'}});
    if(request.method()==='OPTIONS')return reply({});
    if(request.method()==='POST')posts.push({path,body:request.postDataJSON()});
-   if(path==='/health')return reply({status:'ok',version:scenario==='old-worker'?'2.25.3':'2.26.2'});
+   if(path==='/health')return reply({status:'ok',version:scenario==='old-worker'?'2.25.3':'2.26.6'});
    if(path==='/invoices')return reply({items:[expense],reconciliations:[c],unmatchedReimbursements:[],accounts:[]});
    if(path==='/claim-preparation/prepare')return reply(result());
    if(path==='/claim-preparation/verify'&&scenario==='watch-upload')return reply({...verification,receiptUploadAvailable:true});
@@ -54,6 +55,10 @@ try {
     assert.equal(b.allInvoices,all);assert.equal(b.expectedScope,all?answer.defaultScope:answer.scope);assert.equal(b.expectedRevision,all?answer.defaultRevision:answer.revision);
     step={...step,confirmedIllness:{...answer,value,source:all?'default':'invoice',...(all?{defaultValue:value,defaultRevision:answer.defaultRevision+1}:{revision:answer.revision+1})}};
     return reply({answer:step.confirmedIllness});
+   }
+   if(path==='/claim-preparation/retry-receipt'){
+    const b=request.postDataJSON();assert.equal(b.prepareAuthorized,true);assert.equal(b.retryReviewed,true);assert.equal(b.revision,'prepared');assert.equal(b.receiptName,'synthetic.pdf');
+    verification.attachment={name:'synthetic.pdf',status:'verified',selected:true,blocked:false};return reply(result());
    }
    if(path==='/claim-preparation/resume'){
     if(scenario==='refresh-failed')return route.fulfill({status:500,contentType:'application/json',body:JSON.stringify({error:'Read failed. Check the portal.'})});
@@ -98,7 +103,8 @@ try {
      await dialog.getByText(/Upload success observed/).waitFor();assert.equal(posts.some(p=>/submit|claim-create|next/.test(p.path)),false);assert.deepEqual(errors,[]);await context.close();continue;
     }
     const validate=dialog.getByRole('button',{name:'Validate prepared step',exact:true});
-    if(scenario==='review'){
+    if(['review','blocked-upload'].includes(scenario)){
+     if(scenario==='blocked-upload'){await dialog.getByText(/Not attached — an earlier upload attempt/).waitFor();assert.equal(await dialog.getByText(/Selected; upload not yet verified/).count(),0);await dialog.getByRole('button',{name:'Attach receipt to this preparation',exact:true}).click();await dialog.getByText(/Upload success observed/).waitFor();assert.equal(posts.filter(p=>p.path.endsWith('/retry-receipt')).length,1);}
      assert.equal(await validate.count(),0);await dialog.getByText(/FamilyHub validation is not required/).waitFor();
      assert.equal(posts.some(p=>/submit|claim-create|next/.test(p.path)),false);assert.deepEqual(errors,[]);await context.close();continue;
     }
@@ -142,5 +148,5 @@ try {
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false,scenario+' mobile overflow');
   await page.screenshot({path:join(output,`claim-autonomous-${scenario}.png`),fullPage:true});await context.close();
  }
- console.log(JSON.stringify({passed:18,providerContact:false,submission:false,screenshots:output}));
+ console.log(JSON.stringify({passed:19,providerContact:false,submission:false,screenshots:output}));
 }finally{await browser?.close();server.close();}

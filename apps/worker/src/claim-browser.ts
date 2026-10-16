@@ -14,19 +14,21 @@ import { acquirePortalLock, classifyLoginScreen, type LoginReason } from "./port
 import { loginForClaim, authenticatedClaimPages } from "./claim-login.js";
 import { automaticClaimValues } from "./claim-autofill.js";
 import { desjardinsRadioField } from "./desjardins-claim-form.js";
-import { reserveClaimUpload } from "./claim-upload-guard.js";
+import { reserveClaimUpload, reserveClaimUploadRetry } from "./claim-upload-guard.js";
 import { confirmedInvoiceIllness } from "./claim-invoice-answers.js";
 import { blueCrossReceiptCheckbox, verifyDetailedReceipt } from "./bluecross-receipt-checklist.js";
+import { advanceBlueCrossDetails, advanceBlueCrossExpenses } from "./bluecross-claim-progress.js";
+import { isBlueCrossClaimCausePage, openBlueCrossClaimCause } from "./bluecross-claim-cause.js";
 import { isBlueCrossClaimKindPage, openBlueCrossHealthcareClaim } from "./bluecross-claim-kind.js";
 import { blueCrossReceiptFile, blueCrossReceiptMatches, openBlueCrossReceiptUpload, blueCrossReceiptAlreadyListed, blueCrossReceiptUploadEvidence, blueCrossReceiptUploadAvailable } from "./bluecross-claim-upload.js";
 
 export type Field = { key: string; label: string; type: string; options: { value: string; label: string }[];
   suggested: string | null; kind: string | null; suggestionSource?: "confirmed-choice" | "confirmed-answer" | "invoice" | "codex"; suggestionReason?: string; autoAttachment?: boolean; optional?: boolean };
 type Target = { locator: Locator; field: Field; signature: string; initialValue: string; dropdown?: Locator; providers?: Locator };
-type ApprovedSnapshot = { revision: string; url: string; entries: { target: Target; approved: ApprovedField; filled: boolean }[]; attachment?: { name: string; selected: boolean } };
+type ApprovedSnapshot = { revision: string; url: string; entries: { target: Target; approved: ApprovedField; filled: boolean }[]; attachment?: { name: string; selected: boolean; blocked?: boolean } };
 type Session = { id: string; browser: Browser; page: Page; dossier: ClaimPreparation; createdAt: number;
   fields: Map<string, Target>; attemptedAttachments: Set<string>; busy: boolean; revision: string; inspectedUrl: string; approved?: ApprovedSnapshot;
-  authReason?: LoginReason; release?: () => Promise<void>; claimEntryAttempted?: boolean; claimKindAttempted?: boolean; uploadEntryAttempted?: boolean };
+  authReason?: LoginReason; release?: () => Promise<void>; claimEntryAttempted?: boolean; claimKindAttempted?: boolean; claimCauseAttempted?: boolean; detailsNextAttempted?: boolean; detailsNextVerified?: boolean; summaryNextAttempted?: boolean; receiptRetryUsed?: boolean; authorizedRetryHash?: string; uploadEntryAttempted?: boolean };
 let session: Session | undefined;
 let opening = false;
 const allowed = (url: string, insurer: ClaimPreparation["insurer"]) => {
@@ -130,6 +132,13 @@ async function inspect(s: Session) {
       if (opened) return inspect(s);
     }
     return { status: "navigate", fields: [], revision: "", submitAllowed: false };
+  }
+  if (s.dossier.insurer === "blue-cross" && body.includes("The service or product provided is") && await isBlueCrossClaimCausePage(s.page)) {
+    if (!s.claimCauseAttempted) {
+      const opened = await openBlueCrossClaimCause(s.page, s.dossier, () => { s.claimCauseAttempted = true; }).catch(() => false);
+      if (opened) return inspect(s);
+    }
+    return { status: "navigate", fields: [], revision: "", submitAllowed: false, answerWarning: "Choose the claim cause in the insurer window, or explicitly confirm its saved default." };
   }
   // Manual login can return to member home after the original open request.
   // Its search/preferences controls are not claim fields. Attempt only the
@@ -393,7 +402,11 @@ export async function fillClaimStep(id: unknown, revision: unknown, values: unkn
       const file = await loadAttachment(selected.documentId, selected.attachmentId);
       s.approved.attachment = { name: file.name, selected: false };
       const hash = createHash("sha256").update(file.bytes).digest("hex");
-      if (s.attemptedAttachments.has(hash)) throw new Error("This PDF upload was already attempted. Check its status in Blue Cross; FamilyHub will not repeat an uncertain permanent upload.");
+      const retryHash = s.authorizedRetryHash;
+      s.authorizedRetryHash = undefined;
+      if (retryHash && retryHash !== hash) throw new Error("The original receipt bytes changed before recovery. No file was sent.");
+      const explicitRetry = retryHash === hash;
+      if (s.attemptedAttachments.has(hash) && !explicitRetry) throw new Error("This PDF upload was already attempted. Check its status in Blue Cross; FamilyHub will not repeat an uncertain permanent upload.");
       const target = targets[0];
       const current = await target.locator.evaluate((el: HTMLInputElement) => ({ value: el.value,
         signature: JSON.stringify([el.tagName, el.id, el.getAttribute("name"), el.getAttribute("type"), Array.from(el.labels || []).map(l => l.textContent?.trim()), el.getAttribute("aria-label")]) }));
@@ -401,7 +414,8 @@ export async function fillClaimStep(id: unknown, revision: unknown, values: unkn
         || !await target.locator.isVisible() || !await target.locator.isEnabled()) throw new Error("The attachment field changed. Inspect again before attaching.");
       if (s.page.url() !== s.inspectedUrl || !allowed(s.page.url(), s.dossier.insurer)) throw new Error("The portal changed before attaching. Read the form again.");
       s.attemptedAttachments.add(hash);
-      await reserveClaimUpload(s.dossier, hash);
+      try { if (explicitRetry) await reserveClaimUploadRetry(s.dossier, hash, { confirmed: true, scope: s.id }); else await reserveClaimUpload(s.dossier, hash); }
+      catch (error) { s.approved.attachment.blocked = true; throw error; }
       await targets[0].locator.setInputFiles({ name: file.name, mimeType: "application/pdf", buffer: file.bytes });
       s.approved.attachment.selected = true;
       if (s.dossier.insurer === "blue-cross" && (await s.page.locator("body").innerText()).includes("Claim Documentation Required") && await blueCrossReceiptFile(s.page))
@@ -412,6 +426,29 @@ export async function fillClaimStep(id: unknown, revision: unknown, values: unkn
     return await finish(attachment != null ? "The PDF was placed in the portal's upload field; file selection alone is not proof of upload." : "Review the actual values below. Next after claim details and Submit remain manual.");
   } finally { s.fields.clear(); s.revision = ""; s.busy = false; }
 }
+/** One explicit recovery on this still-empty, source-matched preparation. */
+export async function retryCurrentClaimReceipt(id: unknown, revision: unknown, receiptName: unknown, confirmed: unknown,
+  loadAttachment: (id: string, attachmentId: string) => Promise<{ bytes: Buffer; name: string }>, assertFresh: () => void = () => {}) {
+  const s = current(id), prior = s.approved;
+  if (confirmed !== true || s.busy || s.receiptRetryUsed || !prior?.attachment?.blocked || prior.attachment.selected
+    || revision !== prior.revision || receiptName !== prior.attachment.name || s.dossier.attachments.length !== 1)
+    throw new Error("Review the earlier receipt attempt and explicitly authorize this empty preparation before recovery.");
+  assertFresh();
+  const file = await blueCrossReceiptFile(s.page);
+  if (!file || !await blueCrossReceiptMatches(s.page, s.dossier) || await file.inputValue()
+    || await blueCrossReceiptAlreadyListed(s.page, prior.attachment.name)) throw new Error("The upload page changed or already contains a receipt. Do not resend it.");
+  const original = s.dossier.attachments[0], source = await loadAttachment(original.documentId, original.attachmentId);
+  if (source.name !== receiptName || s.receiptRetryUsed) throw new Error("The receipt or recovery state changed.");
+  s.receiptRetryUsed = true;
+  s.authorizedRetryHash = createHash("sha256").update(source.bytes).digest("hex");
+  try {
+    const step = await inspectClaimStep(id);
+    if (step.fields.filter(f => f.type === "file").length !== 1) throw new Error("The receipt field changed. Recovery was not sent.");
+    await fillClaimStep(id, step.revision, {}, original.documentId + ":" + original.attachmentId, loadAttachment);
+    return await prepareCurrentClaimStep(id, loadAttachment, assertFresh);
+  } finally { s.authorizedRetryHash = undefined; }
+}
+
 export function claimSessionExpense(id: unknown) { return current(id).dossier; }
 async function verifySnapshot(s: Session) {
   if (!s.approved) throw new Error("There are no filled, approved answers to verify.");
@@ -440,7 +477,7 @@ async function verifySnapshot(s: Session) {
     } catch { /* A missing/stale/unreadable field never gets a green check. */ }
     fields.push(checkedField(entry.approved, observed, entry.filled));
   }
-  let attachment: { name: string; status: "verified" | "unverified" | "failed" } | null = null;
+  let attachment: { name: string; status: "verified" | "unverified" | "failed"; selected?: boolean; blocked?: boolean } | null = null;
   if (s.approved.attachment) {
     let status: "verified" | "unverified" | "failed" = "unverified";
     try {
@@ -453,7 +490,7 @@ async function verifySnapshot(s: Session) {
         }
       }
     } catch { /* Selecting a file is not a successful-upload indicator. */ }
-    attachment = { name: s.approved.attachment.name, status };
+    attachment = { name: s.approved.attachment.name, status, selected: s.approved.attachment.selected, blocked: s.approved.attachment.blocked };
   }
   const body = validPage ? await s.page.locator("body").innerText() : "";
   const receiptUploadAvailable = s.dossier.insurer === "blue-cross" && !attachment && !s.attemptedAttachments.size
@@ -502,7 +539,7 @@ export async function closeClaimBrowser(id: unknown) {
   return { status: "closed", submitAllowed: false };
 }
 
-/** Bounded preparation of this page only. Never clicks Next, consent or Submit. */
+/** Bounded preparation with observed guarded intermediate Next; never consent or Submit. */
 export async function prepareCurrentClaimStep(id: unknown,
   loadAttachment: (id: string, attachmentId: string) => Promise<{ bytes: Buffer; name: string }>,
   assertFresh: () => void = () => {}) {
@@ -513,8 +550,14 @@ export async function prepareCurrentClaimStep(id: unknown,
   try {
     step = await inspectClaimStep(id);
     verification = s.approved ? await verifySnapshot(s) : undefined;
-    for (let pass = 0; pass < 12 && ["fields", "review"].includes(step.status); pass++) {
+    for (let pass = 0; pass < 16 && ["fields", "review", "navigate"].includes(step.status); pass++) {
       assertFresh();
+      if (step.status === "navigate" && s.detailsNextVerified && !s.summaryNextAttempted) {
+        const illness = s.approved?.entries.find(e => e.target.field.kind === "natureOfIllness" && e.filled)?.approved.value;
+        const advanced = await advanceBlueCrossExpenses(s.page, s.dossier, illness, () => { s.summaryNextAttempted = true; });
+        if (!advanced) break;
+        step = await inspectClaimStep(id); verification = s.approved ? await verifySnapshot(s) : undefined; continue;
+      }
       // Never automatically retry a field whose previous write could not be verified.
       if (step.status !== "review" && verification?.fields.some(f => f.status !== "match")) break;
       const candidates = step.status === "review" ? {} as Record<string, string> : automaticClaimValues(step.fields, s.dossier);
@@ -535,7 +578,17 @@ export async function prepareCurrentClaimStep(id: unknown,
         && step.fields.filter(f => f.type === "file").length === 1 && step.fields.some(f => f.type === "file" && f.autoAttachment)
         && (step.status !== "review" || s.dossier.insurer === "blue-cross" && await blueCrossReceiptMatches(s.page, s.dossier) && !!await blueCrossReceiptFile(s.page))
         ? `${receipt.documentId}:${receipt.attachmentId}` : null;
-      if (!Object.keys(values).length && !attachment) break;
+      if (!Object.keys(values).length && !attachment) {
+        const required = ["patient", "benefit", "service", "serviceDate", "originalAmount", "natureOfIllness", "otherInsurance", "otherInsurancePaid", "practitioner", "supportingReceipt"];
+        const prepared = new Set(s.approved?.entries.filter(e => e.filled).map(e => e.target.field.kind));
+        const ready = step.status === "fields" && !!verification?.readyForManualNext && !step.fields.some(f => !f.optional)
+          && required.every(kind => prepared.has(kind)) && s.dossier.attachments.length === 1 && !s.dossier.blocked;
+        if (s.dossier.insurer === "blue-cross" && !s.detailsNextAttempted
+          && await advanceBlueCrossDetails(s.page, ready, () => { s.detailsNextAttempted = true; })) {
+          s.detailsNextVerified = true; step = await inspectClaimStep(id); verification = s.approved ? await verifySnapshot(s) : undefined; continue;
+        }
+        break;
+      }
       const before = step.fields.map(f => [f.label, f.type, f.suggested]);
       await fillClaimStep(id, step.revision, values, attachment, loadAttachment);
       await s.page.waitForLoadState("domcontentloaded", { timeout: 5000 }).catch(() => {});
@@ -545,8 +598,10 @@ export async function prepareCurrentClaimStep(id: unknown,
     }
   } catch {
     // A write may have happened. Return the session and read-back, never replay it.
-    warning = "Preparation stopped after the portal changed or a value could not be verified. Check the actual results before continuing; do not repeat an uncertain upload.";
-    step = { status: "inspect-required", fields: [], revision: "", submitAllowed: false };
+    warning = s.approved?.attachment?.blocked ? "The receipt was not attached: an earlier upload attempt is already recorded, or its guard could not be saved. No automatic resend was made. Review the prior claim before authorizing one-time recovery to this empty preparation."
+      : "Preparation stopped after the portal changed or a value could not be verified. Check the actual results before continuing; do not repeat an uncertain upload.";
+    const knownUpload = s.approved?.attachment?.blocked && !!await blueCrossReceiptFile(s.page).catch(() => null);
+    step = { status: knownUpload ? "review" : "inspect-required", fields: [], revision: "", submitAllowed: false };
     verification = s.approved ? await verifySnapshot(s).catch(() => undefined) : undefined;
   }
   return { sessionId: s.id, step, verification, warning, submitAllowed: false };

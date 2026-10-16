@@ -5,7 +5,7 @@ import {mkdtemp,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 const directory=await mkdtemp(join(tmpdir(),'familyhub-receipt-upload-'));process.env.FAMILYHUB_WORKER_DATA=directory;
-const {openClaimBrowser,prepareCurrentClaimStep,closeClaimBrowser}=await import('../apps/worker/dist/claim-browser.js');
+const {openClaimBrowser,prepareCurrentClaimStep,retryCurrentClaimReceipt,closeClaimBrowser}=await import('../apps/worker/dist/claim-browser.js');
 const portal='https://service.pac.bluecross.ca/ACESWeb/Pages/Claims/eClaim.aspx';
 const base={expenseId:'synthetic-upload',insurer:'blue-cross',portalUrl:portal,blocked:false,reviewableWarnings:[],fields:{patient:'Kevin',service:'20 min Chiropractic Return',serviceDate:'2026-09-01',originalAmount:100},attachments:[{documentId:'synthetic',attachmentId:'pdf',name:'synthetic.pdf'}]};
 const scenarios=['entry','uploader','upload-failed','upload-uncertain','duplicate-success','uncertain-entry','ambiguous-entry','changed-entry','wrong-amount','wrong-date','wrong-patient','multiple-pdfs','already-listed','consent-checked','generic-review','wrong-origin','completed','optional','required'];
@@ -41,8 +41,16 @@ try{
   await closeClaimBrowser(session);session=undefined;
   if(scenario==='uploader'){
    const reopened=await openClaimBrowser(dossier,false,false,launch,true);session=reopened.sessionId;
-   await prepareCurrentClaimStep(session,async()=>({name:'synthetic.pdf',bytes:Buffer.from('%PDF-synthetic')}));
-   assert.equal(selections,1,'Durable reservation survives reopening');await closeClaimBrowser(session);session=undefined;
+   const guarded=await prepareCurrentClaimStep(session,async()=>({name:'synthetic.pdf',bytes:Buffer.from('%PDF-synthetic')}));
+   assert.equal(guarded.verification.attachment.selected,false);assert.equal(guarded.verification.attachment.blocked,true);assert.equal(guarded.step.status,'review');assert.match(guarded.warning,/was not attached/);
+   assert.equal(selections,1,'Durable reservation survives reopening');
+   const original=async()=>({name:'synthetic.pdf',bytes:Buffer.from('%PDF-synthetic')});
+   await assert.rejects(()=>retryCurrentClaimReceipt(session,guarded.verification.revision,'synthetic.pdf',false,original));
+   assert.equal(selections,1,'Recovery needs explicit authorization');
+   const recovered=await retryCurrentClaimReceipt(session,guarded.verification.revision,'synthetic.pdf',true,original);
+   assert.equal(selections,2,'One explicit recovery sends to the current empty preparation');assert.equal(recovered.verification.attachment.status,'verified');
+   await assert.rejects(()=>retryCurrentClaimReceipt(session,recovered.verification.revision,'synthetic.pdf',true,original));assert.equal(selections,2,'Recovery cannot be replayed');
+   await closeClaimBrowser(session);session=undefined;
   }
  }
  console.log(JSON.stringify({passed:scenarios.length,scenarios,insurerContact:false,consent:false,submission:false}));

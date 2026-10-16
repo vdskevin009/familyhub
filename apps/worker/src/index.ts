@@ -22,7 +22,8 @@ import { GroceryResearch } from "./grocery-research.js";
 import { importConnectorMessage, claimPreparation, confirmOwnerAdjudication } from "./invoices.js";
 import { parseLoginRecoveryRequest } from "./portal-login-recovery.js";
 import { portalReconnectStatus, startPortalReconnect } from "./portal-reconnect.js";
-import { openClaimBrowser, inspectClaimStep, fillClaimStep, claimSessionExpense, closeClaimBrowser, forgetClaimServiceChoices, suggestClaimServiceChoices, verifyClaimStep, prepareCurrentClaimStep } from "./claim-browser.js";
+import { openClaimBrowser, inspectClaimStep, fillClaimStep, claimSessionExpense, closeClaimBrowser, forgetClaimServiceChoices, suggestClaimServiceChoices, verifyClaimStep, prepareCurrentClaimStep, retryCurrentClaimReceipt } from "./claim-browser.js";
+import { blueCrossClaimCauseAnswer, confirmBlueCrossClaimCause } from "./bluecross-claim-cause.js";
 import { confirmedInvoiceIllness, confirmInvoiceIllness } from "./claim-invoice-answers.js";
 import { initializeInvoices, initializeBlueCrossStatus, getBlueCrossStatus, syncBlueCrossPortal, initializeDesjardinsStatus, getDesjardinsStatus, syncDesjardinsPortal, backfillDesjardinsPayments, invoiceSnapshot, collectInvoices, correctInvoice, updateInvoiceStatus, undoInvoiceDecision, invoiceAttachment, importBlueCrossMessages, setDocumentsIgnored, setExpenseIgnored, setManualMatch, setMatchDecision, setReimbursementWorkflowStatus, setUnmatchedIgnored } from "./invoices.js";
 
@@ -50,7 +51,7 @@ type ResearchWatch = {
 };
 type PersistedState = { watches: ResearchWatch[] };
 
-const version = "2.26.5";
+const version = "2.26.6";
 let claimOperationBusy = false;
 const host = process.env.FAMILYHUB_WORKER_HOST?.trim() || "127.0.0.1";
 const port = Number(process.env.FAMILYHUB_WORKER_PORT || "4713");
@@ -320,6 +321,12 @@ const server = createServer(async (request, response) => {
       if (claimOperationBusy) throw new Error("Claim preparation is busy. Wait for the current operation; do not repeat an uncertain upload.");
       claimOperationBusy = true;
       try {
+      if (parts[1] === "cause-answer") {
+        const body = await readJson<{ action?: unknown; confirmed?: unknown; allInvoices?: unknown; expectedRevision?: unknown; value?: unknown }>(request);
+        if (body.action === "read") { json(response, 200, { answer: await blueCrossClaimCauseAnswer() }, origin); return; }
+        if (body.action !== "save") throw new Error("Choose whether to read or save the claim-cause default.");
+        json(response, 200, { answer: await confirmBlueCrossClaimCause(body) }, origin); return;
+      }
       if (parts[1] === "invoice-answer") {
         const body = await readJson<{ expenseId?: unknown; insurer?: unknown; action?: unknown; confirmed?: unknown; expectedScope?: unknown; expectedRevision?: unknown; value?: unknown; allInvoices?: unknown }>(request);
         const preparation = claimPreparation(body.expenseId, body.insurer);
@@ -329,8 +336,8 @@ const server = createServer(async (request, response) => {
         json(response, 200, { answer: await confirmInvoiceIllness(preparation, { ...body, remove: body.action === "remove" }) }, origin); return;
       }
       if (parts[1] === "confirm-adjudication") { json(response, 200, await confirmOwnerAdjudication(await readJson(request)), origin); return; }
-      const body = await readJson<{ expenseId?: unknown; insurer?: unknown; historyReviewed?: unknown; warningsReviewed?: unknown; sessionId?: unknown; revision?: unknown; values?: unknown; attachment?: unknown; uploadConfirmed?: unknown; rememberServiceChoices?: unknown; answersReviewed?: unknown; prepareAuthorized?: unknown }>(request);
-      if (["prepare", "resume", "correct"].includes(parts[1])) {
+      const body = await readJson<{ expenseId?: unknown; insurer?: unknown; historyReviewed?: unknown; warningsReviewed?: unknown; sessionId?: unknown; revision?: unknown; values?: unknown; attachment?: unknown; uploadConfirmed?: unknown; rememberServiceChoices?: unknown; answersReviewed?: unknown; prepareAuthorized?: unknown; retryReviewed?: unknown; receiptName?: unknown }>(request);
+      if (["prepare", "resume", "correct", "retry-receipt"].includes(parts[1])) {
         if (body.prepareAuthorized !== true) throw new Error("Choose Prepare Claim to authorize preparation and the original receipt attachment.");
         let sessionId = body.sessionId;
         if (parts[1] === "prepare") {
@@ -344,6 +351,7 @@ const server = createServer(async (request, response) => {
           if (fresh.blocked || JSON.stringify(fresh.fields) !== JSON.stringify(previous.fields) || JSON.stringify(fresh.conflicts) !== JSON.stringify(previous.conflicts) || JSON.stringify(fresh.attachments) !== JSON.stringify(previous.attachments)) throw new Error("The invoice or duplicate evidence changed. Reopen preparation.");
         };
         assertFresh();
+        if (parts[1] === "retry-receipt") { json(response, 200, { preparation: previous, ...await retryCurrentClaimReceipt(sessionId, body.revision, body.receiptName, body.retryReviewed, invoiceAttachment, assertFresh) }, origin); return; }
         if (parts[1] === "correct") await fillClaimStep(sessionId, body.revision, body.values, body.attachment, invoiceAttachment, body.rememberServiceChoices);
         json(response, 200, { preparation: previous, ...await prepareCurrentClaimStep(sessionId, invoiceAttachment, assertFresh) }, origin); return;
       }
