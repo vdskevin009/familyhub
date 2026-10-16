@@ -13,11 +13,15 @@ export async function openBlueCrossClaimEntry(page: Page, beforeClick: () => voi
   // Responsive home layouts can retain a hidden copy or render a different
   // wrapper. Prefer the known tile, then the exact visible label confirmed by
   // the operator. Never turn an ambiguous match into a first-element click.
-  const tiles = page.locator("div.caresnet-link > div.quick-nav__item--claim").filter({ hasText: label }).filter({ visible: true });
+  const tiles = page.locator("div.caresnet-link > div.quick-nav__item--claim").filter({ hasText: /^[\uE000-\uF8FF\s]*SUBMIT\s*CLAIMS\s*&\s*FORMS$/i }).filter({ visible: true });
   const text = page.getByText(label).filter({ visible: true });
-  await text.first().waitFor({ state: "visible", timeout: 10_000 }).catch(() => {});
-  if (await text.count() !== 1) return false;
-  const entry = await tiles.count() ? tiles : text;
+  await tiles.or(text).first().waitFor({ state: "visible", timeout: 10_000 }).catch(() => {});
+  const tileCount = await tiles.count();
+  if (tileCount > 1 || !tileCount && await text.count() !== 1) return false;
+  // The observed tile includes a decorative private-use icon in its text.
+  // Captions inside it are the same target; a separate caption is ambiguous.
+  if (tileCount && await text.evaluateAll(els => els.some(el => !el.closest("div.caresnet-link > div.quick-nav__item--claim")))) return false;
+  const entry = tileCount ? tiles : text;
   if (page.url() !== url.href || await entry.count() !== 1 || !await entry.isVisible()) return false;
   // This informational notice is not a consent or account-setting action.
   const notice = page.getByText("Go digital to avoid mail delays", { exact: true });

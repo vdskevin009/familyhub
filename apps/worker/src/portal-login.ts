@@ -202,8 +202,8 @@ export async function tryPortalLogin(page: Page, insurer: Insurer, ready: () => 
   if (!allowedLoginUrl(insurer, page.url())) { await record("preflight"); await diagnose("layout-changed"); return "layout-changed"; }
   let credentials: unknown;
   try { credentials = await deps.credentials(insurer); }
-  catch (error) { await record("credentials-unavailable"); return (error as NodeJS.ErrnoException).code === "ENOENT" ? "not-configured" : "credentials-unavailable"; }
-  if (!validCredentials(credentials, insurer)) { await record("credentials-unavailable"); return "credentials-unavailable"; }
+  catch (error) { const reason = (error as NodeJS.ErrnoException).code === "ENOENT" ? "not-configured" : "credentials-unavailable"; await record("credentials-unavailable"); await diagnose(reason); return reason; }
+  if (!validCredentials(credentials, insurer)) { await record("credentials-unavailable"); await diagnose("credentials-unavailable"); return "credentials-unavailable"; }
   let attemptedAt: string | undefined;
   let boundaryStarted = false, latchPersisted = false;
   let authenticationConfirmed = false;

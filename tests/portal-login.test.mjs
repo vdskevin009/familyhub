@@ -50,7 +50,7 @@ test('MFA and rejection screens never trigger an automatic credential submission
 });
 test('missing and undecryptable credentials yield distinct safe recovery states', async () => {
   for (const [stored,reason] of [[Object.assign(new Error('missing'),{code:'ENOENT'}),'not-configured'],[new Error('secret diagnostic'),'credentials-unavailable']]) {
-    const f=fixture({stored}); assert.equal(await auth.tryPortalLogin(f.page,'desjardins',f.ready,f.deps),reason); assert.equal(f.count(),0);
+    const f=fixture({stored}),diagnostics=[];f.deps.diagnose=async(_,value)=>diagnostics.push(value); assert.equal(await auth.tryPortalLogin(f.page,'desjardins',f.ready,f.deps),reason); assert.equal(f.count(),0);assert.equal(diagnostics.at(-1).reason,reason);assert.ok(!JSON.stringify(diagnostics).includes('secret diagnostic'));
   }
 });
 test('cooldown survives restarts and corrupt retry state fails closed', async () => {
