@@ -18,6 +18,10 @@ export async function importGroceries(config: WorkerConfig, sources: UploadSourc
   return groceryRequest<{ record: GroceryRecord; duplicate: boolean }>(config, "/groceries/import", { sources });
 }
 export async function reviewGroceries(config: WorkerConfig, record: GroceryRecord, receipt: GroceryReceipt, save: boolean, confirmed: boolean, distinctPurchase: boolean) {
+  if (receipt.fulfillment !== undefined) {
+    const health = await groceryRequest<{ capabilities?: string[] }>(config, "/health");
+    if (!health.capabilities?.includes("grocery-fulfillment-v1")) throw new Error("Mettez à jour le worker PC pour conserver la preuve de livraison. Aucun achat n'a été modifié.");
+  }
   if (receipt.sourceType !== undefined) {
     const health = await groceryRequest<{ capabilities?: string[] }>(config, "/health");
     if (!health.capabilities?.includes("grocery-source-type-v1")) throw new Error("Mettez à jour le worker PC pour conserver le type de source. Vos corrections restent sur cet appareil.");

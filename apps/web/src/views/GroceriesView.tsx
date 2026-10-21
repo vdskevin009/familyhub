@@ -91,11 +91,11 @@ export default function GroceriesView({ config }: { config: WorkerConfig }) {
   const summary = monthlySummary(records, month), duplicates = edit ? possibleDuplicates({ ...edit.record, receipt: edit.receipt }, records) : [];
 
   return <section className="view-stack grocery-view">
-    <div className="grocery-section-heading"><h2>Vos achats</h2><button className="button secondary" disabled={busy} onClick={() => document.getElementById("grocery-ticket-import")?.scrollIntoView({ block: "start" })}>Ajouter un ticket</button><button className="button secondary" disabled={busy || !paired} onClick={() => void action(refresh)}><RefreshCw size={16} />Actualiser</button></div>
+    <div className="grocery-section-heading"><h2>Achats récents</h2><button className="button secondary" disabled={busy || !paired} onClick={() => void action(refresh)}><RefreshCw size={16} />Actualiser</button></div>
     {error && <Notice error onDismiss={() => setError("")}>{error}</Notice>}{notice && <Notice onDismiss={() => setNotice("")}>{notice}</Notice>}
     {busy && <p role="status">Opération en cours… Les sources importées restent conservées.</p>}
     {offline && <p className="grocery-warning">Historique en cache sur cet appareil. Connectez le PC puis actualisez pour retrouver les derniers achats.</p>}
-    <GroceryPurchases config={config} records={records} onReview={r => void action(() => open(r))} /><section id="grocery-ticket-import" className="grocery-import" aria-label="Ajouter un ticket">
+    <GroceryPurchases config={config} records={records} onReview={r => void action(() => open(r))} /><details className="grocery-purchase-tools" open={uploads.length ? true : undefined}><summary>Sources et outils</summary><section id="grocery-ticket-import" className="grocery-import" aria-label="Ajouter un ticket">
       <div><ShoppingBasket size={25} /><h2>Un ticket, plusieurs photos si besoin</h2><p>Photographiez de haut en bas, avec un petit chevauchement. Gardez toutes les photos du même ticket ensemble.</p></div>
       <input ref={cameraInput} className="sr-only" type="file" accept="image/jpeg,image/png,image/webp" capture="environment" aria-label="Prendre une photo du ticket" onChange={e => void addFiles(e.target.files)} disabled={busy} />
       <input ref={fileInput} className="sr-only" type="file" accept="image/jpeg,image/png,image/webp,application/pdf,text/plain" multiple aria-label="Choisir les photos ou le reçu numérique" onChange={e => void addFiles(e.target.files)} disabled={busy} />
@@ -120,6 +120,7 @@ export default function GroceriesView({ config }: { config: WorkerConfig }) {
             })}</div>;
         })}<p>Ces prix proviennent de vos tickets ; ils ne sont pas des offres actuelles.</p></div>)}
     </section>
+    </details>
     <Sheet open={Boolean(edit)} onClose={() => { if (!busy && edit) void action(async () => { await groceryCache(scope + ":edit:" + edit.record.id, edit); setEdit(null); }); }} title="Vérifier le ticket" description="Gardez les inconnues vides. Corrigez les produits, puis confirmez la revue des sources." wide footer={<><button className="button secondary" disabled={busy || !edit || edit.record.status === "saved"} onClick={() => void action(() => save(false))}>Conserver le brouillon</button><button className="button" disabled={busy || !confirmed} onClick={() => void action(() => save(true))}>Enregistrer l'achat</button></>}>
       {edit && <div className="grocery-review">
         {error && <Notice error>{error}</Notice>}{notice && <Notice>{notice}</Notice>}{busy && <p role="status">Opération en cours…</p>}

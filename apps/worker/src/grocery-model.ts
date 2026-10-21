@@ -3,7 +3,7 @@ export class GroceryError extends Error {}
 export type GroceryUnit = "g" | "kg" | "ml" | "l" | "each";
 export type GroceryItem = { name: string; product: string; amount: number | null; quantity: number | null;
   size: number | null; unit: GroceryUnit | null; evidence: string; uncertain: boolean };
-export type GroceryReceipt = { sourceType?: "unknown" | "confirmation" | "final-receipt"; store: string; date: string | null; currency: string | null; reference: string;
+export type GroceryReceipt = { sourceType?: "unknown" | "confirmation" | "final-receipt"; fulfillment?: { date: string; evidence: string }; store: string; date: string | null; currency: string | null; reference: string;
   total: number | null; delivery: number | null; service: number | null; tip: number | null; tax: number | null;
   discount: number | null; items: GroceryItem[]; warnings: string[] };
 export type GrocerySource = { hash: string; name: string; type: string; size: number };
@@ -26,13 +26,19 @@ const money = (v: unknown): number | null => { if (v === null) return null; if (
 const positive = (v: unknown): number | null => { if (v === null) return null; if (typeof v !== "number" || !Number.isFinite(v) || v <= 0 || v > 1_000_000) throw new GroceryError("Quantité ou format invalide."); return v; };
 export function validateReceipt(value: unknown): GroceryReceipt {
   const r = obj(value), date = r.date;
+  let fulfillment: GroceryReceipt["fulfillment"];
+  if (r.fulfillment !== undefined && r.fulfillment !== null) {
+    const f = obj(r.fulfillment), evidence = text(f.evidence, 1000);
+    if (typeof f.date !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(f.date) || !Number.isFinite(Date.parse(f.date + "T00:00:00Z")) || new Date(f.date + "T00:00:00Z").toISOString().slice(0, 10) !== f.date || !evidence) throw new GroceryError("Preuve de livraison datée requise.");
+    fulfillment = { date: f.date, evidence };
+  }
   if (r.sourceType !== undefined && !["unknown", "confirmation", "final-receipt"].includes(String(r.sourceType))) throw new GroceryError("Type de source invalide.");
   if (date !== null && (typeof date !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isFinite(Date.parse(date + "T00:00:00Z")) || new Date(date + "T00:00:00Z").toISOString().slice(0, 10) !== date)) throw new GroceryError("Date invalide.");
   if (r.currency !== null && (typeof r.currency !== "string" || !/^[A-Z]{3}$/.test(r.currency))) throw new GroceryError("Devise invalide.");
   if (!Array.isArray(r.items) || r.items.length > 200 || !Array.isArray(r.warnings) || r.warnings.length > 30) throw new GroceryError("Lignes du ticket invalides.");
   const items = r.items.map(v => { const i = obj(v); if (typeof i.uncertain !== "boolean" || i.unit !== null && !["g", "kg", "ml", "l", "each"].includes(String(i.unit))) throw new GroceryError("Unité ou incertitude invalide.");
     return { name: text(i.name), product: text(i.product), amount: money(i.amount), quantity: positive(i.quantity), size: positive(i.size), unit: i.unit as GroceryUnit | null, evidence: text(i.evidence, 1000), uncertain: i.uncertain }; });
-  return { ...(r.sourceType === undefined ? {} : { sourceType: r.sourceType as GroceryReceipt["sourceType"] }), store: text(r.store), date: date as string | null, currency: r.currency as string | null, reference: text(r.reference),
+  return { ...(r.sourceType === undefined ? {} : { sourceType: r.sourceType as GroceryReceipt["sourceType"] }), ...(fulfillment ? { fulfillment } : {}), store: text(r.store), date: date as string | null, currency: r.currency as string | null, reference: text(r.reference),
     total: money(r.total), delivery: money(r.delivery), service: money(r.service), tip: money(r.tip), tax: money(r.tax), discount: money(r.discount), items, warnings: r.warnings.map(v => text(v, 1000)) };
 }
 export const normalizeProduct = (name: string) => name.normalize("NFKC").toLocaleLowerCase().replace(/\s+/g, " ").trim();
