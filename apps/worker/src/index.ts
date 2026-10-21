@@ -8,6 +8,7 @@ import { join } from "node:path";
 import { Codex } from "@openai/codex-sdk";
 import { SavingsResearch, codexSavingsRunner } from "./savings-research.js";
 import { SavingsLibrary, SavingsConflict } from "./savings-library.js";
+import { MortgageStore, MortgageConflict } from "./mortgage-store.js";
 import { FinanceLibrary, FinanceConflict } from "./finance-library.js";
 import { NotificationLibrary, NotificationConflict } from "./notification-library.js";
 import { PushConfiguration, sendPush } from "./notification-push.js";
@@ -52,7 +53,7 @@ type ResearchWatch = {
 };
 type PersistedState = { watches: ResearchWatch[] };
 
-const version = "2.26.8";
+const version = "2.26.10";
 let claimOperationBusy = false;
 const host = process.env.FAMILYHUB_WORKER_HOST?.trim() || "127.0.0.1";
 const port = Number(process.env.FAMILYHUB_WORKER_PORT || "4713");
@@ -71,6 +72,7 @@ const tasks = new Map<string, WorkerTask>();
 const codex = new Codex({ codexPathOverride: process.env.FAMILYHUB_CODEX_PATH || undefined });
 const savingsDirectory = join(stateDir, "savings");
 const savingsLibrary = new SavingsLibrary(join(savingsDirectory, "household-contracts.json"));
+const mortgageStore = new MortgageStore(join(stateDir, "mortgage", "evidence"));
 const financeLibrary = new FinanceLibrary(join(stateDir, "finances"));
 const pushConfiguration = new PushConfiguration(stateDir);
 const notifications = new NotificationLibrary(join(stateDir, "notifications", "history.json"), () => pushConfiguration.read(), sendPush);
@@ -259,6 +261,12 @@ const server = createServer(async (request, response) => {
 
   const parts = pathParts(request.url);
   try {
+    if (parts[0] === "mortgage") {
+      if (parts.length === 1 && request.method === "GET") { json(response, 200, await mortgageStore.read(), origin); return; }
+      if (parts.length === 2 && request.method === "POST" && (parts[1] === "snapshots" || parts[1] === "quotes" || parts[1] === "assumptions")) {
+        json(response, 200, await mortgageStore.ingest(parts[1] === "snapshots" ? "snapshot" : parts[1] === "quotes" ? "quote" : "assumptions", await readJson(request, 32_000)), origin); return;
+      }
+    }
     if (parts[0] === "notifications" && parts.length === 1) {
       if (request.method === "GET") { json(response, 200, await notifications.read(), origin); return; }
       if (request.method === "POST") { json(response, 200, await notifications.mutate(await readJson(request, 12_000)), origin); return; }
@@ -526,7 +534,7 @@ const server = createServer(async (request, response) => {
       }
     }
     if (request.method === "GET" && parts.length === 1 && parts[0] === "health") {
-      json(response, 200, { status: "ok", codex: "sdk-ready", version, capabilities: ["grocery-receipts-v1", "grocery-planning-v1", "grocery-weekly-v1", groceryExpandedListCapability] }, origin);
+      json(response, 200, { status: "ok", codex: "sdk-ready", version, capabilities: ["mortgage-evidence-v1", "grocery-source-type-v1", "grocery-receipts-v1", "grocery-planning-v1", "grocery-weekly-v1", groceryExpandedListCapability] }, origin);
       return;
     }
 
@@ -594,7 +602,7 @@ const server = createServer(async (request, response) => {
     json(response, 404, { error: "Endpoint not found." }, origin);
   } catch (error) {
     const grocery = parts[0] === "groceries";
-    json(response, error instanceof SavingsConflict || error instanceof FinanceConflict || error instanceof NotificationConflict || error instanceof GroceryConflict ? 409 : 400, { error: grocery && !(error instanceof GroceryError) ? "Action Courses indisponible. Les données restent conservées ; actualisez avant de réessayer." : error instanceof Error ? error.message : "Request failed." }, origin);
+    json(response, error instanceof MortgageConflict || error instanceof SavingsConflict || error instanceof FinanceConflict || error instanceof NotificationConflict || error instanceof GroceryConflict ? 409 : 400, { error: grocery && !(error instanceof GroceryError) ? "Action Courses indisponible. Les données restent conservées ; actualisez avant de réessayer." : error instanceof Error ? error.message : "Request failed." }, origin);
   }
 });
 

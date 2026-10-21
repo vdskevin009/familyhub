@@ -11,6 +11,7 @@ import MoneyView from "./views/MoneyView";
 import MoreView from "./views/MoreView";
 import DocumentLibraryView from "./views/DocumentLibraryView";
 import SavingsView from "./views/SavingsView";
+import MortgageView from "./views/MortgageView";
 import FinancesView from "./views/FinancesView";
 import CoursesView from "./views/CoursesView";
 import { PageHeader } from "./ui/primitives";
@@ -33,6 +34,7 @@ const nav: Array<{ id: AppView; label: string; shortLabel?: string; icon: typeof
   { id: "savings", label: "Dépenses récurrentes", shortLabel: "Récurrent", icon: TrendingDown },
   { id: "finances", label: "Finances", icon: CircleDollarSign },
   { id: "groceries", label: "Courses", icon: CalendarDays },
+  { id: "mortgage", label: "Mortgage", icon: Home },
   { id: "other", label: "Other", icon: MoreHorizontal }
 ];
 const otherViews: Array<{ id: AppView; label: string; description: string; icon: typeof Home }> = [
@@ -145,6 +147,7 @@ export default function App() {
             {documentViews.map(item => <button key={item.id} className={documentKind === item.id ? "active" : ""} aria-current={documentKind === item.id ? "page" : undefined} onClick={() => navigate(item.id)}>{item.label}</button>)}
           </nav><DocumentLibraryView key={documentKind} hub={state} kind={documentKind} /></div>}
           {view === "savings" && <SavingsView hub={state} onNavigate={navigate} />}
+          {view === "mortgage" && <MortgageView worker={state.worker} />}
           {view === "finances" && <FinancesView hub={state} onNavigate={navigate} />}
           {view === "groceries" && <CoursesView config={state.worker} plannerItems={state.planner.GroceryItems} />}
           {view === "other" && <section className="view-stack"><PageHeader title="Your household" subtitle="Everyday tools, in one place">{!installed && installPrompt && <button type="button" className="button secondary" onClick={() => void installApp()}><Download size={15} />Install</button>}</PageHeader><div className="other-grid">{otherViews.map(item => { const Icon = item.icon; return <button key={item.id} className="other-link" onClick={() => navigate(item.id)}><span className="other-icon"><Icon size={22} /></span><span><strong>{item.label}</strong><small>{item.description}</small></span><ChevronRight size={18} /></button>; })}</div></section>}

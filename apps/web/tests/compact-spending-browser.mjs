@@ -83,7 +83,7 @@ try {
         assert.equal(await page.getByLabel("Vue", { exact: true }).inputValue(), "month");
         const tabs = await page.locator(".finance-tabs button").evaluateAll(els => els.map(el => el.getBoundingClientRect().top));
         assert(tabs.every(top => Math.abs(top - tabs[0]) < 2), "Tabs remain on one line");
-        assert.equal(await page.locator(".bottom-nav button").count(), 6);
+        assert.equal(await page.locator(".bottom-nav button").count(), 7);
         const categories = page.locator(".finance-expense-charts > section").first();
         assert.equal(await categories.locator(".finance-bars li:visible").count(), 5, "Overview retains five leading categories");
         const more = categories.locator(".finance-more-categories > summary");

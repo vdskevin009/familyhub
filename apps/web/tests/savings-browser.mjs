@@ -58,7 +58,7 @@ try {
     });
     await page.goto(base + "?view=savings");
     await page.getByRole("heading", { name: "Dépenses récurrentes", exact: true }).waitFor();
-    assert.equal(await page.locator(".bottom-nav button").count(), 6);
+    assert.equal(await page.locator(".bottom-nav button").count(), 7);
     assert.equal(posts.length, 0, "Mount must not start research");
     await page.getByRole("button", { name: "Add contract", exact: true }).click();
     const form = page.getByRole("dialog", { name: "Add contract", exact: true });
