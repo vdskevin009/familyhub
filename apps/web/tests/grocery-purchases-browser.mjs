@@ -37,9 +37,9 @@ try {
     assert.ok(await dialog.getByText(/Total du panier indisponible/).count());
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth || [...document.querySelectorAll("dialog[open] .sheet-content")].some(el => el.scrollWidth > el.clientWidth + 1)), false);
     await page.screenshot({ path: join(directory, `detail-${width}.png`) });
-    await page.keyboard.press("Escape"); await dialog.waitFor({ state: "hidden" }); assert.equal(await open.evaluate(el => document.activeElement === el), true);
+    await page.keyboard.press("Escape"); await dialog.waitFor({ state: "hidden" }); await page.waitForFunction(el => document.activeElement === el, await open.elementHandle()); assert.equal(await open.evaluate(el => document.activeElement === el), true);
     await open.click(); await dialog.waitFor(); await dialog.getByRole("button", { name: "Voir les sources et vérifier le ticket" }).click(); await page.getByRole("dialog", { name: "Vérifier le ticket", exact: true }).waitFor();
-    await page.keyboard.press("Escape"); assert.equal(await open.evaluate(el => document.activeElement === el), true); await page.getByRole("button", { name: "Catalogue", exact: true }).click(); await page.getByRole("button", { name: "Achats", exact: true }).click(); await open.waitFor();
+    await page.keyboard.press("Escape"); await page.waitForFunction(el => document.activeElement === el, await open.elementHandle()); assert.equal(await open.evaluate(el => document.activeElement === el), true); await page.getByRole("button", { name: "Catalogue", exact: true }).click(); await page.getByRole("button", { name: "Achats", exact: true }).click(); await open.waitFor();
     // Both newly integrated areas remain reachable; returning retains receipt cards and data.
     await page.getByRole("button", {name:"Mortgage",exact:true}).locator("visible=true").first().click(); await page.locator(".mortgage").getByText(/Aucun historique enregistré/).waitFor();
     await page.getByRole("button", {name:"Courses",exact:true}).locator("visible=true").first().click(); await page.getByRole("button",{name:"Achats",exact:true}).click(); await open.waitFor();
