@@ -148,7 +148,7 @@ try {
         await page
             .getByRole("heading", { name: "Aucun historique importé" })
             .waitFor();
-        assert.equal(await page.locator(".bottom-nav button").count(), 6);
+        assert.equal(await page.locator(".bottom-nav button").count(), 7);
         assert.equal(await page.locator(".finance-tabs button").count(), 3);
         assert.equal(posts, 0);
         await page.locator(".finance-import > summary").click();

@@ -6,6 +6,7 @@ import { blankItem, monthlySummary, possibleDuplicates, receiptWarnings, unitPri
 import { fileSource, groceryRequest, importGroceries, loadGroceries, reviewGroceries, type UploadSource, type SourceBytes } from "../grocery-api";
 import { groceryCache } from "../grocery-cache";
 import "../grocery.css";
+import GroceryPurchases from "./GroceryPurchases";
 type Edit = { record: GroceryRecord; receipt: GroceryReceipt };
 const amount = (s: string) => s === "" ? null : Number(s);
 const money = (n: number, currency: string) => `${n.toFixed(2)} ${currency}`;
@@ -88,13 +89,13 @@ export default function GroceriesView({ config }: { config: WorkerConfig }) {
     setSources(await Promise.all(edit.record.sources.map(s => groceryRequest<SourceBytes>(config, `/groceries/${edit.record.id}/sources/${s.hash}`))));
   }
   const summary = monthlySummary(records, month), duplicates = edit ? possibleDuplicates({ ...edit.record, receipt: edit.receipt }, records) : [];
-  const active = records.filter(r => !r.duplicateOf).sort((a, b) => (b.receipt.date || b.createdAt).localeCompare(a.receipt.date || a.createdAt));
+
   return <section className="view-stack grocery-view">
-    <div className="grocery-section-heading"><h2>Tickets et dépenses</h2><button className="button secondary" disabled={busy || !paired} onClick={() => void action(refresh)}><RefreshCw size={16} />Actualiser</button></div>
+    <div className="grocery-section-heading"><h2>Vos achats</h2><button className="button secondary" disabled={busy} onClick={() => document.getElementById("grocery-ticket-import")?.scrollIntoView({ block: "start" })}>Ajouter un ticket</button><button className="button secondary" disabled={busy || !paired} onClick={() => void action(refresh)}><RefreshCw size={16} />Actualiser</button></div>
     {error && <Notice error onDismiss={() => setError("")}>{error}</Notice>}{notice && <Notice onDismiss={() => setNotice("")}>{notice}</Notice>}
     {busy && <p role="status">Opération en cours… Les sources importées restent conservées.</p>}
     {offline && <p className="grocery-warning">Historique en cache sur cet appareil. Connectez le PC puis actualisez pour retrouver les derniers achats.</p>}
-    <section className="grocery-import" aria-label="Ajouter un ticket">
+    <GroceryPurchases config={config} records={records} onReview={r => void action(() => open(r))} /><section id="grocery-ticket-import" className="grocery-import" aria-label="Ajouter un ticket">
       <div><ShoppingBasket size={25} /><h2>Un ticket, plusieurs photos si besoin</h2><p>Photographiez de haut en bas, avec un petit chevauchement. Gardez toutes les photos du même ticket ensemble.</p></div>
       <input ref={cameraInput} className="sr-only" type="file" accept="image/jpeg,image/png,image/webp" capture="environment" aria-label="Prendre une photo du ticket" onChange={e => void addFiles(e.target.files)} disabled={busy} />
       <input ref={fileInput} className="sr-only" type="file" accept="image/jpeg,image/png,image/webp,application/pdf,text/plain" multiple aria-label="Choisir les photos ou le reçu numérique" onChange={e => void addFiles(e.target.files)} disabled={busy} />
@@ -119,9 +120,6 @@ export default function GroceriesView({ config }: { config: WorkerConfig }) {
             })}</div>;
         })}<p>Ces prix proviennent de vos tickets ; ils ne sont pas des offres actuelles.</p></div>)}
     </section>
-    <section aria-label="Historique Courses"><h2>Tickets et brouillons</h2>{!active.length && <p className="grocery-empty">Vos tickets apparaîtront ici. Un brouillon ne compte pas dans les dépenses.</p>}
-      <div className="grocery-history">{active.map(r => <button key={r.id} className="grocery-ticket" disabled={busy} onClick={() => void action(() => open(r))}><span><strong>{r.receipt.store || "Ticket à vérifier"}</strong><small>{r.receipt.date || "Date à préciser"} · {r.sources.length} source(s)</small></span><span>{r.receipt.total === null ? "Total inconnu" : `${r.receipt.total.toFixed(2)} ${r.receipt.currency || "devise ?"}`}<small>{r.status === "saved" ? "Enregistré" : "Brouillon"}</small></span></button>)}</div>
-    </section>
     <Sheet open={Boolean(edit)} onClose={() => { if (!busy && edit) void action(async () => { await groceryCache(scope + ":edit:" + edit.record.id, edit); setEdit(null); }); }} title="Vérifier le ticket" description="Gardez les inconnues vides. Corrigez les produits, puis confirmez la revue des sources." wide footer={<><button className="button secondary" disabled={busy || !edit || edit.record.status === "saved"} onClick={() => void action(() => save(false))}>Conserver le brouillon</button><button className="button" disabled={busy || !confirmed} onClick={() => void action(() => save(true))}>Enregistrer l'achat</button></>}>
       {edit && <div className="grocery-review">
         {error && <Notice error>{error}</Notice>}{notice && <Notice>{notice}</Notice>}{busy && <p role="status">Opération en cours…</p>}
@@ -131,7 +129,7 @@ export default function GroceriesView({ config }: { config: WorkerConfig }) {
           <button className="text-action" disabled={busy} onClick={() => { const pc = records.find(r => r.id === edit.record.id); if (pc) void action(() => replaceRecord(pc)); }}>Recharger la version PC</button></div>
         <p>{edit.record.extraction === "running" ? "Extraction en cours. Actualisez après son résultat." : edit.record.extraction === "failed" ? "Extraction interrompue ou indisponible. Les sources restent conservées." : "Les photos seront analysées par le même Codex déjà configuré sur votre PC, sans recherche web. Vous pouvez aussi saisir les produits."}</p>
         <div className="grocery-sources">{sources.map((s, i) => <details key={s.hash}><summary>Source {i + 1} : {s.name}</summary>{s.type.startsWith("image/") ? <img src={`data:${s.type};base64,${s.data}`} alt={`Source ${i + 1} du ticket à vérifier`} /> : s.type === "text/plain" ? <pre>{new TextDecoder().decode(Uint8Array.from(atob(s.data), c => c.charCodeAt(0)))}</pre> : <p>PDF : téléchargez la source pour la vérifier.</p>}<a download={s.name} href={`data:${s.type};base64,${s.data}`}>Télécharger l'original</a></details>)}</div>
-        <fieldset disabled={busy} className="grocery-fields"><legend>Ticket</legend><label>Magasin<input value={edit.receipt.store} onChange={e => patch({ store: e.target.value })} /></label><label>Date<input type="date" value={edit.receipt.date ?? ""} onChange={e => patch({ date: e.target.value || null })} /></label><label>Devise (CAD, EUR…)<input maxLength={3} placeholder="Inconnue" value={edit.receipt.currency ?? ""} onChange={e => patch({ currency: e.target.value.toUpperCase() || null })} /></label><label>Référence du ticket<input value={edit.receipt.reference} onChange={e => patch({ reference: e.target.value })} /></label><Numeric label="Total payé" value={edit.receipt.total} onChange={v => patch({ total: v })} /></fieldset>
+        <fieldset disabled={busy} className="grocery-fields"><legend>Ticket</legend><label>Magasin<input value={edit.receipt.store} onChange={e => patch({ store: e.target.value })} /></label><label>Date<input type="date" value={edit.receipt.date ?? ""} onChange={e => patch({ date: e.target.value || null })} /></label><label>Devise (CAD, EUR…)<input maxLength={3} placeholder="Inconnue" value={edit.receipt.currency ?? ""} onChange={e => patch({ currency: e.target.value.toUpperCase() || null })} /></label><label>Référence du ticket<input value={edit.receipt.reference} onChange={e => patch({ reference: e.target.value })} /></label><label>Type de source<select value={edit.receipt.sourceType ?? "unknown"} onChange={e => patch({ sourceType: e.target.value as GroceryReceipt["sourceType"] })}><option value="unknown">À vérifier</option><option value="confirmation">Confirmation originale</option><option value="final-receipt">Reçu final avec paiement vérifié</option></select></label><Numeric label="Montant de la source" value={edit.receipt.total} onChange={v => patch({ total: v })} /></fieldset>
         <fieldset disabled={busy} className="grocery-fields"><legend>Frais et ajustements séparés</legend>{(["delivery", "service", "tip", "tax", "discount"] as const).map((key, i) => <Numeric key={key} label={["Livraison", "Service", "Pourboire", "Taxes", "Remise globale"][i]} value={edit.receipt[key]} onChange={v => patch({ [key]: v })} />)}</fieldset>
         <h3>Produits ({edit.receipt.items.length})</h3>
         {edit.receipt.items.map((item, index) => <fieldset className="grocery-line" key={index} disabled={busy}><legend>Produit {index + 1}{item.uncertain ? " · à vérifier" : ""}</legend>

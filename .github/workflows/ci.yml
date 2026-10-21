@@ -37,6 +37,9 @@ jobs:
       - name: Verify Savings calculations and privacy
         run: npm run test:savings
 
+      - name: Verify Mortgage evidence, calculations and authenticated persistence
+        run: npm run test:mortgage
+
       - name: Verify private finance imports, calculations and authorization
         run: npm run test:finances
 
@@ -63,6 +66,9 @@ jobs:
 
       - name: Verify Savings mobile and desktop flows
         run: npm run test:savings:browser
+
+      - name: Verify Mortgage mobile history and interrupted navigation
+        run: npm run test:mortgage:browser
 
       - name: Verify Finances mobile and desktop flows
         run: npm run test:finances:browser

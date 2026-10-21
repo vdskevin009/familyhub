@@ -1,0 +1,19 @@
+.mortgage { max-width: 1050px; margin-inline:auto; padding: 20px; line-height:1.55; }
+.mortgage h1 { margin:0; } .mortgage h2 { font-size:1.2rem; margin-top:28px; } .mortgage h3 { font-size:1rem; }
+.mortgage-heading { display:flex; justify-content:space-between; gap:16px; align-items:start; padding-inline-end:48px; }
+.mortgage button,.mortgage select,.mortgage summary { min-height:44px; cursor:pointer; }
+.mortgage button,.mortgage select { padding:10px 14px; border:1px solid currentColor; border-radius:8px; background:var(--surface,#fff); color:inherit; }
+.mortgage :focus-visible { outline:3px solid var(--accent); outline-offset:3px; }
+.mortgage-rates { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:16px; margin-block:24px; }
+.mortgage-rates article { border-bottom:3px solid var(--info); padding-bottom:12px; }.mortgage-rates strong { font-size:1.6rem; font-variant-numeric:tabular-nums; }
+.mortgage-caution { border-inline-start:4px solid var(--warning); padding-inline-start:12px; }
+.mortgage-table { overflow:auto; } .mortgage table { border-collapse:collapse; width:100%; font-variant-numeric:tabular-nums; }
+.mortgage th,.mortgage td { text-align:left; padding:12px; border-bottom:1px solid var(--line); white-space:nowrap; }.mortgage th small { display:block; font-weight:400; }
+.mortgage-quote { padding:12px 0; border-bottom:1px solid var(--line); }.mortgage details { margin-block:12px; }.mortgage details p { overflow-wrap:anywhere; }
+.mortgage-toggle { display:flex; align-items:center; gap:12px; min-height:48px; margin-block:20px; }.mortgage-toggle input { width:20px; height:20px; }
+.mortgage-numbers { display:grid; grid-template-columns:repeat(2,1fr); gap:16px; }.mortgage-numbers dd { margin:0; font-size:1.3rem; font-variant-numeric:tabular-nums; }
+@media(max-width:650px) { .mortgage { padding:12px; }.mortgage-rates { grid-template-columns:repeat(2,minmax(0,1fr)); }.mortgage-numbers { grid-template-columns:1fr; } }
+
+@media(max-width:859px) { .app-shell .bottom-nav { grid-template-columns:repeat(7,minmax(0,1fr)); } }
+
+.mortgage p { max-width:80ch; overflow-wrap:anywhere; } .mortgage select { font-size:1rem; } .mortgage summary { padding-block:10px; }

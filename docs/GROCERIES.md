@@ -1,5 +1,11 @@
 # Courses — Issue #155 / FH-GROCERY-001/002/003
 
+## Achats — local candidate, FH-GROCERY-010
+
+The purchase-first tab is specified in [FH-GROCERY-010](requirements/FH-GROCERY-010.md). It reuses this receipt library and the existing reviewed planning observations; opening a purchase never writes either store. Product-only normalized costs and whole-pack outlay remain separate, with per-line coverage and missing-data reasons. No new live data connector, public retailer submission or shopping cart mutation is introduced.
+
+Worker source 2.26.9 adds optional receipt `sourceType` and advertises `grocery-source-type-v1`. Existing records remain readable without migration; unknown final payment is not labeled paid. The web editor requires this capability before sending a classified receipt, so an older worker cannot silently discard classification. Original confirmations are excluded from monthly purchase totals. This source change does not install or restart the worker.
+
 The draft catalogue-first refinement is specified by [FH-GROCERY-009](requirements/FH-GROCERY-009.md): Catalogue, Moins cher ailleurs and Après achats. The existing editors and saved plan remain under Sources et outils. A separate private PCExpress snapshot import controls actual basket membership; weekly selections never stand in for that snapshot. Shared validation now admits 300 articles with the same schema-1 fields, and worker source 2.25.3 advertises support before expanded saves. This change does not install/restart a worker or import real household data. The earlier planning-first navigation below is superseded as the entry screen, with its editing/calculation capabilities retained.
 
 Source candidate: **Courses**, with receipts/monthly spending and usual list/basket planning. Release remains Testing until final-head CI and coordinated installed acceptance. No private fixtures are committed.

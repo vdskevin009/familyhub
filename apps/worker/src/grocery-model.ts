@@ -3,7 +3,7 @@ export class GroceryError extends Error {}
 export type GroceryUnit = "g" | "kg" | "ml" | "l" | "each";
 export type GroceryItem = { name: string; product: string; amount: number | null; quantity: number | null;
   size: number | null; unit: GroceryUnit | null; evidence: string; uncertain: boolean };
-export type GroceryReceipt = { store: string; date: string | null; currency: string | null; reference: string;
+export type GroceryReceipt = { sourceType?: "unknown" | "confirmation" | "final-receipt"; store: string; date: string | null; currency: string | null; reference: string;
   total: number | null; delivery: number | null; service: number | null; tip: number | null; tax: number | null;
   discount: number | null; items: GroceryItem[]; warnings: string[] };
 export type GrocerySource = { hash: string; name: string; type: string; size: number };
@@ -11,6 +11,12 @@ export type GroceryRecord = { id: string; revision: string; status: "draft" | "s
   sources: GrocerySource[]; receipt: GroceryReceipt; extraction: "pending" | "running" | "complete" | "failed";
   reviewedAt: string | null; duplicateOf: string | null };
 export type GroceryLibrary = { records: GroceryRecord[] };
+export function receiptSourceType(record: GroceryRecord): NonNullable<GroceryReceipt["sourceType"]> {
+  // An explicitly reviewed final receipt can coexist with its original confirmation sources.
+  if (record.receipt.sourceType === "final-receipt") return "final-receipt";
+  if (record.receipt.sourceType === "confirmation" || /confirmation|order placed|commande confirm/i.test([record.receipt.reference, ...record.receipt.warnings, ...(record.sources ?? []).map(s => s.name)].join(" "))) return "confirmation";
+  return record.receipt.sourceType ?? "unknown";
+}
 export const emptyReceipt = (): GroceryReceipt => ({ store: "", date: null, currency: null, reference: "", total: null,
   delivery: null, service: null, tip: null, tax: null, discount: null, items: [], warnings: [] });
 export const blankItem = (): GroceryItem => ({ name: "", product: "", amount: null, quantity: null, size: null, unit: null, evidence: "", uncertain: true });
@@ -20,12 +26,13 @@ const money = (v: unknown): number | null => { if (v === null) return null; if (
 const positive = (v: unknown): number | null => { if (v === null) return null; if (typeof v !== "number" || !Number.isFinite(v) || v <= 0 || v > 1_000_000) throw new GroceryError("Quantité ou format invalide."); return v; };
 export function validateReceipt(value: unknown): GroceryReceipt {
   const r = obj(value), date = r.date;
+  if (r.sourceType !== undefined && !["unknown", "confirmation", "final-receipt"].includes(String(r.sourceType))) throw new GroceryError("Type de source invalide.");
   if (date !== null && (typeof date !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isFinite(Date.parse(date + "T00:00:00Z")) || new Date(date + "T00:00:00Z").toISOString().slice(0, 10) !== date)) throw new GroceryError("Date invalide.");
   if (r.currency !== null && (typeof r.currency !== "string" || !/^[A-Z]{3}$/.test(r.currency))) throw new GroceryError("Devise invalide.");
   if (!Array.isArray(r.items) || r.items.length > 200 || !Array.isArray(r.warnings) || r.warnings.length > 30) throw new GroceryError("Lignes du ticket invalides.");
   const items = r.items.map(v => { const i = obj(v); if (typeof i.uncertain !== "boolean" || i.unit !== null && !["g", "kg", "ml", "l", "each"].includes(String(i.unit))) throw new GroceryError("Unité ou incertitude invalide.");
     return { name: text(i.name), product: text(i.product), amount: money(i.amount), quantity: positive(i.quantity), size: positive(i.size), unit: i.unit as GroceryUnit | null, evidence: text(i.evidence, 1000), uncertain: i.uncertain }; });
-  return { store: text(r.store), date: date as string | null, currency: r.currency as string | null, reference: text(r.reference),
+  return { ...(r.sourceType === undefined ? {} : { sourceType: r.sourceType as GroceryReceipt["sourceType"] }), store: text(r.store), date: date as string | null, currency: r.currency as string | null, reference: text(r.reference),
     total: money(r.total), delivery: money(r.delivery), service: money(r.service), tip: money(r.tip), tax: money(r.tax), discount: money(r.discount), items, warnings: r.warnings.map(v => text(v, 1000)) };
 }
 export const normalizeProduct = (name: string) => name.normalize("NFKC").toLocaleLowerCase().replace(/\s+/g, " ").trim();
@@ -53,7 +60,7 @@ export function possibleDuplicates(record: GroceryRecord, records: GroceryRecord
     && other.receipt.date === r.date && other.receipt.currency === r.currency && other.receipt.total === r.total);
 }
 export function monthlySummary(records: GroceryRecord[], month: string) {
-  const selected = records.filter(r => r.status === "saved" && r.receipt.date?.startsWith(month));
+  const selected = records.filter(r => r.status === "saved" && !r.duplicateOf && receiptSourceType(r) !== "confirmation" && r.receipt.date?.startsWith(month));
   const currencies = [...new Set(selected.map(r => r.receipt.currency).filter((c): c is string => Boolean(c)))];
   return { incomplete: records.filter(r => r.status === "saved" && (!r.receipt.date || !r.receipt.currency || r.receipt.total === null)).length,
     currencies: currencies.map(currency => {
@@ -68,7 +75,7 @@ export function monthlySummary(records: GroceryRecord[], month: string) {
         products.set(key, product);
       }
       // A month's frequent products can be compared with earlier observed receipts.
-      for (const record of records.filter(r => r.status === "saved" && r.receipt.currency === currency && r.receipt.date && !r.receipt.date.startsWith(month))) {
+      for (const record of records.filter(r => r.status === "saved" && !r.duplicateOf && receiptSourceType(r) !== "confirmation" && r.receipt.currency === currency && r.receipt.date && !r.receipt.date.startsWith(month))) {
         for (const item of record.receipt.items) {
           const product = products.get(normalizeProduct(item.product || item.name)), price = unitPrice(item);
           if (product && price && !item.uncertain) product.observations.push({ ...price, date: record.receipt.date!, store: record.receipt.store, receiptId: record.id });
