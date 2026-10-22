@@ -9,6 +9,18 @@ export function purchaseStatus(record: GroceryRecord) {
   const confirmation = receiptSourceType(record) === "confirmation";
   return confirmation ? "Confirmation originale · paiement final inconnu" : record.status === "saved" && record.reviewedAt && record.receipt.sourceType === "final-receipt" ? "Reçu final · payé" : "Montant source · paiement à vérifier";
 }
+export const purchaseDate = (record: GroceryRecord) => record.receipt.fulfillment?.date || record.receipt.date;
+export const purchaseAmountLabel = (record: GroceryRecord) => receiptSourceType(record) === "confirmation" ? "Total estimé" : record.status === "saved" && record.reviewedAt && record.receipt.sourceType === "final-receipt" ? "Total payé" : "Montant source";
+export const purchaseLocalDate = (instant = new Date()) => new Intl.DateTimeFormat("en-CA", { timeZone: "America/Vancouver", year: "numeric", month: "2-digit", day: "2-digit" }).format(instant);
+export function recentPcExpressPurchases(records: GroceryRecord[], today = purchaseLocalDate()) {
+  const cutoff = new Date(today + "T12:00:00Z"); cutoff.setUTCDate(cutoff.getUTCDate() - 29);
+  return records.filter(r => {
+    const date = purchaseDate(r);
+    return r.status === "saved" && !r.duplicateOf && !!date && date <= today && date >= cutoff.toISOString().slice(0, 10)
+      && /\bpc\s*(?:express|x)\b|pcexpress\.ca/i.test([r.receipt.store, r.receipt.reference, ...r.sources.map(s => s.name)].join(" "))
+      && (!!r.receipt.fulfillment || r.receipt.sourceType === "final-receipt" && !!r.reviewedAt);
+  }).sort((a, b) => purchaseDate(b)!.localeCompare(purchaseDate(a)!));
+}
 export function receiptItemId(plan: GroceryPlan, record: GroceryRecord, line: GroceryItem) {
   const explicit = [...line.evidence.matchAll(/Article rapproché\s*:\s*([a-zA-Z0-9_-]+)(?=[.\s]|$)/g)].map(m => m[1]);
   const linked = plan.prices.filter(p => p.kind === "receipt" && normalizeProduct(p.product) === normalizeProduct(line.product) && p.evidence.title.split(/[^a-zA-Z0-9_-]+/).includes(record.id)).map(p => p.itemId);
@@ -36,8 +48,8 @@ function matchReason(plan: GroceryPlan, record: GroceryRecord, line: GroceryItem
   return "";
 }
 export type PurchaseLineComparison = { line: GroceryItem; price: GroceryPrice | null; reason: string; normalized: number | null; outlay: number | null; packs: number | null; ratio: number | null; calculated: boolean };
-export function purchaseComparison(plan: GroceryPlan, record: GroceryRecord, now = new Date().toISOString().slice(0, 10)) {
-  const names = ["Superstore", "Costco", "Save-On-Foods", "Fresh St. Market"];
+export function purchaseComparison(plan: GroceryPlan, record: GroceryRecord, now = purchaseLocalDate()) {
+  const names = ["Walmart", "Superstore", "Costco", "Save-On-Foods", "Fresh St. Market"];
   const retailers: (GroceryRetailer | { id: string; name: string })[] = [...plan.retailers];
   const canonicalStore = (name: string) => /^save[\s-]*on[\s-]*foods\b/i.test(name) ? "Save-On-Foods" : /^real canadian superstore\b/i.test(name) ? "Superstore" : storeName(name);
   for (const name of names) if (!retailers.some(r => canonicalStore(r.name) === name)) retailers.push({ id: "missing-" + name, name });
@@ -57,8 +69,7 @@ export function purchaseComparison(plan: GroceryPlan, record: GroceryRecord, now
       const ratio = target.size / pack.size, packs = price.weighed ? ratio : Math.ceil(ratio - 1e-10);
       const normalized = ratio * price.price, outlay = packs * price.price;
       if (![ratio, packs, normalized, outlay].every(Number.isFinite) || packs <= 0 || outlay > 1_000_000) return { ...base, price, reason: "Montant non calculable" };
-      const purchasedPack = normalizedSize(line.size, line.unit);
-      return { line, price, ratio, packs, normalized, outlay, calculated: Math.abs(purchasedPack.size - pack.size) > 1e-10, reason: "" };
+      return { line, price, ratio, packs, normalized, outlay, calculated: Math.abs(ratio - Math.round(ratio)) > 1e-10, reason: "" };
     });
     const covered = lines.filter(l => l.normalized !== null), complete = lines.length > 0 && covered.length === lines.length;
     // Repeated physical rows can share one buyable pack; round after grouping the same reference.
@@ -67,5 +78,14 @@ export function purchaseComparison(plan: GroceryPlan, record: GroceryRecord, now
     return { retailer, lines, covered: covered.length, count: lines.length, complete,
       normalized: covered.length ? covered.reduce((n, l) => n + l.normalized!, 0) : null,
       outlay: covered.length ? [...grouped.values()].reduce((n, g) => n + (g.price.weighed ? g.ratio : Math.ceil(g.ratio - 1e-10)) * g.price.price, 0) : null };
+  });
+}
+/** Choose one evidenced locality/mode per retailer; never assemble a basket across branches. */
+export function purchaseStoreComparisons(plan: GroceryPlan, record: GroceryRecord, now?: string) {
+  const comparisons = purchaseComparison(plan, record, now);
+  return ["Walmart", "Costco"].map(name => {
+    const candidates = comparisons.filter(c => storeName(c.retailer.name) === name);
+    const chosen = candidates.sort((a, b) => b.covered - a.covered || Number(/catalogue par défaut/i.test(a.retailer.name)) - Number(/catalogue par défaut/i.test(b.retailer.name)) || a.retailer.id.localeCompare(b.retailer.id))[0];
+    return { ...chosen, name };
   });
 }

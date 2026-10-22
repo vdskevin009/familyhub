@@ -1,3 +1,4 @@
+const openTools = async page => { await page.locator('.grocery-view[aria-busy="false"]').waitFor(); const tools=page.locator("details.grocery-purchase-tools"); if(!await tools.evaluate(el=>el.open)) await tools.locator(":scope > summary").click(); };
 /** Synthetic worker/extractor and a fresh browser profile; never the installed PC data. */
 import { chromium } from "playwright";
 import assert from "node:assert/strict";
@@ -49,20 +50,20 @@ try {
   browser = await chromium.launch({ headless: true, channel: process.env.FAMILYHUB_TEST_BROWSER_CHANNEL || undefined });
   const context = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, reducedMotion: "reduce" });
   await context.addInitScript(({ endpoint, key }) => { if (!localStorage.getItem("familyhub.worker.v1")) localStorage.setItem("familyhub.worker.v1", JSON.stringify({ Endpoint: endpoint, ApiKey: key })); }, { endpoint, key });
-  const page = await context.newPage(); page.on("pageerror", e => errors.push(e.message)); await page.goto(base); await page.getByRole("button", { name: "Achats", exact: true }).click();
+  const page = await context.newPage(); page.on("pageerror", e => errors.push(e.message)); await page.goto(base); await page.getByRole("button", { name: "Achats", exact: true }).click(); await openTools(page);
   await page.getByRole("heading", { name: "Courses", exact: true }).waitFor();
   assert.equal(await page.getByLabel("Prendre une photo du ticket").getAttribute("capture"), "environment");
   const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/nV8AAAAASUVORK5CYII=", "base64");
   const photoA = { name: "synthetic-top.png", mimeType: "image/png", buffer: png }, photoB = { name: "synthetic-bottom.png", mimeType: "image/png", buffer: Buffer.concat([png, Buffer.from("second synthetic view")]) };
   const unpaired = await browser.newContext({ viewport: { width: 390, height: 844 } });
-  const newPhone = await unpaired.newPage(); newPhone.on("pageerror", e => errors.push(e.message)); await newPhone.goto(base); await newPhone.getByRole("button", { name: "Achats", exact: true }).click();
+  const newPhone = await unpaired.newPage(); newPhone.on("pageerror", e => errors.push(e.message)); await newPhone.goto(base); await newPhone.getByRole("button", { name: "Achats", exact: true }).click(); await openTools(newPhone);
   await newPhone.getByRole("button", { name: "Galerie ou reçu", exact: true }).waitFor();
   await newPhone.getByLabel("Choisir les photos ou le reçu numérique").setInputFiles([photoA]); await newPhone.getByText(/1 source\(s\) dans ce ticket/).waitFor();
   assert.equal(await newPhone.getByRole("button", { name: "Importer ce ticket", exact: true }).isDisabled(), true);
   await newPhone.evaluate(({ endpoint, key }) => localStorage.setItem("familyhub.worker.v1", JSON.stringify({ Endpoint: endpoint, ApiKey: key })), { endpoint, key });
-  await newPhone.reload(); await newPhone.getByRole("button", { name: "Achats", exact: true }).click(); await newPhone.getByText(/1 source\(s\) dans ce ticket/).waitFor(); await unpaired.close();
+  await newPhone.reload(); await newPhone.getByRole("button", { name: "Achats", exact: true }).click(); await openTools(newPhone); await newPhone.getByText(/1 source\(s\) dans ce ticket/).waitFor(); await unpaired.close();
   await page.getByLabel("Choisir les photos ou le reçu numérique").setInputFiles([photoA, photoA, photoB]);
-  await page.getByText(/2 source\(s\) dans ce ticket/).waitFor(); await page.reload(); await page.getByRole("button", { name: "Achats", exact: true }).click(); await page.getByText(/2 source\(s\) dans ce ticket/).waitFor();
+  await page.getByText(/2 source\(s\) dans ce ticket/).waitFor(); await page.reload(); await page.getByRole("button", { name: "Achats", exact: true }).click(); await openTools(page); await page.getByText(/2 source\(s\) dans ce ticket/).waitFor();
   await page.getByRole("button", { name: "Importer ce ticket", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "Vérifier le ticket", exact: true }); await dialog.waitFor();
   await dialog.getByRole("button", { name: "Extraire les produits", exact: true }).click(); await dialog.getByText(/Extraction indisponible/).waitFor();
@@ -75,8 +76,8 @@ try {
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
   await dialog.getByLabel("Nombre de formats / poids mesuré", { exact: true }).fill("2"); await dialog.getByLabel("Taille d'un format", { exact: true }).fill("500"); await dialog.getByLabel("Unité", { exact: true }).selectOption("g");
   await dialog.getByLabel("Ligne vérifiée dans la source", { exact: true }).check();
-  await page.getByRole("button", { name: "Close Vérifier le ticket", exact: true }).click(); await dialog.waitFor({ state: "hidden" }); await page.reload(); await page.getByRole("button", { name: "Achats", exact: true }).click();
-  await page.getByRole("button", { name: /Ouvrir l'achat Synthetic grocery/ }).click(); await page.getByRole("button", { name: "Voir les sources et vérifier le ticket" }).click(); await dialog.getByLabel("Nombre de formats / poids mesuré", { exact: true }).waitFor();
+  await page.getByRole("button", { name: "Close Vérifier le ticket", exact: true }).click(); await dialog.waitFor({ state: "hidden" }); await page.reload(); await page.getByRole("button", { name: "Achats", exact: true }).click(); await openTools(page);
+  await page.getByText("Archives et autres tickets",{exact:false}).first().click(); await page.getByRole("button", { name: /Ouvrir l'achat Synthetic grocery/ }).click(); await page.getByText("Provenance de l’achat et limites",{exact:true}).click(); await page.getByRole("button", { name: "Voir les sources et vérifier le ticket" }).click(); await dialog.getByLabel("Nombre de formats / poids mesuré", { exact: true }).waitFor();
   assert.equal(await dialog.getByLabel("Nombre de formats / poids mesuré", { exact: true }).inputValue(), "2");
   const confirm = dialog.getByLabel(/J'ai revu les sources/); await confirm.check();
   await page.screenshot({ path: "artifacts/groceries/mobile-review.png", fullPage: true });
@@ -86,11 +87,11 @@ try {
   await page.getByLabel("Mois", { exact: true }).fill("2026-10"); await page.getByText("1 achat(s) · 6.00 CAD").waitFor(); await page.getByText("Livraison, service et pourboires connus : 1.00 CAD").waitFor(); await page.getByText("5.00 CAD/kg", { exact: true }).waitFor();
   // A second device sees the persisted purchase, without the first device's cache.
   const desktop = await browser.newContext({ viewport: { width: 1280, height: 900 } }); await desktop.addInitScript(({ endpoint, key }) => localStorage.setItem("familyhub.worker.v1", JSON.stringify({ Endpoint: endpoint, ApiKey: key })), { endpoint, key });
-  const pc = await desktop.newPage(); pc.on("pageerror", e => errors.push(e.message)); await pc.goto(base); await pc.getByRole("button", { name: "Achats", exact: true }).click(); await pc.getByLabel("Mois", { exact: true }).fill("2026-10"); await pc.getByText("1 achat(s) · 6.00 CAD").waitFor();
+  const pc = await desktop.newPage(); pc.on("pageerror", e => errors.push(e.message)); await pc.goto(base); await pc.getByRole("button", { name: "Achats", exact: true }).click(); await openTools(pc); await pc.getByLabel("Mois", { exact: true }).fill("2026-10"); await pc.getByText("1 achat(s) · 6.00 CAD").waitFor();
   await pc.screenshot({ path: "artifacts/groceries/desktop-history.png", fullPage: true });
   await page.getByLabel("Choisir les photos ou le reçu numérique").setInputFiles([photoB, photoA]); await page.getByRole("button", { name: "Importer ce ticket", exact: true }).click(); await dialog.waitFor(); assert.equal((await store.list()).records.length, 1);
   await page.getByRole("button", { name: "Close Vérifier le ticket", exact: true }).click(); await dialog.waitFor({ state: "hidden" });
-  offline = true; await page.reload(); await page.getByRole("button", { name: "Achats", exact: true }).click(); await page.getByText(/Historique en cache/).waitFor(); await page.getByLabel("Mois", { exact: true }).fill("2026-10"); await page.getByText("1 achat(s) · 6.00 CAD").waitFor();
+  offline = true; await page.reload(); await page.getByRole("button", { name: "Achats", exact: true }).click(); await openTools(page); await page.getByText(/Historique en cache/).waitFor(); await page.getByLabel("Mois", { exact: true }).fill("2026-10"); await page.getByText("1 achat(s) · 6.00 CAD").waitFor();
   for (const width of [320, 390, 768]) { await page.setViewportSize({ width, height: 844 }); assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false); }
   assert.deepEqual(errors, []);
   console.log("PASS: mobile photo batch, exact duplicate grouping/replay, unpaired-photo retention after pairing, upload recovery, extraction failure/retry, source review, correction/close/reload, save failure/retry, unit prices/fees, second-device persistence, offline history and 320/390/768/1280 layouts; zero browser errors.");

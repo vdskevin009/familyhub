@@ -26,6 +26,18 @@ test("source classification survives save/restart; original confirmations do not
   await assert.rejects(saved(original, restarted, { ...receipt, sourceType: "confirmation" }), /changé/);
   assert.equal((await restarted.list()).records[0].receipt.sourceType, "final-receipt");
 });
+test("dated fulfillment survives save/restart without converting an estimate into paid spending", async t => {
+  const { store, directory } = await fixture(t);
+  const draft = (await store.import({ sources: [source("Synthetic same-order confirmation and actual delivery proof")] })).record;
+  const fulfillment = { date: "2026-10-08", evidence: "SOURCE 2: same synthetic order was delivered" };
+  const original = await saved(draft, store, { ...receipt, sourceType: "confirmation", fulfillment });
+  const restarted = new GroceryStore(join(directory, "groceries"), async () => receipt);
+  assert.deepEqual((await restarted.list()).records[0].receipt.fulfillment, fulfillment);
+  assert.equal(monthlySummary([original], "2026-10").currencies.length, 0);
+  await assert.rejects(saved(original, restarted, { ...receipt, fulfillment: { ...fulfillment, date: "2026-02-30" } }), /livraison/);
+  assert.deepEqual((await restarted.list()).records[0].receipt.fulfillment, fulfillment);
+});
+
 test("multi-photo source batch deduplication, reordered replay and overlapping imports", async t => {
   const { store } = await fixture(t);
   const a = source("synthetic top"), b = source("synthetic bottom");
@@ -123,8 +135,8 @@ test("authenticated real-worker API: origin, pairing, no-store, upload/review/so
   assert.equal((await request("/groceries", undefined, { "x-familyhub-key": "wrong" })).status, 401);
   assert.equal((await request("/groceries", undefined, { Origin: "https://untrusted.invalid" })).status, 403);
   const health = await (await request("/health")).json(); assert.ok(health.capabilities.includes("grocery-source-type-v1")); assert.ok(health.capabilities.includes("grocery-receipts-v1"));
-  assert.ok(health.capabilities.includes("grocery-weekly-v1"));
-  assert.ok(health.capabilities.includes("grocery-items-300-v1")); assert.equal(health.version, "2.26.10");
+  assert.ok(health.capabilities.includes("grocery-weekly-v1")); assert.ok(health.capabilities.includes("grocery-fulfillment-v1"));
+  assert.ok(health.capabilities.includes("grocery-items-300-v1")); assert.equal(health.version, "2.26.11");
   const plan = (await (await request("/groceries/planning")).json()); assert.equal(plan.schema, 1);
   plan.area = "Synthetic city";
   plan.items = [{ id: "synthetic-month", name: "Synthetic monthly packs", quantity: 3, size: null, unit: null, preference: "Format unknown", substitutions: false, active: false, origin: "", cadence: "month", every: 1, bucket: "household", measure: "pack", provisional: true, basketQuantity: null }];
