@@ -569,3 +569,16 @@ Add a Mortgage navigation tab showing actual filtered Ratehub observations for f
 Implementation: apps/worker/src/mortgage-model.ts and mortgage-store.ts; authenticated GET /mortgage, POST /mortgage/snapshots and /quotes; apps/web/src/views/MortgageView.tsx. Dedicated append-only worker directory, no migration of existing household stores. No lender action or new scheduler. Required access, immutable ingestion contract, timezone/filter rules, privacy, Achats integration and remaining release gates: docs/MORTGAGE.md. Acceptance evidence and limitations: docs/MORTGAGE-VALIDATION.md. Real initial source records remain in ignored private local storage, never committed fixtures.
 
 FH-MORTGAGE-001 privacy refinement: principal, user-reported current rate and remaining amortization are private immutable worker assumption records; no household defaults ship in public source. Missing assumptions remain unavailable. POST /mortgage/assumptions reuses existing pairing/origin protection and ID/content deduplication. See docs/ACHATS-MORTGAGE-RELEASE.md.
+
+## Shared Desjardins sign-in — FH-REIMB-040 / Issue #159
+
+Status: Testing. Collector and claim preparation use the same guarded profile and
+unique-active-dossier continuation. Preparation recognizes only the exact history
+page or the two observed claim-form routes, and saves the protected session after
+verified authentication so later payment collection can reuse it. A manual
+successful sign-in can refresh this session and clear the shared stop; ambiguous
+pages, challenges and failed private-state writes cannot. Existing cooldowns,
+single-use selection markers and uncertain credential stops remain enforced.
+The original sanitized failure diagnostic is retained separately from subsequent
+blocked checks. Synthetic reproduction, source CI, installed-worker activation,
+live session reuse and the next natural schedule are distinct acceptance gates.
