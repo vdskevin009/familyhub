@@ -114,5 +114,5 @@ try {
  assert.equal(await readFile(failureFile,'utf8'),originalFailure,'Blocked checks retain original landing evidence');
  assert.equal(JSON.parse(await readFile(join(directory,'desjardins','login-diagnostic.json'),'utf8')).phase,'retry-blocked');
  await diagnosticContext.close();
- console.log(JSON.stringify({passed:22,coverage:'shared dossier continuation, guarded choices, exact authentication evidence, session persistence, single fresh login and reuse',insurerContact:false}));
+ console.log(JSON.stringify({passed:process.platform === 'win32' ? 22 : 21,coverage:'shared dossier continuation, guarded choices, exact authentication evidence, session persistence, single fresh login and reuse',insurerContact:false}));
 } finally {await browser.close();await rm(directory,{recursive:true,force:true});}
