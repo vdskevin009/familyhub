@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { emptyReceipt, blankItem, validateReceipt, monthlySummary, type GroceryRecord } from "../../worker/src/grocery-model";
 import { emptyPlan, emptyEvidence, type GroceryPlan } from "../../worker/src/grocery-planning";
-import { purchaseComparison, purchaseStatus, purchaseDate, purchaseAmountLabel, recentPcExpressPurchases, purchaseStoreComparisons } from "../src/grocery-purchases";
+import { purchaseComparison, purchaseStatus, purchaseDate, purchaseAmountLabel, recentPcExpressPurchases, purchaseStoreComparisons, purchaseLocalDate } from "../src/grocery-purchases";
 import { reviewGroceries } from "../src/grocery-api";
 
 export function purchaseFixture() {
@@ -13,6 +13,15 @@ export function purchaseFixture() {
   return { plan, record };
 }
 const compare = (f: ReturnType<typeof purchaseFixture>) => purchaseComparison(f.plan, f.record, "2026-10-21").find(r => r.retailer.id === "store")!;
+
+test("Vancouver date keeps purchases and local price validity on the same day across UTC midnight", () => {
+  assert.equal(purchaseLocalDate(new Date("2026-10-22T01:00:00Z")), "2026-10-21");
+  assert.equal(purchaseLocalDate(new Date("2026-10-22T07:00:00Z")), "2026-10-22");
+  const f = purchaseFixture(); f.plan.prices[0].evidence.until = "2026-10-21";
+  assert.ok(purchaseComparison(f.plan, f.record, purchaseLocalDate(new Date("2026-10-22T01:00:00Z")))[0]);
+  assert.equal(purchaseStoreComparisons(f.plan, f.record, "2026-10-21")[1].complete, true);
+  assert.equal(purchaseStoreComparisons(f.plan, f.record, "2026-10-22")[1].complete, false);
+});
 
 test("recent PCX purchases require dated fulfillment or reviewed final receipt, never a current cart or scheduled confirmation", () => {
   const { record } = purchaseFixture(); record.receipt.store = "PC Express"; record.receipt.sourceType = "confirmation";

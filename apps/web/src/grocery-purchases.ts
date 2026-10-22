@@ -11,7 +11,8 @@ export function purchaseStatus(record: GroceryRecord) {
 }
 export const purchaseDate = (record: GroceryRecord) => record.receipt.fulfillment?.date || record.receipt.date;
 export const purchaseAmountLabel = (record: GroceryRecord) => receiptSourceType(record) === "confirmation" ? "Total estimé" : record.status === "saved" && record.reviewedAt && record.receipt.sourceType === "final-receipt" ? "Total payé" : "Montant source";
-export function recentPcExpressPurchases(records: GroceryRecord[], today = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Vancouver", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date())) {
+export const purchaseLocalDate = (instant = new Date()) => new Intl.DateTimeFormat("en-CA", { timeZone: "America/Vancouver", year: "numeric", month: "2-digit", day: "2-digit" }).format(instant);
+export function recentPcExpressPurchases(records: GroceryRecord[], today = purchaseLocalDate()) {
   const cutoff = new Date(today + "T12:00:00Z"); cutoff.setUTCDate(cutoff.getUTCDate() - 29);
   return records.filter(r => {
     const date = purchaseDate(r);
@@ -47,7 +48,7 @@ function matchReason(plan: GroceryPlan, record: GroceryRecord, line: GroceryItem
   return "";
 }
 export type PurchaseLineComparison = { line: GroceryItem; price: GroceryPrice | null; reason: string; normalized: number | null; outlay: number | null; packs: number | null; ratio: number | null; calculated: boolean };
-export function purchaseComparison(plan: GroceryPlan, record: GroceryRecord, now = new Date().toISOString().slice(0, 10)) {
+export function purchaseComparison(plan: GroceryPlan, record: GroceryRecord, now = purchaseLocalDate()) {
   const names = ["Walmart", "Superstore", "Costco", "Save-On-Foods", "Fresh St. Market"];
   const retailers: (GroceryRetailer | { id: string; name: string })[] = [...plan.retailers];
   const canonicalStore = (name: string) => /^save[\s-]*on[\s-]*foods\b/i.test(name) ? "Save-On-Foods" : /^real canadian superstore\b/i.test(name) ? "Superstore" : storeName(name);
