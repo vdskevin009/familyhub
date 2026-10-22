@@ -582,3 +582,15 @@ single-use selection markers and uncertain credential stops remain enforced.
 The original sanitized failure diagnostic is retained separately from subsequent
 blocked checks. Synthetic reproduction, source CI, installed-worker activation,
 live session reuse and the next natural schedule are distinct acceptance gates.
+
+Local verification (2026-10-22): the pre-fix dossier-screen failure was reproduced;
+22 new Windows browser scenarios, 128 focused unit checks and 22 retained
+session/navigation browser scenarios passed, alongside worker/web builds and
+typechecks. The existing worker is active on 2.26.12. Two complete live
+collections succeeded; the repeat reused the saved session without another
+credential attempt and preserved the ledger byte-for-byte. Existing source
+records, manual decisions, credentials, pairing, schedules and unrelated code
+were preserved. Source publication requires owner approval; CI, retained .NET,
+physical-phone acceptance and the next natural scheduled run remain separate
+unverified gates. The old diagnostic retained a timeout but not the original
+landing page, so the specific historical page cannot be proved retroactively.
