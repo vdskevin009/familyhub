@@ -590,7 +590,7 @@ typechecks. The existing worker is active on 2.26.12. Two complete live
 collections succeeded; the repeat reused the saved session without another
 credential attempt and preserved the ledger byte-for-byte. Existing source
 records, manual decisions, credentials, pairing, schedules and unrelated code
-were preserved. Source publication requires owner approval; CI, retained .NET,
+were preserved. Source implementation: PR #240 (publication and merge authorized); CI, retained .NET,
 physical-phone acceptance and the next natural scheduled run remain separate
 unverified gates. The old diagnostic retained a timeout but not the original
 landing page, so the specific historical page cannot be proved retroactively.
