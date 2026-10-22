@@ -569,3 +569,28 @@ Add a Mortgage navigation tab showing actual filtered Ratehub observations for f
 Implementation: apps/worker/src/mortgage-model.ts and mortgage-store.ts; authenticated GET /mortgage, POST /mortgage/snapshots and /quotes; apps/web/src/views/MortgageView.tsx. Dedicated append-only worker directory, no migration of existing household stores. No lender action or new scheduler. Required access, immutable ingestion contract, timezone/filter rules, privacy, Achats integration and remaining release gates: docs/MORTGAGE.md. Acceptance evidence and limitations: docs/MORTGAGE-VALIDATION.md. Real initial source records remain in ignored private local storage, never committed fixtures.
 
 FH-MORTGAGE-001 privacy refinement: principal, user-reported current rate and remaining amortization are private immutable worker assumption records; no household defaults ship in public source. Missing assumptions remain unavailable. POST /mortgage/assumptions reuses existing pairing/origin protection and ID/content deduplication. See docs/ACHATS-MORTGAGE-RELEASE.md.
+
+## Shared Desjardins sign-in — FH-REIMB-040 / Issue #159
+
+Status: Testing. Collector and claim preparation use the same guarded profile and
+unique-active-dossier continuation. Preparation recognizes only the exact history
+page or the two observed claim-form routes, and saves the protected session after
+verified authentication so later payment collection can reuse it. A manual
+successful sign-in can refresh this session and clear the shared stop; ambiguous
+pages, challenges and failed private-state writes cannot. Existing cooldowns,
+single-use selection markers and uncertain credential stops remain enforced.
+The original sanitized failure diagnostic is retained separately from subsequent
+blocked checks. Synthetic reproduction, source CI, installed-worker activation,
+live session reuse and the next natural schedule are distinct acceptance gates.
+
+Local verification (2026-10-22): the pre-fix dossier-screen failure was reproduced;
+22 new Windows browser scenarios, 128 focused unit checks and 22 retained
+session/navigation browser scenarios passed, alongside worker/web builds and
+typechecks. The existing worker is active on 2.26.12. Two complete live
+collections succeeded; the repeat reused the saved session without another
+credential attempt and preserved the ledger byte-for-byte. Existing source
+records, manual decisions, credentials, pairing, schedules and unrelated code
+were preserved. Source implementation: PR #240 (publication and merge authorized); CI, retained .NET,
+physical-phone acceptance and the next natural scheduled run remain separate
+unverified gates. The old diagnostic retained a timeout but not the original
+landing page, so the specific historical page cannot be proved retroactively.

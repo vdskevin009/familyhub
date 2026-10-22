@@ -136,7 +136,12 @@ type LoginDependencies = {
 const defaults: LoginDependencies = {
   read: readLoginControl, save: (insurer, value) => atomicJson(controlPath(insurer), value),
   credentials: insurer => loadPrivate(credentialPath(insurer)), submit: submitPortalLogin, now: Date.now,
-  diagnose: (insurer, value) => atomicJson(join(loginDirectory(insurer), "login-diagnostic.json"), value),
+  diagnose: async (insurer, value) => {
+    await atomicJson(join(loginDirectory(insurer), "login-diagnostic.json"), value);
+    // Blocked scheduled checks must not erase the original safe landing-page evidence.
+    if (value.reason && value.phase !== "retry-blocked")
+      await atomicJson(join(loginDirectory(insurer), "login-failure-diagnostic.json"), value);
+  },
   reserveRecovery: reserveLoginRecovery
 };
 /** One attempt only; latch before ANY credential fill. Ordinary retries never rearm a stop. Caller owns profile lock. */

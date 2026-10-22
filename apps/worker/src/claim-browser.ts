@@ -11,7 +11,7 @@ import { savedServiceChoice, rememberServiceChoice, forgetServiceChoices, servic
 import { codexServiceRunner, validatedServiceProposals, type ServiceRunner } from "./claim-service-suggestions.js";
 import { checkedField, uploadEvidence, type ApprovedField, type ObservedField } from "./claim-field-verification.js";
 import { acquirePortalLock, classifyLoginScreen, type LoginReason } from "./portal-login.js";
-import { loginForClaim, authenticatedClaimPages, preserveBlueCrossClaimSession } from "./claim-login.js";
+import { loginForClaim, authenticatedClaimPages, preserveBlueCrossClaimSession, preserveDesjardinsClaimSession } from "./claim-login.js";
 import { automaticClaimValues } from "./claim-autofill.js";
 import { desjardinsRadioField } from "./desjardins-claim-form.js";
 import { reserveClaimUpload, reserveClaimUploadRetry } from "./claim-upload-guard.js";
@@ -126,6 +126,11 @@ async function inspect(s: Session) {
   if (!allowed(s.page.url(), s.dossier.insurer) || await s.page.locator('input[type="password"]').isVisible().catch(() => false)) return { status: s.authReason === "human-required" ? "human-required" : "login-required", authReason: s.authReason, fields: [], revision: "", submitAllowed: false };
   const body = (await s.page.locator("body").innerText()).slice(0, 30_000);
   if (classifyLoginScreen(body) === "human-required") return { status: "human-required", fields: [], revision: "", submitAllowed: false };
+  if (s.autonomous && s.dossier.insurer === "desjardins" && !s.authPersistenceAttempted
+    && (await authenticatedClaimPages(s.page, "desjardins")).length === 1) {
+    s.authPersistenceAttempted = true;
+    if (await preserveDesjardinsClaimSession(s.page).catch(() => false)) s.authReason = undefined;
+  }
   if (s.autonomous && s.dossier.insurer === "blue-cross" && !s.authPersistenceAttempted
     && /\/ACESWeb\/Pages\/Claims\/eClaim\.aspx$/.test(new URL(s.page.url()).pathname)) {
     s.authPersistenceAttempted = true;

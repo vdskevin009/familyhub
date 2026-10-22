@@ -1,9 +1,10 @@
+import { continueDesjardinsSignIn } from "./desjardins-signin.js";
 import type { LoginRecoveryRequest } from "./portal-login-recovery.js";
 import { configureDesjardinsFilters, createReaderStages, inspectDesjardinsFilters, inspectDesjardinsNavigation, observeDesjardinsSession } from "./desjardins-history-reader.js";
 import { findPortalHistoryPage, isInsurerPortalPage } from "./portal-history-page.js";
 import { acquirePortalLock, authenticatedPortal, tryPortalLogin, type LoginReason } from "./portal-login.js";
 import { desjardinsHistoryReady } from "./desjardins-navigation.js";
-import { continueDesjardinsProfileSelection, hasAttemptedDesjardinsProfileSelection, isDesjardinsProfileSelection } from "./desjardins-profile-selection.js";
+import { hasAttemptedDesjardinsProfileSelection, isDesjardinsProfileSelection } from "./desjardins-profile-selection.js";
 import { createHash, randomUUID } from "node:crypto";
 import { mkdir, open, readFile, unlink } from "node:fs/promises";
 import { join, resolve } from "node:path";
@@ -25,6 +26,11 @@ const historyTable = "table.tableau-donnees";
 
 export const desjardinsAuthCookies = <T extends { domain: string }>(cookies: T[]): T[] => cookies.filter(cookie =>
   /(?:^|\.)(?:desjardins\.com|dsf-dfs\.com)$/i.test(cookie.domain.replace(/^\./, "")));
+
+/** The latest verified DPAPI snapshot is shared by preparation and collection.
+ * It replaces same-name persistent cookies that may predate a preparation login. */
+export const desjardinsRestorableCookies = (cookies: Cookie[], now = Date.now()) =>
+  desjardinsAuthCookies(cookies).filter(cookie => cookie.expires < 0 || cookie.expires > now / 1000);
 
 export type PortalTableRow = { cells: string[]; colspans: number[] };
 export type PortalHistoryRow = { date: string; method: string; paid: string; category: string; hasDetail: boolean };
@@ -249,10 +255,7 @@ async function collectDesjardinsPortalLocked(interactive = false, passes = 1, re
     if (process.platform === "win32") {
       try {
         const saved = await loadPrivate<{ cookies: Cookie[]; session?: { origin: string; values: Record<string, string> } }>(desjardinsAuthPath);
-        const existing = await context.cookies();
-        const restored = desjardinsAuthCookies(saved.cookies).filter(cookie =>
-          (cookie.expires < 0 || cookie.expires > Date.now() / 1000) && !existing.some(current =>
-            current.name === cookie.name && current.domain === cookie.domain && current.path === cookie.path));
+        const restored = desjardinsRestorableCookies(saved.cookies);
         await context.addCookies(restored);
         if (saved.session?.origin === origin && saved.session.values && typeof saved.session.values === "object")
           await context.addInitScript(({ expectedOrigin, values }) => {
@@ -292,16 +295,7 @@ async function collectDesjardinsPortalLocked(interactive = false, passes = 1, re
     const ready = async () => {
       if (await recoverHistoryTab()) return true;
       if (page.isClosed()) return false;
-      await continueDesjardinsProfileSelection(page, async () => {
-        try {
-          const preference = await loadPrivate<{ version: number; profile: string }>(join(desjardinsPrivateDirectory, "profile-preference.dpapi"));
-          if (preference.version !== 1 || typeof preference.profile !== "string" || !preference.profile.trim()) throw new Error("Invalid private profile preference.");
-          return preference.profile;
-        } catch (error) {
-          if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
-          throw new Error("Saved Desjardins profile preference cannot be unlocked.");
-        }
-      });
+      await continueDesjardinsSignIn(page);
       await desjardinsHistoryReady(page);
       return recoverHistoryTab();
     };

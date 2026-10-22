@@ -43,3 +43,18 @@ Worker 2.22.3 observes the tabs within each collector's existing private context
 ## Proven preflight failure versus uncertain transmission
 
 Worker 2.22.4 validates the exact form through read-only DOM checks before committing an attempt stop. A typed failure from that read-only block records layout-changed/preflight without changing the credential-attempt timestamp or creating a permanent stop. The next ordinary request can inspect the form again; it is not a password retry. Immediately before the first identifier/password fill, the worker must durably latch uncertainty. All subsequent errors, rejection, challenge, missing instrumentation and unknown submission outcomes stay blocked. Failure to persist the guard prevents any fill. Legacy blocked records return before credentials are loaded and remain byte-identical; missing historical evidence never grants another attempt. A stopped record without original evidence is explicitly reported as such, and new failures preserve their original phase/category through later retry-blocked diagnostics. Only already-required authenticated history proof clears a stop. A later collection/navigation error does not turn that verified authentication into a credential failure. Live authentication, MFA and scheduled idempotence remain separate acceptance gates.
+
+## Preparation and collection share Desjardins sign-in
+
+Both flows now continue the same approved profile and unique active dossier.
+Only exact authenticated history or an observed claim form can refresh the
+DPAPI-protected session. Preparation persists that refreshed state for the next
+collector, including after a successful manual sign-in. It never clears a stop
+from an account-selection page or generic table. A local
+`login-failure-diagnostic.json` retains the original sanitized landing evidence
+when later scheduled checks report `retry-blocked`; it contains no raw URLs,
+credentials, form values or claim data. Historical stops remain intact until
+verified sign-in or the existing explicitly authorized one-attempt recovery.
+The latest verified protected session also takes precedence over same-name
+persistent browser cookies; stale profile cookies must not mask a newer session
+saved by claim preparation. Expired and foreign-domain cookies are excluded.
