@@ -1,4 +1,4 @@
-const openTools = async page => { const tools=page.locator("details.grocery-purchase-tools"); if(!await tools.evaluate(el=>el.open)) await tools.locator(":scope > summary").click(); };
+const openTools = async page => { await page.locator('.grocery-view[aria-busy="false"]').waitFor(); const tools=page.locator("details.grocery-purchase-tools"); if(!await tools.evaluate(el=>el.open)) await tools.locator(":scope > summary").click(); };
 /** Synthetic worker/extractor and a fresh browser profile; never the installed PC data. */
 import { chromium } from "playwright";
 import assert from "node:assert/strict";

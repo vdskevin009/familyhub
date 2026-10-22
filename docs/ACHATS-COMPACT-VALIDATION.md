@@ -1,6 +1,8 @@
 # Approved compact Achats follow-up — #155 / FH-GROCERY-010
 
-Local implementation only on `fix/achats-approved-cards`, based on main `cdcc6d8`. No push, PR, merge, Pages deployment, installed-worker restart or private household import is included. Mortgage UI and its collector/storage are unchanged.
+Implementation on `fix/achats-approved-cards`, based on main `cdcc6d8`. Publication, deployment and reviewed private source intake were subsequently operator-authorized; exact-head CI and live release acceptance are tracked in Issue #155 and PR #239. Merge alone does not establish deployment. Mortgage UI and its collector/storage are unchanged.
+
+CI exposed a native-details/cache-restoration race during unpaired-photo recovery after pairing/reload. Sources et outils now has explicit React open state, initialized together with restored uploads and readiness. The import view exposes aria-busy while reading local drafts; browser actions wait for that readiness rather than racing an automatic disclosure. Existing recovery assertions remain in place.
 
 The approved mockup is implemented with the existing FamilyHub tokens: same-card PCX/date/amount and Walmart/Costco rows; no delivered/payment-status line on the entry card. Source confirmation amounts retain Total estimé. Detail uses compact product/store/real-format/price rows and reuses the existing accessible Sheet. Calculations, source dates, exclusions, review and separate whole-pack outlay are disclosures. Archives and Sources et outils preserve the existing source/import/monthly/review flow without deleting records.
 

@@ -21,13 +21,14 @@ export default function GroceriesView({ config }: { config: WorkerConfig }) {
   const [month, setMonth] = useState(() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`; });
   const fileInput = useRef<HTMLInputElement>(null), cameraInput = useRef<HTMLInputElement>(null);
   const actionLock = useRef(false);
+  const [toolsOpen, setToolsOpen] = useState(false);
   const scope = config.Endpoint.trim().replace(/\/$/, "") || "unpaired";
   const paired = Boolean(config.Endpoint.trim() && config.ApiKey.trim());
   useEffect(() => { let active = true;
     (async () => {
       try {
         const cached = await groceryCache<GroceryRecord[]>(scope + ":records"), pending = await groceryCache<UploadSource[]>("pending-upload");
-        if (!active) return; setRecords(cached ?? []); setUploads(pending ?? []); setReady(true);
+        if (!active) return; setRecords(cached ?? []); setUploads(pending ?? []); setToolsOpen(Boolean(pending?.length)); setReady(true);
         if (paired) {
           try { const library = await loadGroceries(config); if (!active) return; setRecords(library.records); setOffline(false); await groceryCache(scope + ":records", library.records); }
           catch (e) { if (active) { setOffline(true); setError((e as Error).message); } }
@@ -90,12 +91,12 @@ export default function GroceriesView({ config }: { config: WorkerConfig }) {
   }
   const summary = monthlySummary(records, month), duplicates = edit ? possibleDuplicates({ ...edit.record, receipt: edit.receipt }, records) : [];
 
-  return <section className="view-stack grocery-view">
+  return <section className="view-stack grocery-view" aria-busy={!ready}>
     <div className="grocery-section-heading"><h2>Achats récents</h2><button className="button secondary" disabled={busy || !paired} onClick={() => void action(refresh)}><RefreshCw size={16} />Actualiser</button></div>
     {error && <Notice error onDismiss={() => setError("")}>{error}</Notice>}{notice && <Notice onDismiss={() => setNotice("")}>{notice}</Notice>}
     {busy && <p role="status">Opération en cours… Les sources importées restent conservées.</p>}
     {offline && <p className="grocery-warning">Historique en cache sur cet appareil. Connectez le PC puis actualisez pour retrouver les derniers achats.</p>}
-    <GroceryPurchases config={config} records={records} onReview={r => void action(() => open(r))} /><details className="grocery-purchase-tools" open={uploads.length ? true : undefined}><summary>Sources et outils</summary><section id="grocery-ticket-import" className="grocery-import" aria-label="Ajouter un ticket">
+    <GroceryPurchases config={config} records={records} onReview={r => void action(() => open(r))} /><details className="grocery-purchase-tools" open={toolsOpen} onToggle={event => setToolsOpen(event.currentTarget.open)}><summary>Sources et outils</summary><section id="grocery-ticket-import" className="grocery-import" aria-label="Ajouter un ticket">
       <div><ShoppingBasket size={25} /><h2>Un ticket, plusieurs photos si besoin</h2><p>Photographiez de haut en bas, avec un petit chevauchement. Gardez toutes les photos du même ticket ensemble.</p></div>
       <input ref={cameraInput} className="sr-only" type="file" accept="image/jpeg,image/png,image/webp" capture="environment" aria-label="Prendre une photo du ticket" onChange={e => void addFiles(e.target.files)} disabled={busy} />
       <input ref={fileInput} className="sr-only" type="file" accept="image/jpeg,image/png,image/webp,application/pdf,text/plain" multiple aria-label="Choisir les photos ou le reçu numérique" onChange={e => void addFiles(e.target.files)} disabled={busy} />
