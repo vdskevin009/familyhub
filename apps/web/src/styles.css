@@ -96,6 +96,7 @@ label { font-size: 12px; color: var(--muted); }
 .app-notice svg, .banner > svg { margin-top: 2px; }
 .app-notice .icon-button { width: 28px; height: 28px; min-height: 28px; margin: -3px; }
 .app-notice.success, .banner.success { background: var(--success-soft); color: var(--success); border-color: transparent; }
+.app-notice.warning { background: var(--warning-soft); color: var(--warning); border-color: transparent; }
 .app-notice.error, .banner.error, .library-error { color: var(--danger); background: var(--danger-soft); border-color: transparent; }
 .banner-action { margin-left: auto; border: 0; background: none; color: inherit; font-weight: 700; min-height: 32px; }
 .segment-tabs, .filter-tabs, .workflow-tabs, .reimbursement-mode-tabs { display: flex; align-items: center; gap: 4px; min-width: 0; }
