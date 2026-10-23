@@ -17,8 +17,9 @@ import { desjardinsRadioField } from "./desjardins-claim-form.js";
 import { reserveClaimUpload, reserveClaimUploadRetry } from "./claim-upload-guard.js";
 import { confirmedInvoicePractitioner } from "./claim-practitioner-answers.js";
 import { confirmedInvoiceIllness } from "./claim-invoice-answers.js";
-import { blueCrossReceiptCheckbox, verifyDetailedReceipt } from "./bluecross-receipt-checklist.js";
-import { advanceBlueCrossDetails, advanceBlueCrossExpenses } from "./bluecross-claim-progress.js";
+import { blueCrossReceiptCheckbox, verifyDetailedReceipt, readReceiptPractitioner } from "./bluecross-receipt-checklist.js";
+import { receiptProviderOption, type ReceiptPractitioner } from "./split-paid-receipt.js";
+import { advanceBlueCrossDetails, advanceBlueCrossExpenses, readBlueCrossExpenseSummary } from "./bluecross-claim-progress.js";
 import { isBlueCrossClaimCausePage, openBlueCrossClaimCause } from "./bluecross-claim-cause.js";
 import { isBlueCrossClaimKindPage, openBlueCrossHealthcareClaim } from "./bluecross-claim-kind.js";
 import { blueCrossReceiptFile, blueCrossReceiptMatches, openBlueCrossReceiptUpload, blueCrossReceiptAlreadyListed, blueCrossReceiptUploadEvidence, blueCrossReceiptUploadAvailable } from "./bluecross-claim-upload.js";
@@ -28,6 +29,7 @@ export type Field = { key: string; label: string; type: string; options: { value
 type Target = { locator: Locator; field: Field; signature: string; initialValue: string; dropdown?: Locator; providers?: Locator };
 type ApprovedSnapshot = { revision: string; url: string; entries: { target: Target; approved: ApprovedField; filled: boolean }[]; attachment?: { name: string; selected: boolean; blocked?: boolean } };
 type Session = { id: string; browser: Browser; page: Page; dossier: ClaimPreparation; createdAt: number;
+  receiptIdentity?: ReceiptPractitioner | null;
   fields: Map<string, Target>; attemptedAttachments: Set<string>; busy: boolean; revision: string; inspectedUrl: string; approved?: ApprovedSnapshot;
   authenticate?: typeof loginForClaim; autonomous?: boolean; loginRefreshAttempted?: boolean; authPersistenceAttempted?: boolean; authReason?: LoginReason; release?: () => Promise<void>; claimEntryAttempted?: boolean; claimKindAttempted?: boolean; claimCauseAttempted?: boolean; detailsNextAttempted?: boolean; detailsReadBackVerified?: boolean; detailsNextVerified?: boolean; summaryNextAttempted?: boolean; receiptRetryUsed?: boolean; authorizedRetryHash?: string; uploadEntryAttempted?: boolean };
 let session: Session | undefined;
@@ -142,7 +144,7 @@ async function inspect(s: Session) {
       const opened = await openBlueCrossHealthcareClaim(s.page, s.dossier, () => { s.claimKindAttempted = true; }).catch(() => false);
       if (opened) return inspect(s);
     }
-    return { status: "navigate", fields: [], revision: "", submitAllowed: false };
+    return { status: "navigate", fields: [], revision: "", submitAllowed: false, portalStage: "claim-kind", answerWarning: "The Healthcare entry could not be verified for this invoice. Check its service and the visible category choices; no claim details were sent at this step." };
   }
   if (s.dossier.insurer === "blue-cross" && body.includes("The service or product provided is") && await isBlueCrossClaimCausePage(s.page)) {
     if (!s.claimCauseAttempted) {
@@ -162,7 +164,7 @@ async function inspect(s: Session) {
       if (pages.length) s.page = pages[pages.length - 1];
       if (s.page !== previousPage || s.page.url() !== previousUrl) return inspect(s);
     }
-    return { status: "navigate", fields: [], revision: "", submitAllowed: false };
+    return { status: "navigate", fields: [], revision: "", submitAllowed: false, portalStage: "member-home", answerWarning: "The signed-in member page did not open a unique supported claim entry. The invoice is unchanged; inspect the insurer window before resuming." };
   }
   const completed = /your claim has been (?:processed|submitted)|réclamation a été (?:transmise|soumise)/i.test(body);
   const atReview = completed || /review (?:your )?claim|claim summary|I confirm all the information above is correct and I have read and agree|vérifi(?:ez|cation).*réclamation|résumé de (?:la|votre) réclamation/i.test(body);
@@ -201,6 +203,11 @@ async function inspect(s: Session) {
       const options = providerMetadata.filter(p => p.label).map(p => ({ label: p.label, value: p.id }));
       const field: Field = { key: randomUUID(), label: "Saved provider — verify name and address against the receipt", kind: "practitioner", type: "provider", options,
         suggested: blueCrossSuggestion("practitioner", s.dossier, options) };
+      if (/^RMT - Follow Up Massage /i.test(s.dossier.fields.service || "")) {
+        field.suggested = receiptProviderOption(s.receiptIdentity, options);
+        field.suggestionReason = field.suggested ? "Unique current practitioner name and clinic address match the verified paid receipt. Its printed licence remains source evidence, not a registry verification."
+          : "No unique practitioner and clinic address match was established from the original receipt. Review the provider identity; a matching name alone is insufficient.";
+      }
       s.fields.set(field.key, { locator: providers.first(), providers, field, signature: JSON.stringify(providerMetadata), initialValue: "" });
     }
   }
@@ -519,7 +526,18 @@ async function verifySnapshot(s: Session) {
     && !/your claim has been (?:processed|submitted)/i.test(body)
     && /Additional Information Required|Claim Documentation Required/.test(body)
     && await blueCrossReceiptUploadAvailable(s.page, s.dossier);
-  return { revision: s.approved.revision, fields, attachment, receiptUploadAvailable,
+  const illness = s.approved.entries.find(e => e.filled && e.target.field.kind === "natureOfIllness")?.approved.value;
+  const practitioner = s.approved.entries.find(e => e.filled && e.target.field.kind === "practitioner")?.approved.optionLabel;
+  const expenseSummary = validPage && s.dossier.insurer === "blue-cross" ? await readBlueCrossExpenseSummary(s.page, s.dossier, illness, practitioner).catch(() => null) : null;
+  let consentUnchecked = false;
+  if (expenseSummary?.matches) {
+    try {
+      const consent = s.page.locator('input[type="checkbox"][id$="_ucSubmitClaim_chkConsent"]').filter({ visible: true });
+      consentUnchecked = await consent.count() === 1 && !await consent.isChecked();
+    } catch { /* An unreadable consent control cannot make the claim ready. */ }
+  }
+  return { revision: s.approved.revision, fields, attachment, receiptUploadAvailable, expenseSummary,
+    preparedForReview: !!expenseSummary?.matches && !!s.detailsReadBackVerified && attachment?.status === "verified" && consentUnchecked,
     readyForManualNext: (fields.length > 0 || !!attachment) && fields.every(f => f.status === "match") && (!attachment || attachment.status === "verified"),
     scope: "Read-back against the values prepared from invoice evidence or your answers. This does not verify eligibility, coverage, current claim history or submission." };
 }
@@ -570,6 +588,10 @@ export async function prepareCurrentClaimStep(id: unknown,
   let verification: Awaited<ReturnType<typeof verifySnapshot>> | undefined;
   let warning: string | undefined;
   try {
+    if (s.receiptIdentity === undefined && s.dossier.insurer === "blue-cross" && /^RMT - Follow Up Massage /i.test(s.dossier.fields.service || "")) {
+      const receipt = s.dossier.attachments.length === 1 ? s.dossier.attachments[0] : undefined;
+      s.receiptIdentity = receipt ? await readReceiptPractitioner((await loadAttachment(receipt.documentId, receipt.attachmentId)).bytes, s.dossier).catch(() => null) : null;
+    }
     step = await inspectClaimStep(id);
     if (step.status === "fields") s.detailsReadBackVerified = false;
     // A restored SPA can briefly look authenticated before the server rejects

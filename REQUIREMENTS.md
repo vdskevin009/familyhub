@@ -17,6 +17,22 @@ Estimated source-unit quotes use separate `sourceEstimates` evidence. Show quant
 Approved compact follow-up implemented locally, Testing: [Achats specification and limits](docs/requirements/FH-GROCERY-010.md), Issue #155. Recent completed PC Express purchases show store, delivery/purchase date, source amount and Walmart/Costco comparisons inside one card; remove the redundant delivered/payment-status line. Original confirmations retain the discreet label « Total estimé » even after delivery. Other, older, draft and unfulfilled records remain under Archives; import/monthly tools remain available under Sources et outils. Product detail restores compact store/format/price rows, dated sources and separate whole-pack outlay; « Calculé » appears only for prorata. Incomplete coverage shows an explicit partial subtotal, never a complete competing basket. Optional dated fulfillment evidence is independent of final payment, validated and capability-gated to prevent older workers dropping it. No new production release, private household import or Mortgage redesign is implied. See [local validation](docs/ACHATS-COMPACT-VALIDATION.md).
 
 ## Autonomous preparation, then operator validation — FH-CLAIM-007 (#110)
+Massage preparation and split-payer receipts (2026-10-23), Testing (#247–#250):
+recognize the exact supported 60-minute RMT follow-up service at category, benefit,
+treatment and summary stages. Extract practitioner identity from the matching
+one-page original paid receipt; choose a saved portal provider only when its unique
+name and complete clinic address agree. A professional suffix alone never proves
+provider identity. Validate both insurer and patient applied payments, invoice tax
+arithmetic and every zero balance before confirming this observed receipt layout.
+Unknown layouts and ambiguous providers remain manual. Preserve source documents
+and recorded amounts. Show actionable category/member-home handoffs and freshly
+read summary values. A prepared-for-review status additionally requires prior
+detail verification, matching summary, visible successful upload evidence and an
+unchecked consent control. Consent and final submission remain manual.
+Code: `split-paid-receipt.ts`, `bluecross-claim-form.ts`, `bluecross-claim-progress.ts`,
+`claim-browser.ts` and `PrepareClaim.tsx`. Synthetic unit, browser and UI validation
+cover positive and conflicting evidence; installed-worker acceptance and publication
+are tracked separately in the linked issues.
 
 Patient-share reconstruction and blocking-reason correction (2026-10-23), Testing:
 the labelled patient share is normalized before reconstructing gross, so a

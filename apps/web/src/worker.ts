@@ -49,13 +49,15 @@ export type ClaimPreparation = {
   sourceEmails: { account: string; messageId: string }[];
   duplicate: { status: string; scope: string; checkedAt: string; records: { id: string; reference: string | null; service: string | null; status: string }[] };
 };
-export type ClaimStep = { status: string; revision: string; submitAllowed: false; portalStage?: "expense-summary";
+export type ClaimStep = { status: string; revision: string; submitAllowed: false; portalStage?: "expense-summary" | "claim-kind" | "member-home";
   authReason?: string;
   confirmedPractitioner?: { scope: string; value: string | null; revision: number };
   confirmedIllness?: { scope: string; value: string | null; revision: number; source: "invoice" | "default" | null; defaultScope: string; defaultValue: string | null; defaultRevision: number }; answerWarning?: string;
   serviceChoices?: { available: boolean; scopeComplete: boolean; warning: string | null };
   fields: { key: string; label: string; type: string; kind: string | null; suggested: string | null; suggestionSource?: string; suggestionReason?: string; optional?: boolean; options: { value: string; label: string }[] }[] };
 export type ClaimVerification = { revision: string; readyForManualNext: boolean; scope: string;
+  preparedForReview?: boolean;
+  expenseSummary?: { matches: boolean; patient: string; benefit: string; practitioner: string; service: string; date: string; amount: string; illness: string } | null;
   receiptUploadAvailable?: boolean;
   fields: { key: string; label: string; value: string; optionLabel?: string; actual: string | null; status: "match" | "mismatch" | "unreadable" | "not-filled" }[];
   attachment: { name: string; status: "verified" | "unverified" | "failed"; selected?: boolean; blocked?: boolean } | null };

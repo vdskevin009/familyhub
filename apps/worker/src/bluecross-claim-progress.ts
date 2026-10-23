@@ -21,16 +21,22 @@ export async function advanceBlueCrossDetails(page: Page, ready: boolean, reserv
   reserve(); await next.click({ noWaitAfter: true, timeout: 7000 });
   await page.getByRole("heading", { name: "Your Expenses", exact: true }).filter({ visible: true }).waitFor({ state: "visible", timeout: 10_000 }); return true;
 }
+/** Read the unique source-matched expense row without changing the portal. */
+export async function readBlueCrossExpenseSummary(page: Page, dossier: ClaimPreparation, illness: string | undefined, verifiedPractitioner?: string) {
+  const row = await blueCrossExpenseRow(page, dossier); if (!row || !illness) return null;
+  const normalize = (s: string) => s.normalize("NFKC").replace(/\s+/g, " ").trim();
+  const matches = normalize(row[6]) === normalize(illness)
+    && !!blueCrossSuggestion("benefit", dossier, [{ value: row[1], label: row[1] }])
+    && !!blueCrossSuggestion("service", dossier, [{ value: row[3], label: row[3] }])
+    && !!blueCrossSuggestion("practitioner", { ...dossier, fields: { ...dossier.fields, practitioner: dossier.fields.practitioner || verifiedPractitioner?.split(/\s+-\s+/)[0] || null } }, [{ value: row[2], label: row[2] }]);
+  return { matches, patient: row[0], benefit: row[1], practitioner: row[2], service: row[3], date: row[4], amount: row[5], illness: row[6] };
+}
+
 /** This Next only opens the review page; it never accepts consent or submits. */
 export async function advanceBlueCrossExpenses(page: Page, dossier: ClaimPreparation, illness: string | undefined, reserve: () => void, verifiedPractitioner?: string) {
   if (!trusted(page) || !illness || await detail(page).count()
     || await page.getByRole("heading", { name: "Your Expenses", exact: true }).filter({ visible: true }).count() !== 1) return false;
-  const row = await blueCrossExpenseRow(page, dossier); if (!row) return false;
-  const normalize = (s: string) => s.normalize("NFKC").replace(/\s+/g, " ").trim();
-  if (normalize(row[6]) !== normalize(illness)
-    || !blueCrossSuggestion("benefit", dossier, [{ value: row[1], label: row[1] }])
-    || !blueCrossSuggestion("service", dossier, [{ value: row[3], label: row[3] }])
-    || !blueCrossSuggestion("practitioner", { ...dossier, fields: { ...dossier.fields, practitioner: dossier.fields.practitioner || verifiedPractitioner?.split(/\s+-\s+/)[0] || null } }, [{ value: row[2], label: row[2] }])) return false;
+  if (!(await readBlueCrossExpenseSummary(page, dossier, illness, verifiedPractitioner))?.matches) return false;
   const next = await nextButton(page); if (!next) return false;
   reserve(); await next.click({ noWaitAfter: true, timeout: 7000 });
   await page.getByRole("heading", { name: "Additional Information Required", exact: true }).filter({ visible: true }).waitFor({ state: "visible", timeout: 10_000 }); return true;

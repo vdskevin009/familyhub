@@ -16,6 +16,10 @@ export function blueCrossTextField(id: string) {
   return null;
 }
 const normalize = (s: string) => s.normalize("NFKC").toLowerCase().replace(/\s+/g, " ").trim();
+/** Classify the receipt's known healthcare service independently of portal options. */
+export function supportedHealthcareService(service: string | null) {
+  return /^(?:20 min chiropractic return(?: \(20 minutes\))?|physiotherapy - 30 min follow up visit(?: \(30 minutes\))?|rmt - follow up massage \(60 min\)(?: \(60 minutes\))?)$/.test(normalize(service || ""));
+}
 export function blueCrossSuggestion(kind: string, dossier: ClaimPreparation, options: { value: string; label: string }[] = []) {
   const unique = (match: (s: string) => boolean) => {
     const found = options.filter(o => o.value && match(o.label));
@@ -24,12 +28,14 @@ export function blueCrossSuggestion(kind: string, dossier: ClaimPreparation, opt
   const service = normalize(dossier.fields.service || "");
   if (kind === "patient") return unique(label => memberName(label.split(/\s+-\s+/)[0]) === dossier.fields.patient);
   if (kind === "benefit") return /chiropr/.test(service) ? unique(label => normalize(label) === "chiropractor")
-    : /^physiotherapy\b/.test(service) ? unique(label => normalize(label) === "physiotherapist") : null;
+    : /^physiotherapy\b/.test(service) ? unique(label => normalize(label) === "physiotherapist")
+    : /^rmt - follow up massage \(60 min\)(?: \(60 minutes\))?$/.test(service) ? unique(label => normalize(label) === "massage") : null;
   // This exact original service was confirmed in the portal walkthrough. Other
   // visit modes, initial visits and clinical professions remain unmapped.
   if (kind === "service") {
     if (/^20 min chiropractic return(?: \(20 minutes\))?$/.test(service)) return unique(label => normalize(label) === "chiropractic - in person - subsequent treatment");
     if (/^physiotherapy - 30 min follow up visit(?: \(30 minutes\))?$/.test(service)) return unique(label => normalize(label) === "physiotherapy treatment - 30 minutes");
+    if (/^rmt - follow up massage \(60 min\)(?: \(60 minutes\))?$/.test(service)) return unique(label => normalize(label) === "registered massage 60 minutes and up - subsequent visit");
     return null;
   }
   if (kind === "otherInsurance") return dossier.fields.otherInsurance === "Yes" ? unique(label => normalize(label) === "yes") : null;
@@ -39,7 +45,10 @@ export function blueCrossSuggestion(kind: string, dossier: ClaimPreparation, opt
   }
   if (kind === "natureOfIllness") return null; // An operator answer, never an extracted diagnosis.
   if (kind === "practitioner") {
-    const name = (s: string) => normalize(s).replace(/^dr\.?\s+/, "").replace(/,?\s+(?:dc|d\.c\.|pt)$/, "");
+    const name = (s: string) => {
+      const value = normalize(s).replace(/^dr\.?\s+/, "").replace(/,?\s+(?:dc|d\.c\.|pt)$/, "");
+      return /^rmt - follow up massage \(60 min\)(?: \(60 minutes\))?$/.test(service) ? value.replace(/,?\s+(?:rmt|r\.m\.t\.)$/, "") : value;
+    };
     return dossier.fields.practitioner ? unique(label => name(label.split(/\s+-\s+/)[0]) === name(dossier.fields.practitioner!)) : null;
   }
   const value = dossier.fields[kind as keyof typeof dossier.fields];
