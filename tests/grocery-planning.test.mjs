@@ -5,8 +5,24 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { emptyPlan, validatePlan, compareBaskets, offerQuantity, publicSourceUrl } from "../apps/worker/dist/grocery-planning.js";
 import { GroceryPlanningStore } from "../apps/worker/dist/grocery-planning-store.js";
+import { purchaseLineKey, purchasePriceKey } from "../apps/worker/dist/grocery-purchase-evidence.js";
 import { groceryResearchQuery, groceryResearchPrompt, validatePublicGroceryResult } from "../apps/worker/dist/grocery-research.js";
 const now = "2026-10-10", evidence = { title: "Synthetic verified catalogue", url: "https://example.com/catalogue", date: now, until: "2026-10-17" };
+test("derived comparison proof is additive, revision-checked, bound to real source, and preserved for old clients", async t => {
+  const dir = await mkdtemp(join(tmpdir(), "fh-comparison-proof-")); t.after(() => rm(dir, { recursive: true, force: true })); await mkdir(dir, { recursive: true });
+  const p = planningFixture(), line = { name: "Synthetic format 1kg", product: "Synthetic format 1kg", amount: null, quantity: 1, size: null, unit: null, evidence: "Synthetic unit quote 9 CAD, source paid unknown", uncertain: true }, record = { id: "synthetic-record", status: "saved", duplicateOf: null, receipt: { sourceType: "confirmation", currency: "CAD", items: [line] } };
+  Object.assign(p.retailers[0], { locality: "Synthetic store context", enabled: true }); Object.assign(p.prices[0], { locality: "Synthetic store context", localityConfirmed: true });
+  const e = { id: "synthetic-review", recordId: record.id, lineIndex: 0, lineKey: purchaseLineKey(line), priceId: p.prices[0].id, priceKey: purchasePriceKey(p.prices[0]), purpose: "comparison-only", relation: "equivalent-same-format", quantity: 1, size: 1, unit: "kg", formatLabel: "1 kg", referenceFormatLabel: "1 kg", sourceEstimate: 9, sourceEstimateEvidence: "Synthetic estimate quote", provenance: "Synthetic reviewed equivalence, not SKU", reviewedAt: "2026-10-10T00:00:00.000Z" };
+  const store = new GroceryPlanningStore(dir, async () => ({ records: [record] })); const first = await store.save({ plan: p, expectedRevision: "" }); p.revision = first.revision; p.purchaseComparisons = [e];
+  await assert.rejects(store.save({ plan: p, expectedRevision: first.revision }), /explicitement/);
+  const saved = await store.save({ plan: p, expectedRevision: first.revision, confirmedComparisonEvidence: true }); assert.deepEqual(saved.purchaseComparisons, [e]); const restart = new GroceryPlanningStore(dir, async () => ({ records: [record] })); assert.deepEqual((await restart.read()).purchaseComparisons, [e]);
+  const legacy = structuredClone(saved); delete legacy.purchaseComparisons; const retained = await restart.save({ plan: legacy, expectedRevision: saved.revision }); assert.deepEqual(retained.purchaseComparisons, [e]);
+  const bad = structuredClone(retained); bad.purchaseComparisons.push({ ...e, id: "stale-proof", lineKey: "wrong" }); await assert.rejects(restart.save({ plan: bad, expectedRevision: retained.revision, confirmedComparisonEvidence: true }), /Source modifiée/); assert.equal((await restart.read()).revision, retained.revision);
+  await assert.rejects(restart.save({ plan: retained, expectedRevision: saved.revision }), /changé/); assert.equal(record.receipt.items[0].amount, null);
+  const q = { id: "synthetic-unit-price", recordId: record.id, lineIndex: 0, lineKey: purchaseLineKey(line), quantity: 1, unitPrice: 9, currency: "CAD", basis: "estimated-per-source-unit", sourceEvidence: "Synthetic original unit quote", reviewedAt: "2026-10-10T00:00:00.000Z" };
+  const withQuote = { ...retained, sourceEstimates: [q] }; await assert.rejects(restart.save({ plan: withQuote, expectedRevision: retained.revision }), /explicitement/);
+  const quoted = await restart.save({ plan: withQuote, expectedRevision: retained.revision, confirmedSourceEstimates: true }); assert.deepEqual(quoted.sourceEstimates, [q]); const oldClient = { ...quoted }; delete oldClient.sourceEstimates; delete oldClient.purchaseComparisons; const kept = await restart.save({ plan: oldClient, expectedRevision: quoted.revision }); assert.deepEqual(kept.sourceEstimates, [q]); assert.deepEqual(kept.purchaseComparisons, [e]);
+});
 export function planningFixture() {
   const items = ["oats", "milk"].map(id => ({ id, name: `Synthetic ${id}`, quantity: 1, size: 1, unit: id === "oats" ? "kg" : "l", preference: "Synthetic exact variant", substitutions: false, active: true, origin: "" }));
   const retailers = ["a", "b"].map(id => ({ id, name: `Synthetic store ${id}`, delivery: 1, service: 0, servicePercent: 0, feesTaxPercent: 0, minimum: 0, freeDeliveryAbove: null, areaConfirmed: true, otherFeesReviewed: true, evidence }));

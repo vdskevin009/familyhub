@@ -4,6 +4,12 @@ export type UploadSource = { name: string; type: string; data: string };
 export type SourceBytes = UploadSource & { hash: string; size: number };
 export async function groceryRequest<T>(config: WorkerConfig, path: string, body?: unknown): Promise<T> {
   if (!config.Endpoint.trim() || !config.ApiKey.trim()) throw new Error("Appairez votre PC dans Other → Settings & tools → Local AI pour conserver les achats du foyer.");
+  const evidencePlan = body as { plan?: { purchaseComparisons?: unknown[]; sourceEstimates?: unknown[] } } | undefined;
+  if (body !== undefined && path === "/groceries/planning" && (evidencePlan?.plan?.purchaseComparisons?.length || evidencePlan?.plan?.sourceEstimates?.length)) {
+    const health = await groceryRequest<{ capabilities?: string[] }>(config, "/health");
+    if (evidencePlan?.plan?.purchaseComparisons?.length && !health.capabilities?.includes("grocery-comparison-evidence-v1")) throw new Error("Mettez à jour le worker PC pour conserver les preuves de comparaison. Aucun plan n'a été modifié.");
+    if (evidencePlan?.plan?.sourceEstimates?.length && !health.capabilities?.includes("grocery-source-estimates-v1")) throw new Error("Mettez à jour le worker PC pour conserver les prix unitaires source. Aucun plan n'a été modifié.");
+  }
   let response: Response;
   try { response = await fetch(config.Endpoint.replace(/\/$/, "") + path, { method: body === undefined ? "GET" : "POST",
     headers: { "Content-Type": "application/json", "x-familyhub-key": config.ApiKey.trim() }, body: body === undefined ? undefined : JSON.stringify(body), signal: AbortSignal.timeout(120_000), cache: "no-store", redirect: "error" }); }

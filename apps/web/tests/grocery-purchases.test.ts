@@ -4,6 +4,51 @@ import { emptyReceipt, blankItem, validateReceipt, monthlySummary, type GroceryR
 import { emptyPlan, emptyEvidence, type GroceryPlan } from "../../worker/src/grocery-planning";
 import { purchaseComparison, purchaseStatus, purchaseDate, purchaseAmountLabel, recentPcExpressPurchases, purchaseStoreComparisons, purchaseLocalDate } from "../src/grocery-purchases";
 import { reviewGroceries } from "../src/grocery-api";
+import { purchaseLineKey, purchasePriceKey, validatePurchaseEvidence, purchaseEvidenceReason, validateSourceEstimates, estimatedSourceLine, type PurchaseComparisonEvidence } from "../../worker/src/grocery-purchase-evidence";
+import { purchaseSourceSummary } from "../src/grocery-purchases";
+import { groceryRequest } from "../src/grocery-api";
+
+export function derivedComparisonFixture() {
+  const f = purchaseFixture(), line = f.record.receipt.items[0], p = f.plan.prices[0];
+  Object.assign(line, { name: "Synthetic product 1000g", product: "Synthetic product 1000g", quantity: 1, size: null, unit: null, amount: null, uncertain: true, evidence: "Synthetic source: one 1000g format; unit estimate 8.00 CAD; final paid unknown" });
+  Object.assign(p, { product: "Synthetic equivalent format", size: 1, unit: "kg", price: 4, approved: false, mode: "unknown" });
+  f.plan.items[0].substitutions = false; f.plan.retailers[0].areaConfirmed = false;
+  f.record.receipt.sourceType = "confirmation";
+  const e: PurchaseComparisonEvidence = { id: "synthetic-comparison", recordId: f.record.id, lineIndex: 0, lineKey: purchaseLineKey(line), priceId: p.id, priceKey: purchasePriceKey(p), purpose: "comparison-only", relation: "equivalent-same-format", quantity: 1, size: 1000, unit: "g", formatLabel: "1000 g", referenceFormatLabel: "1 kg", sourceEstimate: 8, sourceEstimateEvidence: "Synthetic estimated unit quote, not paid", provenance: "Explicit synthetic same-format comparison review; brand/SKU unknown", reviewedAt: "2026-10-21T18:00:00.000Z" };
+  f.plan.purchaseComparisons = [e]; return f;
+}
+test("estimated source unit quote multiplies quantity once, independent of catalogue or physical size", () => {
+  const f = derivedComparisonFixture(), line = f.record.receipt.items[0]; Object.assign(line, { amount: 0, quantity: 3, size: 2, unit: "l" }); delete f.plan.purchaseComparisons;
+  const e = { id: "synthetic-unit-quote", recordId: f.record.id, lineIndex: 0, lineKey: purchaseLineKey(line), quantity: 3, unitPrice: 2.25, currency: "CAD", basis: "estimated-per-source-unit" as const, sourceEvidence: "Synthetic source quotes per ordered unit; zero total column is a placeholder", reviewedAt: "2026-10-21T18:00:00.000Z" };
+  f.plan.sourceEstimates = validateSourceEstimates([e]); const original = JSON.stringify(f); assert.equal(estimatedSourceLine(f.plan.sourceEstimates, f.record, 0)?.amount, 6.75); assert.equal(purchaseSourceSummary(f.plan, f.record).subtotal, 6.75); assert.equal(purchaseSourceSummary(f.plan, f.record).difference, -1.75); assert.equal(JSON.stringify(f), original);
+  f.plan.prices[0].price = 99; assert.equal(estimatedSourceLine(f.plan.sourceEstimates, f.record, 0)?.unitPrice, 2.25);
+  for (const patch of [{ basis: "paid" }, { unitPrice: NaN }, { unitPrice: 1.001 }, { quantity: 0 }, { sourceEvidence: "" }]) assert.throws(() => validateSourceEstimates([{ ...e, ...patch }]));
+  assert.throws(() => validateSourceEstimates([e, e])); f.plan.sourceEstimates.push({ ...e, id: "ambiguous" }); assert.equal(estimatedSourceLine(f.plan.sourceEstimates, f.record, 0), null); f.plan.sourceEstimates.pop(); line.quantity = 4; assert.equal(estimatedSourceLine(f.plan.sourceEstimates, f.record, 0), null); line.quantity = 3; f.record.receipt.sourceType = "final-receipt"; assert.equal(estimatedSourceLine(f.plan.sourceEstimates, f.record, 0), null);
+});
+test("unit quote capability is required before a source-estimate write", async () => {
+  const old = globalThis.fetch; let calls = 0; globalThis.fetch = async () => { calls++; return new Response(JSON.stringify({ capabilities: ["grocery-planning-v1"] }), { status: 200 }); };
+  try { await assert.rejects(groceryRequest({ Endpoint: "https://synthetic.invalid", ApiKey: "synthetic" }, "/groceries/planning", { plan: { sourceEstimates: [{}] } }), /prix unitaires source/); assert.equal(calls, 1); } finally { globalThis.fetch = old; }
+});
+test("explicit equivalent format comparison preserves raw uncertainty and buying permissions", () => {
+  const f = derivedComparisonFixture(); f.record.receipt.items.push({ ...blankItem(), name: "Synthetic unknown line" }); const raw = JSON.stringify(f), r = compare(f);
+  assert.equal(r.covered, 1); assert.equal(r.count, 2); assert.equal(r.complete, false); assert.equal(r.normalized, 4); assert.equal(r.sourceEstimate, 8); assert.equal(r.comparisonOnly, true); assert.equal(r.lines[0].calculated, false); assert.equal(r.lines[0].comparisonEvidence?.relation, "equivalent-same-format");
+  assert.equal(JSON.stringify(f), raw); assert.equal(f.plan.items[0].substitutions, false); assert.equal(f.record.receipt.items[0].amount, null); assert.equal(f.record.receipt.items[0].uncertain, true); assert.equal(monthlySummary([f.record], "2026-10").currencies.length, 0);
+});
+test("derived evidence fails closed for stale source, price, format, dates and ambiguity", () => {
+  for (const mutate of [(f: ReturnType<typeof derivedComparisonFixture>) => { f.record.receipt.items[0].evidence += " changed"; }, (f: ReturnType<typeof derivedComparisonFixture>) => { f.plan.prices[0].price += 1; }, (f: ReturnType<typeof derivedComparisonFixture>) => { f.plan.purchaseComparisons![0].size = 500; }, (f: ReturnType<typeof derivedComparisonFixture>) => { f.plan.purchaseComparisons!.push({ ...f.plan.purchaseComparisons![0], id: "another" }); }]) {
+    const f = derivedComparisonFixture(); mutate(f); assert.equal(compare(f).covered, 0); assert.equal(compare(f).normalized, null);
+  }
+  const f = derivedComparisonFixture(); assert.equal(purchaseComparison(f.plan, f.record, "2026-10-30")[0].covered, 0); assert.equal(purchaseComparison(f.plan, f.record, "2026-10-20")[0].covered, 0);
+});
+test("comparison evidence validates shape, rejects SKU identities and mismatched source bindings", () => {
+  const f = derivedComparisonFixture(), e = f.plan.purchaseComparisons![0]; assert.deepEqual(validatePurchaseEvidence([e]), [e]);
+  for (const change of [{ relation: "identical-sku" }, { purpose: "cart-substitution" }, { provenance: "" }, { lineIndex: -1 }, { sourceEstimate: NaN }, { size: 0 }, { quantity: .5 }]) assert.throws(() => validatePurchaseEvidence([{ ...e, ...change }]));
+  assert.throws(() => validatePurchaseEvidence([e, e])); const copy = structuredClone(f.record); copy.receipt.items[0].quantity = 2; assert.ok(purchaseEvidenceReason(e, copy, f.plan));
+});
+test("old worker cannot silently discard comparison evidence", async () => {
+  const old = globalThis.fetch, calls: string[] = []; globalThis.fetch = async input => { calls.push(String(input)); return new Response(JSON.stringify({ capabilities: ["grocery-planning-v1"] }), { status: 200 }); };
+  try { await assert.rejects(groceryRequest({ Endpoint: "https://synthetic.invalid", ApiKey: "synthetic" }, "/groceries/planning", { plan: derivedComparisonFixture().plan }), /preuves de comparaison/); assert.equal(calls.length, 1); assert.match(calls[0], /\/health$/); } finally { globalThis.fetch = old; }
+});
 
 export function purchaseFixture() {
   const plan: GroceryPlan = { ...emptyPlan(), items: [{ id: "eggs", name: "Synthetic eggs", quantity: 1, size: 12, unit: "each", preference: "", substitutions: true, active: true, origin: "manual", countUnit: "œufs" }],

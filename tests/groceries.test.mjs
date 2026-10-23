@@ -136,7 +136,8 @@ test("authenticated real-worker API: origin, pairing, no-store, upload/review/so
   assert.equal((await request("/groceries", undefined, { Origin: "https://untrusted.invalid" })).status, 403);
   const health = await (await request("/health")).json(); assert.ok(health.capabilities.includes("grocery-source-type-v1")); assert.ok(health.capabilities.includes("grocery-receipts-v1"));
   assert.ok(health.capabilities.includes("grocery-weekly-v1")); assert.ok(health.capabilities.includes("grocery-fulfillment-v1"));
-  assert.ok(health.capabilities.includes("grocery-items-300-v1")); assert.equal(health.version, "2.26.15");
+  assert.ok(health.capabilities.includes("grocery-comparison-evidence-v1")); assert.ok(health.capabilities.includes("grocery-source-estimates-v1"));
+  assert.ok(health.capabilities.includes("grocery-items-300-v1")); assert.equal(health.version, "2.26.16");
   const plan = (await (await request("/groceries/planning")).json()); assert.equal(plan.schema, 1);
   plan.area = "Synthetic city";
   plan.items = [{ id: "synthetic-month", name: "Synthetic monthly packs", quantity: 3, size: null, unit: null, preference: "Format unknown", substitutions: false, active: false, origin: "", cadence: "month", every: 1, bucket: "household", measure: "pack", provisional: true, basketQuantity: null }];

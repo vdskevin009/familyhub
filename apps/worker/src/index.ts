@@ -53,7 +53,7 @@ type ResearchWatch = {
 };
 type PersistedState = { watches: ResearchWatch[] };
 
-const version = "2.26.15";
+const version = "2.26.16";
 let claimOperationBusy = false;
 const host = process.env.FAMILYHUB_WORKER_HOST?.trim() || "127.0.0.1";
 const port = Number(process.env.FAMILYHUB_WORKER_PORT || "4713");
@@ -94,7 +94,7 @@ function scanNotifications() {
 }
 
 const groceryStore = new GroceryStore(join(stateDir, "groceries"), extractGrocery);
-const groceryPlanning = new GroceryPlanningStore(join(stateDir, "groceries"));
+const groceryPlanning = new GroceryPlanningStore(join(stateDir, "groceries"), () => groceryStore.list());
 const groceryResearch = new GroceryResearch(join(stateDir, "groceries"));
 const researchDirectory = join(savingsDirectory, "public-research");
 const savingsResearch = new SavingsResearch(join(savingsDirectory, "jobs"), codexSavingsRunner(codex, researchDirectory));
@@ -534,7 +534,7 @@ const server = createServer(async (request, response) => {
       }
     }
     if (request.method === "GET" && parts.length === 1 && parts[0] === "health") {
-      json(response, 200, { status: "ok", codex: "sdk-ready", version, capabilities: ["insurance-reference-v1", "mortgage-evidence-v1", "mortgage-contacts-v1", "grocery-source-type-v1", "grocery-fulfillment-v1", "grocery-receipts-v1", "grocery-planning-v1", "grocery-weekly-v1", groceryExpandedListCapability] }, origin);
+      json(response, 200, { status: "ok", codex: "sdk-ready", version, capabilities: ["insurance-reference-v1", "mortgage-evidence-v1", "mortgage-contacts-v1", "grocery-source-type-v1", "grocery-fulfillment-v1", "grocery-comparison-evidence-v1", "grocery-source-estimates-v1", "grocery-receipts-v1", "grocery-planning-v1", "grocery-weekly-v1", groceryExpandedListCapability] }, origin);
       return;
     }
 

@@ -1,4 +1,5 @@
 import { GroceryError, type GroceryUnit } from "./grocery-model.js";
+import { validatePurchaseEvidence, validateSourceEstimates, type PurchaseComparisonEvidence, type SourceEstimateEvidence } from "./grocery-purchase-evidence.js";
 
 export const groceryItemLimit = 300;
 export const legacyGroceryItemLimit = 60;
@@ -12,7 +13,7 @@ export const modeLabels: Record<PurchaseMode, string> = { unknown: "Mode inconnu
 export type Evidence = { title: string; url: string; date: string; until: string | null };
 export type GroceryRetailer = { id: string; name: string; delivery: number | null; service: number | null; servicePercent: number | null; feesTaxPercent: number | null; minimum: number | null; freeDeliveryAbove: number | null; areaConfirmed: boolean; otherFeesReviewed: boolean; evidence: Evidence; mode?: PurchaseMode; locality?: string; slots?: "unknown" | "yes" | "no"; enabled?: boolean; membershipWeekly?: number | null; membershipStatus?: "unknown" | "none" | "existing" | "proposal"; membershipNote?: string };
 export type GroceryPrice = { id: string; itemId: string; retailerId: string; product: string; price: number; size: number; unit: GroceryUnit; weighed: boolean; taxPercent: number | null; currency: string; available: "unknown" | "yes" | "no"; substitution: boolean; approved: boolean; kind: "public" | "manual" | "receipt"; evidence: Evidence; mode?: PurchaseMode; locality?: string; localityConfirmed?: boolean; depositPerPack?: number | null; usesPerPack?: number | null; matchNote?: string };
-export type GroceryPlan = { schema: 1; revision: string; area: string; areaConfirmed: boolean; currency: string; tipPerOrder: number; items: ShoppingItem[]; retailers: GroceryRetailer[]; prices: GroceryPrice[] };
+export type GroceryPlan = { schema: 1; revision: string; area: string; areaConfirmed: boolean; currency: string; tipPerOrder: number; items: ShoppingItem[]; retailers: GroceryRetailer[]; prices: GroceryPrice[]; purchaseComparisons?: PurchaseComparisonEvidence[]; sourceEstimates?: SourceEstimateEvidence[] };
 export const emptyPlan = (): GroceryPlan => ({ schema: 1, revision: "", area: "", areaConfirmed: false, currency: "CAD", tipPerOrder: 0, items: [], retailers: [], prices: [] });
 export const emptyEvidence = (): Evidence => ({ title: "", url: "", date: "", until: null });
 const units = ["g", "kg", "ml", "l", "each"];
@@ -78,7 +79,7 @@ export function validatePlan(v: unknown): GroceryPlan {
   for (const rows of [items, retailers, prices]) if (new Set(rows.map(i => i.id)).size !== rows.length) throw new GroceryError("Identifiants dupliqués.");
   if (prices.some(o => !items.some(i => i.id === o.itemId) || !retailers.some(r => r.id === o.retailerId))) throw new GroceryError("Le prix référence un produit ou magasin absent.");
   const area = text(p.area, 100), areaConfirmed = flag(p.areaConfirmed); if (areaConfirmed && !area) throw new GroceryError("Confirmez votre ville ou préfixe postal de domicile.");
-  return { schema: 1, revision: text(p.revision, 80), area, areaConfirmed, currency: currency(p.currency), tipPerOrder: money(p.tipPerOrder, false)!, items, retailers, prices };
+  return { schema: 1, revision: text(p.revision, 80), area, areaConfirmed, currency: currency(p.currency), tipPerOrder: money(p.tipPerOrder, false)!, items, retailers, prices, ...(p.purchaseComparisons === undefined ? {} : { purchaseComparisons: validatePurchaseEvidence(p.purchaseComparisons) }), ...(p.sourceEstimates === undefined ? {} : { sourceEstimates: validateSourceEstimates(p.sourceEstimates) }) };
 }
 const cents = (n: number) => Math.round(n * 100);
 export function normalizedSize(size: number, unit: GroceryUnit) { return { size: size * (unit === "g" || unit === "ml" ? .001 : 1), unit: unit === "g" || unit === "kg" ? "kg" : unit === "l" || unit === "ml" ? "l" : "each" }; }

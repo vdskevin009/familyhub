@@ -10,6 +10,10 @@ Implemented and software release verified in PR #242: extend existing shared Sav
 
 ## Purchase-first Courses — FH-GROCERY-010 (#155)
 
+Explicit reviewed comparison-only equivalence may derive a source format without rewriting the receipt or authorizing a basket substitution. Source-bound and price-bound metadata preserves provenance, dates, estimates and unknowns; only matched rows contribute to current partial product subtotals. See the additive `purchaseComparisons` contract in [FH-GROCERY-010](docs/requirements/FH-GROCERY-010.md). This is never SKU identity or a guaranteed order saving.
+
+Estimated source-unit quotes use separate `sourceEstimates` evidence. Show quantity, estimated unit price and quantity-times-unit line estimate even without competitor coverage; never take placeholder line zeroes, use a current catalogue price, multiply by package size twice or infer payment. Surface the difference between a complete estimated row sum and the source total without overwriting either.
+
 Approved compact follow-up implemented locally, Testing: [Achats specification and limits](docs/requirements/FH-GROCERY-010.md), Issue #155. Recent completed PC Express purchases show store, delivery/purchase date, source amount and Walmart/Costco comparisons inside one card; remove the redundant delivered/payment-status line. Original confirmations retain the discreet label « Total estimé » even after delivery. Other, older, draft and unfulfilled records remain under Archives; import/monthly tools remain available under Sources et outils. Product detail restores compact store/format/price rows, dated sources and separate whole-pack outlay; « Calculé » appears only for prorata. Incomplete coverage shows an explicit partial subtotal, never a complete competing basket. Optional dated fulfillment evidence is independent of final payment, validated and capability-gated to prevent older workers dropping it. No new production release, private household import or Mortgage redesign is implied. See [local validation](docs/ACHATS-COMPACT-VALIDATION.md).
 
 ## Autonomous preparation, then operator validation — FH-CLAIM-007 (#110)
