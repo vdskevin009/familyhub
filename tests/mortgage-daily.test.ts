@@ -51,3 +51,22 @@ test("public TD prime never completes another private variable offer's lender an
   s.terms[0].prime!.asOf = "2026-10-23"; s.terms[0].prime!.lender = null;
   assert.ok(buildMortgageDailyReport({ state: s, now, indicators: [td] }).missing.some(m => m.includes("Private lender") && m.includes("identité du prêteur")));
 });
+test("blocked daily action prioritizes the exact missing current-loan fields", () => {
+  const r = buildMortgageDailyReport({ state: state(), now, comparisons: [{ ...comparison(null), uncertainties: ["Frais complets du changement : montant et preuve datée à confirmer.", "Solde restant à confirmer.", "Date du solde à confirmer.", "Amortissement restant à confirmer.", "Versement contractuel actuel à confirmer.", "Pénalité de remboursement : preuve périmée; actualisation nécessaire."] }] });
+  assert.equal(r.nextAction, "Confirmer le solde daté, le versement exact et la pénalité actuelle.");
+  assert.equal(r.signals.find(s => s.kind === "missing-data")!.nextAction, r.nextAction);
+  const feeOnly = buildMortgageDailyReport({ state: state(), now, comparisons: [{ ...comparison(null), uncertainties: ["Frais complets du changement : montant et preuve datée à confirmer."] }] });
+  assert.equal(feeOnly.nextAction, "Confirmer les frais complets du changement.");
+});
+
+test("TD mortgage public HTML contract accepts the actual escaped endpoint declaration", async () => {
+  // Public-page excerpt observed 2026-10-23; the endpoint is declared in ratesAPIInfo, not visible text.
+  const html = String.raw`<p><b><span data-source="tdct-resl" data-view="single" data-product-key="MTGV060C" data-high-ratio="false" data-value="SpecialRate"></span>% (TD Mortgage Prime Rate<br />
+<span data-source="tdct-resl" data-view="single" data-product-key="MTGV060C" data-high-ratio="false" data-value="PostedRate"></span>%)</p>
+<script>var ratesAPIInfo = "{\x22rates\x22:[{\x22source\x22:\x22tdct\u002Dresl\x22,\x22urls\x22:[\x22https:\/\/psservice.td.com\/ca\/en\/carate\/getRates\x22],\x22additionalParams\x22:[{\x22key\x22:\x22ratesType\x22,\x22value\x22:\x22resl\x22}]}]}";</script>`;
+  const urls: string[] = [];
+  const request = (async (url: string | URL | Request) => { urls.push(String(url)); if (String(url).includes("todays-rates")) return new Response('<table><tr><th>TD Prime Rate</th><td>4.45%</td><td>Oct 30, 2025</td></tr></table>'); if (String(url).includes("mortgage-rates")) return new Response(html); return new Response(JSON.stringify({ MTGV060C: { highRatio: ["4.60", "-.45", "5.05", "5.071", "false"], nonHighRatio: ["4.60", ".31", "4.29", "4.311", "false"] } })); }) as typeof fetch;
+  const observations = await collectMortgageTdPrime([], now, request);
+  assert.deepEqual(observations.map(i => [i.status, i.value]), [["observed", 4.45], ["observed", 4.6]]);
+  assert.equal(new Set(urls).size, 3); assert.equal(urls.length, 3);
+});

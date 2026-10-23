@@ -113,12 +113,26 @@ export function buildMortgageDailyReport(input: { state: MortgageState; now?: Da
     add({ id: `public:${product}`, kind: "rate-improvement", title: "Taux public comparable en baisse", changed: `${product} : baisse de ${(a.rate! - b.rate!).toFixed(2)} point depuis le ${previousSnapshot.localDate}.`, potentialGain: null, uncertainties: b.eligibility, nextAction: "Faire confirmer l’admissibilité et les coûts avant de comparer un changement de prêt.", confirmation: "opportunity" }, { product, rate: b.rate, lender: b.lender, filters: current.filters, eligibility: b.eligibility });
   }
   const financialMissing = unique(comparisons.filter(c => c.status === "unavailable" && offers.some(q => q.id === c.offerId)).flatMap(c => c.uncertainties));
-  if (offers.length && eligible.length === 0) add({ id: "missing:decision", kind: "missing-data", title: "Données nécessaires à la décision", changed: "Des devis existent, mais aucun gain net fiable ne peut encore être calculé.", potentialGain: null, uncertainties: financialMissing.length ? financialMissing : ["Validité du devis, échéance, pénalité et frais à confirmer."], nextAction: "Confirmer les données privées indiquées dans le rapport; aucun prêteur n’est contacté automatiquement.", confirmation: "opportunity" }, { missing: financialMissing.length ? financialMissing : ["validity-profile-costs"], offers: offers.map(q => [q.id, q.variant]).sort() });
+  const actionReasons = financialMissing.length ? financialMissing : missing;
+  const actionFields = ([
+    [/solde restant|date du solde|solde daté|profil contractuel privé absent|prêt actuel variable/i, "le solde daté"],
+    [/versement contractuel actuel|prochain versement|profil contractuel privé absent/i, "le versement exact"],
+    [/pénalité|profil contractuel privé absent/i, "la pénalité actuelle"],
+    [/échéance actuelle|contrat renouvelé/i, "l’échéance exacte du prêt"],
+    [/amortissement restant/i, "l’amortissement restant"],
+    [/offre expirée|devis historique|validité du devis/i, "la validité actuelle du devis"],
+    [/frais complets|conditions financières de cette offre absentes/i, "les frais complets du changement"],
+    [/cashback/i, "les conditions et dates du cashback"],
+    [/capitalisation/i, "la capitalisation du prêt et de l’offre"],
+    [/structure de paiement|versement contractuel fixe de l’offre/i, "le versement et la structure de l’offre variable"],
+  ] as [RegExp, string][]).filter(([pattern]) => actionReasons.some(reason => pattern.test(reason))).map(([, label]) => label).slice(0, 3);
+  const blockedAction = actionFields.length ? `Confirmer ${actionFields.length === 1 ? actionFields[0] : actionFields.slice(0, -1).join(", ") + " et " + actionFields.at(-1)}.` : !offers.length ? "Enregistrer une offre personnelle datée et ses conditions." : comparisons.find(c => c.status === "unavailable")?.nextAction ?? "Confirmer le solde daté, le versement exact et la pénalité actuelle.";
+  if (offers.length && eligible.length === 0) add({ id: "missing:decision", kind: "missing-data", title: "Données nécessaires à la décision", changed: "Des devis existent, mais aucun gain net fiable ne peut encore être calculé.", potentialGain: null, uncertainties: financialMissing.length ? financialMissing : ["Validité du devis, échéance, pénalité et frais à confirmer."], nextAction: blockedAction, confirmation: "opportunity" }, { missing: financialMissing.length ? financialMissing : ["validity-profile-costs"], offers: offers.map(q => [q.id, q.variant]).sort() });
   const useful = signals.find(s => s.kind === "net-gain") ?? signals.find(s => s.kind !== "missing-data"), blocked = !best;
   const report: MortgageDailyReport = {
     schema: 1, id: "pending", ...(input.inputFingerprint ? { inputFingerprint: input.inputFingerprint } : {}), localDate: today, generatedAt, status: useful ? "opportunity" : blocked ? "blocked" : "watch",
     summary: useful ? useful.title : blocked ? "Gain net à confirmer avant toute décision" : "Aucune nouvelle opportunité au-dessus des seuils",
-    netGain: best?.netGain ?? null, nextAction: useful?.nextAction ?? (blocked ? "Compléter les données source-datées du prêt et des devis." : "Conserver le suivi quotidien; aucune démarche nécessaire aujourd’hui."),
+    netGain: best?.netGain ?? null, nextAction: useful?.nextAction ?? (blocked ? blockedAction : "Conserver le suivi quotidien; aucune démarche nécessaire aujourd’hui."),
     uncertainties: unique(uncertainties), missing: unique(missing), snapshotId: current?.id ?? null,
     freshness: { rates: !current ? "missing" : current.status === "complete" ? "current" : current.status, lastRateAttemptAt: latest?.collectedAt ?? null, sourceFailures },
     comparisons, indicators, contextSources, signals, facts,
