@@ -17,7 +17,9 @@ import { claimPortalDiagnostic } from "./claim-portal-diagnostic.js";
 import { resolveClaimReceiptCopies } from "./claim-receipt-copies.js";
 import { automaticClaimValues } from "./claim-autofill.js";
 import { isDesjardinsHistory, openDesjardinsClaimEntry } from "./desjardins-claim-entry.js";
-import { desjardinsRadioField, desjardinsRadioSuggestion } from "./desjardins-claim-form.js";
+import { desjardinsRadioField, desjardinsRadioSuggestion, desjardinsPatientOption } from "./desjardins-claim-form.js";
+import { loadMemberAliases } from "./desjardins-collector.js";
+import { readDesjardinsReceipt } from "./desjardins-receipt.js";
 import { advanceDesjardinsIntroduction, advanceDesjardinsRadio } from "./desjardins-claim-progress.js";
 import { reserveClaimUpload, reserveClaimUploadRetry } from "./claim-upload-guard.js";
 import { confirmedInvoicePractitioner } from "./claim-practitioner-answers.js";
@@ -251,6 +253,10 @@ async function inspect(s: Session) {
       if (metadata.length && !metadata.some(o => o.checked)) {
         const options = metadata.filter(o => o.id && o.label).map(o => ({ value: o.id, label: o.label }));
         const field: Field = { key: randomUUID(), label: definition.label, kind: definition.kind, type: "radio", options, suggested: desjardinsRadioSuggestion(definition.kind, s.dossier, options) };
+        if (definition.kind === "patient") {
+          field.suggested = desjardinsPatientOption(s.dossier, options, await loadMemberAliases().catch(() => ({})));
+          if (field.suggested) { field.suggestionSource = "confirmed-choice"; field.suggestionReason = "Exact previously confirmed full beneficiary name, preserving every name token."; }
+        }
         s.fields.set(field.key, { locator: choices.first(), providers: choices, field, signature: JSON.stringify(metadata), initialValue: "" });
       }
     }
@@ -652,6 +658,10 @@ async function prepareStep(id: unknown,
     if (s.receiptIdentity === undefined && s.dossier.insurer === "blue-cross" && /^RMT - Follow Up Massage /i.test(s.dossier.fields.service || "")) {
       const receipt = s.dossier.attachments.length === 1 ? s.dossier.attachments[0] : undefined;
       s.receiptIdentity = receipt ? await readReceiptPractitioner((await loadAttachment(receipt.documentId, receipt.attachmentId)).bytes, s.dossier).catch(() => null) : null;
+    }
+    if (s.receiptIdentity === undefined && s.dossier.insurer === "desjardins") {
+      const receipt = s.dossier.attachments.length === 1 ? s.dossier.attachments[0] : undefined;
+      s.receiptIdentity = receipt ? await readDesjardinsReceipt((await loadAttachment(receipt.documentId, receipt.attachmentId)).bytes, s.dossier).catch(() => null) : null;
     }
     step = await inspectClaimStep(id);
     if (step.status === "fields") s.detailsReadBackVerified = false;

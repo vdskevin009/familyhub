@@ -15,7 +15,10 @@ export async function claimPortalDiagnostic(page: Page) {
     const claim = portal && /^\/AGEA-GBIM\/Reclamation\/[A-Za-z_]+\.aspx$/i.test(url.pathname);
     const history = portal && /^\/AGEA-GBIM\/Rclmtn\/RclmtnTrt\/HistoriqueReclamation_ClaimHistory\.aspx$/i.test(url.pathname);
     const login = !url.username && !url.password && url.origin === "https://id.desjardins.com" && url.pathname === "/login";
-    const kind = profile ? "profile" : dossier ? "dossier" : claim ? "claim" : history ? "history" : login ? "login" : "other";
+    // Static insurer routes may be inspected, never automatically acted on.
+    // IDs and query strings cannot enter this fallback path.
+    const staticPortalPath = portal && /^\/AGEA-GBIM\/(?:[A-Za-z_-]+\/)*[A-Za-z_-]+\.aspx$/.test(url.pathname);
+    const kind = profile ? "profile" : dossier ? "dossier" : claim ? "claim" : history ? "history" : login ? "login" : staticPortalPath ? "portal" : "other";
     if (kind === "other") { tabs.push({ kind }); continue; }
     const passwordVisible = await candidate.locator('input[type="password"]').filter({ visible: true }).count() > 0;
     const challengeVisible = await candidate.locator('input[autocomplete="one-time-code"], iframe[src*="recaptcha"], iframe[src*="hcaptcha"]').filter({ visible: true }).count() > 0;
@@ -52,7 +55,7 @@ export async function claimPortalDiagnostic(page: Page) {
     }));
     const headings = await candidate.locator('h1,h2,h3').allTextContents();
     const main = candidate.locator("main");
-    const visibleInstructions = claim && await main.count() === 1 ? (await main.innerText()).slice(0, 12_000) : undefined;
+    const visibleInstructions = (claim || kind === "portal") && await main.count() === 1 ? (await main.innerText()).slice(0, 12_000) : undefined;
     tabs.push({ ...base, headings: headings.map(text => text.trim().slice(0, 300)), visibleInstructions, controls, links, navigationActions });
   }
   return { tabs, submitAllowed: false };
