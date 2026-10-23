@@ -1,5 +1,20 @@
 # FamilyHub - Canonical Requirements
 
+## Proactive Mortgage decision assistant — FH-MORTGAGE-003..007 (#236)
+
+Testing. The accepted daily decision flow extends FH-MORTGAGE-001/002; their immutable observations, October 20 reference, original quotes and contacts remain authoritative. This supersedes the earlier absence of daily analysis while reusing its existing source automation.
+
+| ID | Durable behavior | Status |
+|---|---|---|
+| FH-MORTGAGE-003 | One private daily report from the existing four-product collection, source-dated official indicators, honest failures and separate forecasts. No duplicate task or invented history. | Testing |
+| FH-MORTGAGE-004 | Compare keeping/switching through current maturity at comparable principal/amortization, including payments, interest, ending balances, financed penalties/fees, cashback/clawback and break-even. Unknown/stale essentials block net decisions. | Testing |
+| FH-MORTGAGE-005 | Dated stability and plus/minus 0.25/0.50 point variable simulations, no probabilities, mechanical prime/bond equivalence or forecast guarantee. | Testing |
+| FH-MORTGAGE-006 | Configurable material alerts with stable evidence identities, silent unchanged reports, uncertainty/next action and generic existing push transport. No lender contact/application/documents/contract changes. | Testing |
+| FH-MORTGAGE-007 | S24-first daily synthesis, interactive four-product observed history with quote markers/ranges/reference, separate market/scenario views and detailed report history. Progressive disclosure and accessible chart data. | Testing |
+
+Financial evidence stays in the authenticated local worker. Source, software tests, deployed PWA, installed worker, actual daily persistence and physical phone acceptance are independent gates. See docs/MORTGAGE-ASSISTANT.md.
+
+
 ## Proactive mobile assistant — FH-PROACTIVE-001..005 (#256)
 
 Accepted implementation, Testing. The reviewed audit direction supersedes the legacy Today projection and claims-only default entry; preserve every existing domain route and financial/manual authority.

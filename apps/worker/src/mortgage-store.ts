@@ -1,3 +1,5 @@
+import { validateDecisionProfile, validateDecisionTerms } from "./mortgage-decision.js";
+import { validateMortgageDailyReport, validateMortgageAlertSettings } from "./mortgage-daily.js";
 import { validateContact } from "./mortgage-contacts.js";
 import { mkdir, readFile, open, rename, unlink, rmdir } from "node:fs/promises";
 import { join } from "node:path";
@@ -31,17 +33,27 @@ export class MortgageStore {
     const state = emptyMortgage();
     const { readdir } = await import("node:fs/promises");
     let files: string[]; try { files = await readdir(this.directory); } catch(e) { if((e as NodeJS.ErrnoException).code === "ENOENT") return state; throw e; }
-    for(const name of files.filter(f=>/^(snapshot|quote|assumptions|contact|offer)-[a-f0-9]{64}\.json$/.test(f)).sort()) {
+    for(const name of files.filter(f=>/^(snapshot|quote|assumptions|contact|offer|profile|terms|report|settings)-[a-f0-9]{64}\.json$/.test(f)).sort()) {
       const record=JSON.parse(await readFile(join(this.directory,name),"utf8"));
-      if(name.startsWith("snapshot-")) state.snapshots.push(validateSnapshot(record)); else if(name.startsWith("quote-")) state.quotes.push(validateQuote(record)); else if(name.startsWith("offer-")) state.offers!.push(validateQuote(record)); else if(name.startsWith("contact-")) state.contacts!.push(validateContact(record)); else state.assumptions.push(validateAssumptions(record));
+      if(name.startsWith("profile-")) state.profiles!.push(validateDecisionProfile(record));
+      else if(name.startsWith("terms-")) state.terms!.push(validateDecisionTerms(record));
+      else if(name.startsWith("report-")) state.reports!.push(validateMortgageDailyReport(record));
+      else if(name.startsWith("settings-")) state.settings!.push(validateMortgageAlertSettings(record));
+      else if(name.startsWith("snapshot-")) state.snapshots.push(validateSnapshot(record)); else if(name.startsWith("quote-")) state.quotes.push(validateQuote(record)); else if(name.startsWith("offer-")) state.offers!.push(validateQuote(record)); else if(name.startsWith("contact-")) state.contacts!.push(validateContact(record)); else state.assumptions.push(validateAssumptions(record));
     }
     try { state.baselineSnapshotId=JSON.parse(await readFile(join(this.directory,"baseline.json"),"utf8")).id; } catch(e) { if((e as NodeJS.ErrnoException).code !== "ENOENT") throw e; }
     return validateState(state);
   }
-  async ingest(kind: "snapshot" | "quote" | "assumptions" | "contact" | "offer", input: unknown) {
-    const record = kind === "snapshot" ? validateSnapshot(input) : kind === "quote" || kind === "offer" ? validateQuote(input) : kind === "contact" ? validateContact(input) : validateAssumptions(input);
+  async ingest(kind: "snapshot" | "quote" | "assumptions" | "contact" | "offer" | "profile" | "terms" | "report" | "settings", input: unknown) {
+    const record = kind === "profile" ? validateDecisionProfile(input) : kind === "terms" ? validateDecisionTerms(input) : kind === "report" ? validateMortgageDailyReport(input) : kind === "settings" ? validateMortgageAlertSettings(input) : kind === "snapshot" ? validateSnapshot(input) : kind === "quote" || kind === "offer" ? validateQuote(input) : kind === "contact" ? validateContact(input) : validateAssumptions(input);
     if(kind === "quote" && ["contactId","cashback","status","supersedes"].some(key=>Object.hasOwn(record,key)) || kind === "quote" && validateQuote(record).variant === "unconfirmed-payment") throw new Error("Use the capability-gated offers route for extended offer evidence; legacy quotes preserved");
     if(kind === "quote" || kind === "offer" || kind === "contact") { const state=await this.read(); if(kind === "quote" && !state.quotes.some(q=>q.id === record.id)) state.quotes.push(validateQuote(record)); if(kind === "offer" && !state.offers!.some(q=>q.id === record.id)) state.offers!.push(validateQuote(record)); if(kind === "contact" && !state.contacts!.some(c=>c.id === record.id)) state.contacts!.push(validateContact(record)); validateState(state); }
+    if(kind === "terms" || kind === "report") {
+      const state=await this.read();
+      if(kind === "terms" && !state.terms!.some(t=>t.id===record.id)) state.terms!.push(validateDecisionTerms(record));
+      if(kind === "report" && !state.reports!.some(r=>r.id===record.id)) state.reports!.push(validateMortgageDailyReport(record));
+      validateState(state);
+    }
     await mkdir(this.directory,{recursive:true});
     const name=join(this.directory,`${kind}-${createHash("sha256").update(record.id).digest("hex")}.json`), content=canonical(record);
     const added=await immutable(name,content);

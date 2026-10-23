@@ -8,6 +8,7 @@ import { join } from "node:path";
 import { Codex } from "@openai/codex-sdk";
 import { SavingsResearch, codexSavingsRunner } from "./savings-research.js";
 import { SavingsLibrary, SavingsConflict } from "./savings-library.js";
+import { MortgageDailyRunner } from "./mortgage-runner.js";
 import { MortgageStore, MortgageConflict } from "./mortgage-store.js";
 import { FinanceLibrary, FinanceConflict } from "./finance-library.js";
 import { NotificationLibrary, NotificationConflict } from "./notification-library.js";
@@ -54,7 +55,7 @@ type ResearchWatch = {
 };
 type PersistedState = { watches: ResearchWatch[] };
 
-const version = "2.27.0";
+const version = "2.27.2";
 let claimOperationBusy = false;
 const host = process.env.FAMILYHUB_WORKER_HOST?.trim() || "127.0.0.1";
 const port = Number(process.env.FAMILYHUB_WORKER_PORT || "4713");
@@ -74,6 +75,7 @@ const codex = new Codex({ codexPathOverride: process.env.FAMILYHUB_CODEX_PATH ||
 const savingsDirectory = join(stateDir, "savings");
 const savingsLibrary = new SavingsLibrary(join(savingsDirectory, "household-contracts.json"));
 const mortgageStore = new MortgageStore(join(stateDir, "mortgage", "evidence"));
+const mortgageDaily = new MortgageDailyRunner(mortgageStore);
 const financeLibrary = new FinanceLibrary(join(stateDir, "finances"));
 const pushConfiguration = new PushConfiguration(stateDir);
 const opportunityActions = new OpportunityActions(join(stateDir, "opportunities", "actions.json"));
@@ -83,7 +85,10 @@ function scanNotifications() {
   if (notificationScan) return notificationScan;
   notificationScan = (async () => {
     const evidence: NotificationEvidence = {}, errors: string[] = [];
-    const [invoices, finance, contracts] = await Promise.allSettled([invoiceSnapshot(), financeLibrary.read(), savingsLibrary.list()]);
+    const [invoices, finance, contracts, mortgage] = await Promise.allSettled([invoiceSnapshot(), financeLibrary.read(), savingsLibrary.list(), mortgageDaily.due() ? mortgageDaily.run() : Promise.resolve(null)]);
+    if (mortgage.status === "fulfilled") {
+      try { const state=await mortgageStore.read(); evidence.mortgage=state.reports??[]; } catch { errors.push("hypothèque"); }
+    } else errors.push("hypothèque");
     if (invoices.status === "fulfilled" && !invoices.value.busy) evidence.invoices = invoices.value;
     else errors.push("factures et remboursements");
     if (finance.status === "fulfilled") evidence.finance = finance.value; else errors.push("finances");
@@ -265,8 +270,22 @@ const server = createServer(async (request, response) => {
   try {
     if (parts[0] === "mortgage") {
       if (parts.length === 1 && request.method === "GET") { json(response, 200, await mortgageStore.read(), origin); return; }
+      if (parts.length === 2 && parts[1] === "run-daily" && request.method === "POST") {
+        await readJson(request, 2000);
+        const report=await mortgageDaily.run();
+        void scanNotifications();
+        json(response,200,{reportId:report?.id??null,stored:Boolean(report)},origin);return;
+      }
+      const extraKinds = { profiles: "profile", terms: "terms", settings: "settings" } as const;
+      if (parts.length===2 && request.method === "POST" && Object.hasOwn(extraKinds,parts[1])) {
+        const result=await mortgageStore.ingest(extraKinds[parts[1] as keyof typeof extraKinds],await readJson(request,32_000));
+        void mortgageDaily.run(new Date(),true).then(()=>scanNotifications()).catch(()=>console.error("Mortgage report unavailable; existing records preserved."));
+        json(response,200,result,origin);return;
+      }
       if (parts.length === 2 && request.method === "POST" && (parts[1] === "snapshots" || parts[1] === "quotes" || parts[1] === "assumptions" || parts[1] === "contacts" || parts[1] === "offers")) {
-        json(response, 200, await mortgageStore.ingest(parts[1] === "snapshots" ? "snapshot" : parts[1] === "quotes" ? "quote" : parts[1] === "contacts" ? "contact" : parts[1] === "offers" ? "offer" : "assumptions", await readJson(request, 32_000)), origin); return;
+        const result = await mortgageStore.ingest(parts[1] === "snapshots" ? "snapshot" : parts[1] === "quotes" ? "quote" : parts[1] === "contacts" ? "contact" : parts[1] === "offers" ? "offer" : "assumptions", await readJson(request, 32_000));
+        if(!result.duplicate) void mortgageDaily.run(new Date(),true).then(()=>scanNotifications()).catch(()=>console.error("Mortgage report unavailable; existing evidence preserved."));
+        json(response,200,result,origin);return;
       }
     }
     if (parts[0] === "opportunity-actions" && parts.length === 1) {
@@ -541,7 +560,7 @@ const server = createServer(async (request, response) => {
       }
     }
     if (request.method === "GET" && parts.length === 1 && parts[0] === "health") {
-      json(response, 200, { status: "ok", codex: "sdk-ready", version, capabilities: ["opportunity-actions-v1", "notification-lifecycle-v1", "insurance-reference-v1", "mortgage-evidence-v1", "mortgage-contacts-v1", "grocery-source-type-v1", "grocery-fulfillment-v1", "grocery-comparison-evidence-v1", "grocery-source-estimates-v1", "grocery-receipts-v1", "grocery-planning-v1", "grocery-weekly-v1", groceryExpandedListCapability] }, origin);
+      json(response, 200, { status: "ok", codex: "sdk-ready", version, capabilities: ["opportunity-actions-v1", "notification-lifecycle-v1", "insurance-reference-v1", "mortgage-evidence-v1", "mortgage-contacts-v1", "mortgage-assistant-v1", "grocery-source-type-v1", "grocery-fulfillment-v1", "grocery-comparison-evidence-v1", "grocery-source-estimates-v1", "grocery-receipts-v1", "grocery-planning-v1", "grocery-weekly-v1", groceryExpandedListCapability] }, origin);
       return;
     }
 

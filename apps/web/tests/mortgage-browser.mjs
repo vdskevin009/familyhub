@@ -37,25 +37,26 @@ try {
       await route.fulfill({status:200,contentType:"application/json",body:JSON.stringify(copy)}).catch(()=>{});
     });
 
-    const mortgage=()=>page.locator('.mortgage-compact'),refresh=()=>mortgage().getByRole('button',{name:'Actualiser',exact:true});
+    const mortgage=()=>page.locator('.mortgage-compact'),refresh=()=>page.locator('.mortgage-assistant > .ma-heading').getByRole('button',{name:'Actualiser',exact:true});
     const navigate=async name=>{
       const nav=page.locator('.bottom-nav:visible, .app-rail nav:visible');
       if(name==='Hypothèque') {
         await nav.getByRole('button',{name:'Plus',exact:true}).click();
         await page.locator('.other-link').filter({hasText:'Hypothèque'}).click();
+        await page.getByRole('tab',{name:'Offres et contacts',exact:true}).click();
       } else await nav.getByRole('button',{name,exact:true}).click();
     };
-    await page.goto(base+'?view=mortgage');await mortgage().locator('.mortgage-offer-row').first().waitFor();assert.equal(await mortgage().locator('.mortgage-offer-row').count(),2);
-    assert.equal(await mortgage().getByRole('heading',{name:'Mortgage',exact:true}).count(),1);
+    await page.goto(base+'?view=mortgage');await page.getByRole('tab',{name:'Offres et contacts',exact:true}).click();await mortgage().locator('.mortgage-offer-row').first().waitFor();assert.equal(await mortgage().locator('.mortgage-offer-row').count(),2);
+    assert.equal(await page.locator('.ma-heading').getByRole('heading',{name:'Mortgage',exact:true}).count(),1);
     await mortgage().getByRole('button',{name:'Remise ↓',exact:true}).click();assert.match(await mortgage().locator('.mortgage-offer-row').first().innerText(),/Fixes/);
     await mortgage().getByRole('button',{name:'Taux ↑',exact:true}).click();assert.match(await mortgage().locator('.mortgage-offer-row').first().innerText(),/ajustables/i);
-    await mortgage().locator('.mortgage-offer-row').first().click();let dialog=page.getByRole('dialog');await dialog.getByText('Comparer cette offre au taux actuel',{exact:true}).click();assert.equal(await dialog.locator('.mortgage-numbers dd').count(),3);
-    await dialog.getByText('Scénario de négociation',{exact:true}).click();await dialog.getByRole('checkbox',{name:'Afficher l’estimation de négociation',exact:true}).check();await dialog.getByRole('region',{name:'Estimation de négociation'}).waitFor();assert.match(await dialog.innerText(),/Écart -0.05 pt/);await dialog.getByRole('button',{name:'‹ Contact',exact:true}).click();dialog=page.getByRole('dialog');await dialog.getByRole('heading',{name:'3 propositions reçues',exact:true}).waitFor();await dialog.getByText('Historique',{exact:true}).click();assert.match(await dialog.innerText(),/version conservée.*Synthetic dated email/);await dialog.getByRole('button',{name:'‹ Contacts',exact:true}).click();assert.equal(await mortgage().getByRole('tab',{name:'Contacts',exact:true}).getAttribute('aria-selected'),'true');await mortgage().getByRole('tab',{name:'Taux',exact:true}).click();
-    await mortgage().locator('.mortgage-offer-row').nth(1).click();dialog=page.getByRole('dialog');await dialog.getByText('Comparer cette offre au taux actuel',{exact:true}).click();assert.match(await dialog.innerText(),/Aucune économie de trésorerie n.est présumée/);assert.equal(await dialog.locator('dd').count(),0);await page.keyboard.press('Escape');
+    await mortgage().locator('.mortgage-offer-row').first().click();let dialog=page.getByRole('dialog');assert.equal(await dialog.getByText('Comparer cette offre au taux actuel',{exact:true}).count(),0);await dialog.getByRole('button',{name:'Comparer jusqu’à mon échéance actuelle',exact:true}).click();await page.getByRole('region',{name:'Simulations financières'}).waitFor();assert.match(await page.getByRole('region',{name:'Simulations financières'}).innerText(),/Gain net indisponible/);await page.getByRole('tab',{name:'Offres et contacts',exact:true}).click();await mortgage().locator('.mortgage-offer-row').first().click();dialog=page.getByRole('dialog');
+    assert.equal(await dialog.getByText('Scénario de négociation',{exact:true}).count(),0);await dialog.getByRole('button',{name:'‹ Contact',exact:true}).click();dialog=page.getByRole('dialog');await dialog.getByRole('heading',{name:'3 propositions reçues',exact:true}).waitFor();await dialog.getByText('Historique',{exact:true}).click();assert.match(await dialog.innerText(),/version conservée.*Synthetic dated email/);await dialog.getByRole('button',{name:'‹ Contacts',exact:true}).click();assert.equal(await mortgage().getByRole('tab',{name:'Contacts',exact:true}).getAttribute('aria-selected'),'true');await mortgage().getByRole('tab',{name:'Taux',exact:true}).click();
+    await mortgage().locator('.mortgage-offer-row').nth(1).click();dialog=page.getByRole('dialog');await dialog.getByRole('button',{name:'Comparer jusqu’à mon échéance actuelle',exact:true}).click();await page.getByRole('region',{name:'Simulations financières'}).waitFor();assert.equal(await page.locator('.ma-simulation-summary').count(),0);await page.getByRole('tab',{name:'Offres et contacts',exact:true}).click();
     await page.screenshot({path:join(output,'compact-rates-'+width+'.png')});
     await mortgage().getByRole('tab',{name:'Marché',exact:true}).click();await mortgage().getByRole('region',{name:'Marché public'}).waitFor();assert.equal(await mortgage().locator('.mortgage-offer-row').count(),0);assert.match(await mortgage().locator('.mortgage-market-rate').innerText(),/3,60/);
     await mortgage().getByRole('button',{name:'7 jours',exact:true}).click();assert.match(await mortgage().locator('.mortgage-delta').innerText(),/Indisponible/);await mortgage().getByRole('button',{name:'Référence',exact:true}).click();assert.match(await mortgage().locator('.mortgage-delta').innerText(),/0.00 pt/);
-    await mortgage().getByText('Versements et intérêts · illustration brute',{exact:true}).click();assert.equal(await mortgage().locator('.mortgage-numbers dd').count(),4);
+    assert.equal(await mortgage().getByText('Versements et intérêts · illustration brute',{exact:true}).count(),0);assert.equal(await mortgage().getByRole('button',{name:'Ouvrir les simulations jusqu’à mon échéance',exact:true}).count(),1);
     await mortgage().getByText('Observations, filtres et tentatives',{exact:true}).click();assert.match(await mortgage().innerText(),/Personal eligibility unverified/);
     await mortgage().getByRole('tab',{name:'Contacts',exact:true}).focus();await page.keyboard.press('Home');assert.equal(await mortgage().getByRole('tab',{name:'Taux',exact:true}).getAttribute('aria-selected'),'true');await page.keyboard.press('ArrowRight');
     await mortgage().locator('.mortgage-contact-card').first().waitFor();assert.equal(await mortgage().locator('.mortgage-contact-card').count(),6);assert.doesNotMatch(await mortgage().locator('.mortgage-contacts').innerText(),/SYNTHETIC_DETAIL_ONLY|SYNTHETIC_PRIVATE_SOURCE/);assert.match(await mortgage().locator('.mortgage-contact-card').nth(3).innerText(),/ancien/);
@@ -68,7 +69,7 @@ try {
     mode='error';await refresh().click();await mortgage().getByText('Historique indisponible. Vérifiez le PC puis actualisez.').waitFor();
     mode='complete';delay=400;await refresh().click();await navigate('Courses');await navigate('Hypothèque');delay=0;await mortgage().locator('.mortgage-offer-row').first().waitFor();
     for(let n=0;n<3;n++){await navigate('Courses');await navigate('Hypothèque');await mortgage().locator('.mortgage-offer-row').first().waitFor();}
-    await page.goBack();await page.getByRole('heading',{name:'Plus',exact:true}).waitFor();await page.goForward();await mortgage().locator('.mortgage-offer-row').first().waitFor();
+    await page.goBack();await page.getByRole('heading',{name:'Plus',exact:true}).waitFor();await page.goForward();await page.getByRole('tab',{name:'Offres et contacts',exact:true}).click();await mortgage().locator('.mortgage-offer-row').first().waitFor();
     assert.equal(await page.evaluate(()=>localStorage.getItem('unrelated-mortgage-test-sentinel')),'preserved');assert.deepEqual(errors,[]);assert.deepEqual(writes,[]);
     report.push({width,compactOffers:true,optionSpecificIncentives:true,fixedPaymentCaution:true,marketSeparate:true,periodGaps:true,contacts:6,historical:true,keyboard:true,partial:true,failed:true,empty:true,interruptedNavigation:true,repeatedNavigation:true,noWrites:true});await context.close();
   }
