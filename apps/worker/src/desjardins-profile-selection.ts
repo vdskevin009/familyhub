@@ -61,8 +61,16 @@ export async function continueDesjardinsProfileSelection(page: Page, preferred: 
   attempted.add(page); // An uncertain selection/submit must never be replayed.
   await diagnose("selection-reserved", labels.length);
   await tiles[chosen].click({ timeout: 5000 });
-  const checked = await tiles[chosen].evaluate(element => (element as HTMLElement & { checked?: boolean }).checked === true
-    || element.getAttribute("aria-checked") === "true" || !!element.querySelector('input[type="radio"]:checked'));
+  // Custom elements can render their selected native radio in a shadow root,
+  // or reflect the checked property asynchronously after the click.
+  let checked = false;
+  for (let read = 0; read < 20 && isDesjardinsProfileSelection(page.url()); read++) {
+    checked = await tiles[chosen].evaluate(element => (element as HTMLElement & { checked?: boolean }).checked === true
+      || element.getAttribute("aria-checked") === "true" || !!element.querySelector('input[type="radio"]:checked')
+      || !!element.shadowRoot?.querySelector('input[type="radio"]:checked'));
+    if (checked) break;
+    await page.waitForTimeout(100);
+  }
   await diagnose(checked ? "selection-confirmed" : "selection-unconfirmed", labels.length, checked);
   if (!checked || !isDesjardinsProfileSelection(page.url())) return false;
   await diagnose("continuation-starting", labels.length, checked);
