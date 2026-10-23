@@ -1,5 +1,6 @@
 /** Entirely intercepted synthetic portal; no real credentials or insurer requests. */
 import assert from 'node:assert/strict';
+import {randomUUID} from 'node:crypto';
 import { createRequire } from 'node:module';
 import { mkdtemp, mkdir, writeFile, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -82,6 +83,26 @@ try {
   if(payload){assert.equal(payload.cookies.length,1);assert.ok(!JSON.stringify(payload).includes('must-not-save'));}
   await c.close();
  }
+ // A post-password selection may be the only active page in a new tab.
+ for(const scenario of ['alternate-profile','alternate-dossier','ambiguous-selections']) {
+  const c=await browser.newContext({serviceWorkers:'block'}),original=await c.newPage();let choices=0;
+  await c.exposeFunction('choiceObserved',()=>choices++);
+  const profilePath='/staticp/gia-externe-gpap-connect/connexion/selection-profil';
+  await c.route('**/*',r=>{
+   const path=new URL(r.request().url()).pathname;
+   const html=path===profilePath?'<dsd-form aria-label="profil-select"><dsd-select-tile onclick="this.checked=true">Synthetic profile</dsd-select-tile><dsd-button data-testid="primary-button" type="submit" onclick="choiceObserved().then(()=>location.href=&quot;'+origin+'/home&quot;)">Continue</dsd-button></dsd-form>':path===dossier?'<div class="panel-dossier"><div class="panel-body-dossier">ACTIF</div><input type="submit" id="grdListeAdherent_ChoisirButton" value="Choisir" onclick="choiceObserved().then(()=>location.href=&quot;/home&quot;)"></div>':path==='/home'?'<a href="'+history+'">Réclamations traitées</a>':path===history?'<table class="tableau-donnees"><tr><td>Synthetic history</td></tr></table>':'<input type="password">';
+   return r.fulfill({contentType:'text/html; charset=utf-8',body:html});
+  });
+  await original.goto('https://id.desjardins.com/login');
+  const alternative=await c.newPage();
+  await writeFile(join(directory,'desjardins','login-control.json'),JSON.stringify({blocked:true,reason:'login-incomplete',attemptedAt:new Date(Date.now()-7200000-(scenario==='alternate-dossier'?1000:0)).toISOString()}));
+  await alternative.goto(scenario==='alternate-dossier'?origin+dossier:'https://id.desjardins.com'+profilePath+'?state='+scenario);
+  if(scenario==='ambiguous-selections'){const another=await c.newPage();await another.goto(origin+dossier);}
+  const result=await loginForClaim(original,'desjardins');
+  assert.equal(result,scenario==='ambiguous-selections'?'login-incomplete':undefined,scenario);
+  assert.equal(choices,scenario==='ambiguous-selections'?0:1,scenario);
+  await c.close();
+ }
  if(process.platform==='win32') {
   const {savePrivate,loadPrivate}=await import('../apps/worker/dist/private-store.js');
   await savePrivate(join(directory,'desjardins','login.dpapi'),{version:1,insurer:'desjardins',username:'synthetic-user',password:'synthetic-password'});
@@ -117,5 +138,5 @@ try {
  assert.equal(await readFile(failureFile,'utf8'),originalFailure,'Blocked checks retain original landing evidence');
  assert.equal(JSON.parse(await readFile(join(directory,'desjardins','login-diagnostic.json'),'utf8')).phase,'retry-blocked');
  await diagnosticContext.close();
- console.log(JSON.stringify({passed:process.platform === 'win32' ? 22 : 21,coverage:'shared dossier continuation, guarded choices, exact authentication evidence, session persistence, single fresh login and reuse',insurerContact:false}));
+ console.log(JSON.stringify({passed:process.platform === 'win32' ? 26 : 24,coverage:'shared dossier continuation, guarded choices, exact authentication evidence, session persistence, single fresh login and reuse',insurerContact:false}));
 } finally {await browser.close();await rm(directory,{recursive:true,force:true});}
