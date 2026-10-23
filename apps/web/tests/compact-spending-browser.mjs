@@ -83,7 +83,7 @@ try {
         assert.equal(await page.getByLabel("Vue", { exact: true }).inputValue(), "month");
         const tabs = await page.locator(".finance-tabs button").evaluateAll(els => els.map(el => el.getBoundingClientRect().top));
         assert(tabs.every(top => Math.abs(top - tabs[0]) < 2), "Tabs remain on one line");
-        assert.equal(await page.locator(".bottom-nav button").count(), 7);
+        assert.equal(await page.locator(".bottom-nav button").count(), 5);
         const categories = page.locator(".finance-expense-charts > section").first();
         assert.equal(await categories.locator(".finance-bars li:visible").count(), 5, "Overview retains five leading categories");
         const more = categories.locator(".finance-more-categories > summary");
@@ -159,7 +159,7 @@ try {
         await page.evaluate(() => scrollTo(0, 0));
         await page.screenshot({ path: join(output, `services-${width}.png`), fullPage: true });
         await page.getByRole("button", { name: "Courses", exact: true }).filter({ visible: true }).click(); await page.getByRole("heading", { name: "Courses", exact: true }).waitFor(); assert.match(page.url(), /view=groceries/);
-        await page.getByRole("button", { name: "Other", exact: true }).filter({ visible: true }).click(); assert.equal(await page.locator(".other-link").filter({ hasText: "Courses" }).count(), 0);
+        await page.getByRole("button", { name: "Plus", exact: true }).filter({ visible: true }).click(); assert.equal(await page.locator(".other-link strong").filter({ hasText: /^Courses$/ }).count(), 0);
         const bell = page.getByRole("button", { name: "Ouvrir les notifications", exact: true }); assert.equal((await bell.innerText()).trim(), ""); await click(bell); assert.match(page.url(), /view=notifications/);
         assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
         assert.deepEqual(writes, []); assert.equal(JSON.stringify(await library.read()), before); assert.deepEqual(errors, []);

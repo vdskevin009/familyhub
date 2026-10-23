@@ -1,5 +1,13 @@
 # FamilyHub architecture
 
+## Authoritative opportunities and mobile entry (#256)
+
+`opportunities.ts` is a deterministic projection over existing domain APIs; `useOpportunities` loads sources independently with stale-result guards. A current matching contract fingerprint and locally reviewed unchanged offer are required before a sourced first-year net estimate can be shown. Overlapping alternatives cannot be added. Retrieval timestamps never become source dates. Shared lifecycle is a separate atomic revision-protected `opportunities/actions.json` via authenticated `GET/POST /opportunity-actions`; no source record is rewritten. Notification decisions remain separate in existing history and do not equate read, resolved or recovered money.
+
+Today is the default route. The five primary destinations preserve explicit legacy routes in Plus; precise record/tab/job/offer links are cleared when leaving their context. Other domain views are loaded on demand to reduce the initial mobile bundle. No browser storage migration or pairing change is needed. The new entry supersedes the historical Claims-default navigation described below; historical decisions remain documented.
+
+The existing Savings scheduler calls the same daily endpoint. `savings-cadence.ts` permits reuse only for a complete current-fingerprint result within its deadline-dependent freshness window, never a failed/future/expired result. The daily client can recover a uniquely saved attempt by GET after response loss, without replaying POST. See [workflow and remaining acceptance gates](PROACTIVE-ASSISTANT.md).
+
 Claim gross reconstruction normalizes the labelled patient share before capturing
 its arithmetic operand; an outstanding balance of zero after payment is not that
 share. The bounded old-conflict repair requires a fresh attachment's unique matching

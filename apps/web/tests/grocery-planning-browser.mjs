@@ -26,7 +26,14 @@ const api = createServer(async (req, res) => {
 });
 const site = createServer(async (req, res) => { const pathname = new URL(req.url, "http://localhost").pathname.replace(/^\/familyhub/, ""), file = resolve(root, "." + (pathname || "/index.html")); if (relative(root, file).startsWith("..")) { res.writeHead(403); res.end(); return; } try { const target = pathname.endsWith("/") ? join(file, "index.html") : file; res.setHeader("Content-Type", ({ ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".svg": "image/svg+xml", ".png": "image/png" })[extname(target)] || "application/octet-stream"); res.end(await readFile(target)); } catch { res.writeHead(404); res.end(); } });
 async function savePlanning(page) { await Promise.all([page.waitForResponse(r => r.url().endsWith("/groceries/planning") && r.request().method() === "POST" && r.status() === 200), page.getByRole("button", { name: "Enregistrer sur le PC" }).click()]); await page.getByText(/Liste et prix conservés sur le PC/).waitFor(); }
-async function openManagement(page) { await page.getByText("Sources et outils", { exact: true }).click(); await page.getByRole("button", { name: "Gérer les besoins et prix", exact: true }).click(); }
+async function openManagement(page) {
+  await page.getByRole("heading", { name: "Courses", exact: true }).waitFor();
+  const management = page.getByRole("navigation", { name: "Gestion Courses", exact: true });
+  if (await management.isVisible()) return;
+  await page.getByText("Sources et outils", { exact: true }).click();
+  await page.getByRole("button", { name: "Gérer les besoins et prix", exact: true }).click();
+  await management.waitFor();
+}
 async function planning(page, base) { await page.goto(base); await openManagement(page); await page.getByRole("button", { name: "Besoins", exact: true }).click(); await page.getByRole("button", { name: "Ajouter un produit", exact: true }).waitFor(); }
 async function assertCompactBasketLayout(dialog, width, height) {
   const layout = await dialog.evaluate(el => {

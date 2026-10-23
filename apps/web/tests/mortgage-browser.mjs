@@ -38,7 +38,13 @@ try {
     });
 
     const mortgage=()=>page.locator('.mortgage-compact'),refresh=()=>mortgage().getByRole('button',{name:'Actualiser',exact:true});
-    const navigate=async name=>{await page.getByRole('button',{name,exact:true}).locator('visible=true').first().click();};
+    const navigate=async name=>{
+      const nav=page.locator('.bottom-nav:visible, .app-rail nav:visible');
+      if(name==='Hypothèque') {
+        await nav.getByRole('button',{name:'Plus',exact:true}).click();
+        await page.locator('.other-link').filter({hasText:'Hypothèque'}).click();
+      } else await nav.getByRole('button',{name,exact:true}).click();
+    };
     await page.goto(base+'?view=mortgage');await mortgage().locator('.mortgage-offer-row').first().waitFor();assert.equal(await mortgage().locator('.mortgage-offer-row').count(),2);
     assert.equal(await mortgage().getByRole('heading',{name:'Mortgage',exact:true}).count(),1);
     await mortgage().getByRole('button',{name:'Remise ↓',exact:true}).click();assert.match(await mortgage().locator('.mortgage-offer-row').first().innerText(),/Fixes/);
@@ -60,9 +66,9 @@ try {
     mode='failed';await refresh().click();await mortgage().getByText('Collecte échouée : Source inaccessible').waitFor();assert.match(await mortgage().locator('.mortgage-market-rate').innerText(),/Indisponible/);
     mode='empty';await refresh().click();await mortgage().getByText(/Aucun historique enregistré/).waitFor();
     mode='error';await refresh().click();await mortgage().getByText('Historique indisponible. Vérifiez le PC puis actualisez.').waitFor();
-    mode='complete';delay=400;await refresh().click();await navigate('Courses');await navigate('Mortgage');delay=0;await mortgage().locator('.mortgage-offer-row').first().waitFor();
-    for(let n=0;n<3;n++){await navigate('Courses');await navigate('Mortgage');await mortgage().locator('.mortgage-offer-row').first().waitFor();}
-    await page.goBack();await page.goForward();await mortgage().locator('.mortgage-offer-row').first().waitFor();
+    mode='complete';delay=400;await refresh().click();await navigate('Courses');await navigate('Hypothèque');delay=0;await mortgage().locator('.mortgage-offer-row').first().waitFor();
+    for(let n=0;n<3;n++){await navigate('Courses');await navigate('Hypothèque');await mortgage().locator('.mortgage-offer-row').first().waitFor();}
+    await page.goBack();await page.getByRole('heading',{name:'Plus',exact:true}).waitFor();await page.goForward();await mortgage().locator('.mortgage-offer-row').first().waitFor();
     assert.equal(await page.evaluate(()=>localStorage.getItem('unrelated-mortgage-test-sentinel')),'preserved');assert.deepEqual(errors,[]);assert.deepEqual(writes,[]);
     report.push({width,compactOffers:true,optionSpecificIncentives:true,fixedPaymentCaution:true,marketSeparate:true,periodGaps:true,contacts:6,historical:true,keyboard:true,partial:true,failed:true,empty:true,interruptedNavigation:true,repeatedNavigation:true,noWrites:true});await context.close();
   }

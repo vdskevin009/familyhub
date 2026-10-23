@@ -209,7 +209,7 @@ export default function InboxView({ hub }: Props) {
 
   async function archive(item: ReimbursementItem) {
     if (!hub.admin.ArchiveEnabled) {
-      setError("Drive archiving is disabled in More → Document archive.");
+      setError("Drive archiving is disabled in Plus → Réglages et outils → Document archive.");
       return;
     }
     if (!connections[item.AccountLabel]?.canArchive) {
@@ -261,7 +261,7 @@ export default function InboxView({ hub }: Props) {
       <Sheet open={connectionsOpen} onClose={() => setConnectionsOpen(false)} title="Mail sources" description="Connection, collection status and optional Drive access.">
       <section className="surface" aria-label="Daily PC collection">
         <div className="section-heading inline"><div><span className="eyebrow">PC agent</span><h2>Daily mailbox analysis</h2></div></div>
-        {!paired ? <p>Pair your PC in More → Local AI to retrieve its daily collection here.</p> : <>
+        {!paired ? <p>Pair your PC in Plus → Réglages et outils → Local AI to retrieve its daily collection here.</p> : <>
           <p>{collection?.busy ? "Collection in progress…" : collection?.lastSuccess ? `Last complete scan: ${new Date(collection.lastSuccess).toLocaleString()}` : "No completed daily scan yet."}</p>
           {collection?.setupRequired && <p>One-time setup required: connect Gmail on the PC using Connect-Gmail.ps1, then install the daily task. Browser Google connections below do not enable background collection.</p>}
           {collection?.accounts.map(account => <p key={account.email}>{account.label}: {account.email} · {collection.progress[account.email]?.error || (collection.progress[account.email]?.window ? "Backlog: will resume next run" : "Connected on PC")}</p>)}

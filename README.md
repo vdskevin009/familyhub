@@ -1,5 +1,9 @@
 # FamilyHub
 
+## Proactive mobile home
+
+Today now uses authoritative paired domain snapshots and exact action links. Five primary destinations retain the existing tools under Plus. Missing/stale evidence stays explicit; potential savings, recoverable balances and confirmed outcomes are distinct. Private snooze/read/treated decisions do not alter any financial record or submit a claim. Existing scheduled research reuses current comparisons according to urgency, and notifications distinguish read from resolved with bounded automatic delivery. See [behavior and acceptance](docs/PROACTIVE-ASSISTANT.md). Public build identity is available at `release.json`.
+
 FamilyHub is a mobile-first PWA that acts as a household assistant: it filters what deserves attention, helps plan meals and groceries, organizes life admin, surfaces money-saving opportunities, and can hand deeper analysis to an optional Codex worker running on your own computer.
 
 [Open FamilyHub](https://vdskevin009.github.io/familyhub/) · [CI](https://github.com/vdskevin009/familyhub/actions) · [Architecture](docs/ARCHITECTURE.md)

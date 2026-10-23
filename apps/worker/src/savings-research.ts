@@ -2,6 +2,7 @@ import { mkdir, readFile, writeFile, rename } from "node:fs/promises";
 import { join } from "node:path";
 import { randomUUID, createHash } from "node:crypto";
 import { Codex } from "@openai/codex-sdk";
+import { reusableResearch } from "./savings-cadence.js";
 import { categories, newContract, publicBaseline, baselineKey, type SavingsContract, type PublicBaseline, type SavingsJob, type SavingsReport, type SavingsOffer } from "./savings-model.js";
 
 function record(value: unknown): Record<string, unknown> {
@@ -157,7 +158,10 @@ export class SavingsResearch {
       const existing = [...this.jobs.values()].find(job => job.contractId === contract.id && job.scheduledDate === date);
       if (existing) return existing; // Includes completed, failed and interrupted attempts; no same-day replay.
       if ([...this.jobs.values()].some(job => job.status === "running" || job.status === "queued")) throw new Error("Research is already active. Wait for the existing comparison.");
-      return this.startValidated({ contractId: contract.id, baselineKey: createHash("sha256").update(baselineKey(contract)).digest("hex"), baseline: publicBaseline(contract) }, date);
+      const fingerprint = createHash("sha256").update(baselineKey(contract)).digest("hex");
+      const reuse = reusableResearch(contract, fingerprint, [...this.jobs.values()]);
+      if (reuse) return { ...reuse, dailyReused: true };
+      return this.startValidated({ contractId: contract.id, baselineKey: fingerprint, baseline: publicBaseline(contract) }, date);
     });
     this.starts = next.catch(() => undefined);
     return next;

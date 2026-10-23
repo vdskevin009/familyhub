@@ -58,7 +58,7 @@ try {
     });
     await page.goto(base + "?view=savings");
     await page.getByRole("heading", { name: "Dépenses récurrentes", exact: true }).waitFor();
-    assert.equal(await page.locator(".bottom-nav button").count(), 7);
+    assert.equal(await page.locator(".bottom-nav button").count(), 5);
     assert.equal(posts.length, 0, "Mount must not start research");
     await page.getByRole("button", { name: "Add contract", exact: true }).click();
     const form = page.getByRole("dialog", { name: "Add contract", exact: true });
@@ -129,8 +129,9 @@ try {
     await results.getByRole("button", { name: "Close Synthetic internet : comparaison", exact: true }).click();
     assert.match(await page.locator(".savings-summary").innerText(), /0 compatible/);
     await details.getByRole("button", { name: "Retour aux services", exact: true }).click();
-    await page.getByRole("button", { name: "Documents", exact: true }).last().click();
-    for (const name of ["Desjardins", "Blue Cross", "Invoices"]) {
+    await page.locator(".bottom-nav:visible, .app-rail nav:visible").getByRole("button", { name: "Plus", exact: true }).click();
+    await page.locator(".other-link").filter({ hasText: "Documents" }).click();
+    for (const name of ["Desjardins", "Blue Cross", "Factures"]) {
       await page.locator(".document-tabs").getByRole("button", { name, exact: true }).click();
       assert.equal(await page.locator(".document-tabs [aria-current=page]").innerText(), name);
       assert.equal(await page.locator("main h1").count(), 1);

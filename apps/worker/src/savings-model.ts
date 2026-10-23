@@ -41,7 +41,7 @@ export type SavingsOffer = {
 export type SavingsReport = { summary: string; missing: string[]; offers: SavingsOffer[] };
 export type SavingsJob = { id: string; contractId: string; baselineKey: string; baseline: PublicBaseline;
   status: "queued" | "running" | "complete" | "failed"; createdAt: string; completedAt?: string;
-  report?: SavingsReport; error?: string; scheduledDate?: string };
+  report?: SavingsReport; error?: string; scheduledDate?: string; dailyReused?: boolean };
 export type SavedSavingsReview = { job: SavingsJob; decisions: Record<string, "review" | "shortlist" | "dismissed"> };
 
 export function newContract(category: SavingsCategory = "telecom", id = ""): SavingsContract {

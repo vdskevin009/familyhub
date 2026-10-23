@@ -34,6 +34,9 @@ jobs:
       - name: Verify PWA installability metadata
         run: npm run test:pwa
 
+      - name: Verify authoritative opportunity calculations
+        run: npm run test:opportunities
+
       - name: Verify Savings calculations and privacy
         run: npm run test:savings
 
@@ -51,6 +54,18 @@ jobs:
 
       - name: Install browser for Savings acceptance
         run: npx playwright install --with-deps chromium
+
+      - name: Verify proactive mobile actions and preserved routes
+        run: npm run test:proactive:browser
+
+      - name: Upload synthetic proactive evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: proactive-browser-evidence
+          path: artifacts/proactive/
+          if-no-files-found: ignore
+          retention-days: 7
 
       - name: Verify neutral theme, navigation and accessible dialogs
         run: node apps/web/tests/theme-browser.mjs

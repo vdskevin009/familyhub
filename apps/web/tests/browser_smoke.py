@@ -1,8 +1,9 @@
 """Synthetic-data PWA checks. Never connects to a real worker or mailbox.
 
 Build first. Run `python apps/web/tests/browser_smoke.py --url http://127.0.0.1:4173/familyhub/`.
-Requires Playwright and Chromium. --inline uses the same built JS/CSS in set_content
-for constrained environments: it does NOT validate navigation/network/service workers.
+Requires Playwright and Chromium. --inline is retained as a compatibility flag:
+it now serves the complete build on temporary loopback HTTP so lazy chunks and
+browser history use the same paths as the deployed application.
 """
 import argparse
 import asyncio
@@ -10,6 +11,9 @@ import json
 import os
 import re
 from pathlib import Path
+from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
+from threading import Thread
+from urllib.parse import urlsplit
 from playwright.async_api import async_playwright, expect
 
 WEB = Path(__file__).resolve().parents[1]
@@ -71,26 +75,27 @@ window.fetch=async(input,options={})=>{
 })();""".replace("FIXTURE_JSON", json.dumps(FIXTURE))
 
 
-def inline_html(view):
-    html = (WEB / "dist/index.html").read_text()
-    js = next((WEB / "dist/assets").glob("index-*.js")).read_text()
-    css = "\n".join(path.read_text() for path in (WEB / "dist/assets").glob("*.css"))
-    html = re.sub(r'<script[^>]*src="[^"]+"[^>]*></script>', '', html)
-    html = re.sub(r'<link[^>]*(?:rel="stylesheet"|rel="modulepreload")[^>]*>', '', html)
-    shim = f'''const location={{href:"https://pwa.example.invalid/familyhub/?view={view}",search:"?view={view}"}};
-const history={{pushState(_a,_b,url){{location.href=String(url);location.search=new URL(url).search;}}}};'''
-    return html.replace('</head>', '<style>' + css + '</style></head>').replace('</body>', '<script>' + INIT.replace("INLINE_MODE", "true") + '</script><script type="module">' + shim + js.replace('</script>', '<\\/script>') + '</script></body>')
+class BuiltAppHandler(SimpleHTTPRequestHandler):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, directory=str(WEB / "dist"), **kwargs)
+
+    def do_GET(self):
+        if not urlsplit(self.path).path.startswith("/familyhub/"):
+            self.send_error(404)
+            return
+        self.path = self.path.removeprefix("/familyhub")
+        super().do_GET()
+
+    def log_message(self, *_args):
+        pass
 
 
 async def load(context, view, args, errors):
     page = await context.new_page()
     page.set_default_timeout(8000)
     page.on('pageerror', lambda error: errors.append(str(error)))
-    if args.inline:
-        await page.set_content(inline_html(view))
-    else:
-        await page.add_init_script(INIT.replace("INLINE_MODE", "false"))
-        await page.goto(args.url + ("?view=" + view if view != "reimbursements" else ""), wait_until="networkidle")
+    await page.add_init_script(INIT.replace("INLINE_MODE", "false"))
+    await page.goto(args.url + "?view=" + view, wait_until="networkidle")
     await page.locator('h1').first.wait_for()
     await page.wait_for_timeout(160)
     return page
@@ -144,8 +149,9 @@ async def run(args):
         await page.get_by_role('searchbox', name='Search claims').fill('Cedar')
         assert await page.locator('.expense-card').count() == 1
         # UI choices survive leaving the view. No data or credential migration.
-        await page.get_by_role('button', name='Invoices', exact=True).click()
-        await page.get_by_role('button', name='Claims', exact=True).last.click()
+        await page.get_by_role('button', name='Plus', exact=True).click()
+        await page.locator('.other-link').filter(has_text='Documents').click()
+        await page.get_by_role('button', name='Remboursements', exact=True).last.click()
         await expect(page.get_by_role('searchbox', name='Search claims')).to_have_value('Cedar')
         await page.get_by_role('button', name='Remove filter: Through 2026-09-24').click()
         await page.get_by_role('button', name='Clear search claims').click()
@@ -215,7 +221,8 @@ async def run(args):
         await page.keyboard.press('Escape')
         await page.screenshot(path=str(output/'reconcile-390.png'), full_page=True)
         # Library filters retain their deliberately different, exclusive Before boundary.
-        await page.get_by_role('button', name='Invoices', exact=True).click()
+        await page.get_by_role('button', name='Plus', exact=True).click()
+        await page.locator('.other-link').filter(has_text='Documents').click()
         await page.get_by_role('button', name='Filters', exact=True).click()
         library_dialog = page.get_by_role('dialog', name='Filter invoices')
         await library_dialog.get_by_label('From', exact=True).fill('2026-09-20')
@@ -224,25 +231,35 @@ async def run(args):
         assert await page.locator('.library-card').count()==5
         await page.get_by_role('button', name='Remove filter: Before 2026-09-25').click()
         assert await page.locator('.library-card').count()==6
-        # Selected navigation is correct for Other child routes.
-        await page.get_by_role('button', name='Other', exact=True).click()
-        await page.get_by_role('button', name=re.compile('^Plan Meals')).click()
-        await expect(page.locator('.bottom-nav button[aria-current="page"]')).to_have_text('Other')
-        if not args.inline:
-            await page.go_back()
-            await expect(page.get_by_role('heading', name='Your household', exact=True)).to_be_visible()
+        # Selected navigation is correct for Plus child routes.
+        await page.get_by_role('button', name='Plus', exact=True).click()
+        await page.get_by_role('button', name=re.compile('^Planifier')).click()
+        await expect(page.locator('.bottom-nav button[aria-current="page"]')).to_have_text('Plus')
+        await page.go_back()
+        await expect(page.get_by_role('heading', name='Plus', exact=True)).to_be_visible()
         await context.close()
         await browser.close()
     assert not errors, errors
-    report = {"mode": "inline-built-bundle" if args.inline else "http-browser", "viewports": metrics,
+    report = {"mode": "temporary-http-built-bundle" if args.inline else "http-browser", "viewports": metrics,
               "page_errors": errors, "interaction_suite": "passed", "real_worker_mutations": 0}
     (output/'report.json').write_text(json.dumps(report,indent=2))
     print(json.dumps(report,indent=2))
 
 if __name__ == '__main__':
     parser=argparse.ArgumentParser()
-    parser.add_argument('--inline', action='store_true')
+    parser.add_argument('--inline', action='store_true', help='Serve the complete built app on temporary loopback HTTP (supports lazy chunks).')
     parser.add_argument('--url', default='http://127.0.0.1:4173/familyhub/')
     parser.add_argument('--chromium', default=os.getenv('CHROMIUM_PATH'))
     parser.add_argument('--output', default='artifacts/pwa-product')
-    asyncio.run(run(parser.parse_args()))
+    args = parser.parse_args()
+    server = None
+    if args.inline:
+        server = ThreadingHTTPServer(("127.0.0.1", 0), BuiltAppHandler)
+        Thread(target=server.serve_forever, daemon=True).start()
+        args.url = f"http://127.0.0.1:{server.server_address[1]}/familyhub/"
+    try:
+        asyncio.run(run(args))
+    finally:
+        if server:
+            server.shutdown()
+            server.server_close()

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Bell, RefreshCw, Settings2 } from "lucide-react";
 import type { HubState } from "../state";
 import type { AppView } from "../types";
+import { notificationActionState, notificationNeedsAttention } from "../../../worker/src/notification-model";
 import type { NotificationSnapshot } from "../../../worker/src/notification-library";
 import { notificationLabels, notificationTargetHref, pushSupported, applicationServerKey } from "../notifications";
 import { fetchNotifications, updateNotifications } from "../worker";
@@ -11,6 +12,7 @@ import "../notifications.css";
 export default function NotificationsView({ hub, onNavigate }: { hub: HubState; onNavigate: (view: AppView) => void }) {
   const [state, setState] = useState<NotificationSnapshot | null>(null), [error, setError] = useState(""), [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false), [settings, setSettings] = useState(false), [unreadOnly, setUnreadOnly] = useState(false);
+  const [filter, setFilter] = useState<"attention" | "snoozed" | "history">("attention");
   const [label, setLabel] = useState("Mon téléphone"), [permission, setPermission] = useState(() => "Notification" in window ? Notification.permission : "default"), [currentEndpoint, setCurrentEndpoint] = useState("");
   const working = useRef(false), focusEvent = useRef(false), epoch = useRef(0);
   const selected = new URLSearchParams(location.search).get("notice");
@@ -27,6 +29,13 @@ export default function NotificationsView({ hub, onNavigate }: { hub: HubState; 
   useEffect(() => {
     if (!pushSupported()) return;
     void navigator.serviceWorker.ready.then(r => r.pushManager.getSubscription()).then(s => setCurrentEndpoint(s?.endpoint ?? "")).catch(() => {});
+  }, []);
+  useEffect(() => {
+    if (!pushSupported() || !navigator.permissions?.query) return;
+    let status: PermissionStatus | undefined, disposed = false;
+    const update = () => { if (!disposed && status) setPermission(Notification.permission); };
+    void navigator.permissions.query({ name: "notifications" }).then(value => { if (disposed) return; status = value; update(); status.addEventListener("change", update); }).catch(() => {});
+    return () => { disposed = true; status?.removeEventListener("change", update); };
   }, []);
   useEffect(() => {
     if (!selected || !state || focusEvent.current) return;
@@ -67,9 +76,10 @@ export default function NotificationsView({ hub, onNavigate }: { hub: HubState; 
     } catch (e) { setError((e as Error).message); }
     finally { working.current = false; setBusy(false); }
   }
-  const events = [...(state?.events ?? [])].reverse().filter(e => !unreadOnly || !e.readAt);
+  const events = [...(state?.events ?? [])].reverse().filter(e => e.id === selected || (!unreadOnly || !e.readAt) && (filter === "history" || filter === "attention" && notificationNeedsAttention(e) || filter === "snoozed" && e.active && notificationActionState(e) === "snoozed"));
+  const attentionCount = (state?.events ?? []).filter(e => notificationNeedsAttention(e)).length;
   return <section className="view-stack notifications-view">
-    <PageHeader title="Notifications" subtitle="Les mises à jour à consulter, avec leurs sources.">
+    <PageHeader title="Notifications" subtitle="Les actions utiles, puis leur historique.">
       <button className="button secondary" disabled={!paired || busy} onClick={() => void refresh()}><RefreshCw size={16} />Actualiser</button>
       <button className="button secondary" onClick={() => setSettings(true)}><Settings2 size={16} />Préférences</button>
     </PageHeader>
@@ -77,21 +87,27 @@ export default function NotificationsView({ hub, onNavigate }: { hub: HubState; 
     {error && <Notice error>{error}</Notice>}{message && <Notice>{message}</Notice>}
     {busy && !state && <p role="status">Chargement de l'historique depuis votre PC…</p>}
     {state && <>
+      <nav className="notification-filters" aria-label="Filtrer les notifications">{([["attention", "À traiter"], ["snoozed", "Reportées"], ["history", "Historique"]] as const).map(([value, name]) => <button type="button" className={filter === value ? "active" : ""} aria-pressed={filter === value} key={value} onClick={() => setFilter(value)}>{name}{value === "attention" && attentionCount > 0 ? ` · ${attentionCount}` : ""}</button>)}</nav>
       <div className="notification-toolbar"><label><input type="checkbox" checked={unreadOnly} onChange={e => setUnreadOnly(e.target.checked)} />Non lues seulement</label><small>{state.scannedAt ? `Vérifié le ${new Date(state.scannedAt).toLocaleString("fr-CA")}` : "Première analyse en attente"}</small></div>
       {state.sourceErrors.length > 0 && <Notice>Sources indisponibles : {state.sourceErrors.join(", ")}. Les anciens résultats sont conservés.</Notice>}
       {selected && !state.events.some(e => e.id === selected) && <Notice>Cette notification n’est plus dans les 500 éléments conservés. Consultez les données actuelles dans leur section.</Notice>}
-      {!events.length && <div className="empty-state"><Bell size={28} /><strong>{unreadOnly ? "Aucune notification non lue" : "Aucune mise à jour disponible"}</strong><p>Les données déjà présentes sont enregistrées sans envoi au premier passage. Le PC vérifie les nouvelles informations toutes les 15 minutes lorsqu’il est allumé.</p></div>}
+      {!events.length && <div className="empty-state"><Bell size={28} /><strong>{unreadOnly ? "Aucune notification non lue" : filter === "attention" ? "Rien de nouveau à traiter" : filter === "snoozed" ? "Aucune notification reportée" : "Aucune mise à jour disponible"}</strong><p>{filter === "attention" ? "Les résultats et les éléments déjà connus restent dans Historique." : "Le PC conserve les preuves et leur état. Une mise à jour ne signifie pas toujours une action à faire."}</p></div>}
       <ol className="notification-list">{events.map(event => <li key={event.id}><article id={`notice-${event.id}`} tabIndex={-1} className={`surface notification-card ${event.readAt ? "" : "unread"}`}>
         <div className="notification-meta"><span>{notificationLabels[event.kind]}</span><time dateTime={event.createdAt}>{new Date(event.createdAt).toLocaleString("fr-CA")}</time></div>
+        <div className="notification-state">{notificationActionState(event) === "snoozed" ? `Reportée au ${new Date(event.decision!.snoozedUntil!).toLocaleDateString("fr-CA")}` : notificationActionState(event) === "resolved" ? "Rappel traité" : notificationActionState(event) === "dismissed" ? "Rappel écarté" : !event.active ? "État terminé" : event.actionable === false ? "Information" : "À consulter"}</div>
         <h2>{event.title}</h2><p>{event.detail}</p>
         <small>{event.baseline ? "Déjà présent lors du premier passage · aucun Push envoyé" : "Nouvel élément observé"}{!event.active && " · cet état n’est plus observé dans les sources actuelles"}{event.sourceDate && ` · date source : ${event.sourceDate.slice(0, 10)}`}</small>
-        <div className="notification-actions"><a className="button secondary" href={notificationTargetHref(event.target)}>Ouvrir le dossier</a>{!event.readAt && <button className="text-action" disabled={busy} onClick={() => void mutate({ action: "read", id: event.id })}>Marquer comme lu</button>}</div>
+        <div className="notification-actions"><a className="button secondary" href={notificationTargetHref(event.target)}>Ouvrir le dossier</a>{!event.readAt && <button className="text-action" disabled={busy} onClick={() => void mutate({ action: "read", id: event.id })}>Marquer comme lu</button>}
+          {state.lifecycleSupported && event.active && notificationActionState(event) === "open" && <><button className="text-action" disabled={busy} onClick={() => void mutate({ action: "snooze", id: event.id, snoozedUntil: new Date(Date.now() + 7 * 86_400_000).toISOString() }, "Rappel reporté de 7 jours. Le dossier reste inchangé.")}>Reporter 7 jours</button>{event.actionable !== false && <button className="text-action" disabled={busy} onClick={() => void mutate({ action: "resolve", id: event.id }, "Rappel traité. Le dossier et les montants restent inchangés.")}>Marquer traité</button>}<button className="text-action" disabled={busy} onClick={() => void mutate({ action: "dismiss", id: event.id }, "Rappel écarté pour ces preuves. Le dossier reste inchangé.")}>Écarter</button></>}
+          {state.lifecycleSupported && notificationActionState(event) !== "open" && <button className="text-action" disabled={busy} onClick={() => void mutate({ action: "restore", id: event.id }, "Rappel rétabli, sans nouvel envoi Push.")}>Rétablir le rappel</button>}
+        </div>
       </article></li>)}</ol>
     </>}
     <Sheet open={settings} onClose={() => setSettings(false)} title="Préférences de notification">
       <p>Les préférences d’envoi et l’historique sont partagés avec vos appareils associés. Aucun courriel n’est envoyé. L’écran verrouillé affiche uniquement « FamilyHub — Une mise à jour est disponible ».</p>
       {error && <Notice error>{error}</Notice>}{message && <Notice>{message}</Notice>}
-      {state && <fieldset disabled={busy}><legend>Envoyer ces mises à jour aux appareils inscrits</legend>{Object.entries(notificationLabels).map(([key, text]) => <label className="notification-choice" key={key}><input type="checkbox" checked={state.preferences[key as keyof typeof state.preferences]} onChange={e => void mutate({ action: "preferences", preferences: { ...state.preferences, [key]: e.target.checked } })} />{text}</label>)}</fieldset>}
+      {state && <fieldset disabled={busy}><legend>Envoyer ces mises à jour aux appareils inscrits</legend>{Object.entries(notificationLabels).filter(([key]) => !state.deliveryPolicy || !["reimbursement", "weekly"].includes(key)).map(([key, text]) => <label className="notification-choice" key={key}><input type="checkbox" checked={state.preferences[key as keyof typeof state.preferences]} onChange={e => void mutate({ action: "preferences", preferences: { ...state.preferences, [key]: e.target.checked } })} />{text}</label>)}</fieldset>}
+      {state?.deliveryPolicy && <Notice>Au maximum un avis automatique regroupé par jour, entre 8 h et 21 h (Vancouver), pour les actions étayées et encore actuelles. Paiements enregistrés et bilans restent dans l’app. Un rappel lu ne se répète pas au même jalon ; une échéance plus proche peut rappeler l’action. Les rappels traités ou écartés attendent de nouvelles preuves. Un report ne modifie aucun dossier.</Notice>}
       <h3>Ce téléphone ou navigateur</h3>
       {!pushSupported() ? <Notice>Web Push n’est pas disponible ici. Sur iPhone/iPad compatible, ajoutez FamilyHub à l’écran d’accueil puis ouvrez l’application installée.</Notice> : <>
         <p>Autorisation : {permission === "granted" ? "accordée" : permission === "denied" ? "bloquée dans les réglages du navigateur" : "à demander"}. Le PC doit rester en ligne pour envoyer les nouvelles alertes.</p>

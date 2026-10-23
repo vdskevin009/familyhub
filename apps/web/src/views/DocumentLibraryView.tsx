@@ -217,7 +217,7 @@ export default function DocumentLibraryView({ hub, kind }: Props) {
     </div>}
     {bulkMessage && <Notice onDismiss={() => setBulkMessage("")}>{bulkMessage}</Notice>}
     {reviewMessage && <Notice onDismiss={() => setReviewMessage("")}>{reviewMessage}</Notice>}
-    {!paired && <p className="library-notice">Showing documents saved on this device. Connect the FamilyHub worker in Other → Settings & tools for the latest index.</p>}
+    {!paired && <p className="library-notice">Showing documents saved on this device. Connect the FamilyHub worker in Plus → Réglages et outils for the latest index.</p>}
     {error && <Notice error onDismiss={() => setError("")}>{error}</Notice>}
     {busy && !items.length && <SkeletonList label="Loading documents" />}
     <div className="library-list">
