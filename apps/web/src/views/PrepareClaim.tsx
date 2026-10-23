@@ -8,6 +8,14 @@ export default function PrepareClaim({ expenseId, initialInsurer, config, onClos
   const [insurer, setInsurer] = useState<"" | "blue-cross" | "desjardins">(initialInsurer || "");
   const [dossier, setDossier] = useState<ClaimPreparation>();
   const [sessionId, setSessionId] = useState("");
+  type WindowState = { sessionId: string | null; insurer: string | null; canClose: boolean; busy: boolean; expired: boolean };
+  const [windowState, setWindowState] = useState<WindowState>();
+  const [restartAvailable, setRestartAvailable] = useState(false);
+  async function findWindow() {
+    const found = await claimAction<WindowState>(config, "window", {}); setWindowState(found);
+    if (!found.sessionId) setMessage(found.busy ? "Preparation is still opening. Wait, then check again." : "No preparation window is controlled by this PC worker. An active collection must finish; an interrupted lock needs local recovery.");
+    return found;
+  }
   const [step, setStep] = useState<ClaimStep>();
   const [verification, setVerification] = useState<ClaimVerification>();
   const [values, setValues] = useState<Record<string, string>>({});
@@ -19,6 +27,13 @@ export default function PrepareClaim({ expenseId, initialInsurer, config, onClos
   const [ownerAmount, setOwnerAmount] = useState(""), [ownerReason, setOwnerReason] = useState(""), [ownerReviewed, setOwnerReviewed] = useState(false);
   const [busy, setBusy] = useState(true), [error, setError] = useState(""), [message, setMessage] = useState("");
   const [uploadWatch, setUploadWatch] = useState(0);
+  useEffect(() => {
+    if (!error) return;
+    let active = true;
+    void claimAction<WindowState>(config, "window", {}).then(found => { if (active) setWindowState(found); }).catch(() => {});
+    return () => { active = false; };
+  }, [error, config.Endpoint, config.ApiKey]);
+
   const actionEpoch = useRef(0);
   const opening = useRef<{ key: string; promise: Promise<PreparedClaim> } | undefined>(undefined);
   const activeSession = useRef(""); activeSession.current = sessionId;
@@ -26,6 +41,7 @@ export default function PrepareClaim({ expenseId, initialInsurer, config, onClos
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   function accept(result: PreparedClaim) {
     actionEpoch.current++;
+    setRestartAvailable(false); setWindowState(undefined);
     setDossier(result.preparation); setSessionId(result.sessionId || ""); setStep(result.step); setVerification(result.verification);
     setValues({}); setAttachment(""); setReviewed(false); setValidated(false); setMessage(result.warning || "");
     setIllness((allInvoices ? result.step.confirmedIllness?.defaultValue : result.step.confirmedIllness?.value) || ""); setIllnessConfirmed(false);
@@ -99,6 +115,19 @@ export default function PrepareClaim({ expenseId, initialInsurer, config, onClos
       {!insurer && <Notice>The next insurer is unknown. Choose where to prepare this invoice before opening its portal.</Notice>}
       {busy && <p role="status">Preparing and reading back the insurer form…</p>}
       {error && <Notice error>{error}</Notice>}{message && <Notice>{message}</Notice>}
+      {(!!sessionId || !!windowState?.sessionId) && <div>
+        <p>Close the {windowState?.insurer === "desjardins" ? "Desjardins" : windowState?.insurer === "blue-cross" ? "Blue Cross" : "insurer"} preparation window to start again. An uploaded receipt may remain with the insurer; closing does not submit or cancel a claim.</p>
+        <button type="button" className="button secondary" disabled={busy || windowState?.busy === true} onClick={() => void run(async () => {
+          await claimAction(config, "close", { sessionId: windowState?.sessionId || sessionId });
+          setSessionId(""); activeSession.current = ""; setStep(undefined); setVerification(undefined); setWindowState(undefined); opening.current = undefined;
+          setRestartAvailable(true); setMessage("Preparation window closed and its lock released. Existing receipt-upload safeguards are preserved.");
+        })}>Close preparation window</button>
+      </div>}
+      {error && <button type="button" className="text-action" disabled={busy} onClick={() => void run(async () => { await findWindow(); })}>Check active preparation window</button>}
+      {error && windowState && !windowState.sessionId && <p>{windowState.busy ? "The PC is still opening a preparation. Check again when it finishes." : "There is no preparation window this worker can close. Let an active collection finish; an interrupted lock requires local recovery."}</p>}
+      {restartAvailable && <button type="button" className="button" disabled={busy || !insurer} onClick={() => void run(async () => {
+        setRestartAvailable(false); accept(await claimAction<PreparedClaim>(config, "prepare", { expenseId, insurer, prepareAuthorized: true }));
+      })}>Start preparation again</button>}
       {dossier && <>
         {claimBlockingReasons(dossier).map(reason => <Notice key={reason} error>{reason}</Notice>)}
         {claimMissingAmountReason(dossier) && <Notice warning>{claimMissingAmountReason(dossier)}</Notice>}
@@ -202,7 +231,7 @@ export default function PrepareClaim({ expenseId, initialInsurer, config, onClos
             {validated && <Notice>Prepared values rechecked. {insurer === "blue-cross" ? "Use Read and prepare current step to continue the verified preparation." : "You may choose Next in the insurer window, then prepare its next step here."} Final attestation and submission remain yours.</Notice>}
           </>}
           <p className="privacy-note">Preparation may attach the original receipt to the insurer record. Known Blue Cross preparation steps may advance after verified read-back. Final consent and submission remain yours. Closing this panel keeps the PC window open for up to 30 minutes.</p>
-          <button type="button" className="text-action" disabled={busy} onClick={() => void run(async () => { await claimAction(config, "close", { sessionId }); setSessionId(""); setStep(undefined); setVerification(undefined); setMessage("Preparation window closed. No claim was submitted by FamilyHub."); })}>Close preparation window</button>
+
         </>}
       </>}
     </div>

@@ -17,6 +17,17 @@ Estimated source-unit quotes use separate `sourceEstimates` evidence. Show quant
 Approved compact follow-up implemented locally, Testing: [Achats specification and limits](docs/requirements/FH-GROCERY-010.md), Issue #155. Recent completed PC Express purchases show store, delivery/purchase date, source amount and Walmart/Costco comparisons inside one card; remove the redundant delivered/payment-status line. Original confirmations retain the discreet label « Total estimé » even after delivery. Other, older, draft and unfulfilled records remain under Archives; import/monthly tools remain available under Sources et outils. Product detail restores compact store/format/price rows, dated sources and separate whole-pack outlay; « Calculé » appears only for prorata. Incomplete coverage shows an explicit partial subtotal, never a complete competing basket. Optional dated fulfillment evidence is independent of final payment, validated and capability-gated to prevent older workers dropping it. No new production release, private household import or Mortgage redesign is implied. See [local validation](docs/ACHATS-COMPACT-VALIDATION.md).
 
 ## Autonomous preparation, then operator validation — FH-CLAIM-007 (#110)
+
+Close/restart recovery (2026-10-23), Testing (#252): paired window discovery
+finds the current worker-owned preparation after a panel reload or failed opening.
+Close remains independent of form expiry and manually closed tabs. Keep ownership
+until browser closure and lock release complete; retry cleanup without removing a
+replacement owner's lock. Expiry waits for active preparation to finish. The UI
+provides Close outside the successful-dossier panel and offers an explicit Start
+preparation again only after successful closure. A stale token, active operation,
+external collector or unknown lock cannot be terminated by this action. Closing
+preserves upload reservations and never submits or cancels an insurer claim.
+
 Massage preparation and split-payer receipts (2026-10-23), Testing (#247–#250):
 recognize the exact supported 60-minute RMT follow-up service at category, benefit,
 treatment and summary stages. Extract practitioner identity from the matching

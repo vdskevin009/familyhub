@@ -30,7 +30,7 @@ type Target = { locator: Locator; field: Field; signature: string; initialValue:
 type ApprovedSnapshot = { revision: string; url: string; entries: { target: Target; approved: ApprovedField; filled: boolean }[]; attachment?: { name: string; selected: boolean; blocked?: boolean } };
 type Session = { id: string; browser: Browser; page: Page; dossier: ClaimPreparation; createdAt: number;
   receiptIdentity?: ReceiptPractitioner | null;
-  fields: Map<string, Target>; attemptedAttachments: Set<string>; busy: boolean; revision: string; inspectedUrl: string; approved?: ApprovedSnapshot;
+  fields: Map<string, Target>; attemptedAttachments: Set<string>; busy: boolean; preparing?: boolean; closing?: boolean; revision: string; inspectedUrl: string; approved?: ApprovedSnapshot;
   authenticate?: typeof loginForClaim; autonomous?: boolean; loginRefreshAttempted?: boolean; authPersistenceAttempted?: boolean; authReason?: LoginReason; release?: () => Promise<void>; claimEntryAttempted?: boolean; claimKindAttempted?: boolean; claimCauseAttempted?: boolean; detailsNextAttempted?: boolean; detailsReadBackVerified?: boolean; detailsNextVerified?: boolean; summaryNextAttempted?: boolean; receiptRetryUsed?: boolean; authorizedRetryHash?: string; uploadEntryAttempted?: boolean };
 let session: Session | undefined;
 let opening = false;
@@ -55,14 +55,15 @@ async function openBrowser(dossier: ClaimPreparation, historyReviewed: unknown, 
   if (dossier.blocked) throw new Error(dossier.coordination?.message || "Resolve the recorded or possible duplicate and source conflicts before preparing a claim.");
   if (!autonomous && historyReviewed !== true) throw new Error("Review the insurer's current history for this invoice before opening preparation.");
   if (!autonomous && dossier.reviewableWarnings.length && warningsReviewed !== true) throw new Error("Review the original PDF and confirm the shown gross expense and other-insurer payment before preparing this claim.");
-  if (session && !session.page.isClosed()) {
+  if (session) {
+    if (session.page.isClosed() || Date.now() - session.createdAt >= 30 * 60_000) throw new Error("The previous preparation window must be closed before starting again.");
     if (session.dossier.expenseId === dossier.expenseId && session.dossier.insurer === dossier.insurer
       && JSON.stringify(session.dossier.fields) === JSON.stringify(dossier.fields)) return { sessionId: session.id, status: "resumed", step: await inspectClaimStep(session.id), submitAllowed: false };
     throw new Error("A claim preparation window is already open. Close it before preparing another invoice.");
   }
   const unlock = await acquirePortalLock(dossier.insurer === "blue-cross" ? "bluecross" : "desjardins");
   let released: Promise<void> | undefined;
-  const release = () => released ||= unlock();
+  const release = () => released ||= unlock().catch(error => { released = undefined; throw error; });
   let browser: Browser;
   try { browser = await launch(); } catch { await release(); throw new Error("The insurer preparation browser could not open."); }
   try {
@@ -95,9 +96,14 @@ async function openBrowser(dossier: ClaimPreparation, historyReviewed: unknown, 
       if (authenticated.length === 1) page = authenticated[0];
     }
     session = { id: randomUUID(), browser, page, dossier, createdAt: Date.now(), fields: new Map(), attemptedAttachments: new Set(), busy: false, revision: "", inspectedUrl: "", authReason, release, autonomous, authenticate };
-    const timer = setTimeout(() => { if (session?.browser === browser) { session = undefined; void browser.close(); } }, 30 * 60_000);
-    timer.unref();
-    browser.on("disconnected", () => { clearTimeout(timer); if (session?.browser === browser) session = undefined; void release().catch(() => {}); });
+    let timer: NodeJS.Timeout;
+    const expire = () => {
+      if (session?.browser !== browser) return;
+      if (session.busy || session.preparing || opening) { timer = setTimeout(expire, 5000); timer.unref(); return; }
+      void closeClaimBrowser(session.id).catch(() => { /* Retain ownership for explicit Close. */ });
+    };
+    timer = setTimeout(expire, 30 * 60_000); timer.unref();
+    browser.on("disconnected", () => { clearTimeout(timer); void release().then(() => { if (session?.browser === browser) session = undefined; }).catch(() => {}); });
     const step = await inspectClaimStep(session.id);
     return { sessionId: session.id, status: "opened", step, submitAllowed: false };
   } catch { await browser.close(); await release(); throw new Error("Preparation could not open safely. Check the insurer window or retry status; credentials are never returned."); }
@@ -570,17 +576,37 @@ export async function forgetClaimServiceChoices(id: unknown) {
   await forgetServiceChoices(s.dossier);
   return inspectClaimStep(id);
 }
+/** Paired discovery only exposes the worker-owned preparation, never a collector. */
+export function claimWindowState() {
+  return { sessionId: session?.id || null, insurer: session?.dossier.insurer || null,
+    canClose: !!session && !opening && !session.busy && !session.preparing && !session.closing,
+    busy: opening || !!session?.busy || !!session?.preparing || !!session?.closing,
+    expired: !!session && (session.page.isClosed() || Date.now() - session.createdAt >= 30 * 60_000) };
+}
 export async function closeClaimBrowser(id: unknown) {
-  const s = current(id);
-  if (s.busy) throw new Error("Wait for the current preparation action to finish.");
-  session = undefined;
-  await s.browser.close();
-  await s.release?.();
-  return { status: "closed", submitAllowed: false };
+  const s = session;
+  if (!s || !id || id !== s.id) throw new Error("This preparation window is no longer current. Check the active window before closing it.");
+  if (opening || s.busy || s.preparing || s.closing) throw new Error("Wait for the current preparation action to finish before closing its window.");
+  s.closing = true;
+  try {
+    await s.browser.close();
+    await s.release?.();
+    if (session === s) session = undefined;
+    return { status: "closed", submitAllowed: false };
+  } finally { s.closing = false; }
 }
 
-/** Bounded preparation with observed guarded intermediate Next; never consent or Submit. */
 export async function prepareCurrentClaimStep(id: unknown,
+  loadAttachment: (id: string, attachmentId: string) => Promise<{ bytes: Buffer; name: string }>,
+  assertFresh: () => void = () => {}) {
+  const s = current(id);
+  if (s.preparing || s.closing) throw new Error("Wait for the current preparation action to finish.");
+  s.preparing = true;
+  try { return await prepareStep(id, loadAttachment, assertFresh); }
+  finally { s.preparing = false; }
+}
+/** Bounded preparation with observed guarded intermediate Next; never consent or Submit. */
+async function prepareStep(id: unknown,
   loadAttachment: (id: string, attachmentId: string) => Promise<{ bytes: Buffer; name: string }>,
   assertFresh: () => void = () => {}) {
   const s = current(id);

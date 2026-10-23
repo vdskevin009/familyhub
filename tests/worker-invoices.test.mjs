@@ -30,6 +30,9 @@ test('invoice endpoints require pairing/origin checks and report unconfigured Gm
       assert.equal((await call(`/claim-preparation/${action}`, { method: 'POST', headers: { ...headers, Origin: 'https://evil.example' }, body: '{}' })).status, 403);
       assert.equal((await call(`/claim-preparation/${action}`, { method: 'POST', headers, body: '{}' })).status, 400);
     }
+    assert.equal((await call('/claim-preparation/window',{method:'POST',body:'{}'})).status,401);
+    assert.equal((await call('/claim-preparation/window',{method:'POST',headers:{...headers,Origin:'https://evil.example'},body:'{}'})).status,403);
+    const window=await call('/claim-preparation/window',{method:'POST',headers,body:'{}'});assert.equal(window.status,200);assert.equal((await window.json()).sessionId,null);
     for (const action of ['next', 'submit', 'attest']) {
       const refused = await call(`/claim-preparation/${action}`, { method: 'POST', headers, body: '{}' });
       assert.equal(refused.status, 400);

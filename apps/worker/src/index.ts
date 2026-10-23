@@ -23,7 +23,7 @@ import { GroceryResearch } from "./grocery-research.js";
 import { importConnectorMessage, claimPreparation, confirmOwnerAdjudication } from "./invoices.js";
 import { parseLoginRecoveryRequest } from "./portal-login-recovery.js";
 import { portalReconnectStatus, startPortalReconnect } from "./portal-reconnect.js";
-import { openClaimBrowser, inspectClaimStep, fillClaimStep, claimSessionExpense, closeClaimBrowser, forgetClaimServiceChoices, suggestClaimServiceChoices, verifyClaimStep, prepareCurrentClaimStep, retryCurrentClaimReceipt } from "./claim-browser.js";
+import { claimWindowState, openClaimBrowser, inspectClaimStep, fillClaimStep, claimSessionExpense, closeClaimBrowser, forgetClaimServiceChoices, suggestClaimServiceChoices, verifyClaimStep, prepareCurrentClaimStep, retryCurrentClaimReceipt } from "./claim-browser.js";
 import { blueCrossClaimCauseAnswer, confirmBlueCrossClaimCause } from "./bluecross-claim-cause.js";
 import { confirmedInvoicePractitioner, confirmInvoicePractitioner } from "./claim-practitioner-answers.js";
 import { confirmedInvoiceIllness, confirmInvoiceIllness } from "./claim-invoice-answers.js";
@@ -53,7 +53,7 @@ type ResearchWatch = {
 };
 type PersistedState = { watches: ResearchWatch[] };
 
-const version = "2.26.17";
+const version = "2.26.18";
 let claimOperationBusy = false;
 const host = process.env.FAMILYHUB_WORKER_HOST?.trim() || "127.0.0.1";
 const port = Number(process.env.FAMILYHUB_WORKER_PORT || "4713");
@@ -390,6 +390,7 @@ const server = createServer(async (request, response) => {
         if (fresh.blocked || JSON.stringify(fresh.fields) !== JSON.stringify(previous.fields)) throw new Error("The invoice evidence changed. Prepare the claim again before verification.");
         json(response, 200, await verifyClaimStep(body.sessionId), origin); return;
       }
+      if (parts[1] === "window") { json(response, 200, claimWindowState(), origin); return; }
       if (parts[1] === "close") { json(response, 200, await closeClaimBrowser(body.sessionId), origin); return; }
       if (parts[1] === "forget-service-choices") { json(response, 200, await forgetClaimServiceChoices(body.sessionId), origin); return; }
       if (parts[1] === "suggest-service") { json(response, 200, await suggestClaimServiceChoices(body.sessionId, body.revision), origin); return; }
