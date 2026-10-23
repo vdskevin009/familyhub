@@ -75,7 +75,16 @@ export function buildMortgageDailyReport(input: { state: MortgageState; now?: Da
   const best = [...eligible].sort((a, b) => b.netGain! - a.netGain!)[0];
   if (best) uncertainties.push(...best.uncertainties);
   uncertainties.push("Un taux public ne constitue pas une offre approuvée pour votre dossier.");
-  if (!indicators.some(i => i.key.startsWith("lender-prime:") && mortgageIndicatorFresh(i, now, 10))) missing.push("Prime propre à chaque prêteur et rabais contractuel à confirmer.");
+  const variableOffers = offers.filter(offer => offer.product.startsWith("variable"));
+  for (const offer of variableOffers) {
+    // A public TD prime never confirms another lender or the contractual discount of a private offer.
+    const terms = (state.terms ?? []).filter(t => t.offerId === offer.id && Date.parse(t.recordedAt) <= now.getTime()).sort((a, b) => b.recordedAt.localeCompare(a.recordedAt) || b.id.localeCompare(a.id))[0];
+    const prime = terms?.prime, label = `${offer.lender} (${offer.product === "variable-3" ? "variable 3 ans" : "variable 5 ans"})`;
+    if (!prime?.lender?.trim()) missing.push(`${label} : identité du prêteur portant le prime contractuel à confirmer.`);
+    if (!prime || prime.rate === null || prime.discountPoints === null) missing.push(`${label} : prime et rabais du devis à documenter; un taux public ne les remplace pas.`);
+    else if (prime.asOf > today || days(today, prime.asOf) > settings.maximumQuoteAgeDays) missing.push(`${label} : preuve datée du prime et du rabais à actualiser.`);
+  }
+  if (!variableOffers.length && !indicators.some(i => i.key.startsWith("lender-prime:") && mortgageIndicatorFresh(i, now, 10))) missing.push("Prime propre à chaque prêteur et rabais contractuel à confirmer.");
   if (!indicators.some(i => i.key === "cpi-yearly" && mortgageIndicatorFresh(i, now, 75))) missing.push("Dernière publication d’inflation non collectée.");
   if (!contextSources.some(s => s.key === "employment" && s.status === "observed" && s.date && days(today, s.date) <= 45)) missing.push("Dernière publication d’emploi non collectée.");
   if (!indicators.length) missing.push("Indicateurs officiels non collectés pour ce rapport.");

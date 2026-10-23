@@ -34,3 +34,20 @@ test("TD public POST uses only fixed product parameters and failure never substi
 test("TD current row ignores a historical table header bearing the same label", () => { const html = '<table><tr><th>Date</th><th>TD Prime Rate</th></tr></table><table><tr><th>TD Prime Rate</th><td>4.45%</td><td>Oct 30, 2025</td></tr></table>'; assert.equal(parseTdGeneralPrime(html).value, 4.45); });
 test("one-shot runner never replays uncertain POST and recovers only a unique new saved report", async () => { const { runMortgageDaily } = await import("../scripts/mortgage-daily.mjs"); const paths: string[] = []; let reads = 0; const result = await runMortgageDaily(async (path: string) => { paths.push(path); if (path === "/health") return { capabilities: ["mortgage-assistant-v1"] }; if (path === "/mortgage/run-daily") throw Error("uncertain"); return { reports: reads++ === 0 ? [] : [{ id: "new-report", localDate: "2026-10-23" }] }; }, now); assert.equal(result.outcome, "recovered-by-read"); assert.equal(paths.filter(p => p === "/mortgage/run-daily").length, 1); });
 test("one-shot runner leaves uncertainty when GET cannot prove a unique new saved report", async () => { const { runMortgageDaily } = await import("../scripts/mortgage-daily.mjs"); let posts = 0; const result = await runMortgageDaily(async (path: string) => { if (path === "/health") return { capabilities: ["mortgage-assistant-v1"] }; if (path === "/mortgage/run-daily") { posts++; throw Error("uncertain"); } return { reports: [] }; }, now); assert.equal(result.outcome, "unconfirmed-no-retry"); assert.equal(posts, 1); });
+
+test("public TD prime never completes another private variable offer's lender and discount", () => {
+  const s = state(); s.quotes[0] = { ...s.quotes[0], lender: "Private lender", product: "variable-5" };
+  const td = { ...source("lender-prime:td-mortgage"), reliability: "lender" as const, sourceUrl: "https://www.td.com/ca/en/personal-banking/products/mortgages/mortgage-rates" };
+  const missing = buildMortgageDailyReport({ state: s, now, indicators: [td] }).missing;
+  assert.ok(missing.some(m => m.includes("Private lender") && m.includes("identité du prêteur")));
+  assert.ok(missing.some(m => m.includes("Private lender") && m.includes("prime et rabais du devis")));
+  const unknown = { amount: null, source: null, asOf: null, validUntil: null, financed: false };
+  s.terms = [{ schema: 1, id: "terms", offerId: s.quotes[0].id, recordedAt: "2026-10-23T17:00:00Z", source: "Private dated quote", validUntil: null, eligibility: "unconfirmed", offerStatus: "indicative", compounding: null, paymentAmount: null, fees: unknown, cashback: unknown, cashbackPaidOn: null, cashbackClawback: unknown, conditions: [], prime: { lender: "Private lender", rate: 4.6, discountPoints: .5, asOf: "2026-10-23", source: "Private dated quote" } }];
+  assert.ok(!buildMortgageDailyReport({ state: s, now, indicators: [td] }).missing.some(m => m.includes("Private lender")));
+  s.terms[0].prime!.asOf = "2026-10-01";
+  assert.ok(buildMortgageDailyReport({ state: s, now, indicators: [td] }).missing.some(m => m.includes("Private lender") && m.includes("à actualiser")));
+  s.terms[0].prime!.asOf = "2026-10-24";
+  assert.ok(buildMortgageDailyReport({ state: s, now, indicators: [td] }).missing.some(m => m.includes("Private lender") && m.includes("à actualiser")));
+  s.terms[0].prime!.asOf = "2026-10-23"; s.terms[0].prime!.lender = null;
+  assert.ok(buildMortgageDailyReport({ state: s, now, indicators: [td] }).missing.some(m => m.includes("Private lender") && m.includes("identité du prêteur")));
+});
