@@ -3,6 +3,7 @@ import { normalizedSize, type GroceryPlan, type GroceryPrice, type GroceryRetail
 import { datedPrice, storeName } from "./grocery-comparison";
 import { grocerySourceLink } from "./grocery-source-link";
 import { targetProductConflict } from "./grocery-target-observations";
+import { estimatedSourceLine, purchaseEvidenceReason, type PurchaseComparisonEvidence } from "../../worker/src/grocery-purchase-evidence";
 
 export function purchaseStatus(record: GroceryRecord) {
   // Old saved records have no evidence of final payment. Never infer it from `saved`.
@@ -47,15 +48,28 @@ function matchReason(plan: GroceryPlan, record: GroceryRecord, line: GroceryItem
   if (/format (?:non confirmé|à confirmer)|prix (?:de barquette )?estimé|loyal|membre|coupon|remise|BASE.*avant/i.test(p.matchNote)) return "Format, prix ou conditions à confirmer";
   return "";
 }
-export type PurchaseLineComparison = { line: GroceryItem; price: GroceryPrice | null; reason: string; normalized: number | null; outlay: number | null; packs: number | null; ratio: number | null; calculated: boolean };
+export function purchaseSourceSummary(plan: GroceryPlan, record: GroceryRecord) {
+  const known = record.receipt.items.map((_, index) => estimatedSourceLine(plan.sourceEstimates, record, index)).filter(e => e !== null);
+  const subtotal = known.length ? Math.round(known.reduce((n, e) => n + e.amount, 0) * 100) / 100 : null;
+  return { covered: known.length, count: record.receipt.items.length, subtotal, difference: subtotal !== null && record.receipt.total !== null && known.length === record.receipt.items.length ? Math.round((record.receipt.total - subtotal) * 100) / 100 : null };
+}
+export type PurchaseLineComparison = { line: GroceryItem; price: GroceryPrice | null; reason: string; normalized: number | null; outlay: number | null; packs: number | null; ratio: number | null; calculated: boolean; comparisonEvidence?: PurchaseComparisonEvidence; sourceEstimate?: number | null };
 export function purchaseComparison(plan: GroceryPlan, record: GroceryRecord, now = purchaseLocalDate()) {
   const names = ["Walmart", "Superstore", "Costco", "Save-On-Foods", "Fresh St. Market"];
   const retailers: (GroceryRetailer | { id: string; name: string })[] = [...plan.retailers];
   const canonicalStore = (name: string) => /^save[\s-]*on[\s-]*foods\b/i.test(name) ? "Save-On-Foods" : /^real canadian superstore\b/i.test(name) ? "Superstore" : storeName(name);
   for (const name of names) if (!retailers.some(r => canonicalStore(r.name) === name)) retailers.push({ id: "missing-" + name, name });
   return retailers.map(retailer => {
-    const lines: PurchaseLineComparison[] = record.receipt.items.map(line => {
+    const lines: PurchaseLineComparison[] = record.receipt.items.map((line, lineIndex) => {
       const base = { line, price: null, normalized: null, outlay: null, packs: null, ratio: null, calculated: false };
+      const reviewed = (plan.purchaseComparisons ?? []).filter(e => e.recordId === record.id && e.lineIndex === lineIndex && plan.prices.some(p => p.id === e.priceId && p.retailerId === retailer.id));
+      if (reviewed.length) {
+        const usable = reviewed.filter(e => !purchaseEvidenceReason(e, record, plan) && plan.prices.some(p => p.id === e.priceId && datedPrice(p, now) && Date.parse(now) - Date.parse(p.evidence.date) <= 7 * 86400000 && Date.parse(p.evidence.date) <= Date.parse(now) && grocerySourceLink(p.evidence.url)));
+        if (usable.length !== 1) return { ...base, reason: usable.length ? "Plusieurs équivalences : choix à revoir" : "Preuve de comparaison modifiée ou ancienne" };
+        const e = usable[0], price = plan.prices.find(p => p.id === e.priceId)!, normalized = Math.round(e.quantity * price.price * 100) / 100;
+        if (!Number.isFinite(normalized) || normalized > 1_000_000) return { ...base, reason: "Montant non calculable" };
+        return { line, price, reason: "", normalized, outlay: normalized, packs: e.quantity, ratio: e.quantity, calculated: false, comparisonEvidence: e, sourceEstimate: estimatedSourceLine(plan.sourceEstimates, record, lineIndex)?.amount ?? e.sourceEstimate };
+      }
       const id = receiptItemId(plan, record, line);
       if (!id) return { ...base, reason: "Article non rapproché du catalogue" };
       const candidates = plan.prices.filter(p => p.itemId === id && p.retailerId === retailer.id);
@@ -75,7 +89,10 @@ export function purchaseComparison(plan: GroceryPlan, record: GroceryRecord, now
     // Repeated physical rows can share one buyable pack; round after grouping the same reference.
     const grouped = new Map<string, { price: GroceryPrice; ratio: number }>();
     for (const line of covered) { const p = line.price!; const previous = grouped.get(p.id); grouped.set(p.id, { price: p, ratio: (previous?.ratio ?? 0) + line.ratio! }); }
+    const estimated = covered.length > 0 && covered.every(l => l.sourceEstimate !== null && l.sourceEstimate !== undefined);
     return { retailer, lines, covered: covered.length, count: lines.length, complete,
+      sourceEstimate: estimated ? Math.round(covered.reduce((n, l) => n + l.sourceEstimate!, 0) * 100) / 100 : null,
+      comparisonOnly: covered.some(l => l.comparisonEvidence), observationDates: [...new Set(covered.map(l => l.price!.evidence.date))],
       normalized: covered.length ? covered.reduce((n, l) => n + l.normalized!, 0) : null,
       outlay: covered.length ? [...grouped.values()].reduce((n, g) => n + (g.price.weighed ? g.ratio : Math.ceil(g.ratio - 1e-10)) * g.price.price, 0) : null };
   });

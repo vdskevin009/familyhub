@@ -351,6 +351,9 @@ body:has(.grocery-card-workspace) { background: #f1f3f6; }
 .grocery-purchase-match > div:first-child { min-width: 0; }
 .grocery-purchase-match strong { font-size: 13px; }
 .grocery-purchase-match small { display: block; font-size: 11px; margin-top: 2px; }
+.grocery-source-price > strong { text-align: end; max-width: 45%; }
+.grocery-source-price > strong > small { font-weight: 400; color: var(--muted); }
+.grocery-source-estimate-summary { font-size: 12px; color: var(--muted); }
 .grocery-purchase-price { display: flex; flex-wrap: wrap; justify-content: end; align-items: center; gap: 5px; flex-shrink: 0; }
 .grocery-calculated { display: inline-block; padding: 3px 5px; border-radius: 4px; background: var(--info-soft); color: var(--info); font-size: 10px; }
 .grocery-purchase-detail details { border-top: 1px solid var(--line); margin-top: 6px; }

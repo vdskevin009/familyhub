@@ -5,7 +5,8 @@ import { emptyPlan, modeLabels, type GroceryPlan } from "../../../worker/src/gro
 import type { WorkerConfig } from "../types";
 import { groceryRequest } from "../grocery-api";
 import { groceryCache } from "../grocery-cache";
-import { purchaseAmountLabel, purchaseDate, purchaseStatus, purchaseStoreComparisons, recentPcExpressPurchases } from "../grocery-purchases";
+import { purchaseAmountLabel, purchaseDate, purchaseStatus, purchaseStoreComparisons, purchaseSourceSummary, recentPcExpressPurchases } from "../grocery-purchases";
+import { estimatedSourceLine } from "../../../worker/src/grocery-purchase-evidence";
 import { packagePrice } from "../grocery-price-display";
 import { grocerySourceLink } from "../grocery-source-link";
 import { Sheet } from "../ui/primitives";
@@ -36,11 +37,14 @@ export default function GroceryPurchases({ config, records, onReview }: { config
   const active = records.filter(r => !r.duplicateOf).sort((a, b) => (purchaseDate(b) || b.createdAt).localeCompare(purchaseDate(a) || a.createdAt));
   const recent = recentPcExpressPurchases(active), recentIds = new Set(recent.map(r => r.id)), archived = active.filter(r => !recentIds.has(r.id));
   const record = active.find(r => r.id === selected), comparisons = record ? purchaseStoreComparisons(plan, record) : [];
+  const sourceSummary = record ? purchaseSourceSummary(plan, record) : null;
   function close() { setSelected(null); requestAnimationFrame(() => { if (opener.current?.isConnected) opener.current.focus(); }); }
   function totals(r: GroceryRecord) {
     return purchaseStoreComparisons(plan, r).map(store => <div className="grocery-purchase-store" key={store.name}>
       <div className="grocery-purchase-store-heading"><span>{store.name}</span>{store.complete ? <strong>{money(store.normalized, r.receipt.currency)}</strong> : <span className="grocery-purchase-unavailable">Comparatif incomplet</span>}</div>
       {!store.complete && <small>{store.covered}/{store.count} articles{store.normalized !== null ? ` · sous-total partiel ${money(store.normalized, r.receipt.currency)}` : " · prix ou correspondances à compléter"}</small>}
+      {store.comparisonOnly && <small>Prix actuels observés le {store.observationDates.join(", ")} · équivalents de même format, identité SKU et marque non garanties.</small>}
+      {store.sourceEstimate !== null && store.normalized !== null && <small>Sur ces mêmes articles : source estimée {money(store.sourceEstimate, r.receipt.currency)} · écart observé {money(Math.round((store.sourceEstimate - store.normalized) * 100) / 100, r.receipt.currency)}. Hors frais et taxes ; pas une économie de commande.</small>}
     </div>);
   }
   function cards(rows: GroceryRecord[], archive = false) {
@@ -62,19 +66,21 @@ export default function GroceryPurchases({ config, records, onReview }: { config
     <Sheet open={Boolean(record)} onClose={close} title={record ? `Achat du ${dateLabel(purchaseDate(record))}` : "Achat"} description={record?.receipt.store || "Articles et prix concurrents datés"} className="grocery-purchase-sheet" resetScrollOnOpen wide footer={<button className="button secondary" onClick={close}>Retour aux achats</button>}>
       {record && <div className="grocery-purchase-detail">
         <div className="grocery-purchase-summary"><span>{purchaseAmountLabel(record)}</span><strong>{money(record.receipt.total, record.receipt.currency)}</strong></div>
+        {sourceSummary?.subtotal !== null && sourceSummary?.subtotal !== undefined && <p className="grocery-source-estimate-summary">Somme des articles estimés : {money(sourceSummary.subtotal, record.receipt.currency)} · {sourceSummary.covered}/{sourceSummary.count} lignes. {sourceSummary.difference !== null && Math.abs(sourceSummary.difference) > .005 && <>Écart de {money(sourceSummary.difference, record.receipt.currency)} avec le total source : taxes, frais ou ajustements à rapprocher. Total source conservé.</>}</p>}
         <h3>Comparaison par produit</h3><p className="grocery-purchase-detail-note">Mêmes quantités · prix concurrents hors taxes et frais. Le format réel de chaque magasin reste affiché.</p>
-        {record.receipt.items.map((line, index) => <article className="grocery-purchase-line" key={index}>
+        {record.receipt.items.map((line, index) => { const derived = comparisons.map(c => c.lines[index].comparisonEvidence).find(Boolean), sourceQuote = estimatedSourceLine(plan.sourceEstimates, record, index); return <article className="grocery-purchase-line" key={index}>
           <div className="grocery-purchase-product-heading"><h4>{line.product || line.name || `Ligne ${index + 1}`}</h4><p>Quantité de la source : {sourceFormat(line)}{line.uncertain ? " · à vérifier" : ""}</p></div>
-          <div className="grocery-purchase-match"><div><strong>{record.receipt.store || "Achat d'origine"}</strong><small>{sourceFormat(line)} · prix historique</small></div><strong>{money(line.amount, record.receipt.currency)}</strong></div>
+          {derived && <p>Comparaison seulement : {derived.quantity} x {derived.formatLabel} · format dérivé, source brute conservée.</p>}
+          <div className="grocery-purchase-match grocery-source-price"><div><strong>{record.receipt.store || "Achat d'origine"}</strong><small>{sourceQuote ? `Quantité ${sourceQuote.quantity} × prix unitaire estimé ${money(sourceQuote.unitPrice, sourceQuote.currency)}` : derived ? "Prix source estimé · paiement inconnu" : `${sourceFormat(line)} · prix historique`}</small></div><strong>{money(sourceQuote?.amount ?? derived?.sourceEstimate ?? line.amount, record.receipt.currency)}{(sourceQuote || derived) && <small>estimé · paiement inconnu</small>}</strong></div>
           {comparisons.map(store => {
             const match = store.lines[index], p = match.price, item = p && plan.items.find(i => i.id === p.itemId);
-            return <div className="grocery-purchase-match" key={store.name}><div><strong>{store.name}</strong><small>{p ? `${p.size} ${p.unit === "each" ? item?.countUnit || "unités" : p.unit}` : "Référence manquante"}</small></div><div className="grocery-purchase-price">{!match.reason && match.calculated && <span className="grocery-calculated">Calculé</span>}<strong>{match.reason ? "À compléter" : money(match.normalized, record.receipt.currency)}</strong></div></div>;
+            return <div className="grocery-purchase-match" key={store.name}><div><strong>{store.name}</strong><small>{match.comparisonEvidence ? `${match.comparisonEvidence.referenceFormatLabel} · équivalent, prix actuel du ${p?.evidence.date}` : p ? `${p.size} ${p.unit === "each" ? item?.countUnit || "unités" : p.unit}` : "Référence manquante"}</small></div><div className="grocery-purchase-price">{!match.reason && match.calculated && <span className="grocery-calculated">Calculé</span>}<strong>{match.reason ? "À compléter" : money(match.normalized, record.receipt.currency)}</strong></div></div>;
           })}
-          <details><summary>Formats, calcul et sources</summary><p>Source d'achat : {line.evidence || "Preuve manquante"}</p>{comparisons.map(store => {
+          <details><summary>Formats, calcul et sources</summary><p>Source d'achat : {line.evidence || "Preuve manquante"}</p>{sourceQuote && <p>{sourceQuote.quantity} × {money(sourceQuote.unitPrice, sourceQuote.currency)} = {money(sourceQuote.amount, sourceQuote.currency)} estimés. {sourceQuote.sourceEvidence} Revu le {sourceQuote.reviewedAt}. Aucun prix catalogue actuel ni paiement final déduit.</p>}{derived && <><p>{derived.provenance}</p><p>{derived.sourceEstimateEvidence}</p><p>Équivalent de même format pour comparer, sans identité SKU ou marque garantie, sans autorisation de remplacement du panier. Revu le {derived.reviewedAt}.</p></>}{comparisons.map(store => {
             const match = store.lines[index], p = match.price, link = p && grocerySourceLink(p.evidence.url);
             return <section className="grocery-purchase-evidence" key={store.name}><strong>{store.name}</strong>{match.reason && <p>{match.reason} · montant exclu du comparatif.</p>}{p && <><p>{p.product} · {p.size} {p.unit} · {money(p.price, p.currency)} le format, observé le {p.evidence.date || "date inconnue"}.</p>{!match.reason && <><p>{money(p.price, p.currency)} × {Number((match.ratio! * p.size).toFixed(6))}/{p.size} = {money(match.normalized, p.currency)} pour la quantité de la source.</p><p>{p.weighed ? "Quantité au poids" : `${match.packs} paquet(s) entier(s)`} : {money(match.outlay, p.currency)} avant taxes et frais.</p></>}<p>{p.matchNote} · {p.locality} · {modeLabels[p.mode || "unknown"]}. {p.evidence.until ? `Valable jusqu'au ${p.evidence.until}.` : "Validité à reconfirmer."} Disponibilité à revérifier avant achat.</p>{link && <a href={link.href} target="_blank" rel="noreferrer">{link.label}</a>}</>}</section>;
           })}</details>
-        </article>)}
+        </article>; })}
         <details className="grocery-purchase-provenance"><summary>Provenance de l’achat et limites</summary><p>{purchaseStatus(record)}</p><p>Montant de la source avec ses propres frais, taxes et remises. Il n'est pas comparé aux seuls produits concurrents pour annoncer une économie.</p>{record.receipt.fulfillment && <p>Livraison du {dateLabel(record.receipt.fulfillment.date)} : {record.receipt.fulfillment.evidence}</p>}<p>Source originale : {record.receipt.date || "date inconnue"} · référence {record.receipt.reference || "inconnue"}.</p>{record.receipt.warnings.map((w, i) => <p key={i}>{w}</p>)}<div className="grocery-purchase-totals">{totals(record)}</div>{comparisons.map(store => <p key={store.name}>{store.name} : {store.covered}/{store.count} articles. {store.outlay === null ? "Formats achetables non chiffrés." : `Formats achetables : ${money(store.outlay, record.receipt.currency)}, hors taxes et frais.`}</p>)}<button className="text-action" onClick={() => { setSelected(null); requestAnimationFrame(() => { opener.current?.focus(); onReview(record); }); }}>Voir les sources et vérifier le ticket</button></details>
       </div>}
     </Sheet>
