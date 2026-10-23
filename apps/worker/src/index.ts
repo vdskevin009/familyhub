@@ -24,7 +24,7 @@ import { GroceryResearch } from "./grocery-research.js";
 import { importConnectorMessage, claimPreparation, confirmOwnerAdjudication } from "./invoices.js";
 import { parseLoginRecoveryRequest } from "./portal-login-recovery.js";
 import { portalReconnectStatus, startPortalReconnect } from "./portal-reconnect.js";
-import { claimWindowState, openClaimBrowser, inspectClaimStep, fillClaimStep, claimSessionExpense, closeClaimBrowser, forgetClaimServiceChoices, suggestClaimServiceChoices, verifyClaimStep, prepareCurrentClaimStep, retryCurrentClaimReceipt } from "./claim-browser.js";
+import { diagnoseClaimWindow, claimWindowState, openClaimBrowser, inspectClaimStep, fillClaimStep, claimSessionExpense, closeClaimBrowser, forgetClaimServiceChoices, suggestClaimServiceChoices, verifyClaimStep, prepareCurrentClaimStep, retryCurrentClaimReceipt } from "./claim-browser.js";
 import { blueCrossClaimCauseAnswer, confirmBlueCrossClaimCause } from "./bluecross-claim-cause.js";
 import { confirmedInvoicePractitioner, confirmInvoicePractitioner } from "./claim-practitioner-answers.js";
 import { confirmedInvoiceIllness, confirmInvoiceIllness } from "./claim-invoice-answers.js";
@@ -54,7 +54,7 @@ type ResearchWatch = {
 };
 type PersistedState = { watches: ResearchWatch[] };
 
-const version = "2.27.0";
+const version = "2.27.1";
 let claimOperationBusy = false;
 const host = process.env.FAMILYHUB_WORKER_HOST?.trim() || "127.0.0.1";
 const port = Number(process.env.FAMILYHUB_WORKER_PORT || "4713");
@@ -359,14 +359,15 @@ const server = createServer(async (request, response) => {
         json(response, 200, { answer: await confirmInvoiceIllness(preparation, { ...body, remove: body.action === "remove" }) }, origin); return;
       }
       if (parts[1] === "confirm-adjudication") { json(response, 200, await confirmOwnerAdjudication(await readJson(request)), origin); return; }
-      const body = await readJson<{ expenseId?: unknown; insurer?: unknown; historyReviewed?: unknown; warningsReviewed?: unknown; sessionId?: unknown; revision?: unknown; values?: unknown; attachment?: unknown; uploadConfirmed?: unknown; rememberServiceChoices?: unknown; answersReviewed?: unknown; prepareAuthorized?: unknown; retryReviewed?: unknown; receiptName?: unknown }>(request);
+      const body = await readJson<{ expenseId?: unknown; insurer?: unknown; historyReviewed?: unknown; warningsReviewed?: unknown; sessionId?: unknown; revision?: unknown; values?: unknown; attachment?: unknown; uploadConfirmed?: unknown; rememberServiceChoices?: unknown; answersReviewed?: unknown; prepareAuthorized?: unknown; loginRecovery?: unknown; retryReviewed?: unknown; receiptName?: unknown }>(request);
       if (["prepare", "resume", "correct", "retry-receipt"].includes(parts[1])) {
         if (body.prepareAuthorized !== true) throw new Error("Choose Prepare Claim to authorize preparation and the original receipt attachment.");
         let sessionId = body.sessionId;
         if (parts[1] === "prepare") {
           const preparation = claimPreparation(body.expenseId, body.insurer);
           if (preparation.blocked) { json(response, 200, { preparation, step: { status: "blocked", fields: [], revision: "", submitAllowed: false } }, origin); return; }
-          sessionId = (await openClaimBrowser(preparation, false, false, undefined, true)).sessionId;
+          const recovery = body.loginRecovery == null ? undefined : parseLoginRecoveryRequest(body.loginRecovery);
+          sessionId = (await openClaimBrowser(preparation, false, false, undefined, true, undefined, recovery)).sessionId;
         }
         const previous = claimSessionExpense(sessionId);
         const assertFresh = () => {
@@ -396,6 +397,7 @@ const server = createServer(async (request, response) => {
         if (fresh.blocked || JSON.stringify(fresh.fields) !== JSON.stringify(previous.fields)) throw new Error("The invoice evidence changed. Prepare the claim again before verification.");
         json(response, 200, await verifyClaimStep(body.sessionId), origin); return;
       }
+      if (parts[1] === "diagnostic") { json(response, 200, await diagnoseClaimWindow(body.sessionId), origin); return; }
       if (parts[1] === "window") { json(response, 200, claimWindowState(), origin); return; }
       if (parts[1] === "close") { json(response, 200, await closeClaimBrowser(body.sessionId), origin); return; }
       if (parts[1] === "forget-service-choices") { json(response, 200, await forgetClaimServiceChoices(body.sessionId), origin); return; }

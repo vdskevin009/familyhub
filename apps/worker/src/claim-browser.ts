@@ -12,6 +12,8 @@ import { codexServiceRunner, validatedServiceProposals, type ServiceRunner } fro
 import { checkedField, uploadEvidence, type ApprovedField, type ObservedField } from "./claim-field-verification.js";
 import { acquirePortalLock, classifyLoginScreen, type LoginReason } from "./portal-login.js";
 import { loginForClaim, authenticatedClaimPages, preserveBlueCrossClaimSession, preserveDesjardinsClaimSession } from "./claim-login.js";
+import type { LoginRecoveryRequest } from "./portal-login-recovery.js";
+import { claimPortalDiagnostic } from "./claim-portal-diagnostic.js";
 import { resolveClaimReceiptCopies } from "./claim-receipt-copies.js";
 import { automaticClaimValues } from "./claim-autofill.js";
 import { desjardinsRadioField } from "./desjardins-claim-form.js";
@@ -46,14 +48,14 @@ function current(id: unknown): Session {
   return session;
 }
 export async function openClaimBrowser(dossier: ClaimPreparation, historyReviewed: unknown, warningsReviewed: unknown = false,
-  launch?: () => Promise<Browser>, autonomous = false, authenticate: typeof loginForClaim = loginForClaim) {
+  launch?: () => Promise<Browser>, autonomous = false, authenticate: typeof loginForClaim = loginForClaim, recovery?: LoginRecoveryRequest) {
   if (opening) throw new Error("A preparation window is already opening. Wait before resuming it.");
   opening = true;
-  try { return await openBrowser(dossier, historyReviewed, warningsReviewed, launch, autonomous, authenticate); }
+  try { return await openBrowser(dossier, historyReviewed, warningsReviewed, launch, autonomous, authenticate, recovery); }
   finally { opening = false; }
 }
 async function openBrowser(dossier: ClaimPreparation, historyReviewed: unknown, warningsReviewed: unknown,
-  launch: () => Promise<Browser> = () => chromium.launch({ headless: false, channel: process.platform === "win32" ? dossier.insurer === "desjardins" ? "msedge" : "chrome" : undefined }), autonomous = false, authenticate: typeof loginForClaim = loginForClaim) {
+  launch: () => Promise<Browser> = () => chromium.launch({ headless: false, channel: process.platform === "win32" ? dossier.insurer === "desjardins" ? "msedge" : "chrome" : undefined }), autonomous = false, authenticate: typeof loginForClaim = loginForClaim, recovery?: LoginRecoveryRequest) {
   if (dossier.blocked) throw new Error(dossier.coordination?.message || "Resolve the recorded or possible duplicate and source conflicts before preparing a claim.");
   if (!autonomous && historyReviewed !== true) throw new Error("Review the insurer's current history for this invoice before opening preparation.");
   if (!autonomous && dossier.reviewableWarnings.length && warningsReviewed !== true) throw new Error("Review the original PDF and confirm the shown gross expense and other-insurer payment before preparing this claim.");
@@ -91,7 +93,7 @@ async function openBrowser(dossier: ClaimPreparation, historyReviewed: unknown, 
     } catch { /* A normal visible login remains available. */ }
     let page = await context.newPage();
     await page.goto(dossier.preparationUrl || dossier.portalUrl, { waitUntil: "domcontentloaded", timeout: 45_000 });
-    const authReason = autonomous ? await authenticate(page, dossier.insurer) : undefined;
+    const authReason = autonomous ? await authenticate(page, dossier.insurer, recovery) : undefined;
     if (autonomous) {
       const authenticated = await authenticatedClaimPages(page, dossier.insurer);
       if (authenticated.length > 1) throw new Error("Several authenticated insurer tabs are open.");
@@ -579,6 +581,11 @@ export async function forgetClaimServiceChoices(id: unknown) {
   return inspectClaimStep(id);
 }
 /** Paired discovery only exposes the worker-owned preparation, never a collector. */
+export async function diagnoseClaimWindow(id: unknown) {
+  const s = current(id);
+  if (s.busy || s.preparing || s.closing) throw new Error("Wait for the current preparation action to finish.");
+  return claimPortalDiagnostic(s.page);
+}
 export function claimWindowState() {
   return { sessionId: session?.id || null, insurer: session?.dossier.insurer || null,
     canClose: !!session && !opening && !session.busy && !session.preparing && !session.closing,

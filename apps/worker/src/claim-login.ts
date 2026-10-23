@@ -1,4 +1,5 @@
 import type { Page } from "playwright";
+import type { LoginRecoveryRequest } from "./portal-login-recovery.js";
 import { join } from "node:path";
 import { dataDirectory, savePrivate } from "./private-store.js";
 import { authenticatedPortal, classifyLoginScreen, tryPortalLogin, type LoginReason } from "./portal-login.js";
@@ -9,16 +10,16 @@ import { desjardinsRadioField } from "./desjardins-claim-form.js";
 import { desjardinsAuthCookies } from "./desjardins-collector.js";
 
 /** Uses the same guarded DPAPI login as collection, under the caller's portal lock. */
-export async function loginForClaim(page: Page, insurer: "blue-cross" | "desjardins"): Promise<LoginReason | undefined> {
+export async function loginForClaim(page: Page, insurer: "blue-cross" | "desjardins", recovery?: LoginRecoveryRequest): Promise<LoginReason | undefined> {
   const ready = async () => {
     if ((await authenticatedClaimPages(page, insurer)).length === 1) return true;
     if (insurer === "desjardins") {
-      await continueDesjardinsSignIn(page);
-      if (!(await authenticatedClaimPages(page, insurer)).length) await desjardinsHistoryReady(page);
+      const continuation = await continueDesjardinsSignIn(page);
+      if (!(await authenticatedClaimPages(page, insurer)).length) await desjardinsHistoryReady(continuation);
     }
     return (await authenticatedClaimPages(page, insurer)).length === 1;
   };
-  const reason = await tryPortalLogin(page, insurer === "blue-cross" ? "bluecross" : "desjardins", ready);
+  const reason = await tryPortalLogin(page, insurer === "blue-cross" ? "bluecross" : "desjardins", ready, undefined, recovery);
   if (!reason && insurer === "desjardins") {
     const pages = await authenticatedClaimPages(page, insurer);
     if (pages.length === 1) await preserveDesjardinsClaimSession(pages[0]);

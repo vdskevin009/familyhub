@@ -295,8 +295,8 @@ async function collectDesjardinsPortalLocked(interactive = false, passes = 1, re
     const ready = async () => {
       if (await recoverHistoryTab()) return true;
       if (page.isClosed()) return false;
-      await continueDesjardinsSignIn(page);
-      await desjardinsHistoryReady(page);
+      const continuation = await continueDesjardinsSignIn(page);
+      await desjardinsHistoryReady(continuation);
       return recoverHistoryTab();
     };
     const authReason = options.sessionOnly ? (await observeDesjardinsSession(() => page, ready) ? undefined : "human-required")
