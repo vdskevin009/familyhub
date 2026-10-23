@@ -82,7 +82,7 @@ try {
     plan.prices.find(p => p.id === "p2").mode = "delivery";
     plan.retailers.find(r => r.id === "r2").mode = "delivery";
     const observedPlan = structuredClone(plan);
-    await page.reload(); await page.getByText("8 produits", { exact: true }).waitFor();
+    await page.reload(); await page.getByRole("button", { name: "Catalogue", exact: true }).click(); await page.getByText("8 produits", { exact: true }).waitFor();
     await page.getByRole("button", { name: "Moins cher ailleurs", exact: true }).click();
     assert.equal(await page.locator(".grocery-target-article").count(), 3);
     assert.equal(await page.locator(".grocery-target-badge").filter({ hasText: "À vérifier" }).count(), 3);
@@ -107,19 +107,19 @@ try {
     assert.equal(await page.locator(".grocery-target-article").count(), 3);
     // Explicit type conflict and a missing baseline never receive a synthetic saving.
     plan.prices.find(p => p.id === "p2").product = "Café démo instantané";
-    await page.reload(); await page.getByText("8 produits", { exact: true }).waitFor();
+    await page.reload(); await page.getByRole("button", { name: "Catalogue", exact: true }).click(); await page.getByText("8 produits", { exact: true }).waitFor();
     await page.getByRole("button", { name: "Moins cher ailleurs", exact: true }).click();
     assert.equal(await page.locator(".grocery-target-article").count(), 2);
     assert.equal(await page.locator(".grocery-target-store").filter({ has: page.getByRole("heading", { name: "Costco", exact: true }) }).count(), 0);
     plan.prices = plan.prices.filter(p => p.id !== "p0");
-    await page.reload(); await page.getByText("8 produits", { exact: true }).waitFor();
+    await page.reload(); await page.getByRole("button", { name: "Catalogue", exact: true }).click(); await page.getByText("8 produits", { exact: true }).waitFor();
     await page.getByRole("button", { name: "Moins cher ailleurs", exact: true }).click();
     assert.equal(await page.locator(".grocery-target-article").count(), 1);
     await page.getByText(/Références manquantes ou non comparables/).click();
     assert.match(await page.locator(".grocery-info[open]").last().innerText(), /Café démo.*Référence Superstore manquante/s);
     assert.deepEqual(observedPlan.items[0].substitutions, false);
     Object.assign(plan, structuredClone(original));
-    await page.reload(); await page.getByText("8 produits", { exact: true }).waitFor();
+    await page.reload(); await page.getByRole("button", { name: "Catalogue", exact: true }).click(); await page.getByText("8 produits", { exact: true }).waitFor();
     await page.getByRole("switch", { name: "Comparaisons", exact: true }).click();
     await page.getByRole("button", { name: "Catalogue", exact: true }).click(); assert.equal(await page.getByRole("switch", { name: "Comparaisons", exact: true }).getAttribute("aria-checked"), "true"); await page.getByRole("switch", { name: "Comparaisons", exact: true }).click(); assert.equal(await page.locator(".grocery-price-rows").count(), 0);
     await importCart(page, { ...snapshot, capturedAt: "2000-01-01T00:00:00Z" }); await page.getByRole("radio", { name: "Panier actuel", exact: true }).locator("..").click(); await page.getByText(/Snapshot ancien/).waitFor(); assert.equal(await page.locator(".grocery-catalogue-article").count(), 0);
