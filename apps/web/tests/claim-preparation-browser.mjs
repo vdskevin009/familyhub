@@ -20,12 +20,17 @@ const entry={Id:'synthetic-case',DocumentIds:[expense.Id],ExpenseDocumentId:expe
 let browser;
 try {
  browser=await chromium.launch({headless:true,channel:process.platform==='win32'?'msedge':undefined});
- for(const scenario of ['prepared','unknown','mismatch','upload-failed','human-required','login-required','blocked','old-worker','refresh-failed','owner-zero','unknown-insurer','confirmed-illness','default-illness','auto-login','optional','required','review','blocked-upload','review-missing','review-no-verification','expense-summary','saved-practitioner','watch-upload']) {
+ for(const scenario of ['blocked-source','blocked-target','reviewable-source','prepared','unknown','mismatch','upload-failed','human-required','login-required','blocked','old-worker','refresh-failed','owner-zero','unknown-insurer','confirmed-illness','default-illness','auto-login','optional','required','review','blocked-upload','review-missing','review-no-verification','expense-summary','saved-practitioner','watch-upload']) {
   const context=await browser.newContext({viewport:{width:390,height:900},serviceWorkers:'block'}),page=await context.newPage(),posts=[],errors=[];
   const c={...entry,NextInsurer:scenario==='unknown-insurer'?null:'Blue Cross',DesjardinsReimbursedAmount:scenario==='owner-zero'?null:0};
   const preparation=prepareClaim(expense.Id,'blue-cross',[expense],[c]);
-  preparation.attachments=[{documentId:expense.Id,attachmentId:'pdf',name:'synthetic.pdf'}];preparation.blocked=scenario==='blocked';
+  preparation.attachments=[{documentId:expense.Id,attachmentId:'pdf',name:'synthetic.pdf'}];preparation.blocked=['blocked','blocked-source','blocked-target'].includes(scenario);
+  const sourceConflict='OriginalBilledAmount differs from direct-insurance arithmetic (200 vs 80).';
+  if(['blocked-source','reviewable-source'].includes(scenario))preparation.conflicts=[sourceConflict];
+  if(scenario==='reviewable-source')preparation.reviewableWarnings=[sourceConflict];
+  if(scenario==='blocked-target')preparation.duplicate.status='recorded';
   let step={status:['human-required','login-required','blocked'].includes(scenario)?scenario:'fields',fields:scenario==='unknown'?[{key:'illness',kind:'natureOfIllness',label:'Nature of illness/injury',type:'text',options:[],suggested:null}]:[],revision:'step',submitAllowed:false};
+  if(['blocked-source','blocked-target'].includes(scenario))step.status='blocked';
   if(['confirmed-illness','default-illness'].includes(scenario))step.confirmedIllness={scope:'a'.repeat(64),value:null,revision:0,source:null,defaultScope:'b'.repeat(64),defaultValue:null,defaultRevision:0};
   if(scenario==='auto-login')step.status='login-required';
   if(scenario==='saved-practitioner')step.confirmedPractitioner={scope:'c'.repeat(64),value:'Sample Practitioner',revision:1};
@@ -38,7 +43,7 @@ try {
   if(scenario==='review-no-verification')verification.attachment=null;
   if(scenario==='blocked-upload'){verification.attachment={name:'synthetic.pdf',status:'unverified',selected:false,blocked:true};verification.readyForManualNext=false;}
   if(scenario==='watch-upload'){verification.attachment=null;verification.receiptUploadAvailable=false;}
-  const result=()=>({preparation,sessionId:scenario==='blocked'?undefined:'synthetic-session',step,verification:['human-required','login-required','blocked'].includes(scenario)?undefined:verification,submitAllowed:false});
+ const result=()=>({preparation,sessionId:preparation.blocked?undefined:'synthetic-session',step,verification:preparation.blocked||['human-required','login-required'].includes(scenario)?undefined:verification,submitAllowed:false});
   page.on('pageerror',e=>errors.push(e.message));
   await page.addInitScript(()=>localStorage.setItem('familyhub.worker.v1',JSON.stringify({Endpoint:'https://synthetic-worker.invalid',ApiKey:'synthetic-key'})));
   await page.route('https://synthetic-worker.invalid/**',async route=>{
@@ -95,8 +100,16 @@ try {
    assert.equal('historyReviewed' in posts[0].body,false);
    if(scenario==='human-required')await dialog.getByText(/Complete the verification challenge/).waitFor();
    else if(scenario==='login-required')await dialog.getByText(/Sign-in needs attention/).waitFor();
-   else if(scenario==='blocked')await dialog.getByText(/possible duplicate or conflicting source/).waitFor();
+   else if(scenario==='blocked')await dialog.getByText(/current Claims review state/).waitFor();
+   else if(scenario==='blocked-source'){
+    await dialog.getByRole('alert').filter({hasText:/Conflicting source amounts/}).waitFor();
+    const notice=dialog.getByRole('alert').filter({hasText:sourceConflict});assert.equal(await notice.count(),1);assert.equal(await notice.locator('.lucide-circle-check').count(),0);
+    assert.equal(await dialog.getByText(/possible .* claim|Processing by Blue Cross/).count(),0);
+    for(const width of [320,390,1280]){await page.setViewportSize({width,height:900});assert.equal(await dialog.evaluate(el=>el.scrollWidth<=el.clientWidth),true);await page.screenshot({path:join(output,'claim-source-block-'+width+'.png')});}
+   }
+   else if(scenario==='blocked-target')await dialog.getByRole('alert').filter({hasText:/Processing by Blue Cross is already recorded/}).waitFor();
    else {
+    if(scenario==='reviewable-source'){const warning=dialog.locator('.app-notice.warning').filter({hasText:sourceConflict});await warning.waitFor();assert.equal(await warning.locator('.lucide-triangle-alert').count(),1);assert.equal(await warning.locator('.lucide-circle-check').count(),0);}
     if(scenario==='auto-login'){
      await dialog.getByText(/Sign-in needs attention/).waitFor();
      await dialog.getByText(/Sign-in needs attention/).waitFor({state:'hidden'});
@@ -160,5 +173,5 @@ try {
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false,scenario+' mobile overflow');
   await page.screenshot({path:join(output,`claim-autonomous-${scenario}.png`),fullPage:true});await context.close();
  }
- console.log(JSON.stringify({passed:23,providerContact:false,submission:false,screenshots:output}));
+ console.log(JSON.stringify({passed:26,providerContact:false,submission:false,screenshots:output}));
 }finally{await browser?.close();server.close();}

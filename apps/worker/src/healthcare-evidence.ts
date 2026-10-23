@@ -142,9 +142,11 @@ export function extractHealthcareEvidence(mail: Mail, result: Classification): H
       }
     }
   }
+  // A paid-in-full balance can be zero while the labelled patient share is
+  // positive. Normalize the share before capturing it for gross arithmetic.
+  if (receiptProvider(mail.subject) && output.AmountNotCovered != null) output.PatientBalance = output.AmountNotCovered;
   const residual = output.PatientBalance ?? output.AmountNotCovered;
   if (residual != null) {
-    if (receiptProvider(mail.subject) && output.AmountNotCovered != null) output.PatientBalance = output.AmountNotCovered;
     if (receiptProvider(mail.subject)) for (const insurer of ["desjardins", "blue-cross"] as const) {
       if (directInsurerPayment(mail.text, insurer) == null && directInsurerPayment(mail.attachmentText || "", insurer) == null) {
         // A processor mention proves processing, not a payment; reject an unsupported AI amount.

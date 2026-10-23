@@ -1,6 +1,7 @@
 import type { Invoice } from "./invoice-model.js";
 import type { ReconciliationCase } from "./reconciliation.js";
 import type { Insurer } from "./healthcare-evidence.js";
+import { healthcareEvidence } from "./healthcare-evidence.js";
 
 export const claimPortals = {
   "blue-cross": "https://service.pac.bluecross.ca/member/",
@@ -21,7 +22,7 @@ export function prepareClaim(expenseId: string, insurer: Insurer, invoices: Invo
   const member = entry?.Member ?? expense.Member;
   const date = entry?.ServiceDate ?? expense.ServiceDate;
   const service = entry?.ServiceType || expense.Healthcare?.ServiceType || expense.ClaimedService || null;
-  const amount = entry?.OriginalAmount ?? expense.Healthcare?.OriginalBilledAmount ?? expense.BilledAmount;
+  const amount = entry?.OriginalAmount ?? healthcareEvidence(expense).OriginalBilledAmount ?? null;
   const ids = new Set(sources.map(x => x.Id));
   const assignedIds = new Set((entry?.MatchAssignments ?? []).map(x => x.ReimbursementDocumentId));
   const recorded = invoices.filter(x => x.Insurer === insurer && assignedIds.has(x.Id));
