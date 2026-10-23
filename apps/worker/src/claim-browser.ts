@@ -18,6 +18,7 @@ import { resolveClaimReceiptCopies } from "./claim-receipt-copies.js";
 import { automaticClaimValues } from "./claim-autofill.js";
 import { isDesjardinsHistory, openDesjardinsClaimEntry } from "./desjardins-claim-entry.js";
 import { desjardinsRadioField } from "./desjardins-claim-form.js";
+import { advanceDesjardinsIntroduction } from "./desjardins-claim-progress.js";
 import { reserveClaimUpload, reserveClaimUploadRetry } from "./claim-upload-guard.js";
 import { confirmedInvoicePractitioner } from "./claim-practitioner-answers.js";
 import { confirmedInvoiceIllness } from "./claim-invoice-answers.js";
@@ -666,6 +667,10 @@ async function prepareStep(id: unknown,
     verification = s.approved ? await verifySnapshot(s) : undefined;
     for (let pass = 0; pass < 16 && ["fields", "review", "navigate"].includes(step.status); pass++) {
       assertFresh();
+      if (s.dossier.insurer === "desjardins" && !s.claimKindAttempted
+        && await advanceDesjardinsIntroduction(s.page, s.dossier, () => { s.claimKindAttempted = true; })) {
+        step = await inspectClaimStep(id); continue;
+      }
       if (step.status === "navigate" && (s.detailsNextVerified || s.detailsReadBackVerified) && !s.summaryNextAttempted) {
         const illness = s.approved?.entries.find(e => e.target.field.kind === "natureOfIllness" && e.filled)?.approved.value;
         const practitioner = s.approved?.entries.find(e => e.target.field.kind === "practitioner" && e.filled)?.approved.optionLabel;
