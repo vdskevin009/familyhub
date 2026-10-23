@@ -43,10 +43,17 @@ export async function claimPortalDiagnostic(page: Page) {
       return link.origin === location.origin && /^\/AGEA-GBIM\//.test(link.pathname)
         ? [{ label: el.textContent?.trim(), pathname: link.pathname }] : [];
     }).slice(0, 60));
+    const navigationActions = await candidate.locator('a[href]').evaluateAll(elements => elements.filter(el => el.getClientRects().length).slice(0, 80).map(el => {
+      const link = new URL((el as HTMLAnchorElement).href);
+      return { label: el.textContent?.trim(), id: el.id,
+        kind: link.protocol === 'javascript:' ? 'script' : link.origin === location.origin ? 'same-origin' : 'external',
+        origin: link.protocol === 'https:' ? link.origin : undefined,
+        pathname: link.origin === location.origin && /^\/AGEA-GBIM\//.test(link.pathname) ? link.pathname : undefined };
+    }));
     const headings = await candidate.locator('h1,h2,h3').allTextContents();
     const main = candidate.locator("main");
     const visibleInstructions = claim && await main.count() === 1 ? (await main.innerText()).slice(0, 12_000) : undefined;
-    tabs.push({ ...base, headings: headings.map(text => text.trim().slice(0, 300)), visibleInstructions, controls, links });
+    tabs.push({ ...base, headings: headings.map(text => text.trim().slice(0, 300)), visibleInstructions, controls, links, navigationActions });
   }
   return { tabs, submitAllowed: false };
 }
