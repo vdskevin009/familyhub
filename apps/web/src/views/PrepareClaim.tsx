@@ -13,6 +13,7 @@ export default function PrepareClaim({ expenseId, initialInsurer, config, onClos
   const [restartAvailable, setRestartAvailable] = useState(false);
   async function findWindow() {
     const found = await claimAction<WindowState>(config, "window", {}); setWindowState(found);
+    if (!found.sessionId && !found.busy) { setSessionId(""); setRestartAvailable(true); }
     if (!found.sessionId) setMessage(found.busy ? "Preparation is still opening. Wait, then check again." : "No preparation window is controlled by this PC worker. An active collection must finish; an interrupted lock needs local recovery.");
     return found;
   }
@@ -30,7 +31,7 @@ export default function PrepareClaim({ expenseId, initialInsurer, config, onClos
   useEffect(() => {
     if (!error) return;
     let active = true;
-    void claimAction<WindowState>(config, "window", {}).then(found => { if (active) setWindowState(found); }).catch(() => {});
+    void claimAction<WindowState>(config, "window", {}).then(found => { if (active) { setWindowState(found); if (!found.sessionId && !found.busy) { setSessionId(""); setRestartAvailable(true); } } }).catch(() => {});
     return () => { active = false; };
   }, [error, config.Endpoint, config.ApiKey]);
 
@@ -123,7 +124,7 @@ export default function PrepareClaim({ expenseId, initialInsurer, config, onClos
           setRestartAvailable(true); setMessage("Preparation window closed and its lock released. Existing receipt-upload safeguards are preserved.");
         })}>Close preparation window</button>
       </div>}
-      {error && <button type="button" className="text-action" disabled={busy} onClick={() => void run(async () => { await findWindow(); })}>Check active preparation window</button>}
+      {(error || windowState?.busy || windowState && !windowState.sessionId) && <button type="button" className="text-action" disabled={busy} onClick={() => void run(async () => { await findWindow(); })}>Check active preparation window</button>}
       {error && windowState && !windowState.sessionId && <p>{windowState.busy ? "The PC is still opening a preparation. Check again when it finishes." : "There is no preparation window this worker can close. Let an active collection finish; an interrupted lock requires local recovery."}</p>}
       {restartAvailable && <button type="button" className="button" disabled={busy || !insurer} onClick={() => void run(async () => {
         setRestartAvailable(false); accept(await claimAction<PreparedClaim>(config, "prepare", { expenseId, insurer, prepareAuthorized: true }));
