@@ -1,3 +1,5 @@
+import { validateDecisionProfile, validateDecisionTerms, type DecisionProfile, type DecisionTerms } from "./mortgage-decision.js";
+import { validateMortgageDailyReport, validateMortgageAlertSettings, type MortgageDailyReport, type MortgageAlertSettings } from "./mortgage-daily.js";
 import { validateContact, validateCashback, type MortgageContact, type MortgageCashback } from "./mortgage-contacts.js";
 /** Public observations and private indicative quotes are deliberately different records. */
 export const mortgageBaseline = "2026-10-20";
@@ -9,8 +11,8 @@ export type Observation = { product: ProductKey; status: "observed" | "unavailab
 export type Snapshot = { schema: 1; id: string; collectedAt: string; localDate: string; source: { url: string; title: string; method: string; publishedAt: string | null; controlsVerified: boolean }; filters: Filters; status: "complete" | "partial" | "failed"; observations: Observation[]; error: string | null };
 export type Quote = { id: string; receivedDate: string; source: string; lender: string; product: ProductKey; variant: "fixed" | "adjustable-payment" | "fixed-payment" | "unconfirmed-payment"; rate: number; limitations: string[]; contactId?: string; cashback?: MortgageCashback | null; status?: "indicative" | "historical"; supersedes?: string | null };
 export type MortgageAssumptions = { id: string; recordedAt: string; principal: number; currentRate: number; remainingMonths: number; source: string; principalBasis: "assumption"; amortizationBasis: "assumption"; currentRateBasis: "user-reported"; currentMaturity: null };
-export type MortgageState = { schema: 1; baselineDate: typeof mortgageBaseline; baselineSnapshotId: string | null; snapshots: Snapshot[]; quotes: Quote[]; assumptions: MortgageAssumptions[]; contacts?: MortgageContact[]; offers?: Quote[] };
-export const emptyMortgage = (): MortgageState => ({ schema: 1, baselineDate: mortgageBaseline, baselineSnapshotId: null, snapshots: [], quotes: [], assumptions: [], contacts: [], offers: [] });
+export type MortgageState = { schema: 1; baselineDate: typeof mortgageBaseline; baselineSnapshotId: string | null; snapshots: Snapshot[]; quotes: Quote[]; assumptions: MortgageAssumptions[]; contacts?: MortgageContact[]; offers?: Quote[]; profiles?: DecisionProfile[]; terms?: DecisionTerms[]; reports?: MortgageDailyReport[]; settings?: MortgageAlertSettings[] };
+export const emptyMortgage = (): MortgageState => ({ schema: 1, baselineDate: mortgageBaseline, baselineSnapshotId: null, snapshots: [], quotes: [], assumptions: [], contacts: [], offers: [], profiles: [], terms: [], reports: [], settings: [] });
 export function localDate(at: string | Date): string {
   const d = new Date(at); if (!Number.isFinite(d.getTime())) throw new Error("Invalid timestamp");
   return new Intl.DateTimeFormat("en-CA", { timeZone: mortgageZone, year: "numeric", month: "2-digit", day: "2-digit" }).format(d);
@@ -71,6 +73,17 @@ export function validateState(value: unknown): MortgageState {
   if(new Set(s.assumptions.map(a=>a.id)).size !== s.assumptions.length) fail();
   if (new Set(s.snapshots.map(s => s.id)).size !== s.snapshots.length || new Set(s.quotes.map(q => q.id)).size !== s.quotes.length) fail();
   if (s.baselineSnapshotId !== null && !s.snapshots.some(x=>x.id === s.baselineSnapshotId && x.localDate === mortgageBaseline && x.status === "complete")) fail();
+  if (s.profiles === undefined) s.profiles = []; if (s.terms === undefined) s.terms = []; if (s.reports === undefined) s.reports = []; if (s.settings === undefined) s.settings = [];
+  if (!Array.isArray(s.profiles) || !Array.isArray(s.terms) || !Array.isArray(s.reports) || !Array.isArray(s.settings)) fail();
+  s.profiles.forEach(validateDecisionProfile); s.terms.forEach(validateDecisionTerms);
+  s.reports.forEach(validateMortgageDailyReport); s.settings.forEach(validateMortgageAlertSettings);
+  for (const records of [s.profiles, s.terms, s.reports, s.settings]) if (new Set(records.map(r => r.id)).size !== records.length) fail();
+  for (const terms of s.terms) if (!allOffers.some(q => q.id === terms.offerId)) fail();
+  for (const report of s.reports) {
+    if (report.snapshotId !== null && !s.snapshots.some(snapshot => snapshot.id === report.snapshotId && snapshot.localDate === report.localDate)) fail();
+    if (new Set(report.comparisons.map(c => c.offerId)).size !== report.comparisons.length || new Set(report.signals.map(signal => signal.id)).size !== report.signals.length) fail();
+    if (report.comparisons.some(c => !allOffers.some(q => q.id === c.offerId)) || report.signals.some(signal => signal.offerId !== undefined && !allOffers.some(q => q.id === signal.offerId))) fail();
+  }
   return s;
 }
 export function referenceDates(today: string): { label: string; date: string }[] {
