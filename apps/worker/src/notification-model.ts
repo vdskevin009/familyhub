@@ -6,9 +6,9 @@ import type { invoiceSnapshot } from "./invoices.js";
 export const notificationKinds = ["collection", "reimbursement", "unmatched", "price", "deadline", "weekly"] as const;
 export type NotificationKind = typeof notificationKinds[number];
 export type NotificationTarget = { view: "reimbursements" | "savings" | "finances"; recordId?: string; queue?: "unmatched"; tab?: "investments"; accountId?: string; from?: string; to?: string; currency?: string; sources?: boolean };
-export type Candidate = { groupKey?: string; evidenceKey?: string; actionable?: boolean; pushEligible?: boolean; expiresAt?: string; priority?: number; key: string; source: "invoices" | "collections" | "contracts" | "finance"; kind: NotificationKind; title: string; detail: string; target: NotificationTarget; sourceDate?: string };
+export type Candidate = { baselineGroup?: "insurance-policy"; groupKey?: string; evidenceKey?: string; actionable?: boolean; pushEligible?: boolean; expiresAt?: string; priority?: number; key: string; source: "invoices" | "collections" | "contracts" | "finance"; kind: NotificationKind; title: string; detail: string; target: NotificationTarget; sourceDate?: string };
 export type NotificationDecision = { evidenceVersion: string; state: "snoozed" | "resolved" | "dismissed"; at: string; snoozedUntil?: string };
-export type NotificationEvent = Omit<Candidate, "key" | "source" | "groupKey" | "evidenceKey" | "pushEligible"> & { id: string; groupId?: string; evidenceVersion?: string; createdAt: string; baseline: boolean; readAt?: string; active: boolean; decision?: NotificationDecision; pushState?: "pending" | "handled" | "expired" };
+export type NotificationEvent = Omit<Candidate, "key" | "source" | "baselineGroup" | "groupKey" | "evidenceKey" | "pushEligible"> & { id: string; groupId?: string; evidenceVersion?: string; createdAt: string; baseline: boolean; readAt?: string; active: boolean; decision?: NotificationDecision; pushState?: "pending" | "handled" | "expired" };
 export const notificationDeliveryPolicy = { timeZone: "America/Vancouver", fromHour: 8, untilHour: 21, maximumPerDay: 1, actionOnly: true } as const;
 export function notificationActionState(event: NotificationEvent, now = Date.now()): "open" | NotificationDecision["state"] {
   const decision = event.decision;
@@ -34,11 +34,11 @@ export function notificationCandidates(evidence: NotificationEvidence, now = new
   const expiry = (date: string | undefined, days: number) => date && Number.isFinite(Date.parse(date)) ? new Date(Date.parse(date) + days * day).toISOString() : undefined;
   const recent = (date: string | undefined, days: number) => !!date && Number.isFinite(Date.parse(date)) && Date.parse(date) <= now.getTime() + day && Date.parse(date) >= now.getTime() - days * day;
   const daysUntil = (date: string) => validDate(date) ? Math.round((Date.parse(date + "T12:00:00Z") - Date.parse(today + "T12:00:00Z")) / day) : NaN;
-  const addDeadline = (key: string, source: Candidate["source"], label: string, date: string, target: NotificationTarget, pushEligible = true) => {
+  const addDeadline = (key: string, source: Candidate["source"], label: string, date: string, target: NotificationTarget, pushEligible = true, baselineGroup?: Candidate["baselineGroup"]) => {
     const remaining = daysUntil(date);
     if (remaining < 0 || remaining > 30 || !Number.isFinite(remaining)) return;
     const window = remaining <= 1 ? "1" : remaining <= 7 ? "7" : "30";
-    candidates.push({ groupKey: `deadline:${key}`, evidenceKey: date, actionable: true, pushEligible, priority: remaining <= 1 ? 3 : remaining <= 7 ? 2 : 1, expiresAt: expiry(date + "T12:00:00Z", 1), key: `deadline:${key}:${date}:${window}`, source, kind: "deadline", title: label, detail: `Date enregistrée : ${date}. ${remaining === 0 ? "Aujourd’hui." : `Dans ${remaining} jour(s).`} Vérifiez les conditions et la source avant toute décision.`, target, sourceDate: date });
+    candidates.push({ baselineGroup, groupKey: `deadline:${key}`, evidenceKey: date, actionable: true, pushEligible, priority: remaining <= 1 ? 3 : remaining <= 7 ? 2 : 1, expiresAt: expiry(date + "T12:00:00Z", 1), key: `deadline:${key}:${date}:${window}`, source, kind: "deadline", title: label, detail: `Date enregistrée : ${date}. ${remaining === 0 ? "Aujourd’hui." : `Dans ${remaining} jour(s).`} Vérifiez les conditions et la source avant toute décision.`, target, sourceDate: date });
   };
   if (evidence.collections) {
     ready.push("collections");
@@ -67,8 +67,17 @@ export function notificationCandidates(evidence: NotificationEvidence, now = new
   if (evidence.contracts) {
     ready.push("contracts");
     for (const c of evidence.contracts) {
-      addDeadline(`${c.id}:renewal`, "contracts", `Renouvellement : ${c.name}`, c.renewal, { view: "savings", recordId: c.id });
-      if (c.commitmentEnd !== c.renewal) addDeadline(`${c.id}:commitment`, "contracts", `Fin d’engagement : ${c.name}`, c.commitmentEnd, { view: "savings", recordId: c.id });
+      const ref = c.insuranceReference, records = ref?.records ?? [], superseded = new Set(records.map(r => r.supersedes).filter(Boolean));
+      const policies = records.filter(r => r.kind === "policy" && r.status === "documented" && !superseded.has(r.id));
+      const active = policies.filter(p => p.effectiveTo && p.effectiveTo >= today && (!p.effectiveFrom || p.effectiveFrom <= today));
+      const policy = active.length === 1 ? active[0] : active.length === 0 && policies.length === 1 ? policies[0] : undefined;
+      const dateCodes = new Set(["effectiveFrom", "effectiveTo", "policy.effectiveFrom", "policy.effectiveTo", "policy.period"]);
+      const verified = policy && policy.sourceIds.length > 0 && policy.sourceIds.every(id => ref?.sources.some(s => s.id === id && s.verification !== "unverified" && s.kind !== "public" && !["historical", "advertisement"].includes(s.scope)))
+        && !policy.facts.some(f => f.certainty === "conflict" && dateCodes.has(f.code));
+      // Conflicting coverage blocks equivalence, not an independently verified policy date.
+      const renewal = active.length > 1 || policy && !verified ? "" : policy?.effectiveTo ?? c.renewal;
+      addDeadline(`${c.id}:renewal`, "contracts", `Renouvellement : ${c.name}`, renewal, { view: "savings", recordId: c.id }, true, policy ? "insurance-policy" : undefined);
+      if (c.commitmentEnd !== renewal) addDeadline(`${c.id}:commitment`, "contracts", `Fin d’engagement : ${c.name}`, c.commitmentEnd, { view: "savings", recordId: c.id });
       if (c.promotionEnd?.date && c.promotionEnd.source.trim()) addDeadline(`${c.id}:promotion`, "contracts", `Fin de promotion : ${c.name}`, c.promotionEnd.date, { view: "savings", recordId: c.id });
     }
   }

@@ -4,7 +4,7 @@ import { mkdtemp, readFile, writeFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { NotificationLibrary } from "../apps/worker/dist/notification-library.js";
-import { notificationActionState } from "../apps/worker/dist/notification-model.js";
+import { notificationActionState, notificationCandidates } from "../apps/worker/dist/notification-model.js";
 import { now, pushFixture, contractEvidence, invoiceEvidence, financeEvidence } from "./notification-fixture.mjs";
 async function sandbox(run) { const dir = await mkdtemp(join(tmpdir(), "familyhub-notification-lifecycle-")); try { await run(join(dir, "history.json")); } finally { await rm(dir, { recursive: true, force: true }); } }
 async function setup(path, send) {
@@ -78,4 +78,58 @@ test("legacy history upgrades silently, preserves device/preferences and rejects
   assert.equal(await readFile(path, "utf8"), before);
   const invalid = JSON.stringify({ ...after, decisions: { [s.events[0].groupId]: { state: "snoozed", at: now.toISOString(), evidenceVersion: s.events[0].evidenceVersion, snoozedUntil: "bad" } } });
   await writeFile(path, invalid); await assert.rejects(lib.read(), /Aucun fichier remplacé/); await assert.rejects(lib.scan({ contracts: [] }, [], now)); assert.equal(await readFile(path, "utf8"), invalid);
+}));
+
+test("new devices do not receive an older pending group; recipients and event links stay scoped", () => sandbox(async path => {
+  const delivered = [], lib = await setup(path, async (subscription, eventId) => { delivered.push({ endpoint: subscription.endpoint, eventId }); return "accepted"; });
+  await lib.scan({ contracts: [] }, [], now);
+  const first = contractEvidence(), second = { ...first, id: "later-synthetic", name: "Later synthetic" };
+  let s = await lib.scan({ contracts: [first] }, [], new Date("2026-10-14T06:00:00Z"));
+  const firstId = s.events[0].id, newDevice = pushFixture("new-phone");
+  s = await lib.mutate({ action: "enroll", expectedRevision: s.revision, permission: "granted", label: "New phone", subscription: newDevice.subscription, publicKey: s.publicKey });
+  assert.equal(s.events[0].pendingDeviceIds, undefined);
+  s = await lib.scan({ contracts: [first, second] }, [], new Date("2026-10-14T06:15:00Z"));
+  const secondId = s.events.find(e => e.target.recordId === second.id).id;
+  await lib.scan({ contracts: [first, second] }, [], new Date("2026-10-14T15:00:00Z"));
+  assert.equal(delivered.length, 2);
+  assert.equal(delivered.find(d => d.endpoint === newDevice.subscription.endpoint).eventId, secondId);
+  assert.equal(delivered.find(d => d.endpoint !== newDevice.subscription.endpoint).eventId, firstId);
+}));
+
+test("read suppresses the same alert; new urgency can remind without resolving", () => sandbox(async path => {
+  let sends = 0; const lib = await setup(path, async () => { sends++; return "accepted"; }), contract = contractEvidence();
+  let s = await lib.scan({ contracts: [contract] }, [], now);
+  s = await lib.mutate({ action: "read", expectedRevision: s.revision, id: s.events[0].id }, now);
+  s = await lib.scan({ contracts: [contract] }, [], new Date("2026-10-14T17:00:00Z"));
+  assert.equal(sends, 1); assert.equal(s.events.find(e => e.active).readAt, undefined);
+  assert.equal(notificationActionState(s.events.find(e => e.active)), "open");
+  await lib.scan({ contracts: [contract] }, [], new Date("2026-10-14T18:00:00Z")); assert.equal(sends, 1);
+  contract.renewal = "2026-11-02";
+  s = await lib.scan({ contracts: [contract] }, [], new Date("2026-10-15T18:00:00Z"));
+  assert.equal(sends, 2); assert.equal(s.events.find(e => e.active).readAt, undefined);
+}));
+
+test("verified structured insurance deadline migrates silently, then alerts on new urgency", () => sandbox(async path => {
+  let sends = 0; const lib = await setup(path, async () => { sends++; return "accepted"; });
+  await lib.scan({ contracts: [] }, [], now);
+  const legacy = JSON.parse(await readFile(path, "utf8")); delete legacy.insuranceDatesInitialized; await writeFile(path, JSON.stringify(legacy));
+  const contract = contractEvidence(); contract.renewal = ""; contract.commitmentEnd = "2026-10-20";
+  contract.insuranceReference = { sources: [{ id: "source", kind: "document", scope: "original", verification: "locally-read" }], records: [{ id: "policy", kind: "policy", status: "documented", effectiveFrom: "2026-01-01", effectiveTo: "2026-10-20", sourceIds: ["source"], facts: [{ code: "coverage.limit", certainty: "conflict" }], supersedes: null }] };
+  let s = await lib.scan({ contracts: [contract] }, [], now);
+  assert.equal(s.events.length, 1); assert.equal(s.events[0].baseline, true); assert.equal(sends, 0);
+  s = await lib.scan({ contracts: [contract] }, [], new Date("2026-10-14T17:00:00Z"));
+  assert.equal(sends, 1); assert.equal(s.events.find(e => e.active).baseline, false);
+  assert.equal(s.events.find(e => e.active).sourceDate, "2026-10-20");
+  const variants = [
+    ref => ref.records[0].facts.push({ code: "policy.effectiveTo", certainty: "conflict" }),
+    ref => ref.sources[0].verification = "unverified",
+    ref => ref.sources[0].scope = "historical",
+    ref => ref.records.push({ ...ref.records[0], id: "second" })
+  ];
+  for (const change of variants) {
+    const copy = structuredClone(contract); copy.commitmentEnd = ""; change(copy.insuranceReference);
+    assert.equal(notificationCandidates({ contracts: [copy] }, now).candidates.length, 0);
+  }
+  s = await lib.mutate({ action: "resolve", expectedRevision: s.revision, id: s.events.find(e => e.active).id }, now);
+  await lib.scan({ contracts: [contract] }, [], new Date("2026-10-19T17:00:00Z")); assert.equal(sends, 1);
 }));

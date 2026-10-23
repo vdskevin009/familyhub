@@ -107,7 +107,10 @@ export function useOpportunities(config: WorkerConfig, reviews: SavingsState["Re
     } catch (error) {
       if (generation === active.current) setActionError(error instanceof Error ? error.message : "Action non confirmée. Actualisez avant de réessayer.");
       return false;
-    } finally { actionLock.current = false; if (generation === active.current) setActionBusy(false); }
+    } finally {
+      // A refresh/config change discards the response, but must still release the single in-flight action.
+      actionLock.current = false; setActionBusy(false);
+    }
   }, [config.Endpoint, config.ApiKey, configured]);
   const sources: SourceHealth[] = sourceIds.map(id => { const { data: _data, ...source } = inputs[id]; return source; });
   const visible = useMemo(() => applyOpportunityDecisions(feed.opportunities, actions?.decisions ?? {}, clock), [feed.opportunities, actions, clock]);

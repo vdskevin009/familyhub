@@ -16,6 +16,7 @@ const FinancesView = lazy(() => import("./views/FinancesView"));
 const CoursesView = lazy(() => import("./views/CoursesView"));
 const NotificationsView = lazy(() => import("./views/NotificationsView"));
 import { PageHeader } from "./ui/primitives";
+import "./notifications.css";
 import "./proactive.css";
 
 type BeforeInstallPromptEvent = Event & {

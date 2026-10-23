@@ -7,7 +7,7 @@ import { validateSubscription, type PushSubscriptionData, type PushOutcome, type
 type Delivery = { at: string; outcome: PushOutcome; eventId: string; confirmedAt?: string };
 type Device = { id: string; label: string; subscription: PushSubscriptionData; createdAt: string; publicKey: string; enabled: boolean; lastDelivery?: Delivery };
 type StoredEvent = NotificationEvent & { pendingDeviceIds?: string[] };
-type Stored = { decisions?: Record<string, NotificationDecision>; lastAutomaticPushAt?: string; schema: 1; revision: string; initialized: Candidate["source"][]; seen: string[]; events: StoredEvent[]; preferences: NotificationPreferences; devices: Device[]; scannedAt?: string; sourceErrors: string[] };
+type Stored = { insuranceDatesInitialized?: boolean; decisions?: Record<string, NotificationDecision>; lastAutomaticPushAt?: string; schema: 1; revision: string; initialized: Candidate["source"][]; seen: string[]; events: StoredEvent[]; preferences: NotificationPreferences; devices: Device[]; scannedAt?: string; sourceErrors: string[] };
 export type NotificationSnapshot = Omit<Stored, "schema" | "seen" | "initialized" | "devices" | "events"> & { events: NotificationEvent[]; devices: Omit<Device, "subscription" | "publicKey">[]; pushConfigured: boolean; publicKey: string | null; pushSetupError?: string; lifecycleSupported: true; deliveryPolicy: typeof notificationDeliveryPolicy };
 export class NotificationConflict extends Error {}
 const hash = (s: string) => createHash("sha256").update(s).digest("hex");
@@ -30,6 +30,7 @@ export class NotificationLibrary {
       if (!data || data.schema !== 1 || !text(data.revision, 100) || !Array.isArray(data.initialized) || data.initialized.some(s => !sources.includes(s)) || !Array.isArray(data.seen) || data.seen.some(id => typeof id !== "string" || !idPattern.test(id)) || !Array.isArray(data.events) || data.events.length > 500 || !data.preferences || notificationKinds.some(k => typeof data.preferences[k] !== "boolean") || Object.keys(data.preferences).some(k => !notificationKinds.includes(k as typeof notificationKinds[number])) || !Array.isArray(data.devices) || data.devices.length > 20 || !Array.isArray(data.sourceErrors) || data.sourceErrors.some(s => !text(s, 100)) || data.scannedAt !== undefined && !timestamp(data.scannedAt)) throw new Error();
       if (new Set(data.events.map(e => e.id)).size !== data.events.length || new Set(data.devices.map(d => d.id)).size !== data.devices.length) throw new Error();
       if (data.lastAutomaticPushAt !== undefined && !timestamp(data.lastAutomaticPushAt) || data.decisions !== undefined && (!data.decisions || typeof data.decisions !== "object" || Array.isArray(data.decisions) || Object.keys(data.decisions).length > 5000 || Object.entries(data.decisions).some(([id, d]) => !idPattern.test(id) || !this.validDecision(d)))) throw new Error();
+      if (data.insuranceDatesInitialized !== undefined && typeof data.insuranceDatesInitialized !== "boolean") throw new Error();
       for (const event of data.events) {
         if (event.pendingDeviceIds !== undefined && (!Array.isArray(event.pendingDeviceIds) || event.pendingDeviceIds.length > 20 || event.pendingDeviceIds.some(id => !idPattern.test(id)))) throw new Error();
         if (event.groupId !== undefined && !idPattern.test(event.groupId) || event.evidenceVersion !== undefined && !idPattern.test(event.evidenceVersion) || event.actionable !== undefined && typeof event.actionable !== "boolean" || event.expiresAt !== undefined && !timestamp(event.expiresAt) || event.priority !== undefined && (!Number.isInteger(event.priority) || event.priority < 0 || event.priority > 3) || event.pushState !== undefined && !["pending", "handled", "expired"].includes(event.pushState)) throw new Error();
@@ -97,14 +98,15 @@ export class NotificationLibrary {
         const id = hash(c.key);
         if (seen.has(id)) continue;
         seen.add(id);
-        const { key: _key, source, groupKey, evidenceKey, pushEligible: _pushEligible, ...content } = c;
-        const baseline = !initial.has(source);
-        state.events.push({ ...content, id, groupId: hash(groupKey ?? c.key), evidenceVersion: hash(evidenceKey ?? c.key),
+        const { key: _key, source, groupKey, evidenceKey, baselineGroup, pushEligible: _pushEligible, ...content } = c;
+        const baseline = !initial.has(source) || baselineGroup === "insurance-policy" && !state.insuranceDatesInitialized, groupId = hash(groupKey ?? c.key), evidenceVersion = hash(evidenceKey ?? c.key);
+        state.events.push({ ...content, id, groupId, evidenceVersion,
           createdAt: now.toISOString(), baseline, active: true, pushState: pendingState(c, baseline),
           ...(pendingState(c, baseline) === "pending" ? { pendingDeviceIds: [...pendingDeviceIds] } : {}) });
       }
       state.seen = [...seen]; state.events = state.events.slice(-500);
       state.initialized = [...new Set([...state.initialized, ...ready])];
+      if (ready.includes("contracts")) state.insuranceDatesInitialized = true;
       state.scannedAt = now.toISOString(); state.sourceErrors = errors;
       const pending = state.events.filter(event => {
         if (event.pushState !== "pending") return false;
@@ -165,7 +167,7 @@ export class NotificationLibrary {
         else {
           state.decisions ??= {};
           const group = event.groupId ?? event.id, evidenceVersion = event.evidenceVersion ?? event.id;
-          if (state.decisions[group] && state.decisions[group].evidenceVersion !== evidenceVersion || state.events.some(other => other.active && other.groupId === group && other.evidenceVersion !== evidenceVersion)) throw new NotificationConflict("Les preuves ont changé. Ouvrez le rappel actuel avant de décider.");
+          if (!event.active && state.decisions[group] && state.decisions[group].evidenceVersion !== evidenceVersion || state.events.some(other => other.active && other.groupId === group && other.evidenceVersion !== evidenceVersion)) throw new NotificationConflict("Les preuves ont changé. Ouvrez le rappel actuel avant de décider.");
           if (body.action === "restore") { delete state.decisions[group]; event.pushState = "handled"; }
           else {
             if (!state.decisions[group] && Object.keys(state.decisions).length >= 5000) throw new Error("La limite de décisions est atteinte. Les décisions existantes sont conservées.");
