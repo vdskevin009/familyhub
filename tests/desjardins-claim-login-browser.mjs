@@ -52,7 +52,7 @@ try {
  for(const scenario of ['ambiguous','inactive','disabled','challenge','foreign','uncertain']) {
   const c=await browser.newContext({serviceWorkers:'block'}),p=await c.newPage();let clicks=0,reservations=0;
   await c.exposeFunction('clicked',()=>clicks++);
-  const panel=(status,disabled='')=>'<div class="panel-dossier"><div class="panel-body-dossier">'+status+'</div><input type="submit" id="grdListeAdherent_ChoisirButton" value="Choisir" '+disabled+' onclick="clicked()"></div>';
+  const panel=(status,disabled='')=>'<div class="panel-dossier"><div class="panel-body-dossier">'+status+'</div><input type="submit" id="grdListeAdherent_ChoisirButton" value="Choisir" '+disabled+' onclick="clicked().then(()=>document.body.dataset.clickRecorded=\'yes\')"></div>';
   const body=panel(scenario==='inactive'?'INACTIF':'ACTIF',scenario==='disabled'?'disabled':'')+(scenario==='ambiguous'?panel('ACTIVE'):'')+(scenario==='challenge'?'<input autocomplete="one-time-code"><p>Enter verification code</p>':'');
   await c.route('**/*',r=>r.fulfill({contentType:'text/html',body}));
   await p.goto((scenario==='foreign'?'https://foreign.invalid':origin)+dossier);
@@ -60,6 +60,9 @@ try {
   const claim=async()=>{reservations++;return true;};
   assert.equal(await continueDesjardinsDossierSelection(p,claim),false,scenario);
   assert.equal(await continueDesjardinsDossierSelection(p,claim),false,scenario+' repeat');
+  // The synthetic navigation wait rejects immediately. Await the exposed
+  // callback before reading its host counter; a click does not await that IPC.
+  if(scenario==='uncertain')await p.waitForFunction(()=>document.body.dataset.clickRecorded==='yes');
   assert.equal(clicks,scenario==='uncertain'?1:0,scenario);
   assert.equal(reservations,clicks,scenario);
   await c.close();
