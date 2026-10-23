@@ -1,5 +1,15 @@
 # FamilyHub architecture
 
+Claim gross reconstruction normalizes the labelled patient share before capturing
+its arithmetic operand; an outstanding balance of zero after payment is not that
+share. The bounded old-conflict repair requires a fresh attachment's unique matching
+invoice row, subtotal plus tax equalling total, and independently labelled insurer
+payments plus patient share equalling that same total. It clears only the exact
+prior defective reconstruction and appends private `EvidenceRepairs` provenance.
+Other conflicts and manual-authority guards remain active. UI blocking explanations
+derive from the existing insurer-specific duplicate status and non-reviewable
+conflicts; a source conflict is never rendered as a successful validation.
+
 Achats (FH-GROCERY-010 / #155) is a read-only purchase-first projection inside Courses over the existing receipt library and reviewed planning prices. Optional receipt source classification is retained by worker source 2.26.9 and capability-gated web writes (`grocery-source-type-v1`); legacy records require payment verification. Whole-pack outlay and normalized product-only comparisons stay distinct and never imply a completed checkout or final all-in order total. See `docs/requirements/FH-GROCERY-010.md`.
 
 The second observed receipt layout has a suite address, one exact invoice and one Visa payment equal to the payer total/source gross, with patient identity and the matching printed timestamp. This branch does not require a guessed practitioner: explicit missing-practitioner answers live separately in claim-practitioner-answers.json, keyed to a hash of invoice, insurer and all source fields with revision checks. Only a unique exact current provider-option name can be reused, never a source-known practitioner override. Summary comparison can use that session's freshly verified owner-selected option. No invoice/source/ledger update is performed.

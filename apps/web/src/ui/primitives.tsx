@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
-import { AlertCircle, CheckCircle2, Search, SlidersHorizontal, X } from "lucide-react";
+import { AlertCircle, AlertTriangle, CheckCircle2, Search, SlidersHorizontal, X } from "lucide-react";
 
 /** Native modal semantics supply focus containment, Escape and focus restoration. */
 export function Sheet({ open, onClose, title, description, children, footer, wide = false, className = "", resetScrollOnOpen = false }: {
@@ -74,9 +74,9 @@ export function FilterChips({ filters, onReset }: { filters: ActiveFilter[]; onR
   </div>;
 }
 
-export function Notice({ children, error = false, onDismiss }: { children: ReactNode; error?: boolean; onDismiss?: () => void }) {
-  return <div className={`app-notice ${error ? "error" : "success"}`} role={error ? "alert" : "status"}>
-    {error ? <AlertCircle size={18} /> : <CheckCircle2 size={18} />}<span>{children}</span>
+export function Notice({ children, error = false, warning = false, onDismiss }: { children: ReactNode; error?: boolean; warning?: boolean; onDismiss?: () => void }) {
+  return <div className={`app-notice ${error ? "error" : warning ? "warning" : "success"}`} role={error ? "alert" : "status"}>
+    {error ? <AlertCircle size={18} aria-hidden="true" /> : warning ? <AlertTriangle size={18} aria-hidden="true" /> : <CheckCircle2 size={18} aria-hidden="true" />}<span>{children}</span>
     {onDismiss && <button type="button" className="icon-button subtle" onClick={onDismiss} aria-label="Dismiss message"><X size={16} /></button>}
   </div>;
 }

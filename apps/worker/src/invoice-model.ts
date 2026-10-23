@@ -30,6 +30,9 @@ export type Mail = {
   blueCrossExport?: import("./bluecross.js").BlueCrossExport;
 };
 export type Invoice = {
+  EvidenceRepairs?: Array<{ rule: "patient-share-before-gross-v1"; at: string; field: "OriginalBilledAmount";
+    previous: number; corrected: number; clearedConflict: string; sourceMessageId: string;
+    attachmentIds: string[]; proof: { invoiceTotal: number; patientShare: number; insurerPaid: number } }>;
   ManualOverride?: import("./ingestion-policy.js").ManualOverride;
   SourceIdentity?: { Source: string; ExternalId: string; RecordId: string; Account: string; OriginalReference: string; Strength: "external-id" | "source-facts" | "message-id" };
   IngestedAt?: string;
@@ -182,11 +185,39 @@ export function repairHealthcareAmounts(item: Invoice, mail: Mail): Invoice {
     attentionReason: item.AttentionReason
   };
   const healthcare = extractHealthcareEvidence(mail, result);
+  // Retire only the exact old zero-balance reconstruction defect, after a fresh
+  // original invoice row independently corroborates the complete arithmetic.
+  // Other disagreements and all original/source/decision records remain intact.
+  const money = (s: string) => Math.round(Number(s.replace(/,/g, "")) * 100);
+  const invoiceRows = [...(mail.attachmentText || "").matchAll(/\bInvoice\s*#([A-Z0-9-]+)\s+\$([\d,]+\.\d{2})\s+\$([\d,]+\.\d{2})\s+\$([\d,]+\.\d{2})\b/gi)];
+  const row = invoiceRows.length === 1 && invoiceRows[0][1] === healthcare.InvoiceNumber
+    && invoiceRows[0][1] === item.Healthcare?.InvoiceNumber && mail.id === item.SourceMessageId ? invoiceRows[0] : null;
+  const payments = Object.entries(healthcare.InsurerPayments || {}).filter(([, value]) => value != null);
+  const paid = payments.reduce((sum, [, value]) => sum + Math.round(value! * 100), 0);
+  const patient = healthcare.AmountNotCovered;
+  const proven = receiptProvider(mail.subject) && row && money(row[2]) + money(row[3]) === money(row[4])
+    && healthcare.OriginalBilledAmount != null && Math.round(healthcare.OriginalBilledAmount * 100) === money(row[4])
+    && healthcare.FieldSources?.AmountNotCovered === "attachment" && patient != null && patient > 0
+    && Math.round(patient * 100) + paid === money(row[4]) && payments.length > 0
+    && payments.every(([insurer]) => healthcare.FieldSources?.[`InsurerPayments.${insurer}`] === "attachment");
+  const cleared = proven ? (healthcare.Conflicts || []).filter(conflict => {
+    const match = /^OriginalBilledAmount differs from direct-insurance arithmetic \((\d+(?:\.\d+)?) vs (\d+(?:\.\d+)?)\)\.$/.exec(conflict);
+    return !!match && Math.round(Number(match[1]) * 100) === money(row![4])
+      && Math.round(Number(match[2]) * 100) === paid
+      && item.Healthcare?.OriginalBilledAmount != null && Math.round(item.Healthcare.OriginalBilledAmount * 100) === paid;
+  }) : [];
+  if (cleared.length) healthcare.Conflicts = healthcare.Conflicts!.filter(c => !cleared.includes(c));
   const residualOnly = healthcare.OriginalBilledAmount == null && (healthcare.PatientBalance != null || healthcare.AmountNotCovered != null);
   const original = healthcare.OriginalBilledAmount ?? (residualOnly ? null : item.BilledAmount);
   return {
     ...item,
     Healthcare: healthcare,
+    ...(cleared.length ? { EvidenceRepairs: [...(item.EvidenceRepairs || []), ...cleared.map(clearedConflict => ({
+      rule: "patient-share-before-gross-v1" as const, at: new Date().toISOString(), field: "OriginalBilledAmount" as const,
+      previous: item.Healthcare!.OriginalBilledAmount!, corrected: healthcare.OriginalBilledAmount!, clearedConflict,
+      sourceMessageId: mail.id, attachmentIds: mail.attachments.map(a => a.Id),
+      proof: { invoiceTotal: healthcare.OriginalBilledAmount!, patientShare: patient!, insurerPaid: paid / 100 }
+    }))] } : {}),
     Provider: healthcare.Provider || (memberName(item.Provider) !== "unknown" ? "" : item.Provider),
     ServiceDate: healthcare.ServiceDate || item.ServiceDate,
     ClaimedService: healthcare.ServiceType || item.ClaimedService,

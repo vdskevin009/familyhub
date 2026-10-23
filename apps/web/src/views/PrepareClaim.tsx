@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { WorkerConfig } from "../types";
 import { claimAction, viewWorkerAttachment, type ClaimPreparation, type ClaimStep, type ClaimVerification, type PreparedClaim } from "../worker";
 import { Notice, Sheet } from "../ui/primitives";
+import { claimBlockingReasons, claimMissingAmountReason } from "../claim-block-reasons";
 
 export default function PrepareClaim({ expenseId, initialInsurer, config, onClose }: { expenseId: string; initialInsurer?: "blue-cross" | "desjardins"; config: WorkerConfig; onClose: () => void }) {
   const [insurer, setInsurer] = useState<"" | "blue-cross" | "desjardins">(initialInsurer || "");
@@ -99,7 +100,8 @@ export default function PrepareClaim({ expenseId, initialInsurer, config, onClos
       {busy && <p role="status">Preparing and reading back the insurer form…</p>}
       {error && <Notice error>{error}</Notice>}{message && <Notice>{message}</Notice>}
       {dossier && <>
-        {dossier.blocked && <Notice error>A recorded claim, possible duplicate or conflicting source prevents preparation. Resolve it in Claims first.</Notice>}
+        {claimBlockingReasons(dossier).map(reason => <Notice key={reason} error>{reason}</Notice>)}
+        {claimMissingAmountReason(dossier) && <Notice warning>{claimMissingAmountReason(dossier)}</Notice>}
         {dossier.coordination?.message && <Notice>{dossier.coordination.message}</Notice>}
         {!sessionId && dossier.coordination?.required && <details><summary>Review / correct your other-insurer response</summary>
           {dossier.coordination.ownerConfirmation && <p>Owner-confirmed {dossier.coordination.primaryInsurer}: {dossier.coordination.ownerConfirmation.amount.toFixed(2)} {dossier.currency}. Reason: {dossier.coordination.ownerConfirmation.reason}. This is your statement, not an insurer-imported record.</p>}
@@ -123,7 +125,7 @@ export default function PrepareClaim({ expenseId, initialInsurer, config, onClos
           {dossier.attachments.map(a => <button key={`${a.documentId}:${a.attachmentId}`} type="button" className="text-action" disabled={busy} onClick={() => void run(() => viewWorkerAttachment(config, { Id: a.documentId, Attachments: [{ Id: a.attachmentId, FileName: a.name, MimeType: "application/pdf", Size: 0 }] }, 0))}>Review PDF · {a.name}</button>)}
           <p>{dossier.duplicate.scope}</p>
         </details>
-        {dossier.conflicts.map(c => <Notice key={c}>{c}</Notice>)}
+        {dossier.conflicts.map(c => <Notice key={c} error={!dossier.reviewableWarnings?.includes(c)} warning={dossier.reviewableWarnings?.includes(c)}>{c}</Notice>)}
         {dossier.attachments.length > 1 && <p>Several original PDFs are indexed. Choose the correct receipt when its upload field is available.</p>}
         {!!sessionId && <>
           <button type="button" className="button secondary" disabled={busy} onClick={() => void run(async () => { accept(await claimAction<PreparedClaim>(config, "resume", { sessionId, prepareAuthorized: true })); })}>Read and prepare current step</button>

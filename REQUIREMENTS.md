@@ -14,6 +14,19 @@ Approved compact follow-up implemented locally, Testing: [Achats specification a
 
 ## Autonomous preparation, then operator validation — FH-CLAIM-007 (#110)
 
+Patient-share reconstruction and blocking-reason correction (2026-10-23), Testing:
+the labelled patient share is normalized before reconstructing gross, so a
+paid-in-full zero balance cannot replace that share. A stale reconstruction
+conflict can be retired only after re-reading the same original invoice with
+matching invoice identity, valid subtotal/tax/total and corroborated insurer plus
+patient arithmetic. Additive `EvidenceRepairs` retain the old/new derived amounts
+and proof; original documents and existing manual-authority guards stay intact.
+Preparation now identifies actual source conflicts separately from target-insurer
+processing/possible duplicates. Blocking source evidence uses an error indicator;
+reviewable warnings use a warning indicator. Missing original amounts and genuine
+conflicts/target-insurer duplicates remain guarded. No claim is submitted by this
+correction. Existing-data repair and worker installation are separately coordinated.
+
 Long preparation response follow-up (2026-10-16), Testing: the real installed worker completed login, dependent fields, both guarded intermediate transitions and a first original-receipt upload autonomously, while the PWA abandoned its response at the previous three-minute deadline. Portal preparation requests now allow up to fifteen minutes without changing short read/check deadlines. A lost response explicitly reports uncertain ongoing preparation and prohibits automatic restart/re-upload; it does not claim that the PC stopped or that submission occurred. Consent and final submission remain manual. The earlier verified-step implementation is merged in [resume verified Blue Cross preparations across receipt variants](https://github.com/vdskevin009/familyhub/pull/234); its publication and the transport follow-up remain separately tracked in #110.
 
 Verified-step resume follow-up (2026-10-16), Testing; summary date matching accepts only the same exact English portal display with an optional single leading zero on one-digit days; invalid dates, extra zeroes and a changed calendar day remain rejected. code reference: [`claim-browser.ts`](apps/worker/src/claim-browser.ts): an already checked exact detailed-receipt confirmation is preserved and recorded only after the same original-PDF evidence and fresh read-back checks, without toggling it. A known expense summary reached manually may continue only when this session previously verified every required detail and receipt, the unique summary still matches all supported source facts and prepared illness, and no summary attempt was already dispatched. Unknown fields, mismatches, changed consent, multiple receipts and uncertain summary navigation remain blocking. UI distinguishes the known summary from generic navigation and does not show missing previous controls as current erroneous values. No automatic consent or final submission.
