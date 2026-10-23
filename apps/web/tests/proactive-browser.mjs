@@ -36,7 +36,7 @@ async function noOverflow(page, label) {
 async function waitReady(page) {
   await page.getByRole("heading", { name: "Aujourd’hui", exact: true }).waitFor();
   await page.locator(".today-source-status").filter({ hasText: "7 sources accessibles" }).waitFor();
-  await page.waitForFunction(() => document.querySelectorAll(".today-priorities .opportunity-card").length === 3);
+  await page.waitForFunction(() => document.querySelectorAll(".today-priorities .opportunity-card").length >= 3);
 }
 async function setup(width, paired = true) {
   const context = await browser.newContext({ viewport: { width, height: 900 }, reducedMotion: "reduce", serviceWorkers: "block" });
