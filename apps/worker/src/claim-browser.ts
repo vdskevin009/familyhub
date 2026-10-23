@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { chromium, type Browser, type Page, type Locator } from "playwright";
 import { join } from "node:path";
-import { dataDirectory, loadPrivate } from "./private-store.js";
+import { atomicJson, dataDirectory, loadPrivate } from "./private-store.js";
 import type { ClaimPreparation } from "./claim-preparation.js";
 import { exactServiceOption } from "./claim-preparation.js";
 import { blueCrossComboFields, blueCrossSuggestion, blueCrossTextField } from "./bluecross-claim-form.js";
@@ -73,11 +73,15 @@ async function openBrowser(dossier: ClaimPreparation, historyReviewed: unknown, 
   try { browser = await launch(); } catch { await release(); throw new Error("The insurer preparation browser could not open."); }
   try {
     const context = await browser.newContext();
+    let restoredCookieCount = 0, restoredSessionStorage = false, restoreStatus = "unavailable";
     // Reuse only previously authorized insurer cookies; no new credentials are saved.
     try {
       const auth = await loadPrivate<{ cookies?: import("playwright").Cookie[]; session?: { origin: string; value?: string; values?: Record<string, string> } }>(join(dataDirectory, dossier.insurer === "blue-cross" ? "bluecross" : "desjardins", "auth-state.dpapi"));
       const domains = dossier.insurer === "blue-cross" ? /(?:^|\.)pac\.bluecross\.ca$/i : /(?:^|\.)(?:dsf-dfs\.com|desjardins\.com)$/i;
-      if (auth.cookies) await context.addCookies(auth.cookies.filter(c => domains.test(c.domain.replace(/^\./, ""))));
+      if (auth.cookies) {
+        const cookies = auth.cookies.filter(c => domains.test(c.domain.replace(/^\./, "")) && (c.expires < 0 || c.expires > Date.now() / 1000));
+        await context.addCookies(cookies); restoredCookieCount = cookies.length;
+      }
       if (dossier.insurer === "blue-cross") {
         const marker = blueCrossSessionMarker(auth.session?.origin || "", auth.session?.value);
         if (marker) await context.addInitScript(value => {
@@ -90,8 +94,11 @@ async function openBrowser(dossier: ClaimPreparation, historyReviewed: unknown, 
           for (const [key, value] of Object.entries(values))
             if (typeof value === "string" && !sessionStorage.getItem(key)) sessionStorage.setItem(key, value);
         }, auth.session.values);
+        restoredSessionStorage = true;
       }
+      restoreStatus = "restored";
     } catch { /* A normal visible login remains available. */ }
+    if (dossier.insurer === "desjardins") await atomicJson(join(dataDirectory, "desjardins", "claim-session-restore-diagnostic.json"), { version: 1, observedAt: new Date().toISOString(), status: restoreStatus, restoredCookieCount, restoredSessionStorage }).catch(() => {});
     let page = await context.newPage();
     await page.goto(dossier.preparationUrl || dossier.portalUrl, { waitUntil: "domcontentloaded", timeout: 45_000 });
     const authReason = autonomous ? await authenticate(page, dossier.insurer, recovery) : undefined;
