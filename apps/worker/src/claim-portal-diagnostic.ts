@@ -44,7 +44,9 @@ export async function claimPortalDiagnostic(page: Page) {
         ? [{ label: el.textContent?.trim(), pathname: link.pathname }] : [];
     }).slice(0, 60));
     const headings = await candidate.locator('h1,h2,h3').allTextContents();
-    tabs.push({ ...base, headings: headings.map(text => text.trim().slice(0, 300)), controls, links });
+    const main = candidate.locator("main");
+    const visibleInstructions = claim && await main.count() === 1 ? (await main.innerText()).slice(0, 12_000) : undefined;
+    tabs.push({ ...base, headings: headings.map(text => text.trim().slice(0, 300)), visibleInstructions, controls, links });
   }
   return { tabs, submitAllowed: false };
 }
