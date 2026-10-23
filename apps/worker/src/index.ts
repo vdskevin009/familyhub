@@ -263,8 +263,8 @@ const server = createServer(async (request, response) => {
   try {
     if (parts[0] === "mortgage") {
       if (parts.length === 1 && request.method === "GET") { json(response, 200, await mortgageStore.read(), origin); return; }
-      if (parts.length === 2 && request.method === "POST" && (parts[1] === "snapshots" || parts[1] === "quotes" || parts[1] === "assumptions" || parts[1] === "contacts")) {
-        json(response, 200, await mortgageStore.ingest(parts[1] === "snapshots" ? "snapshot" : parts[1] === "quotes" ? "quote" : parts[1] === "contacts" ? "contact" : "assumptions", await readJson(request, 32_000)), origin); return;
+      if (parts.length === 2 && request.method === "POST" && (parts[1] === "snapshots" || parts[1] === "quotes" || parts[1] === "assumptions" || parts[1] === "contacts" || parts[1] === "offers")) {
+        json(response, 200, await mortgageStore.ingest(parts[1] === "snapshots" ? "snapshot" : parts[1] === "quotes" ? "quote" : parts[1] === "contacts" ? "contact" : parts[1] === "offers" ? "offer" : "assumptions", await readJson(request, 32_000)), origin); return;
       }
     }
     if (parts[0] === "notifications" && parts.length === 1) {

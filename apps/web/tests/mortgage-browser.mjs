@@ -20,8 +20,8 @@ try {
     let mode="complete",delay=0;
     const state=emptyMortgage(),first=snapshot();state.snapshots=[first];state.baselineSnapshotId=first.id;state.quotes=[quote(),quote("adjustable-payment"),quote("fixed-payment")];state.assumptions=[assumptions()];
     state.contacts=Array.from({length:6},(_,i)=>({id:"synthetic-contact-"+i,contactId:"person-"+i,recordedAt:"2026-10-20T19:00:00Z",name:"Synthetic Contact "+(i+1),organization:"Synthetic Organization "+(i+1),status:["appointment","appointment","appointment","email-sent","awaiting-response","paused"][i],source:"SYNTHETIC_PRIVATE_SOURCE",notes:["SYNTHETIC_DETAIL_ONLY"],appointment:i<3?{startsAt:"2026-11-10T18:15:00Z",endsAt:i===0?"2026-11-10T18:35:00Z":null,source:"Synthetic invitation"}:null}));
-    state.quotes=state.quotes.map((q,i)=>({...q,contactId:"person-0",cashback:i===1?{amount:1700,basis:"cashback",conditions:["Synthetic adjustable eligibility"]}:i===2?{amount:2900,basis:"total-incentive",conditions:["Synthetic fixed-payment total components"]}:null}));
-    state.quotes.push({...quote(),id:"synthetic-historical",contactId:"person-3",status:"historical",product:"fixed-3",rate:4.9});
+    state.offers=state.quotes.map((q,i)=>({...q,id:q.id+"-extended",supersedes:q.id,contactId:"person-0",cashback:i===1?{amount:1700,basis:"cashback",conditions:["Synthetic adjustable eligibility"]}:i===2?{amount:2900,basis:"total-incentive",conditions:["Synthetic fixed-payment total components"]}:null}));
+    state.offers.push({...quote(),id:"synthetic-historical",contactId:"person-3",status:"historical",product:"fixed-3",rate:4.9});
     await page.route("**/*",async route=>{
       const req=route.request(),url=new URL(req.url());
       if(url.origin===new URL(base).origin){await route.continue();return;}
@@ -31,7 +31,7 @@ try {
       if(delay)await new Promise(r=>setTimeout(r,delay));
       if(mode==="error"){await route.fulfill({status:503,body:"{}"}).catch(()=>{});return;}
       const copy=structuredClone(state);
-      if(mode==="empty"){copy.snapshots=[];copy.quotes=[];copy.assumptions=[];copy.contacts=[];copy.baselineSnapshotId=null;}
+      if(mode==="empty"){copy.snapshots=[];copy.quotes=[];copy.offers=[];copy.assumptions=[];copy.contacts=[];copy.baselineSnapshotId=null;}
       if(mode==="partial"){const s=snapshot("later","2026-10-21T01:30:00Z");s.status="partial";s.observations[3]={product:"variable-5",status:"unavailable",rate:null,lender:null,reason:"Table interrompue",eligibility:["Unknown"]};copy.snapshots.push(s);}
       if(mode==="failed"){const s=snapshot("failed","2026-10-21T01:45:00Z");s.status="failed";s.error="Source inaccessible";s.observations=s.observations.map(o=>({...o,status:"unavailable",rate:null,lender:null,reason:"Source inaccessible"}));copy.snapshots.push(s);}
       await route.fulfill({status:200,contentType:"application/json",body:JSON.stringify(copy)}).catch(()=>{});

@@ -35,7 +35,8 @@ test("real isolated worker HTTP: pairing/origin, size, durable writes/restarts, 
     assert.equal((await post("/mortgage/contacts",contact)).status,200);assert.equal((await (await post("/mortgage/contacts",contact)).json()).duplicate,true);
     assert.equal((await post("/mortgage/contacts",{...contact,name:"Conflicting revision"})).status,409);
     const linked={...quote("adjustable-payment"),id:"synthetic-linked-offer",contactId:contact.contactId,supersedes:quote("adjustable-payment").id,cashback:{amount:1700,basis:"cashback",conditions:["Synthetic conditions"]}};
-    assert.equal((await post("/mortgage/quotes",{...linked,contactId:"unknown-person"})).status,400);assert.equal((await post("/mortgage/quotes",linked)).status,200);
-    await stop();await start();const state=await (await call("/mortgage",{headers})).json();assert.equal(state.baselineSnapshotId,"synthetic-1");assert.equal(state.snapshots.length,2);assert.equal(state.quotes.length,4);assert.equal(state.contacts.length,1);assert.deepEqual(state.quotes.find((q:any)=>q.id===quote("adjustable-payment").id),quote("adjustable-payment"));assert.equal(await readFile(join(dir,"unrelated-sentinel.json"),"utf8"),'{"preserve":true}');
+    assert.equal((await post("/mortgage/quotes",linked)).status,400);
+    assert.equal((await post("/mortgage/offers",{...linked,contactId:"unknown-person"})).status,400);assert.equal((await post("/mortgage/offers",linked)).status,200);
+    await stop();await start();const state=await (await call("/mortgage",{headers})).json();assert.equal(state.baselineSnapshotId,"synthetic-1");assert.equal(state.snapshots.length,2);assert.equal(state.quotes.length,3);assert.equal(state.offers.length,1);assert.equal(state.contacts.length,1);assert.deepEqual(state.quotes.find((q:any)=>q.id===quote("adjustable-payment").id),quote("adjustable-payment"));assert.equal(await readFile(join(dir,"unrelated-sentinel.json"),"utf8"),'{"preserve":true}');
   } finally {await stop();}
 });
