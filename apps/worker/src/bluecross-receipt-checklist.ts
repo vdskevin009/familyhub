@@ -1,6 +1,7 @@
 import { PDFParse } from "pdf-parse";
 import type { Page } from "playwright";
 import type { ClaimPreparation } from "./claim-preparation.js";
+import { splitPaidReceiptEvidence } from "./split-paid-receipt.js";
 
 // Exact visible checklist supplied by the operator. Extra requirements abstain.
 export const receiptChecklist = "Please check the box to confirm you have the following: If you don’t have your documents or receipts ready to upload please gather the necessary documents and try again later. Your claim cannot be processed without documents being uploaded (You will be asked to upload copies of these during this claim submission) Copy of the detailed payment receipt (no cashier tapes accepted). A detailed payment receipt must include the providers name & address, patients full name, date of purchase/service, amount charged and confirmation the item/service has been paid in full.";
@@ -55,6 +56,7 @@ function visaReceiptEvidence(lines: string[], dossier: ClaimPreparation, printed
  * No diagnosis, eligibility or payment is inferred from a filename or invoice total.
  */
 export function detailedReceiptEvidence(text: string, dossier: ClaimPreparation): boolean {
+  if (splitPaidReceiptEvidence(text, dossier)) return true;
   const f = dossier.fields;
   if (dossier.blocked || !f.provider || !f.patient || !f.invoiceNumber || !f.serviceDate
     || f.originalAmount == null || f.originalAmount <= 0 || text.length > 30_000) return false;
@@ -92,5 +94,13 @@ export async function verifyDetailedReceipt(bytes: Buffer, dossier: ClaimPrepara
     const result = await parser.getText();
     return result.total === 1 && detailedReceiptEvidence(result.text, dossier);
   } catch { return false; }
+  finally { await parser.destroy(); }
+}
+
+export async function readReceiptPractitioner(bytes: Buffer, dossier: ClaimPreparation) {
+  if (bytes.length > 2_000_000 || !bytes.subarray(0, 5).equals(Buffer.from("%PDF-"))) return null;
+  const parser = new PDFParse({ data: new Uint8Array(bytes) });
+  try { const result = await parser.getText(); return result.total === 1 ? splitPaidReceiptEvidence(result.text, dossier) : null; }
+  catch { return null; }
   finally { await parser.destroy(); }
 }

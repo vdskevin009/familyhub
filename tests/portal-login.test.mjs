@@ -148,3 +148,11 @@ test('diagnostic write failure cannot change authentication success or the retry
 });
 
 test('an observed challenge after password submit retains the actual human-required reason',async()=>{const f=fixture();let text='';f.page.locator=()=>({innerText:async()=>text,first(){return this},isVisible:async()=>false});const submit=f.deps.submit;f.deps.submit=async(...args)=>{await submit(...args);text='Enter verification code';};assert.equal(await auth.tryPortalLogin(f.page,'desjardins',f.ready,f.deps),'human-required');assert.equal(f.state().blocked,true);assert.equal(f.count(),1);await auth.tryPortalLogin(f.page,'desjardins',f.ready,f.deps);assert.equal(f.count(),1);});
+
+
+test('lock release is idempotent and refuses replacement ownership',async()=>{
+ const release=await auth.acquirePortalLock('bluecross');const path=join(directory,'bluecross','collector-lock','owner.json');const original=await readFile(path,'utf8');
+ await writeFile(path,JSON.stringify({pid:process.pid,token:'another-owner'}));
+ await assert.rejects(release,/owner changed/);assert.equal(JSON.parse(await readFile(path,'utf8')).token,'another-owner');
+ await writeFile(path,original);await release();await release();
+});

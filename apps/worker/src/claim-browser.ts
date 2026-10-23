@@ -17,8 +17,9 @@ import { desjardinsRadioField } from "./desjardins-claim-form.js";
 import { reserveClaimUpload, reserveClaimUploadRetry } from "./claim-upload-guard.js";
 import { confirmedInvoicePractitioner } from "./claim-practitioner-answers.js";
 import { confirmedInvoiceIllness } from "./claim-invoice-answers.js";
-import { blueCrossReceiptCheckbox, verifyDetailedReceipt } from "./bluecross-receipt-checklist.js";
-import { advanceBlueCrossDetails, advanceBlueCrossExpenses } from "./bluecross-claim-progress.js";
+import { blueCrossReceiptCheckbox, verifyDetailedReceipt, readReceiptPractitioner } from "./bluecross-receipt-checklist.js";
+import { receiptProviderOption, type ReceiptPractitioner } from "./split-paid-receipt.js";
+import { advanceBlueCrossDetails, advanceBlueCrossExpenses, readBlueCrossExpenseSummary } from "./bluecross-claim-progress.js";
 import { isBlueCrossClaimCausePage, openBlueCrossClaimCause } from "./bluecross-claim-cause.js";
 import { isBlueCrossClaimKindPage, openBlueCrossHealthcareClaim } from "./bluecross-claim-kind.js";
 import { blueCrossReceiptFile, blueCrossReceiptMatches, openBlueCrossReceiptUpload, blueCrossReceiptAlreadyListed, blueCrossReceiptUploadEvidence, blueCrossReceiptUploadAvailable } from "./bluecross-claim-upload.js";
@@ -28,7 +29,8 @@ export type Field = { key: string; label: string; type: string; options: { value
 type Target = { locator: Locator; field: Field; signature: string; initialValue: string; dropdown?: Locator; providers?: Locator };
 type ApprovedSnapshot = { revision: string; url: string; entries: { target: Target; approved: ApprovedField; filled: boolean }[]; attachment?: { name: string; selected: boolean; blocked?: boolean } };
 type Session = { id: string; browser: Browser; page: Page; dossier: ClaimPreparation; createdAt: number;
-  fields: Map<string, Target>; attemptedAttachments: Set<string>; busy: boolean; revision: string; inspectedUrl: string; approved?: ApprovedSnapshot;
+  receiptIdentity?: ReceiptPractitioner | null;
+  fields: Map<string, Target>; attemptedAttachments: Set<string>; busy: boolean; preparing?: boolean; closing?: boolean; revision: string; inspectedUrl: string; approved?: ApprovedSnapshot;
   authenticate?: typeof loginForClaim; autonomous?: boolean; loginRefreshAttempted?: boolean; authPersistenceAttempted?: boolean; authReason?: LoginReason; release?: () => Promise<void>; claimEntryAttempted?: boolean; claimKindAttempted?: boolean; claimCauseAttempted?: boolean; detailsNextAttempted?: boolean; detailsReadBackVerified?: boolean; detailsNextVerified?: boolean; summaryNextAttempted?: boolean; receiptRetryUsed?: boolean; authorizedRetryHash?: string; uploadEntryAttempted?: boolean };
 let session: Session | undefined;
 let opening = false;
@@ -53,14 +55,15 @@ async function openBrowser(dossier: ClaimPreparation, historyReviewed: unknown, 
   if (dossier.blocked) throw new Error(dossier.coordination?.message || "Resolve the recorded or possible duplicate and source conflicts before preparing a claim.");
   if (!autonomous && historyReviewed !== true) throw new Error("Review the insurer's current history for this invoice before opening preparation.");
   if (!autonomous && dossier.reviewableWarnings.length && warningsReviewed !== true) throw new Error("Review the original PDF and confirm the shown gross expense and other-insurer payment before preparing this claim.");
-  if (session && !session.page.isClosed()) {
+  if (session) {
+    if (session.page.isClosed() || Date.now() - session.createdAt >= 30 * 60_000) throw new Error("The previous preparation window must be closed before starting again.");
     if (session.dossier.expenseId === dossier.expenseId && session.dossier.insurer === dossier.insurer
       && JSON.stringify(session.dossier.fields) === JSON.stringify(dossier.fields)) return { sessionId: session.id, status: "resumed", step: await inspectClaimStep(session.id), submitAllowed: false };
     throw new Error("A claim preparation window is already open. Close it before preparing another invoice.");
   }
   const unlock = await acquirePortalLock(dossier.insurer === "blue-cross" ? "bluecross" : "desjardins");
   let released: Promise<void> | undefined;
-  const release = () => released ||= unlock();
+  const release = () => released ||= unlock().catch(error => { released = undefined; throw error; });
   let browser: Browser;
   try { browser = await launch(); } catch { await release(); throw new Error("The insurer preparation browser could not open."); }
   try {
@@ -93,9 +96,14 @@ async function openBrowser(dossier: ClaimPreparation, historyReviewed: unknown, 
       if (authenticated.length === 1) page = authenticated[0];
     }
     session = { id: randomUUID(), browser, page, dossier, createdAt: Date.now(), fields: new Map(), attemptedAttachments: new Set(), busy: false, revision: "", inspectedUrl: "", authReason, release, autonomous, authenticate };
-    const timer = setTimeout(() => { if (session?.browser === browser) { session = undefined; void browser.close(); } }, 30 * 60_000);
-    timer.unref();
-    browser.on("disconnected", () => { clearTimeout(timer); if (session?.browser === browser) session = undefined; void release().catch(() => {}); });
+    let timer: NodeJS.Timeout;
+    const expire = () => {
+      if (session?.browser !== browser) return;
+      if (session.busy || session.preparing || opening) { timer = setTimeout(expire, 5000); timer.unref(); return; }
+      void closeClaimBrowser(session.id).catch(() => { /* Retain ownership for explicit Close. */ });
+    };
+    timer = setTimeout(expire, 30 * 60_000); timer.unref();
+    browser.on("disconnected", () => { clearTimeout(timer); void release().then(() => { if (session?.browser === browser) session = undefined; }).catch(() => {}); });
     const step = await inspectClaimStep(session.id);
     return { sessionId: session.id, status: "opened", step, submitAllowed: false };
   } catch { await browser.close(); await release(); throw new Error("Preparation could not open safely. Check the insurer window or retry status; credentials are never returned."); }
@@ -142,7 +150,7 @@ async function inspect(s: Session) {
       const opened = await openBlueCrossHealthcareClaim(s.page, s.dossier, () => { s.claimKindAttempted = true; }).catch(() => false);
       if (opened) return inspect(s);
     }
-    return { status: "navigate", fields: [], revision: "", submitAllowed: false };
+    return { status: "navigate", fields: [], revision: "", submitAllowed: false, portalStage: "claim-kind", answerWarning: "The Healthcare entry could not be verified for this invoice. Check its service and the visible category choices; no claim details were sent at this step." };
   }
   if (s.dossier.insurer === "blue-cross" && body.includes("The service or product provided is") && await isBlueCrossClaimCausePage(s.page)) {
     if (!s.claimCauseAttempted) {
@@ -162,7 +170,7 @@ async function inspect(s: Session) {
       if (pages.length) s.page = pages[pages.length - 1];
       if (s.page !== previousPage || s.page.url() !== previousUrl) return inspect(s);
     }
-    return { status: "navigate", fields: [], revision: "", submitAllowed: false };
+    return { status: "navigate", fields: [], revision: "", submitAllowed: false, portalStage: "member-home", answerWarning: "The signed-in member page did not open a unique supported claim entry. The invoice is unchanged; inspect the insurer window before resuming." };
   }
   const completed = /your claim has been (?:processed|submitted)|réclamation a été (?:transmise|soumise)/i.test(body);
   const atReview = completed || /review (?:your )?claim|claim summary|I confirm all the information above is correct and I have read and agree|vérifi(?:ez|cation).*réclamation|résumé de (?:la|votre) réclamation/i.test(body);
@@ -201,6 +209,11 @@ async function inspect(s: Session) {
       const options = providerMetadata.filter(p => p.label).map(p => ({ label: p.label, value: p.id }));
       const field: Field = { key: randomUUID(), label: "Saved provider — verify name and address against the receipt", kind: "practitioner", type: "provider", options,
         suggested: blueCrossSuggestion("practitioner", s.dossier, options) };
+      if (/^RMT - Follow Up Massage /i.test(s.dossier.fields.service || "")) {
+        field.suggested = receiptProviderOption(s.receiptIdentity, options);
+        field.suggestionReason = field.suggested ? "Unique current practitioner name and clinic address match the verified paid receipt. Its printed licence remains source evidence, not a registry verification."
+          : "No unique practitioner and clinic address match was established from the original receipt. Review the provider identity; a matching name alone is insufficient.";
+      }
       s.fields.set(field.key, { locator: providers.first(), providers, field, signature: JSON.stringify(providerMetadata), initialValue: "" });
     }
   }
@@ -519,7 +532,18 @@ async function verifySnapshot(s: Session) {
     && !/your claim has been (?:processed|submitted)/i.test(body)
     && /Additional Information Required|Claim Documentation Required/.test(body)
     && await blueCrossReceiptUploadAvailable(s.page, s.dossier);
-  return { revision: s.approved.revision, fields, attachment, receiptUploadAvailable,
+  const illness = s.approved.entries.find(e => e.filled && e.target.field.kind === "natureOfIllness")?.approved.value;
+  const practitioner = s.approved.entries.find(e => e.filled && e.target.field.kind === "practitioner")?.approved.optionLabel;
+  const expenseSummary = validPage && s.dossier.insurer === "blue-cross" ? await readBlueCrossExpenseSummary(s.page, s.dossier, illness, practitioner).catch(() => null) : null;
+  let consentUnchecked = false;
+  if (expenseSummary?.matches) {
+    try {
+      const consent = s.page.locator('input[type="checkbox"][id$="_ucSubmitClaim_chkConsent"]').filter({ visible: true });
+      consentUnchecked = await consent.count() === 1 && !await consent.isChecked();
+    } catch { /* An unreadable consent control cannot make the claim ready. */ }
+  }
+  return { revision: s.approved.revision, fields, attachment, receiptUploadAvailable, expenseSummary,
+    preparedForReview: !!expenseSummary?.matches && !!s.detailsReadBackVerified && attachment?.status === "verified" && consentUnchecked,
     readyForManualNext: (fields.length > 0 || !!attachment) && fields.every(f => f.status === "match") && (!attachment || attachment.status === "verified"),
     scope: "Read-back against the values prepared from invoice evidence or your answers. This does not verify eligibility, coverage, current claim history or submission." };
 }
@@ -552,17 +576,37 @@ export async function forgetClaimServiceChoices(id: unknown) {
   await forgetServiceChoices(s.dossier);
   return inspectClaimStep(id);
 }
+/** Paired discovery only exposes the worker-owned preparation, never a collector. */
+export function claimWindowState() {
+  return { sessionId: session?.id || null, insurer: session?.dossier.insurer || null,
+    canClose: !!session && !opening && !session.busy && !session.preparing && !session.closing,
+    busy: opening || !!session?.busy || !!session?.preparing || !!session?.closing,
+    expired: !!session && (session.page.isClosed() || Date.now() - session.createdAt >= 30 * 60_000) };
+}
 export async function closeClaimBrowser(id: unknown) {
-  const s = current(id);
-  if (s.busy) throw new Error("Wait for the current preparation action to finish.");
-  session = undefined;
-  await s.browser.close();
-  await s.release?.();
-  return { status: "closed", submitAllowed: false };
+  const s = session;
+  if (!s || !id || id !== s.id) throw new Error("This preparation window is no longer current. Check the active window before closing it.");
+  if (opening || s.busy || s.preparing || s.closing) throw new Error("Wait for the current preparation action to finish before closing its window.");
+  s.closing = true;
+  try {
+    await s.browser.close();
+    await s.release?.();
+    if (session === s) session = undefined;
+    return { status: "closed", submitAllowed: false };
+  } finally { s.closing = false; }
 }
 
-/** Bounded preparation with observed guarded intermediate Next; never consent or Submit. */
 export async function prepareCurrentClaimStep(id: unknown,
+  loadAttachment: (id: string, attachmentId: string) => Promise<{ bytes: Buffer; name: string }>,
+  assertFresh: () => void = () => {}) {
+  const s = current(id);
+  if (s.preparing || s.closing) throw new Error("Wait for the current preparation action to finish.");
+  s.preparing = true;
+  try { return await prepareStep(id, loadAttachment, assertFresh); }
+  finally { s.preparing = false; }
+}
+/** Bounded preparation with observed guarded intermediate Next; never consent or Submit. */
+async function prepareStep(id: unknown,
   loadAttachment: (id: string, attachmentId: string) => Promise<{ bytes: Buffer; name: string }>,
   assertFresh: () => void = () => {}) {
   const s = current(id);
@@ -570,6 +614,10 @@ export async function prepareCurrentClaimStep(id: unknown,
   let verification: Awaited<ReturnType<typeof verifySnapshot>> | undefined;
   let warning: string | undefined;
   try {
+    if (s.receiptIdentity === undefined && s.dossier.insurer === "blue-cross" && /^RMT - Follow Up Massage /i.test(s.dossier.fields.service || "")) {
+      const receipt = s.dossier.attachments.length === 1 ? s.dossier.attachments[0] : undefined;
+      s.receiptIdentity = receipt ? await readReceiptPractitioner((await loadAttachment(receipt.documentId, receipt.attachmentId)).bytes, s.dossier).catch(() => null) : null;
+    }
     step = await inspectClaimStep(id);
     if (step.status === "fields") s.detailsReadBackVerified = false;
     // A restored SPA can briefly look authenticated before the server rejects

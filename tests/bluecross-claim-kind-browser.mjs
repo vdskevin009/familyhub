@@ -14,10 +14,10 @@ const marker='<table id="grdClaimsGrid"><tr><td>Authenticated synthetic marker</
 const form=marker+'<h1>Claim Details</h1><label>Amount<input id="form_txtAmount"></label><label>Nature of illness/injury<input id="form_txtIllness"></label><button onclick="window.next=true">Next</button><button onclick="window.sent=true">Submit</button><label><input type="checkbox">Final attestation</label>';
 let session,selectedPage;
 try{
- const scenarios=['healthcare','health-care','health-care-radio','image-label','physiotherapy','new-tab','home-chain','hidden-copy','persistent-heading','already-selected','radio','unknown-service','ambiguous','changed-options','wrong-heading','uncertain','password','other-selected','missing-next','ambiguous-next','disabled-next','review'];
+ const scenarios=['healthcare','health-care','health-care-radio','image-label','physiotherapy','massage','new-tab','home-chain','hidden-copy','persistent-heading','already-selected','radio','unknown-service','ambiguous','changed-options','wrong-heading','uncertain','password','other-selected','missing-next','ambiguous-next','disabled-next','review'];
  for(const scenario of scenarios){
   let choices=0,advances=0,homes=0,contacts=0;
-  const dossier={...base,expenseId:'synthetic-'+scenario,fields:{...base.fields,service:scenario==='unknown-service'?'Dental cleaning':scenario==='physiotherapy'?'Physiotherapy - 30 Min Follow Up Visit (30 minutes)':base.fields.service},...(scenario==='home-chain'?{portalUrl:'https://service.pac.bluecross.ca/member/'}:{})};
+  const dossier={...base,expenseId:'synthetic-'+scenario,fields:{...base.fields,service:scenario==='unknown-service'?'Dental cleaning':scenario==='physiotherapy'?'Physiotherapy - 30 Min Follow Up Visit (30 minutes)':scenario==='massage'?'RMT - Follow Up Massage (60 Min) (60 minutes)':base.fields.service},...(scenario==='home-chain'?{portalUrl:'https://service.pac.bluecross.ca/member/'}:{})};
   const answer=await confirmedInvoiceIllness(dossier);
   await confirmInvoiceIllness(dossier,{confirmed:true,expectedScope:answer.scope,expectedRevision:answer.revision,value:'Owner-described symptom'});
   const launch=async()=>{const browser=await chromium.launch({headless:true,channel:process.platform==='win32'?'msedge':undefined}),original=browser.newContext.bind(browser);
@@ -39,7 +39,7 @@ try{
      return route.fulfill({contentType:'text/html; charset=utf-8',body});
     });context.on('page',page=>selectedPage=page);return context;};return browser;};
   const opened=await openClaimBrowser(dossier,false,false,launch,true);session=opened.sessionId;
-  const success=['healthcare','health-care','health-care-radio','image-label','physiotherapy','new-tab','home-chain','hidden-copy','persistent-heading','already-selected','radio'].includes(scenario);
+  const success=['healthcare','health-care','health-care-radio','image-label','physiotherapy','massage','new-tab','home-chain','hidden-copy','persistent-heading','already-selected','radio'].includes(scenario);
   if(success)assert.equal(opened.step.status,'fields',scenario);
   const prepared=await prepareCurrentClaimStep(session,async()=>{throw Error('Unexpected upload')});
   const selected=success&&scenario!=='already-selected'||scenario==='uncertain'||scenario==='disabled-next';

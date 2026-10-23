@@ -20,7 +20,7 @@ const entry={Id:'synthetic-case',DocumentIds:[expense.Id],ExpenseDocumentId:expe
 let browser;
 try {
  browser=await chromium.launch({headless:true,channel:process.platform==='win32'?'msedge':undefined});
- for(const scenario of ['blocked-source','blocked-target','reviewable-source','prepared','unknown','mismatch','upload-failed','human-required','login-required','blocked','old-worker','refresh-failed','owner-zero','unknown-insurer','confirmed-illness','default-illness','auto-login','optional','required','review','blocked-upload','review-missing','review-no-verification','expense-summary','saved-practitioner','watch-upload']) {
+ for(const scenario of ['blocked-source','blocked-target','reviewable-source','prepared','unknown','mismatch','upload-failed','human-required','login-required','blocked','old-worker','refresh-failed','owner-zero','unknown-insurer','confirmed-illness','default-illness','auto-login','optional','required','review','blocked-upload','review-missing','review-no-verification','expense-summary','saved-practitioner','watch-upload','busy-window','collector-busy','closing-busy']) {
   const context=await browser.newContext({viewport:{width:390,height:900},serviceWorkers:'block'}),page=await context.newPage(),posts=[],errors=[];
   const c={...entry,NextInsurer:scenario==='unknown-insurer'?null:'Blue Cross',DesjardinsReimbursedAmount:scenario==='owner-zero'?null:0};
   const preparation=prepareClaim(expense.Id,'blue-cross',[expense],[c]);
@@ -39,6 +39,7 @@ try {
   if(['review','blocked-upload','review-missing','review-no-verification'].includes(scenario)){step.status='review';step.fields=[{key:'receipt',kind:null,label:'Receipt',type:'file',options:[],suggested:null}];}
   if(scenario==='review-missing')step.fields.push({key:'illness',kind:'natureOfIllness',label:'Nature of illness/injury',type:'text',options:[],suggested:null});
   const verification={revision:'prepared',readyForManualNext:!['mismatch','upload-failed'].includes(scenario),scope:'Read-back only; not eligibility or submission.',fields:[{key:'gross',label:'Total expense',value:'100.00',actual:scenario==='mismatch'?'80.00':'100.00',status:scenario==='mismatch'?'mismatch':'match'}],attachment:{name:'synthetic.pdf',status:scenario==='upload-failed'?'failed':'verified'}};
+  if(scenario==='review'){verification.preparedForReview=true;verification.expenseSummary={matches:true,patient:'Kevin',benefit:'Massage',practitioner:'Synthetic Practitioner',service:'Registered Massage 60 Minutes and Up - Subsequent Visit',date:'Oct 1, 2026',amount:'100.00',illness:'Owner-described symptom'};}
   if(scenario==='expense-summary'){verification.fields[0].status='unreadable';verification.fields[0].actual=null;verification.attachment=null;verification.readyForManualNext=false;}
   if(scenario==='review-no-verification')verification.attachment=null;
   if(scenario==='blocked-upload'){verification.attachment={name:'synthetic.pdf',status:'unverified',selected:false,blocked:true};verification.readyForManualNext=false;}
@@ -53,7 +54,12 @@ try {
    if(request.method()==='POST')posts.push({path,body:request.postDataJSON()});
    if(path==='/health')return reply({status:'ok',version:scenario==='old-worker'?'2.25.3':'2.26.8'});
    if(path==='/invoices')return reply({items:[expense],reconciliations:[c],unmatchedReimbursements:[],accounts:[]});
-   if(path==='/claim-preparation/prepare')return reply(result());
+   if(path==='/claim-preparation/window')return reply({sessionId:scenario==='collector-busy'?null:'old-session',insurer:'blue-cross',canClose:scenario==='busy-window',busy:scenario==='closing-busy',expired:true});
+   if(path==='/claim-preparation/close'){if(scenario==='busy-window')assert.equal(request.postDataJSON().sessionId,'old-session');return reply({status:'closed',submitAllowed:false});}
+   if(path==='/claim-preparation/prepare'){
+    if(['busy-window','collector-busy','closing-busy'].includes(scenario)&&posts.filter(p=>p.path.endsWith('/prepare')).length===1)return route.fulfill({status:400,contentType:'application/json',body:JSON.stringify({error:'Insurer browser profile is busy. Close its active collection, or recover the interrupted lock locally.'})});
+    return reply(result());
+   }
    if(path==='/claim-preparation/verify'&&scenario==='watch-upload')return reply({...verification,receiptUploadAvailable:true});
    if(path==='/claim-preparation/inspect'){
     if(scenario==='auto-login')step={...step,status:'fields'};
@@ -93,6 +99,15 @@ try {
   }
   const dialog=page.getByRole('dialog',{name:'Prepare Blue Cross claim',exact:true});await dialog.waitFor();
   await dialog.getByText('Preparing and reading back the insurer form…',{exact:true}).waitFor({state:'hidden'});
+  if(['busy-window','collector-busy','closing-busy'].includes(scenario)){
+   await dialog.getByRole('alert').filter({hasText:/profile is busy/}).waitFor();
+   const close=dialog.getByRole('button',{name:'Close preparation window',exact:true});
+   if(scenario==='collector-busy'){await dialog.getByText(/There is no preparation window this worker can close/).waitFor();assert.equal(await close.count(),0);}
+   else {await close.waitFor();if(scenario==='closing-busy')assert.equal(await close.isDisabled(),true);
+    else{await close.click();await dialog.getByText(/window closed and its lock released/).waitFor();assert.equal(posts.filter(p=>p.path.endsWith('/prepare')).length,1,'Closing never restarts automatically');await dialog.getByRole('button',{name:'Start preparation again',exact:true}).click();await dialog.getByRole('region',{name:'Prepared portal answers'}).waitFor();assert.equal(posts.filter(p=>p.path.endsWith('/prepare')).length,2);}
+   }
+   assert.equal(posts.some(p=>/submit|retry-receipt/.test(p.path)),false);assert.deepEqual(errors,[]);await page.screenshot({path:join(output,'claim-close-'+scenario+'.png')});await context.close();continue;
+  }
   if(scenario==='old-worker'){await dialog.getByText(/requires worker 2.26.0/).waitFor();assert.equal(posts.length,0);}
   else {
    assert.equal(posts.filter(p=>p.path.endsWith('/prepare')).length,1,'A click prepares once, without a prior review checkbox');
@@ -124,6 +139,7 @@ try {
     if(scenario==='saved-practitioner'){await dialog.getByText('Practitioner confirmed for this invoice',{exact:true}).click();await dialog.getByRole('button',{name:'Clear saved practitioner for this invoice',exact:true}).click();await dialog.getByText('Saved practitioner cleared. The current portal selection was preserved.',{exact:true}).waitFor();assert.equal(posts.filter(p=>p.path.endsWith('/practitioner-answer')).length,1);assert.equal(await dialog.getByRole('button',{name:'Clear saved practitioner for this invoice',exact:true}).count(),0);assert.equal(posts.some(p=>/submit|claim-create|next/.test(p.path)),false);assert.deepEqual(errors,[]);await context.close();continue;}
     if(scenario==='expense-summary'){await dialog.getByText(/The insurer expense summary is open/).waitFor();assert.equal(await dialog.getByRole('button',{name:'Validate prepared step',exact:true}).count(),0);assert.equal(await dialog.getByText(/Open the claim form/).count(),0);assert.equal(await dialog.getByText(/Needs attention — unreadable/).count(),0);assert.equal(posts.some(p=>/submit|claim-create|next/.test(p.path)),false);assert.deepEqual(errors,[]);await context.close();continue;}
     const validate=dialog.getByRole('button',{name:'Validate prepared step',exact:true});
+    if(scenario==='review'){await dialog.getByText(/Ready for your final review/).waitFor();await dialog.getByText('Synthetic Practitioner',{exact:true}).waitFor();}
     if(['review','blocked-upload','review-missing','review-no-verification'].includes(scenario)){
      if(scenario==='blocked-upload'){await dialog.getByText(/Not attached — an earlier upload attempt/).waitFor();assert.equal(await dialog.getByText(/Selected; upload not yet verified/).count(),0);await dialog.getByRole('button',{name:'Attach receipt to this preparation',exact:true}).click();await dialog.getByText(/Upload success observed/).waitFor();assert.equal(posts.filter(p=>p.path.endsWith('/retry-receipt')).length,1);}
      const missing=dialog.getByRole('region',{name:'Uncertain or missing answers'});
@@ -173,5 +189,5 @@ try {
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false,scenario+' mobile overflow');
   await page.screenshot({path:join(output,`claim-autonomous-${scenario}.png`),fullPage:true});await context.close();
  }
- console.log(JSON.stringify({passed:26,providerContact:false,submission:false,screenshots:output}));
+ console.log(JSON.stringify({passed:29,providerContact:false,submission:false,screenshots:output}));
 }finally{await browser?.close();server.close();}

@@ -1,4 +1,5 @@
 import { access, mkdir, readFile, unlink, rmdir, writeFile } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import type { Page } from "playwright";
 import { atomicJson, dataDirectory, loadPrivate } from "./private-store.js";
@@ -31,9 +32,19 @@ export async function acquirePortalLock(insurer: Insurer): Promise<() => Promise
   const path = join(directory, "collector-lock");
   try { await mkdir(path, { mode: 0o700 }); }
   catch { throw new Error("Insurer browser profile is busy. Close its active collection, or recover the interrupted lock locally."); }
-  try { await writeFile(join(path, "owner.json"), JSON.stringify({ pid: process.pid }), { flag: "wx", mode: 0o600 }); }
+  const token = randomUUID();
+  try { await writeFile(join(path, "owner.json"), JSON.stringify({ pid: process.pid, token }), { flag: "wx", mode: 0o600 }); }
   catch { await rmdir(path).catch(() => {}); throw new Error("Could not secure the insurer profile lock."); }
-  return async () => { await unlink(join(path, "owner.json")); await rmdir(path); };
+  let removed = false, released = false;
+  return async () => {
+    if (released) return;
+    if (!removed) {
+      const owner = JSON.parse(await readFile(join(path, "owner.json"), "utf8"));
+      if (owner.pid !== process.pid || owner.token !== token) throw new Error("The insurer lock owner changed; do not remove its lock.");
+      await unlink(join(path, "owner.json")); removed = true;
+    }
+    await rmdir(path); released = true;
+  };
 }
 export function validCredentials(value: unknown, insurer: Insurer): value is LoginCredentials {
   if (!value || typeof value !== "object") return false;

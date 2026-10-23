@@ -271,3 +271,14 @@ The PWA allows up to fifteen minutes for bounded portal preparation actions (pre
 ### Mortgage — FH-MORTGAGE-001
 
 The dedicated Mortgage tab reads authenticated GET /mortgage from the paired local worker. POST /mortgage/snapshots and POST /mortgage/quotes admit bounded, validated, immutable evidence with ID/content deduplication. Separate append-only files under <FAMILYHUB_WORKER_DATA>/mortgage/evidence preserve every attempt and a frozen first complete October20,2026 Vancouver baseline. No existing Savings or household data is migrated. There is no browser-owned shadow ledger, public write endpoint, scraper or scheduler. A separately authorized collector must verify visible Ratehub controls and refreshed tables before ingesting actual observations; failures/partial reads contain four explicit product outcomes. Dated actual quotes, public market observations and optional baseline-spread scenarios are distinct. See MORTGAGE.md for the supported one-shot helper, durable-write contract, backup/lock recovery and production activation limits.
+
+
+Claim-window recovery (#252 / FH-CLAIM-007) uses the existing paired/origin-protected
+POST claim-preparation/window discovery and session-token-bound close action.
+The browser remains owned until closure and its token-checked lock release succeed;
+closed pages and expired form access do not disable cleanup. Active preparation
+and opening remain serialized with Close. A failed close is discoverable for an
+explicit retry, and automatic expiry defers while preparation is active. The PWA
+recovers a lost UI session after an error, shows the insurer before closure, and
+requires a separate restart click. No external collector termination, arbitrary
+process API, lock-stealing endpoint or upload-reservation reset is added.

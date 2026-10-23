@@ -18,6 +18,33 @@ Approved compact follow-up implemented locally, Testing: [Achats specification a
 
 ## Autonomous preparation, then operator validation — FH-CLAIM-007 (#110)
 
+Close/restart recovery (2026-10-23), Testing (#252): paired window discovery
+finds the current worker-owned preparation after a panel reload or failed opening.
+Close remains independent of form expiry and manually closed tabs. Keep ownership
+until browser closure and lock release complete; retry cleanup without removing a
+replacement owner's lock. Expiry waits for active preparation to finish. The UI
+provides Close outside the successful-dossier panel and offers an explicit Start
+preparation again only after successful closure. A stale token, active operation,
+external collector or unknown lock cannot be terminated by this action. Closing
+preserves upload reservations and never submits or cancels an insurer claim.
+
+Massage preparation and split-payer receipts (2026-10-23), Testing (#247–#250):
+recognize the exact supported 60-minute RMT follow-up service at category, benefit,
+treatment and summary stages. Extract practitioner identity from the matching
+one-page original paid receipt; choose a saved portal provider only when its unique
+name and complete clinic address agree. A professional suffix alone never proves
+provider identity. Validate both insurer and patient applied payments, invoice tax
+arithmetic and every zero balance before confirming this observed receipt layout.
+Unknown layouts and ambiguous providers remain manual. Preserve source documents
+and recorded amounts. Show actionable category/member-home handoffs and freshly
+read summary values. A prepared-for-review status additionally requires prior
+detail verification, matching summary, visible successful upload evidence and an
+unchecked consent control. Consent and final submission remain manual.
+Code: `split-paid-receipt.ts`, `bluecross-claim-form.ts`, `bluecross-claim-progress.ts`,
+`claim-browser.ts` and `PrepareClaim.tsx`. Synthetic unit, browser and UI validation
+cover positive and conflicting evidence; installed-worker acceptance and publication
+are tracked separately in the linked issues.
+
 Patient-share reconstruction and blocking-reason correction (2026-10-23), Testing:
 the labelled patient share is normalized before reconstructing gross, so a
 paid-in-full zero balance cannot replace that share. A stale reconstruction

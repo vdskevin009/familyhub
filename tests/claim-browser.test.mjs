@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 const directory = await mkdtemp(join(tmpdir(),'familyhub-claim-test-'));
 process.env.FAMILYHUB_WORKER_DATA = directory;
-const { openClaimBrowser, inspectClaimStep, fillClaimStep, closeClaimBrowser, verifyClaimStep } = await import('../apps/worker/dist/claim-browser.js');
+const { openClaimBrowser, inspectClaimStep, fillClaimStep, closeClaimBrowser, claimWindowState, prepareCurrentClaimStep, verifyClaimStep } = await import('../apps/worker/dist/claim-browser.js');
 test.after(() => rm(directory,{recursive:true,force:true}));
 const dossier = { expenseId:'invoice',insurer:'blue-cross',portalUrl:'https://service.pac.bluecross.ca/member/',blocked:false,reviewableWarnings:[],
  fields:{patient:'Kevin',provider:'Sample Clinic',practitioner:'Sample Therapist',serviceDate:'2026-09-01',originalAmount:100,service:'Physiotherapy - 30 Min Follow Up Visit (30 minutes)',invoiceNumber:'INV-test',otherInsurance:'Yes',otherInsurancePaid:80},
@@ -41,7 +41,7 @@ function fixture({body='Claim Details',fields=[],providers=[]}={}) {
    }};
  const context={pages:()=>[page],newPage:async()=>page,addCookies:async()=>{},addInitScript:async()=>{}};
  const browser={newContext:async()=>context,on:(_,callback)=>{disconnect=callback;},close:async()=>{closed=true;disconnect?.();}};
- return {calls,page,browser,fields,setUrl:value=>{url=value;}};
+ return {calls,page,browser,fields,closePage:()=>{closed=true;},setUrl:value=>{url=value;}};
 }
 async function opened(f,claim=dossier,warnings=false){return (await openClaimBrowser(claim,true,warnings,async()=>f.browser)).sessionId;}
 
@@ -142,4 +142,28 @@ test('read-back reports each mismatch and unreadable field; a changed page inval
   f.fields[0].unreadable=true;assert.equal((await verifyClaimStep(id)).fields[0].status,'unreadable');f.fields[0].unreadable=false;f.fields[0].stale=true;assert.equal((await verifyClaimStep(id)).fields[0].status,'unreadable');
   f.setUrl('https://unexpected.test/');assert.equal((await verifyClaimStep(id)).fields.every(x=>x.status==='unreadable'),true);
  }finally{await closeClaimBrowser(id)}
+});
+
+
+test('lost UI session can discover and close a manually closed or expired page, then reopen',async()=>{
+ const f=fixture(); const id=await opened(f);f.closePage();
+ assert.equal(claimWindowState().sessionId,id);assert.equal(claimWindowState().canClose,true);assert.equal(claimWindowState().expired,true);
+ await assert.rejects(inspectClaimStep(id),/expired/);await assert.rejects(opened(fixture()),/must be closed/);
+ await assert.rejects(closeClaimBrowser('stale'),/no longer current/);assert.equal(claimWindowState().sessionId,id);
+ await closeClaimBrowser(id);assert.equal(claimWindowState().sessionId,null);
+ const next=await opened(fixture());const now=Date.now;Date.now=()=>now()+31*60*1000;
+ try{assert.equal(claimWindowState().expired,true);await closeClaimBrowser(next);}finally{Date.now=now;}
+ assert.equal(claimWindowState().sessionId,null);
+});
+test('failed browser close retains ownership and lock for explicit retry',async()=>{
+ const f=fixture(); const id=await opened(f);const close=f.browser.close;f.browser.close=async()=>{throw Error('Synthetic close failure');};
+ await assert.rejects(closeClaimBrowser(id),/Synthetic close failure/);assert.equal(claimWindowState().sessionId,id);assert.equal(claimWindowState().canClose,true);
+ f.browser.close=close;await closeClaimBrowser(id);assert.equal(claimWindowState().sessionId,null);
+});
+test('close cannot interrupt an active preparation and does not remove an external collector lock',async()=>{
+ const f=fixture();const id=await opened(f,{...dossier,fields:{...dossier.fields,service:'RMT - Follow Up Massage (60 Min)'}});
+ let finish,started;const began=new Promise(r=>started=r);const preparing=prepareCurrentClaimStep(id,async()=>{started();await new Promise(r=>finish=r);return {bytes:Buffer.from('not a PDF'),name:'synthetic.pdf'};});
+ await began;assert.equal(claimWindowState().canClose,false);await assert.rejects(closeClaimBrowser(id),/current preparation action/);finish();await preparing;await closeClaimBrowser(id);
+ const {acquirePortalLock}=await import('../apps/worker/dist/portal-login.js');const unlock=await acquirePortalLock('bluecross');
+ try{assert.equal(claimWindowState().sessionId,null);await assert.rejects(closeClaimBrowser(id),/no longer current/);await assert.rejects(opened(fixture()),/profile is busy/);}finally{await unlock();}
 });

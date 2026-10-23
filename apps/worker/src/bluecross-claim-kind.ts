@@ -1,6 +1,6 @@
 import type { Page } from "playwright";
 import type { ClaimPreparation } from "./claim-preparation.js";
-import { blueCrossSuggestion } from "./bluecross-claim-form.js";
+import { supportedHealthcareService } from "./bluecross-claim-form.js";
 
 export const claimKindHeading = "What kind of claim would you like to submit?";
 const choices = [/^Health\s*Care$/i, /^Drugs$/i, /^Vision\s+Care$/i, /^Dental\s*\(Orthodontic\)$/i,
@@ -19,11 +19,7 @@ export async function isBlueCrossClaimKindPage(page: Page) {
 export async function openBlueCrossHealthcareClaim(page: Page, dossier: ClaimPreparation, beforeClick: () => void = () => {}) {
   if (dossier.blocked || !await isBlueCrossClaimKindPage(page)
     || await page.locator('input[type="password"]').filter({ visible: true }).count()) return false;
-  const service = blueCrossSuggestion("service", dossier, [
-    { value: "chiropractic", label: "Chiropractic - In Person - Subsequent Treatment" },
-    { value: "physiotherapy", label: "Physiotherapy Treatment - 30 Minutes" }
-  ]);
-  if (!service) return false;
+  if (!supportedHealthcareService(dossier.fields.service)) return false;
   const url = page.url();
   const controls = choices.map(name => page.getByRole("checkbox", { name }).or(page.getByRole("radio", { name })).filter({ visible: true }));
   for (const control of controls) if (await control.count() !== 1) return false;
