@@ -73,6 +73,7 @@ try {
                 }),
             ),
         );
+        let financeReadGate = null;
         let rejectNext = false,
             posts = 0;
         await page.route(
@@ -94,8 +95,10 @@ try {
                             codex: "available",
                             version: "2.23.0",
                         });
-                    if (path === "/finances")
+                    if (path === "/finances") {
+                        if (financeReadGate) await financeReadGate;
                         return reply(await finance.read());
+                    }
                     if (path === "/finances/import") {
                         posts++;
                         return reply(await finance.import(req.postDataJSON()));
@@ -590,10 +593,21 @@ try {
         });
         assert.match(await edit.innerText(), /synthetic-invoice.txt/);
         await edit.getByRole("button", { name: "Close", exact: true }).click();
-        await page.reload();
-        await page
-            .getByRole("button", { name: /Ouvrir le contrat Synthetic package/ })
-            .waitFor();
+        // Contracts and bank payments load independently. Hold the finance response to
+        // prove that a visible cached contract is not a readiness signal for paid totals.
+        let releaseFinanceRead;
+        financeReadGate = new Promise(resolve => { releaseFinanceRead = resolve; });
+        try {
+            await page.reload();
+            await page
+                .getByRole("button", { name: /Ouvrir le contrat Synthetic package/ })
+                .waitFor();
+            assert.match(await paid.locator(".finance-totals").innerText(), /Non disponible/);
+        } finally {
+            releaseFinanceRead();
+            financeReadGate = null;
+        }
+        await paid.locator(".finance-totals").filter({ hasText: /137,70/ }).waitFor();
         assert.match(await paid.locator(".finance-totals").innerText(), /137,70/);
         await group.click();
         await page.locator(".paid-contract-details > summary").click();
