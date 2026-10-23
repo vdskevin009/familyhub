@@ -30,11 +30,24 @@ export async function openDesjardinsClaimEntry(page: Page, dossier: ClaimPrepara
   const href = await entry.getAttribute("href");
   if (!href) return false;
   const target = new URL(href, page.url());
-  if (target.username || target.password || target.origin !== origin
-    || !/^\/AGEA-GBIM\/Reclamation\/[A-Za-z_]+\.aspx$/.test(target.pathname)) return false;
+  const scriptEntry = target.protocol === "javascript:"; // Observed visible online-claim navigation.
+  const claimPath = /^\/AGEA-GBIM\/Reclamation\/[A-Za-z_]+\.aspx$/;
+  if (!scriptEntry && (target.username || target.password || target.origin !== origin || !claimPath.test(target.pathname))) return false;
   if (!reserved) reserve();
   await entry.click({ timeout: 10000 });
-  await page.waitForURL(url => url.origin === origin && url.pathname === target.pathname, { timeout: 10000 }).catch(() => {});
-  const landed = new URL(page.url());
-  return landed.origin === origin && landed.pathname === target.pathname;
+  for (let read = 0; read < 40; read++) {
+    const candidates = page.context().pages().filter(candidate => {
+      if (candidate.isClosed()) return false;
+      const u = new URL(candidate.url());
+      return !u.username && !u.password && u.origin === origin && claimPath.test(u.pathname)
+        && (scriptEntry || u.pathname === target.pathname);
+    });
+    if (candidates.length > 1) return false;
+    if (candidates.length === 1) {
+      await candidates[0].waitForLoadState("domcontentloaded", { timeout: 10000 }).catch(() => {});
+      return true;
+    }
+    await new Promise(resolve => setTimeout(resolve, 250));
+  }
+  return false;
 }

@@ -141,7 +141,12 @@ export async function inspectClaimStep(id: unknown) {
 async function inspect(s: Session) {
   // A portal may open its form in a new tab. Never target another origin.
   const candidates = s.page.context().pages().filter(p => !p.isClosed() && allowed(p.url(), s.dossier.insurer));
-  if (candidates.length) s.page = candidates[candidates.length - 1];
+  if (s.dossier.insurer === "desjardins") {
+    const claims = candidates.filter(p => /^\/AGEA-GBIM\/Reclamation\/[A-Za-z_]+\.aspx$/.test(new URL(p.url()).pathname));
+    if (claims.length > 1) { s.fields.clear(); s.revision = ""; return { status: "navigate", fields: [], revision: "", submitAllowed: false, answerWarning: "Several Desjardins claim tabs are open. No tab was selected for preparation." }; }
+    if (claims.length === 1) s.page = claims[0];
+    else if (candidates.length === 1) s.page = candidates[0];
+  } else if (candidates.length) s.page = candidates[candidates.length - 1];
   s.fields.clear(); s.revision = "";
   if (!allowed(s.page.url(), s.dossier.insurer) || await s.page.locator('input[type="password"]').isVisible().catch(() => false)) return { status: s.authReason === "human-required" ? "human-required" : "login-required", authReason: s.authReason, fields: [], revision: "", submitAllowed: false };
   const body = (await s.page.locator("body").innerText()).slice(0, 30_000);
