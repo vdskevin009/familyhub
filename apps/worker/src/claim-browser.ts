@@ -12,6 +12,7 @@ import { codexServiceRunner, validatedServiceProposals, type ServiceRunner } fro
 import { checkedField, uploadEvidence, type ApprovedField, type ObservedField } from "./claim-field-verification.js";
 import { acquirePortalLock, classifyLoginScreen, type LoginReason } from "./portal-login.js";
 import { loginForClaim, authenticatedClaimPages, preserveBlueCrossClaimSession, preserveDesjardinsClaimSession } from "./claim-login.js";
+import { resolveClaimReceiptCopies } from "./claim-receipt-copies.js";
 import { automaticClaimValues } from "./claim-autofill.js";
 import { desjardinsRadioField } from "./desjardins-claim-form.js";
 import { reserveClaimUpload, reserveClaimUploadRetry } from "./claim-upload-guard.js";
@@ -29,6 +30,7 @@ export type Field = { key: string; label: string; type: string; options: { value
 type Target = { locator: Locator; field: Field; signature: string; initialValue: string; dropdown?: Locator; providers?: Locator };
 type ApprovedSnapshot = { revision: string; url: string; entries: { target: Target; approved: ApprovedField; filled: boolean }[]; attachment?: { name: string; selected: boolean; blocked?: boolean } };
 type Session = { id: string; browser: Browser; page: Page; dossier: ClaimPreparation; createdAt: number;
+  sourceDossier?: ClaimPreparation;
   receiptIdentity?: ReceiptPractitioner | null;
   fields: Map<string, Target>; attemptedAttachments: Set<string>; busy: boolean; preparing?: boolean; closing?: boolean; revision: string; inspectedUrl: string; approved?: ApprovedSnapshot;
   authenticate?: typeof loginForClaim; autonomous?: boolean; loginRefreshAttempted?: boolean; authPersistenceAttempted?: boolean; authReason?: LoginReason; release?: () => Promise<void>; claimEntryAttempted?: boolean; claimKindAttempted?: boolean; claimCauseAttempted?: boolean; detailsNextAttempted?: boolean; detailsReadBackVerified?: boolean; detailsNextVerified?: boolean; summaryNextAttempted?: boolean; receiptRetryUsed?: boolean; authorizedRetryHash?: string; uploadEntryAttempted?: boolean };
@@ -484,7 +486,7 @@ export async function retryCurrentClaimReceipt(id: unknown, revision: unknown, r
   } finally { s.authorizedRetryHash = undefined; }
 }
 
-export function claimSessionExpense(id: unknown) { return current(id).dossier; }
+export function claimSessionExpense(id: unknown) { const s = current(id); return s.sourceDossier || s.dossier; }
 async function verifySnapshot(s: Session) {
   if (!s.approved) throw new Error("There are no filled, approved answers to verify.");
   const validPage = s.page.url() === s.approved.url && allowed(s.page.url(), s.dossier.insurer);
@@ -614,6 +616,10 @@ async function prepareStep(id: unknown,
   let verification: Awaited<ReturnType<typeof verifySnapshot>> | undefined;
   let warning: string | undefined;
   try {
+    if (!s.sourceDossier) {
+      const resolved = await resolveClaimReceiptCopies(s.dossier, loadAttachment);
+      if (resolved !== s.dossier) { s.sourceDossier = s.dossier; s.dossier = resolved; }
+    }
     if (s.receiptIdentity === undefined && s.dossier.insurer === "blue-cross" && /^RMT - Follow Up Massage /i.test(s.dossier.fields.service || "")) {
       const receipt = s.dossier.attachments.length === 1 ? s.dossier.attachments[0] : undefined;
       s.receiptIdentity = receipt ? await readReceiptPractitioner((await loadAttachment(receipt.documentId, receipt.attachmentId)).bytes, s.dossier).catch(() => null) : null;
