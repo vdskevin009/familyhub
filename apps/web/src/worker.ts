@@ -12,10 +12,17 @@ export async function fetchNotifications(config: WorkerConfig): Promise<import("
 export const updateNotifications = (config: WorkerConfig, body: object) => request<import("../../worker/src/notification-library").NotificationSnapshot>(config, "/notifications", { method: "POST", body: JSON.stringify(body) });
 export function fetchSharedSavings(config: WorkerConfig): Promise<SharedLibrary> { return request(config, "/savings/contracts"); }
 export function fetchSharedSavingsDocument(config: WorkerConfig, id: string): Promise<SharedDocument> { return request(config, `/savings/documents/${encodeURIComponent(id)}`); }
-export function importSharedSavings(config: WorkerConfig, contracts: SavingsContract[], documents: SharedDocument[]): Promise<SharedLibrary> {
+async function requireInsuranceSupport(config: WorkerConfig, contracts: SavingsContract[]) {
+  if (!contracts.some(c => c.insuranceReference)) return;
+  const health = await request<{ capabilities?: string[] }>(config, "/health");
+  if (!health.capabilities?.includes("insurance-reference-v1")) throw new Error("Mettez à jour le worker PC pour conserver le référentiel assurances. Aucun contrat n'a été modifié.");
+}
+export async function importSharedSavings(config: WorkerConfig, contracts: SavingsContract[], documents: SharedDocument[]): Promise<SharedLibrary> {
+  await requireInsuranceSupport(config, contracts);
   return request(config, "/savings/contracts/import", { method: "POST", body: JSON.stringify({ contracts, documents }) });
 }
-export function updateSharedSavings(config: WorkerConfig, contract: SavingsContract, expectedRevision: string, documents: SharedDocument[]): Promise<SharedLibrary> {
+export async function updateSharedSavings(config: WorkerConfig, contract: SavingsContract, expectedRevision: string, documents: SharedDocument[]): Promise<SharedLibrary> {
+  await requireInsuranceSupport(config, [contract]);
   return request(config, `/savings/contracts/${encodeURIComponent(contract.id)}`, { method: "POST", body: JSON.stringify({ contract, expectedRevision, documents }) });
 }
 

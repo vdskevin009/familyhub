@@ -2,6 +2,7 @@ import { Pencil, Search, FileText } from "lucide-react";
 import { categories, missingInformation, type SavingsContract, type SavingsJob } from "../savings";
 import type { ContractPayments } from "../savings-payments";
 import { ContractPaymentDetails } from "./SavingsPayments";
+import InsuranceReferenceDetails from "./InsuranceReferenceDetails";
 const price = (value: number | null, code = "CAD") => value === null ? "À compléter" : new Intl.NumberFormat("fr-CA", { style: "currency", currency: code }).format(value);
 
 export default function SavingsContractDetails({ contract, paid, review, onEdit, onResearch, onResults }: {
@@ -15,6 +16,7 @@ export default function SavingsContractDetails({ contract, paid, review, onEdit,
         </div>
         <p className="savings-source-price">Prix contractuel source conservé : {price(contract.price)} / {contract.cycle} · {contract.taxesIncluded === true ? "taxes incluses" : contract.taxesIncluded === false ? "avant taxes" : "taxes non confirmées"}. Ce prix historique n'est pas ajouté aux paiements.</p>
         <ContractPaymentDetails contract={contract} summary={paid} />
+        <InsuranceReferenceDetails contract={contract} />
         {contract.promotionEnd && <p className="muted">Fin de promotion confirmée : {contract.promotionEnd.date}. Source : {contract.promotionEnd.source}</p>}
         {contract.billing && <p className="muted">Montant source : {price(contract.billing.amount, contract.billing.currency)} / {contract.billing.count} {contract.billing.unit} · {contract.billing.asOf || "date à compléter"}. {contract.billing.source}</p>}
         <details className="savings-checklist"><summary>{missing.length ? missing.length + " détails à compléter" : "Prêt pour une comparaison publique"}</summary>

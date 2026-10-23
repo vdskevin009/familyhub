@@ -1,4 +1,5 @@
 import { categories, newContract, type SavingsContract } from "./savings-model.js";
+import { validateInsuranceReference } from "./insurance-reference.js";
 
 export type SharedContract = { contract: SavingsContract; revision: string };
 export type SharedDocument = { id: string; type: string; data: string };
@@ -64,6 +65,10 @@ export function validateContract(value: unknown): SavingsContract {
       if (!s || typeof s.id !== "string" || !idPattern.test(s.id) || ids.has(s.id) || typeof s.name !== "string" || !s.name.trim() || s.name.length > 150 || !["shared","included","documented"].includes(s.pricing) || (s.monthlyAmount !== null && (typeof s.monthlyAmount !== "number" || !Number.isFinite(s.monthlyAmount) || s.monthlyAmount < 0 || s.monthlyAmount > 1e9)) || (s.pricing !== "documented" && s.monthlyAmount !== null) || (s.taxesIncluded !== null && typeof s.taxesIncluded !== "boolean") || typeof s.source !== "string" || s.source.length > 2000 || (s.pricing === "documented" && !s.source.trim())) return invalid();
       ids.add(s.id); return { id:s.id,name:s.name,pricing:s.pricing,monthlyAmount:s.monthlyAmount,taxesIncluded:s.taxesIncluded,source:s.source };
     });
+  }
+  if (input.insuranceReference !== undefined) {
+    if (!["car-insurance", "home-insurance", "other"].includes(result.category)) return invalid();
+    result.insuranceReference = validateInsuranceReference(input.insuranceReference);
   }
   return result;
 }
