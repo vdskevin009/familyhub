@@ -17,8 +17,8 @@ import { claimPortalDiagnostic } from "./claim-portal-diagnostic.js";
 import { resolveClaimReceiptCopies } from "./claim-receipt-copies.js";
 import { automaticClaimValues } from "./claim-autofill.js";
 import { isDesjardinsHistory, openDesjardinsClaimEntry } from "./desjardins-claim-entry.js";
-import { desjardinsRadioField } from "./desjardins-claim-form.js";
-import { advanceDesjardinsIntroduction } from "./desjardins-claim-progress.js";
+import { desjardinsRadioField, desjardinsRadioSuggestion } from "./desjardins-claim-form.js";
+import { advanceDesjardinsIntroduction, advanceDesjardinsRadio } from "./desjardins-claim-progress.js";
 import { reserveClaimUpload, reserveClaimUploadRetry } from "./claim-upload-guard.js";
 import { confirmedInvoicePractitioner } from "./claim-practitioner-answers.js";
 import { confirmedInvoiceIllness } from "./claim-invoice-answers.js";
@@ -35,6 +35,7 @@ type Target = { locator: Locator; field: Field; signature: string; initialValue:
 type ApprovedSnapshot = { revision: string; url: string; entries: { target: Target; approved: ApprovedField; filled: boolean }[]; attachment?: { name: string; selected: boolean; blocked?: boolean } };
 type Session = { id: string; browser: Browser; page: Page; dossier: ClaimPreparation; createdAt: number;
   sourceDossier?: ClaimPreparation;
+  desjardinsNextAttempts?: Set<string>;
   receiptIdentity?: ReceiptPractitioner | null;
   fields: Map<string, Target>; attemptedAttachments: Set<string>; busy: boolean; preparing?: boolean; closing?: boolean; revision: string; inspectedUrl: string; approved?: ApprovedSnapshot;
   authenticate?: typeof loginForClaim; autonomous?: boolean; loginRefreshAttempted?: boolean; authPersistenceAttempted?: boolean; authReason?: LoginReason; release?: () => Promise<void>; claimEntryAttempted?: boolean; claimKindAttempted?: boolean; claimCauseAttempted?: boolean; detailsNextAttempted?: boolean; detailsReadBackVerified?: boolean; detailsNextVerified?: boolean; summaryNextAttempted?: boolean; receiptRetryUsed?: boolean; authorizedRetryHash?: string; uploadEntryAttempted?: boolean };
@@ -249,7 +250,7 @@ async function inspect(s: Session) {
       const metadata = await choices.evaluateAll((els: HTMLInputElement[]) => els.map(el => ({ id: el.id, name: el.name, label: Array.from(el.labels || []).map(l => l.textContent?.trim()).filter(Boolean).join(" "), checked: el.checked })));
       if (metadata.length && !metadata.some(o => o.checked)) {
         const options = metadata.filter(o => o.id && o.label).map(o => ({ value: o.id, label: o.label }));
-        const field: Field = { key: randomUUID(), label: definition.label, kind: definition.kind, type: "radio", options, suggested: null };
+        const field: Field = { key: randomUUID(), label: definition.label, kind: definition.kind, type: "radio", options, suggested: desjardinsRadioSuggestion(definition.kind, s.dossier, options) };
         s.fields.set(field.key, { locator: choices.first(), providers: choices, field, signature: JSON.stringify(metadata), initialValue: "" });
       }
     }
@@ -670,6 +671,13 @@ async function prepareStep(id: unknown,
       if (s.dossier.insurer === "desjardins" && !s.claimKindAttempted
         && await advanceDesjardinsIntroduction(s.page, s.dossier, () => { s.claimKindAttempted = true; })) {
         step = await inspectClaimStep(id); continue;
+      }
+      if (s.dossier.insurer === "desjardins" && verification?.readyForManualNext && !step.fields.length) {
+        const path = new URL(s.page.url()).pathname;
+        s.desjardinsNextAttempts ||= new Set();
+        if (!s.desjardinsNextAttempts.has(path) && await advanceDesjardinsRadio(s.page, true, () => { s.desjardinsNextAttempts!.add(path); })) {
+          step = await inspectClaimStep(id); verification = s.approved ? await verifySnapshot(s) : undefined; continue;
+        }
       }
       if (step.status === "navigate" && (s.detailsNextVerified || s.detailsReadBackVerified) && !s.summaryNextAttempted) {
         const illness = s.approved?.entries.find(e => e.target.field.kind === "natureOfIllness" && e.filled)?.approved.value;
