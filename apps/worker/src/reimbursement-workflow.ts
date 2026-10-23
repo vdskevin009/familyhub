@@ -12,6 +12,7 @@ export type ReimbursementWorkflowHistoryEntry = {
 
 export type ReimbursementWorkflowRecord = {
   ExpenseDocumentId: string;
+  InsurerEvidenceDocumentIds?: string[];
   ManualStatus?: ReimbursementWorkflowStatus;
   AutomaticStatus: Exclude<ReimbursementWorkflowStatus, "ignore">;
   ChangedAt: string;

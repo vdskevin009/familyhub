@@ -6,6 +6,9 @@ import { healthcareEvidence, memberName, type EvidenceState } from "./healthcare
 export type ReconciliationCase = {
   Id: string;
   ExpenseDocumentId: string;
+  InferredFromInsurer?: boolean;
+  OriginalInvoiceMissing?: boolean;
+  InsurerEvidencePair?: boolean;
   ExpenseDocumentIds: string[];
   Member: Invoice["Member"];
   Provider: string;
@@ -393,6 +396,87 @@ function matchEvidence(expense: Invoice, statement: Invoice): string[] {
 
 const pairKey = (reimbursementId: string, expenseId: string) => `${reimbursementId}::${expenseId}`;
 
+/** Only documented bilingual dental labels qualify for invoice-free pairing. */
+function dentalIdentity(item: Invoice): { service: string; units: number | null } | null {
+  const label = (item.ClaimedService || item.Healthcare?.ServiceType || "").normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+  const match = /^(scaling|detartrage|root planing|aplan\. de racines)(?:\s*[, -]?\s*(one|two|three|four|five|six|un|une|deux|trois|quatre|cinq|six|[1-6])\s+unit(?:e)?s?)?$/.exec(label);
+  if (!match) return null;
+  const counts: Record<string, number> = { one: 1, un: 1, une: 1, two: 2, deux: 2, three: 3, trois: 3, four: 4, quatre: 4, five: 5, cinq: 5, six: 6 };
+  return { service: /^(scaling|detartrage)$/.test(match[1]) ? "scaling" : "root-planing", units: match[2] ? counts[match[2]] ?? Number(match[2]) : null };
+}
+
+/** Derived cases, never fabricated expense documents or writable invoice match targets. */
+function complementaryDentalCases(health: Invoice[], expenses: Invoice[], unmatched: UnmatchedReimbursement[],
+  decisions: MatchDecision[]): ReconciliationCase[] {
+  const eligibleIds = new Set(unmatched.filter(row => row.Reason === "no-expense-match").map(row => row.DocumentId));
+  const manualIds = new Set(decisions.flatMap(row => [row.expenseId, row.reimbursementId]));
+  const rows = health.filter(row => {
+    const h = healthcareEvidence(row); const original = submitted(row); const paid = row.ReimbursedAmount;
+    // A grouped Ignore can be restored. Other source/manual decisions abstain.
+    const authority = hasManualAuthority({ ...row, IgnoredAt: undefined,
+      ManualOverride: row.ManualOverride ? { ...row.ManualOverride, Reasons: row.ManualOverride.Reasons.filter(reason => reason !== "ignore") } : undefined });
+    const trusted = row.Insurer === "desjardins" && row.StructuredSource === "desjardins-portal"
+      || row.Insurer === "blue-cross" && row.StructuredSource === "blue-cross-portal";
+    return eligibleIds.has(row.Id) && !manualIds.has(row.Id) && !authority && trusted
+      && row.DocumentRole === "insurer-statement" && !row.NeedsReview && row.Confidence >= 90
+      && !row.PortalClaimStatus
+      && row.Member !== "unknown" && Boolean(row.Member) && /^\d{4}-\d{2}-\d{2}$/.test(row.ServiceDate || "")
+      && Boolean(row.Currency) && !h.Conflicts?.length && dentalIdentity(row)
+      && original != null && Number.isFinite(original) && original > 0
+      && paid != null && Number.isFinite(paid) && paid > 0 && paid < original
+      && !expenses.some(expense => expense.Member === row.Member && expense.ServiceDate === row.ServiceDate
+        && (!service(expense) || service(expense) === service(row)))
+      // Pending, untrusted and assigned competitors must not disappear from ambiguity checks.
+      && !health.some(other => other.Id !== row.Id && other.Insurer === row.Insurer
+        && other.DocumentRole === "insurer-statement" && other.Member === row.Member
+        && other.ServiceDate === row.ServiceDate && service(other) === service(row));
+  });
+  const compatible = (a: Invoice, b: Invoice) => {
+    const left = dentalIdentity(a)!; const right = dentalIdentity(b)!;
+    return a.Id !== b.Id && a.Insurer !== b.Insurer && a.Member === b.Member && a.ServiceDate === b.ServiceDate
+      && a.Currency === b.Currency && a.IgnoredAt === b.IgnoredAt && left.service === right.service
+      && (left.units == null || right.units == null || left.units === right.units)
+      && sameMoney(submitted(a), submitted(b)) && sameMoney(a.ReimbursedAmount! + b.ReimbursedAmount!, submitted(a));
+  };
+  const result: ReconciliationCase[] = [];
+  const used = new Set<string>();
+  for (const row of rows) {
+    if (used.has(row.Id)) continue;
+    const matches = rows.filter(other => compatible(row, other));
+    if (matches.length !== 1 || rows.filter(other => compatible(matches[0], other)).length !== 1) continue;
+    const pair = [row, matches[0]].sort((a, b) => a.Id.localeCompare(b.Id));
+    pair.forEach(item => used.add(item.Id));
+    const ids = pair.map(item => item.Id);
+    const id = `insurer-pair:${createHash("sha256").update(ids.join(":" )).digest("hex").slice(0, 24)}`;
+    const original = submitted(row)!;
+    const dj = pair.find(item => item.Insurer === "desjardins")!;
+    const bc = pair.find(item => item.Insurer === "blue-cross")!;
+    result.push({
+      Id: id, ExpenseDocumentId: id, ExpenseDocumentIds: [], DocumentIds: ids,
+      InferredFromInsurer: true, OriginalInvoiceMissing: true, InsurerEvidencePair: true,
+      Member: row.Member, Provider: "", ServiceType: bc.ClaimedService,
+      ServiceDate: row.ServiceDate, Currency: row.Currency, OriginalAmount: original,
+      ReimbursedAmount: Math.round((dj.ReimbursedAmount! + bc.ReimbursedAmount!) * 100) / 100,
+      PotentialRemaining: 0, PrimaryInsurer: null, PrimaryReimbursedAmount: null,
+      SecondaryInsurer: null, SecondaryReimbursedAmount: null,
+      DesjardinsReimbursedAmount: dj.ReimbursedAmount, BlueCrossReimbursedAmount: bc.ReimbursedAmount,
+      NextInsurer: null, Action: "complete", Status: "fully-reimbursed",
+      Summary: "Two trusted insurer payments cover the same service in full; original invoice not found.",
+      Explanation: "Same beneficiary, exact service date and currency, equivalent dental service, compatible units, equal submitted amounts and unique complementary payments.",
+      ReconciliationReasons: ["complementary-insurer-evidence", "original-invoice-missing"],
+      Confidence: Math.min(...pair.map(item => item.Confidence)), MatchAssignments: [],
+      HasUnresolvedReimbursementEvidence: false,
+      Evidence: {
+        OriginalAmount: { value: original, source: ids.join(", "), confidence: "confirmed" },
+        DesjardinsPaid: { value: dj.ReimbursedAmount, source: dj.Id, confidence: "confirmed" },
+        BlueCrossPaid: { value: bc.ReimbursedAmount, source: bc.Id, confidence: "confirmed" }
+      }
+    });
+  }
+  return result;
+}
+
 export function buildReconciliationSnapshot(items: Invoice[], matchDecisions: MatchDecision[] = []): ReconciliationSnapshot {
   const compareId = (a: Invoice, b: Invoice) => a.Id < b.Id ? -1 : a.Id > b.Id ? 1 : 0;
   const manualTargets = new Set(matchDecisions.flatMap(decision => [decision.expenseId, decision.reimbursementId]));
@@ -539,7 +623,7 @@ export function buildReconciliationSnapshot(items: Invoice[], matchDecisions: Ma
       return { DocumentId: statement.Id, Reason, DetailReason, Explanation: DetailReason.replace(/-/g, " ") + ". Review source evidence before linking." };
     });
 
-  const cases = expenses.map(expense => {
+  const cases: ReconciliationCase[] = expenses.map(expense => {
     const matched = assignments.get(expense.Id) ?? [];
     const matchAssignments = matched.map(item => assignmentMeta.get(item.Id)).filter((item): item is MatchAssignment => Boolean(item));
     const matchConfidenceValue = matchAssignments.length ? Math.min(...matchAssignments.map(item => item.Confidence)) : 0;
@@ -666,10 +750,14 @@ export function buildReconciliationSnapshot(items: Invoice[], matchDecisions: Ma
       ReconciliationConfidence: matched.length ? Math.min(expense.Confidence, ...matched.map(item => item.Confidence)) : expense.Confidence
     };
   });
-  const diagnostics = buildReconciliationDiagnostics(cases, unmatched, items);
+  const paired = complementaryDentalCases(health, rawExpenses, unmatched, matchDecisions);
+  const pairedIds = new Set(paired.flatMap(item => item.DocumentIds));
+  const finalUnmatched = unmatched.filter(item => !pairedIds.has(item.DocumentId));
+  cases.push(...paired);
+  const diagnostics = buildReconciliationDiagnostics(cases, finalUnmatched, items);
   return {
     cases: cases.sort((a, b) => Number(a.Action === "complete") - Number(b.Action === "complete") || (b.PotentialRemaining ?? 0) - (a.PotentialRemaining ?? 0)),
-    unmatched, rejectedMatches, diagnostics
+    unmatched: finalUnmatched, rejectedMatches, diagnostics
   };
 }
 

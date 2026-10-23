@@ -76,8 +76,8 @@ export default function ClaimCard({ item, invoiceById, unmatched, paired, manual
         <select id={`workflow-${item.Id}`} aria-label={`Status for ${title}`} value={pendingValue || workflowValue}
           disabled={!paired || Boolean(pending) || busy} onChange={event => void changeWorkflow(item, event.target.value as ReimbursementWorkflowStatus | "automatic")}>
           <option value="automatic">{item.AutomaticWorkflowStatus === "closed" ? "Closed" : "Open"} · Auto</option>
-          {!item.InferredFromInsurer && <option value="open">Open</option>}
-          {!item.InferredFromInsurer && <option value="closed">Closed</option>}
+          {(!item.InferredFromInsurer || item.InsurerEvidencePair) && <option value="open">Open</option>}
+          {(!item.InferredFromInsurer || item.InsurerEvidencePair) && <option value="closed">Closed</option>}
           <option value="ignore">Ignored</option>
         </select>
       </div>

@@ -261,7 +261,7 @@ export default function ReimbursementsView({ hub }: Props) {
       // Enqueue the complete visible selection. Partial failures do not erase the remaining selection.
       await Promise.all(targets.map(item => queue.enqueue(`workflow:${workflowExpenseId(item)}`, "Ignore", async () => {
         const expenseId = workflowExpenseId(item)!;
-        requireSaved(item.InferredFromInsurer ? await setUnmatchedIgnored(hub.worker, expenseId, true) : await setReimbursementWorkflowStatus(hub.worker, expenseId, "ignore"));
+        requireSaved(item.InferredFromInsurer && !item.InsurerEvidencePair ? await setUnmatchedIgnored(hub.worker, expenseId, true) : await setReimbursementWorkflowStatus(hub.worker, expenseId, "ignore"));
         saved++;
         setSelectedClaimIds(previous => { const next = new Set(previous); next.delete(item.Id); return next; });
       })));
@@ -272,10 +272,10 @@ export default function ReimbursementsView({ hub }: Props) {
   async function changeWorkflow(item: ReconciliationCase, status: ReimbursementWorkflowStatus | "automatic") {
     const expenseId = workflowExpenseId(item);
     if (!expenseId) return;
-    if (item.InferredFromInsurer && status !== "ignore" && status !== "automatic") {
+    if (item.InferredFromInsurer && !item.InsurerEvidencePair && status !== "ignore" && status !== "automatic") {
       setError("This insurer-only claim supports Automatic or Ignore until an original expense is available."); return;
     }
-    await saveChange(`workflow:${expenseId}`, status[0].toUpperCase() + status.slice(1), () => item.InferredFromInsurer
+    await saveChange(`workflow:${expenseId}`, status[0].toUpperCase() + status.slice(1), () => item.InferredFromInsurer && !item.InsurerEvidencePair
       ? setUnmatchedIgnored(hub.worker, expenseId, status === "ignore")
       : setReimbursementWorkflowStatus(hub.worker, expenseId, status));
   }

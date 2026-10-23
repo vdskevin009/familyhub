@@ -87,10 +87,10 @@ export function nearbySourceRecords(claim: ReconciliationCase, kind: DocumentLib
   const rows = center == null || !knownMember ? [] : sources.flatMap(item => {
     const date = day(dateFor(item));
     if (date == null || Math.abs(date - center) > 10) return [];
-    const links = cases.filter(entry => !entry.PreviouslyFound && !entry.InferredFromInsurer && !entry.Unreconciled
+    const links = cases.filter(entry => !entry.PreviouslyFound && (!entry.InferredFromInsurer || entry.InsurerEvidencePair) && !entry.Unreconciled
       && (kind === "invoices"
         ? entry.ExpenseDocumentId === item.Id || entry.ExpenseDocumentIds?.includes(item.Id) || entry.DocumentIds.includes(item.Id)
-        : entry.MatchAssignments?.some(match => match.ReimbursementDocumentId === item.Id)));
+        : entry.InsurerEvidencePair ? entry.DocumentIds.includes(item.Id) : entry.MatchAssignments?.some(match => match.ReimbursementDocumentId === item.Id)));
     return [{ item, serviceDate: dateFor(item)!, offsetDays: date - center, links }];
   }).sort((a, b) => Math.abs(a.offsetDays) - Math.abs(b.offsetDays) || a.serviceDate.localeCompare(b.serviceDate) || a.item.Id.localeCompare(b.item.Id));
   return {
