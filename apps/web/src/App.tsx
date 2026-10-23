@@ -16,6 +16,7 @@ const FinancesView = lazy(() => import("./views/FinancesView"));
 const CoursesView = lazy(() => import("./views/CoursesView"));
 const NotificationsView = lazy(() => import("./views/NotificationsView"));
 import { PageHeader } from "./ui/primitives";
+import SectionBoundary from "./ui/SectionBoundary";
 import "./notifications.css";
 import "./proactive.css";
 
@@ -129,7 +130,8 @@ export default function App() {
     <div className="app-stage">
       <div className="shell-tools"><button type="button" className="icon-button" title="Notifications" aria-label="Ouvrir les notifications" onClick={() => navigate("notifications")}><Bell size={19} aria-hidden="true" /></button></div>
       <main className="app-main" id="main-content" tabIndex={-1} ref={mainRef}>
-          <Suspense fallback={<div role="status" className="notice">Chargement de la section…</div>}>
+        <SectionBoundary key={view} label={pageName} onHome={() => navigate("today")}>
+        <Suspense fallback={<div role="status" className="notice">Chargement de la section…</div>}>
         {view === "today" && <TodayView hub={state} onNavigate={navigate} onOpenTarget={openTarget} commandOpen={commandOpen} onCommandOpenChange={setCommandOpen} />}
         {view === "inbox" && <InboxView hub={state} />}
         {view === "notifications" && <NotificationsView hub={state} onNavigate={navigate} />}
@@ -144,6 +146,7 @@ export default function App() {
         {view === "money" && <MoneyView hub={state} />}
         {view === "more" && <MoreView hub={state} installAvailable={Boolean(installPrompt)} installed={installed} onInstall={() => void installApp()} />}
         </Suspense>
+        </SectionBoundary>
       </main>
     </div>
     <nav className="bottom-nav" aria-label="Navigation principale mobile">{nav.map(item => {

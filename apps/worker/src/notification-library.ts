@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { createHash, randomUUID } from "node:crypto";
 import { atomicJson } from "./private-store.js";
+import { insuranceRenewalOpportunityId, type OpportunityActionsSnapshot } from "./opportunity-actions.js";
 import { defaultNotificationPreferences, notificationCandidates, notificationKinds, notificationDeliveryPolicy, localDate, type NotificationDecision, type Candidate, type NotificationEvent, type NotificationEvidence, type NotificationPreferences } from "./notification-model.js";
 import { validateSubscription, type PushSubscriptionData, type PushOutcome, type VapidConfig } from "./notification-push.js";
 
@@ -18,7 +19,7 @@ const text = (v: unknown, max: number) => typeof v === "string" && v.length <= m
 const timestamp = (v: unknown) => typeof v === "string" && v.length <= 40 && Number.isFinite(Date.parse(v));
 export class NotificationLibrary {
   private tail: Promise<unknown> = Promise.resolve();
-  constructor(private path: string, private configuration: () => Promise<VapidConfig | null>, private send: (subscription: PushSubscriptionData, eventId: string, config: VapidConfig) => Promise<PushOutcome>) {}
+  constructor(private path: string, private configuration: () => Promise<VapidConfig | null>, private send: (subscription: PushSubscriptionData, eventId: string, config: VapidConfig) => Promise<PushOutcome>, private opportunityActions?: () => Promise<OpportunityActionsSnapshot>) {}
   private serialize<T>(action: () => Promise<T>): Promise<T> {
     const next = this.tail.then(action, action);
     this.tail = next.catch(() => {});
@@ -107,7 +108,15 @@ export class NotificationLibrary {
       state.seen = [...seen]; state.events = state.events.slice(-500);
       state.initialized = [...new Set([...state.initialized, ...ready])];
       if (ready.includes("contracts")) state.insuranceDatesInitialized = true;
-      state.scannedAt = now.toISOString(); state.sourceErrors = errors;
+      state.scannedAt = now.toISOString(); state.sourceErrors = [...errors];
+      let actionSnapshot: OpportunityActionsSnapshot | undefined, actionReadFailed = false;
+      if (this.opportunityActions) {
+        try { actionSnapshot = await this.opportunityActions(); }
+        catch { actionReadFailed = true; state.sourceErrors.push("suivi des actions d’accueil"); }
+      }
+      const insuranceRenewal = (candidate: Candidate) => candidate.source === "contracts" && candidate.kind === "deadline"
+        && candidate.target.recordId && candidate.groupKey === `deadline:${candidate.target.recordId}:renewal`
+        && evidence.contracts?.some(c => c.id === candidate.target.recordId && ["car-insurance", "home-insurance"].includes(c.category));
       const pending = state.events.filter(event => {
         if (event.pushState !== "pending") return false;
         if (!event.pendingDeviceIds?.length) { event.pushState = "handled"; return false; }
@@ -116,6 +125,16 @@ export class NotificationLibrary {
         if (!candidate) return false;
         if (!event.active || event.readAt || !state.preferences[event.kind] || !candidate.pushEligible
           || !event.expiresAt || Date.parse(event.expiresAt) <= now.getTime()) { event.pushState = "expired"; return false; }
+        if (insuranceRenewal(candidate)) {
+          // Read the single durable Today decision, never mirror it into another write.
+          // A failed read defers only these pushes; it neither closes nor loses the event.
+          if (actionReadFailed) return false;
+          const decision = actionSnapshot?.decisions[insuranceRenewalOpportunityId(candidate.target.recordId!)], context = decision?.context;
+          if (decision && context?.kind === "insurance-renewal" && context.recordId === candidate.target.recordId && context.dueDate === candidate.evidenceKey) {
+            if (decision.state === "resolved" || decision.state === "dismissed"
+              || decision.state === "snoozed" && Date.parse(decision.snoozedUntil!) > now.getTime()) return false;
+          }
+        }
         const decision = this.decision(state, event);
         if (decision?.state === "resolved" || decision?.state === "dismissed") { event.pushState = "handled"; return false; }
         return !decision || decision.state !== "snoozed" || Date.parse(decision.snoozedUntil!) <= now.getTime();

@@ -83,7 +83,7 @@ try {
     }
     // Use actual navigation controls and browser history; no storage/route hacks.
     page = await context.newPage(); await page.goto(base + '?view=other');
-    const nav = page.locator(width <= 859 ? '.bottom-nav' : '.app-rail nav');
+    const nav = page.locator('.bottom-nav:visible, .app-rail nav:visible');
     await nav.getByRole('button', { name: 'Courses', exact: true }).click(); await page.getByRole('switch', { name: 'Comparaisons', exact: true }).click();
     await page.getByRole('button', { name: 'Achats', exact: true }).click();
     assert.equal(await page.evaluate(() => getComputedStyle(document.body).backgroundColor), 'rgb(245, 246, 248)');

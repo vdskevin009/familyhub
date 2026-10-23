@@ -50,6 +50,11 @@ async function actionRequest(config: WorkerConfig, body?: object): Promise<Oppor
   if (result.schema !== 1 || typeof result.revision !== "string" || !result.decisions || typeof result.decisions !== "object" || Array.isArray(result.decisions)) throw new Error("Le suivi reçu n’est pas lisible. Aucune action enregistrée.");
   return result;
 }
+export function saveOpportunityAction(config: WorkerConfig, expectedRevision: string, opportunity: Opportunity, action: OpportunityAction, options: { snoozedUntil?: string; reason?: string } = {}) {
+  // One server decision governs this card and its exact reminder scope, including restore.
+  return actionRequest(config, { expectedRevision, opportunityId: opportunity.id, evidenceVersion: opportunity.evidenceVersion,
+    action, ...options, ...(opportunity.context ? { context: opportunity.context } : {}) });
+}
 
 const noReviews: NonNullable<SavingsState["Reviews"]> = [];
 export function useOpportunities(config: WorkerConfig, reviews: SavingsState["Reviews"] = noReviews) {
@@ -57,6 +62,7 @@ export function useOpportunities(config: WorkerConfig, reviews: SavingsState["Re
   const [inputs, setInputs] = useState<OpportunityInputs>(() => emptyOpportunityInputs(configured ? "loading" : "unpaired"));
   const [feed, setFeed] = useState<Awaited<ReturnType<typeof buildOpportunityFeed>>>({ opportunities: [], recoverable: { amount: null, currency: "CAD", known: 0, unknown: 0 } });
   const [actions, setActions] = useState<OpportunityActionsSnapshot | null>(null), [actionError, setActionError] = useState(""), [actionBusy, setActionBusy] = useState(false);
+  const [actionsLoading, setActionsLoading] = useState(configured);
   const [refreshId, setRefreshId] = useState(0), [clock, setClock] = useState(() => new Date().toISOString());
   const active = useRef(0), actionLock = useRef(false), currentActions = useRef(actions);
   currentActions.current = actions;
@@ -65,7 +71,7 @@ export function useOpportunities(config: WorkerConfig, reviews: SavingsState["Re
     const generation = ++active.current;
     setInputs(emptyOpportunityInputs(configured ? "loading" : "unpaired"));
     setFeed({ opportunities: [], recoverable: { amount: null, currency: "CAD", known: 0, unknown: 0 } });
-    setActions(null); setActionError(""); setClock(new Date().toISOString());
+    setActions(null); setActionsLoading(configured); setActionError(""); setClock(new Date().toISOString());
     if (!configured) return;
     const loaders: OpportunityLoaders = {
       claims: () => fetchInvoices(config), contracts: () => fetchSharedSavings(config), research: () => fetchSharedResearch(config), finances: () => fetchFinances(config),
@@ -76,7 +82,7 @@ export function useOpportunities(config: WorkerConfig, reviews: SavingsState["Re
     });
     void actionRequest(config).then(snapshot => { if (active.current === generation) setActions(snapshot); }).catch(error => {
       if (active.current === generation) setActionError(error instanceof Error ? error.message : "Le suivi des actions est indisponible.");
-    });
+    }).finally(() => { if (active.current === generation) setActionsLoading(false); });
     return () => { if (active.current === generation) active.current++; };
   }, [config.Endpoint, config.ApiKey, configured, refreshId]);
   useEffect(() => {
@@ -101,7 +107,7 @@ export function useOpportunities(config: WorkerConfig, reviews: SavingsState["Re
     actionLock.current = true; setActionBusy(true); setActionError("");
     const generation = active.current;
     try {
-      const result = await actionRequest(config, { expectedRevision: snapshot.revision, opportunityId: opportunity.id, evidenceVersion: opportunity.evidenceVersion, action, ...options });
+      const result = await saveOpportunityAction(config, snapshot.revision, opportunity, action, options);
       if (generation === active.current) { currentActions.current = result; setActions(result); return true; }
       return false;
     } catch (error) {
@@ -113,7 +119,7 @@ export function useOpportunities(config: WorkerConfig, reviews: SavingsState["Re
     }
   }, [config.Endpoint, config.ApiKey, configured]);
   const sources: SourceHealth[] = sourceIds.map(id => { const { data: _data, ...source } = inputs[id]; return source; });
-  const visible = useMemo(() => applyOpportunityDecisions(feed.opportunities, actions?.decisions ?? {}, clock), [feed.opportunities, actions, clock]);
-  return { ...visible, sources, loading: sources.some(s => s.status === "loading"), refresh, configured, connected: sources.some(s => s.status === "ready"), recoverable: feed.recoverable,
+  const visible = useMemo(() => actionsLoading ? { opportunities: [], allOpportunities: [] } : applyOpportunityDecisions(feed.opportunities, actions?.decisions ?? {}, clock), [feed.opportunities, actions, actionsLoading, clock]);
+  return { ...visible, sources, loading: actionsLoading || sources.some(s => s.status === "loading"), refresh, configured, connected: sources.some(s => s.status === "ready"), recoverable: feed.recoverable,
     observedAt: null, actions, setAction, actionBusy, actionError, actionsAvailable: actions !== null };
 }

@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { applyOpportunityDecisions, buildOpportunityFeed, freshness, opportunityHref, type OpportunityInputs } from "../apps/web/src/opportunities.ts";
-import { collectOpportunitySources, emptyOpportunityInputs, type OpportunityLoaders } from "../apps/web/src/useOpportunities.ts";
+import { collectOpportunitySources, emptyOpportunityInputs, saveOpportunityAction, type OpportunityLoaders } from "../apps/web/src/useOpportunities.ts";
 import { newContract, baselineKey, publicBaseline, type SavingsOffer, type SavingsJob } from "../apps/worker/src/savings-model.ts";
 import { emptyPlan, type GroceryPlan } from "../apps/worker/src/grocery-planning.ts";
 import { emptyReceipt } from "../apps/worker/src/grocery-model.ts";
@@ -38,6 +38,7 @@ test("recovery cards use the authoritative open/known summary; ambiguous, closed
   assert.equal(claims.find(o => o.target.recordId === "synthetic-case")?.benefit.period, "once");
   assert.ok(claims.find(o => o.target.recordId === "synthetic-case")?.description.includes("Desjardins"));
   assert.ok(claims.every(o => o.target.view === "reimbursements"));
+  assert.ok(claims.every(o => o.context === undefined));
 });
 test("fetching stale or undated claims today does not refresh their financial evidence", async () => {
   for (const sourceDate of ["2027-01-01", null, "2028-01-01"]) {
@@ -61,6 +62,7 @@ test("structured policy expiry overrides the empty legacy renewal; awaiting quot
   const feed = await buildOpportunityFeed(input, now), card = feed.opportunities[0];
   assert.equal(card.dueDate, "2027-04-26"); assert.equal(card.target.recordId, c.id); assert.equal(card.priority, 86);
   assert.equal(card.benefit.amount, null); assert.match(card.description, /1 devis en attente/);
+  assert.deepEqual(card.context, { kind: "insurance-renewal", recordId: c.id, dueDate: "2027-04-26" });
   const policy = c.insuranceReference.records[0];
   policy.facts = [{ code: "coverage.subLimit", label: "Synthetic coverage conflict", value: null, unit: "CAD", certainty: "conflict", sourceIds: ["source"], notes: "Synthetic disagreement" }];
   const coverage = (await buildOpportunityFeed(input, now)).opportunities[0];
@@ -69,6 +71,7 @@ test("structured policy expiry overrides the empty legacy renewal; awaiting quot
   policy.facts[0].code = "policy.effectiveTo";
   const dateConflict = (await buildOpportunityFeed(input, now)).opportunities[0];
   assert.equal(dateConflict.dueDate, null); assert.equal(dateConflict.freshness, "unknown");
+  assert.equal(dateConflict.context, undefined);
   policy.facts = []; c.insuranceReference.sources[0].verification = "unverified";
   assert.equal((await buildOpportunityFeed(input, now)).opportunities[0].dueDate, null);
   c.insuranceReference.sources[0].verification = "locally-read";
@@ -93,6 +96,40 @@ test("public candidate stays unknown; reviewed identical current offer gives fir
   const chosen = (await buildOpportunityFeed(input, now, [review])).opportunities[0];
   assert.equal(chosen.benefit.amount, 225); assert.equal(chosen.benefit.period, "first-year"); assert.equal(chosen.benefit.kind, "potential"); assert.equal(chosen.confidence, "conditional");
   assert.equal(chosen.target.jobId, "synthetic-job"); assert.equal(chosen.target.offerIndex, 0); assert.equal(chosen.id, candidate.id); assert.notEqual(chosen.evidenceVersion, candidate.evidenceVersion);
+  assert.equal(chosen.context, undefined); assert.equal(candidate.context, undefined);
+});
+test("insurance reminder scope binds the exact card and date; a new date reopens the opportunity", async () => {
+  const input = blank(), contract = { ...newContract("home-insurance", "synthetic-renewal"), renewal: "2027-03-20" };
+  input.contracts.data = { records: [{ contract, revision: "synthetic" }] };
+  const first = (await buildOpportunityFeed(input, now)).opportunities[0];
+  assert.deepEqual(first.context, { kind: "insurance-renewal", recordId: contract.id, dueDate: contract.renewal });
+  assert.equal(first.id, "insurance:" + createHash("sha256").update(JSON.stringify("insurance:" + contract.id)).digest("hex"));
+  const decisions = { [first.id]: { opportunityId: first.id, evidenceVersion: first.evidenceVersion, state: "resolved" as const, at: now, context: first.context } };
+  assert.equal(applyOpportunityDecisions([first], decisions, now).opportunities.length, 0);
+  contract.renewal = "2027-03-21";
+  const changed = (await buildOpportunityFeed(input, now)).opportunities[0];
+  assert.equal(changed.id, first.id); assert.notEqual(changed.evidenceVersion, first.evidenceVersion);
+  assert.equal(changed.context?.dueDate, contract.renewal); assert.equal(applyOpportunityDecisions([changed], decisions, now).opportunities.length, 1);
+  contract.renewal = "2027-02-30";
+  assert.equal((await buildOpportunityFeed(input, now)).opportunities[0].context, undefined);
+});
+test("snooze and restore send one authoritative action request with the same exact reminder context", async t => {
+  const input = blank(), contract = { ...newContract("home-insurance", "synthetic-renewal"), renewal: "2027-03-20" };
+  input.contracts.data = { records: [{ contract, revision: "synthetic" }] };
+  const card = (await buildOpportunityFeed(input, now)).opportunities[0], calls: { url: string; body: any }[] = [];
+  t.mock.method(globalThis, "fetch", async (url: string, options: RequestInit) => {
+    const body = JSON.parse(options.body as string); calls.push({ url, body });
+    const decisions = body.action === "restore" ? {} : { [body.opportunityId]: { opportunityId: body.opportunityId, evidenceVersion: body.evidenceVersion, context: body.context, at: now, state: "snoozed", snoozedUntil: body.snoozedUntil } };
+    return new Response(JSON.stringify({ schema: 1, revision: "server-" + calls.length, decisions, history: [], totals: { seen: 0, snoozed: 1, dismissed: 0, resolved: 0, restored: body.action === "restore" ? 1 : 0 } }), { status: 200 });
+  });
+  const config = { Endpoint: "https://example.test/private-worker", ApiKey: "synthetic-key" };
+  const saved = await saveOpportunityAction(config, "empty", card, "snooze", { snoozedUntil: "2027-03-08T12:00:00Z" });
+  assert.equal(calls.length, 1); assert.deepEqual(calls[0].body.context, card.context);
+  assert.equal(applyOpportunityDecisions([card], saved.decisions, now).opportunities.length, 0);
+  const restored = await saveOpportunityAction(config, saved.revision, card, "restore");
+  assert.equal(calls.length, 2); assert.ok(calls.every(c => c.url === config.Endpoint + "/opportunity-actions"));
+  assert.equal(calls[1].body.expectedRevision, "server-1"); assert.equal(calls[1].body.action, "restore"); assert.deepEqual(calls[1].body.context, card.context);
+  assert.equal(applyOpportunityDecisions([card], restored.decisions, now).opportunities.length, 1);
 });
 test("expired, changed, unreviewed, unknown-fee or unmodeled bundle offers never give a numeric benefit", async () => {
   for (const modify of [

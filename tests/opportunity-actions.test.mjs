@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtemp, readFile, writeFile, rm, access } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { OpportunityActions, OpportunityActionsConflict } from "../apps/worker/dist/opportunity-actions.js";
+import { OpportunityActions, OpportunityActionsConflict, insuranceRenewalOpportunityId } from "../apps/worker/dist/opportunity-actions.js";
 
 async function sandbox(run) { const dir = await mkdtemp(join(tmpdir(), "familyhub-opportunities-")); try { await run(join(dir, "actions.json")); } finally { await rm(dir, { recursive: true, force: true }); } }
 const now = new Date("2026-10-23T15:00:00Z");
@@ -50,4 +50,30 @@ test("invalid identities, unexpected amounts and corrupted stores fail without r
   for (const invalid of ["{", JSON.stringify({ ...s, totals: null }), JSON.stringify({ ...s, decisions: { "claim:synthetic": { ...s.decisions["claim:synthetic"], state: "snoozed", snoozedUntil: "invalid" } } }), JSON.stringify({ ...s, totals: { ...s.totals, resolved: -1 } })]) {
     await writeFile(path, invalid); await assert.rejects(lib.read(), /Aucun fichier remplacé/); await assert.rejects(lib.mutate(action(s, "resolve"), now)); assert.equal(await readFile(path, "utf8"), invalid);
   }
+}));
+
+test("insurance contexts are scoped to their exact hashed opportunity and persist atomically", () => sandbox(async path => {
+  const lib = new OpportunityActions(path), context = { kind: "insurance-renewal", recordId: "policy:synthetic", dueDate: "2026-11-20" };
+  const opportunityId = insuranceRenewalOpportunityId(context.recordId);
+  let s = await lib.read();
+  s = await lib.mutate(action(s, "resolve", { opportunityId, context }), now);
+  assert.deepEqual(s.decisions[opportunityId].context, context);
+  assert.deepEqual((await new OpportunityActions(path).read()).history[0].context, context);
+  const before = await readFile(path, "utf8");
+  for (const extra of [
+    { opportunityId: "insurance:" + "a".repeat(64) },
+    { context: { ...context, dueDate: "2026-02-30" } },
+    { context: { ...context, dueDate: "2026-11-20T00:00:00Z" } },
+    { context: { ...context, recordId: "../private" } },
+    { context: { ...context, extra: true } },
+    { context: { ...context, kind: "all-reminders" } },
+    { context: null }
+  ]) {
+    await assert.rejects(lib.mutate(action(s, "resolve", { opportunityId, context, ...extra }), now));
+    assert.equal(await readFile(path, "utf8"), before);
+  }
+  s = await lib.mutate(action(s, "restore", { opportunityId, context }), now);
+  assert.equal(s.decisions[opportunityId], undefined); assert.deepEqual(s.history.at(-1).context, context);
+  const corrupted = JSON.stringify({ ...s, history: [{ ...s.history[0], context: { ...context, dueDate: "2026-02-30" } }] });
+  await writeFile(path, corrupted); await assert.rejects(lib.read(), /Aucun fichier remplacé/); assert.equal(await readFile(path, "utf8"), corrupted);
 }));

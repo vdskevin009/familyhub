@@ -15,14 +15,15 @@ export type OpportunityInputs = {
   claims: SourceResult<InvoiceSnapshot>; contracts: SourceResult<SharedLibrary>; research: SourceResult<SharedResearch>;
   finances: SourceResult<FinanceState>; groceries: SourceResult<GroceryPlan>; purchases: SourceResult<GroceryLibrary>; mortgage: SourceResult<MortgageState>;
 };
-export type OpportunityDecision = { opportunityId: string; evidenceVersion: string; state: "seen" | "snoozed" | "dismissed" | "resolved"; at: string; snoozedUntil?: string; reason?: string };
+export type OpportunityContext = { kind: "insurance-renewal"; recordId: string; dueDate: string };
+export type OpportunityDecision = { opportunityId: string; evidenceVersion: string; state: "seen" | "snoozed" | "dismissed" | "resolved"; at: string; snoozedUntil?: string; reason?: string; context?: OpportunityContext };
 export type Opportunity = {
   id: string; evidenceVersion: string; domain: "claims" | "insurance" | "subscriptions" | "finances" | "groceries" | "mortgage" | "system";
   title: string; description: string; actionLabel: string; target: { view: AppView; recordId?: string; tab?: string; jobId?: string; offerIndex?: number };
   benefit: { kind: "recoverable" | "potential" | "time" | "unknown"; amount: number | null; currency: "CAD"; period: "once" | "month" | "year" | "first-year" | null; label: string };
   confidence: "verified" | "conditional" | "unknown"; sourceDate: string | null; freshness: "fresh" | "stale" | "unknown";
   dueDate: string | null; effort: "low" | "medium"; status: "ready" | "needs-information" | "unavailable"; priority: number; evidence: string[];
-  decision?: OpportunityDecision["state"]; snoozedUntil?: string;
+  decision?: OpportunityDecision["state"]; snoozedUntil?: string; context?: OpportunityContext;
 };
 type Draft = Omit<Opportunity, "id" | "evidenceVersion"> & { key: string; version: unknown };
 export const sourceLabels: Record<SourceId, string> = { claims: "Remboursements", contracts: "Contrats", research: "Recherches", finances: "Finances", groceries: "Prix des courses", purchases: "Achats", mortgage: "Hypothèque" };
@@ -180,6 +181,7 @@ export async function buildOpportunityFeed(input: OpportunityInputs, now = new D
         const expired = due !== null && due < today;
         add({ ...base("insurance", input.contracts), key: "insurance:" + c.id, version: [due, activePolicies.map(p => [p.id, p.effectiveTo, p.facts]).sort(), policy?.id, policy?.comparison, awaiting.map(r => r.id).sort(), quotes.map(r => [r.id, r.quotedAnnualPremium, r.comparison, r.validUntil]), expired], sourceDate,
           freshness: expired ? "stale" : policyVerified && activePolicies.length === 1 ? "fresh" : "unknown", dueDate: due,
+          ...(due ? { context: { kind: "insurance-renewal" as const, recordId: c.id, dueDate: due } } : {}),
           title: expired ? "Vérifier le renouvellement" : due ? "Préparer le renouvellement" : "Compléter l’échéance d’assurance", description: `${c.provider || c.name}${awaiting.length ? ` · ${awaiting.length} devis en attente` : quotes.length ? ` · ${quotes.length} devis reçu(s)` : " · garanties à comparer"}`,
           actionLabel: quotes.length ? "Comparer les garanties" : "Ouvrir le dossier", target: { view: "savings", recordId: c.id }, benefit: unknownBenefit(),
           priority: days !== null && days >= 0 && days <= 30 ? 94 : days !== null && days >= 0 && days <= 60 ? 86 : 60,

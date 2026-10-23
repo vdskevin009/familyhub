@@ -129,7 +129,7 @@ try {
     await results.getByRole("button", { name: "Close Synthetic internet : comparaison", exact: true }).click();
     assert.match(await page.locator(".savings-summary").innerText(), /0 compatible/);
     await details.getByRole("button", { name: "Retour aux services", exact: true }).click();
-    await page.locator(width < 860 ? ".bottom-nav" : ".app-rail nav").getByRole("button", { name: "Plus", exact: true }).click();
+    await page.locator(".bottom-nav:visible, .app-rail nav:visible").getByRole("button", { name: "Plus", exact: true }).click();
     await page.locator(".other-link").filter({ hasText: "Documents" }).click();
     for (const name of ["Desjardins", "Blue Cross", "Factures"]) {
       await page.locator(".document-tabs").getByRole("button", { name, exact: true }).click();

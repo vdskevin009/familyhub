@@ -1,3 +1,4 @@
+import { insuranceRenewalOpportunityId } from "../apps/worker/dist/opportunity-actions.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp, readFile, writeFile, rm, readdir } from "node:fs/promises";
@@ -53,6 +54,13 @@ test("paired notification HTTP API enforces authorization, bounds, conflicts and
     assert.equal((await decide(decision)).status, 409);
     assert.equal((await decide({ ...decision, expectedRevision: actions.revision, amount: 100 })).status, 400);
     assert.ok([400, 413].includes((await decide({ ...decision, padding: "x".repeat(5000) })).status));
+
+    const context = { kind: "insurance-renewal", recordId: "synthetic-policy", dueDate: "2026-11-20" };
+    const insuranceDecision = { action: "snooze", opportunityId: insuranceRenewalOpportunityId(context.recordId), evidenceVersion: "v1-policy", context,
+      snoozedUntil: new Date(Date.now() + 7 * 86_400_000).toISOString(), expectedRevision: actions.revision };
+    decided = await decide(insuranceDecision); assert.equal(decided.status, 200); actions = await decided.json();
+    assert.deepEqual(actions.decisions[insuranceDecision.opportunityId].context, context);
+    assert.equal((await decide({ ...insuranceDecision, expectedRevision: actions.revision, context: { ...context, dueDate: "2026-02-30" } })).status, 400);
     await stop(); await start(); const persistedActions = await (await call("/opportunity-actions", { headers })).json(); assert.deepEqual(persistedActions, actions); const after = await (await call("/notifications", { headers })).json(); assert.equal(after.preferences.weekly, false); assert.deepEqual(after.events.map(e => e.id), state.events.map(e => e.id));
     assert.deepEqual(await readFile(join(dir, "finances", "ledger.json")), financialBefore); assert.deepEqual(await readFile(join(dir, "savings", "household-contracts.json")), contractsBefore);
     assert.equal((await readdir(dir)).includes("notifications-vapid.private.json"), false); assert.equal(logs.includes("synthetic-notification-key"), false);

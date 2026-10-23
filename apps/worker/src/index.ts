@@ -77,7 +77,7 @@ const mortgageStore = new MortgageStore(join(stateDir, "mortgage", "evidence"));
 const financeLibrary = new FinanceLibrary(join(stateDir, "finances"));
 const pushConfiguration = new PushConfiguration(stateDir);
 const opportunityActions = new OpportunityActions(join(stateDir, "opportunities", "actions.json"));
-const notifications = new NotificationLibrary(join(stateDir, "notifications", "history.json"), () => pushConfiguration.read(), sendPush);
+const notifications = new NotificationLibrary(join(stateDir, "notifications", "history.json"), () => pushConfiguration.read(), sendPush, () => opportunityActions.read());
 let notificationScan: Promise<unknown> | null = null;
 function scanNotifications() {
   if (notificationScan) return notificationScan;

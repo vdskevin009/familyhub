@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtemp, readFile, writeFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
+import { OpportunityActions, insuranceRenewalOpportunityId } from "../apps/worker/dist/opportunity-actions.js";
 import { NotificationLibrary } from "../apps/worker/dist/notification-library.js";
 import { notificationActionState, notificationCandidates } from "../apps/worker/dist/notification-model.js";
 import { now, pushFixture, contractEvidence, invoiceEvidence, financeEvidence } from "./notification-fixture.mjs";
@@ -132,4 +133,65 @@ test("verified structured insurance deadline migrates silently, then alerts on n
   }
   s = await lib.mutate({ action: "resolve", expectedRevision: s.revision, id: s.events.find(e => e.active).id }, now);
   await lib.scan({ contracts: [contract] }, [], new Date("2026-10-19T17:00:00Z")); assert.equal(sends, 1);
+}));
+
+async function todaySetup(path) {
+  const actions = new OpportunityActions(path + ".actions.json"), fixture = pushFixture(), deliveries = [];
+  let failed = false;
+  const lib = new NotificationLibrary(path, async () => fixture.config, async (_subscription, id) => { deliveries.push(id); return "accepted"; }, () => failed ? Promise.reject(Error("private failure")) : actions.read());
+  let state = await lib.read();
+  await lib.mutate({ action: "enroll", expectedRevision: state.revision, permission: "granted", label: "Synthetic phone", subscription: fixture.subscription, publicKey: fixture.config.publicKey });
+  const contract = { ...contractEvidence(), category: "home-insurance", renewal: "2026-11-20" };
+  await lib.scan({ contracts: [contract] }, [], new Date("2026-10-01T17:00:00Z"));
+  async function decide(action, extra = {}) {
+    const s = await actions.read();
+    return actions.mutate({ action, expectedRevision: s.revision, opportunityId: insuranceRenewalOpportunityId(contract.id), evidenceVersion: "v1:synthetic",
+      context: { kind: "insurance-renewal", recordId: contract.id, dueDate: contract.renewal }, ...extra }, new Date("2026-10-01T17:00:00Z"));
+  }
+  return { actions, lib, contract, deliveries, decide, fail: value => failed = value };
+}
+test("Today snooze before J30 suppresses insurance milestones until its expiry", () => sandbox(async path => {
+  const t = await todaySetup(path);
+  await t.decide("snooze", { snoozedUntil: "2026-11-15T16:00:00Z" });
+  for (const date of ["2026-10-22T17:00:00Z", "2026-11-13T17:00:00Z"]) {
+    const s = await t.lib.scan({ contracts: [t.contract] }, [], new Date(date));
+    assert.equal(t.deliveries.length, 0); assert.ok(s.events.find(e => e.active));
+    assert.equal(s.events.find(e => e.active).decision, undefined, "external choice is not a fake notification resolution");
+  }
+  await t.lib.scan({ contracts: [t.contract] }, [], new Date("2026-11-15T17:00:00Z")); assert.equal(t.deliveries.length, 1);
+  await t.lib.scan({ contracts: [t.contract] }, [], new Date("2026-11-15T17:15:00Z")); assert.equal(t.deliveries.length, 1);
+}));
+test("Today resolved and dismissed suppress J30 J7 J1; a new insurance date reopens", () => sandbox(async path => {
+  for (const action of ["resolve", "dismiss"]) {
+    const t = await todaySetup(path + action);
+    await t.decide(action);
+    for (const date of ["2026-10-22T17:00:00Z", "2026-11-13T17:00:00Z", "2026-11-19T17:00:00Z"]) await t.lib.scan({ contracts: [t.contract] }, [], new Date(date));
+    assert.equal(t.deliveries.length, 0);
+    t.contract.renewal = "2026-12-01";
+    await t.lib.scan({ contracts: [t.contract] }, [], new Date("2026-11-19T18:00:00Z")); assert.equal(t.deliveries.length, 1);
+  }
+}));
+test("Today restore removes its influence; seen alone does not suppress a renewal push", () => sandbox(async path => {
+  for (const action of ["snooze", "resolve", "dismiss"]) {
+    const t = await todaySetup(path + action);
+    await t.decide(action, action === "snooze" ? { snoozedUntil: "2026-11-15T16:00:00Z" } : {});
+    await t.lib.scan({ contracts: [t.contract] }, [], new Date("2026-10-22T17:00:00Z")); assert.equal(t.deliveries.length, 0);
+    await t.decide("restore");
+    await t.lib.scan({ contracts: [t.contract] }, [], new Date("2026-10-22T17:15:00Z")); assert.equal(t.deliveries.length, 1);
+  }
+  const t = await todaySetup(path + "seen"); await t.decide("seen");
+  await t.lib.scan({ contracts: [t.contract] }, [], new Date("2026-10-22T17:00:00Z")); assert.equal(t.deliveries.length, 1);
+}));
+test("unreadable Today decisions defer only insurance renewal pushes and preserve their pending history", () => sandbox(async path => {
+  const t = await todaySetup(path); t.fail(true);
+  const telecom = { ...contractEvidence(), id: "other-contract", renewal: "2026-11-20" };
+  let s = await t.lib.scan({ contracts: [t.contract, telecom] }, [], new Date("2026-10-22T17:00:00Z"));
+  assert.equal(t.deliveries.length, 1); assert.equal(s.events.find(e => e.id === t.deliveries[0]).target.recordId, telecom.id);
+  assert.ok(s.sourceErrors.includes("suivi des actions d’accueil")); assert.ok(!JSON.stringify(s).includes("private failure"));
+  assert.equal(s.events.find(e => e.target.recordId === t.contract.id).pushState, "pending");
+  assert.equal(s.events.find(e => e.target.recordId === t.contract.id).active, true);
+  assert.equal(s.events.find(e => e.target.recordId === t.contract.id).decision, undefined);
+  t.fail(false);
+  s = await t.lib.scan({ contracts: [t.contract, telecom] }, [], new Date("2026-10-23T17:00:00Z")); assert.equal(t.deliveries.length, 2);
+  assert.deepEqual(s.sourceErrors, []);
 }));

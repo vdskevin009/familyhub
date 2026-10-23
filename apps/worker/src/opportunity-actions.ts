@@ -1,11 +1,13 @@
 import { readFile } from "node:fs/promises";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { atomicJson } from "./private-store.js";
 
+export type OpportunityActionContext = { kind: "insurance-renewal"; recordId: string; dueDate: string };
+export const insuranceRenewalOpportunityId = (recordId: string) => "insurance:" + createHash("sha256").update(JSON.stringify("insurance:" + recordId)).digest("hex");
 export type OpportunityActionState = "seen" | "snoozed" | "dismissed" | "resolved";
 export type OpportunityDecision = {
   opportunityId: string; evidenceVersion: string; state: OpportunityActionState;
-  at: string; snoozedUntil?: string; reason?: string;
+  at: string; snoozedUntil?: string; reason?: string; context?: OpportunityActionContext;
 };
 export type OpportunityActionHistory = Omit<OpportunityDecision, "state"> & { state: OpportunityActionState | "restored" };
 export type OpportunityActionsSnapshot = {
@@ -18,10 +20,20 @@ const timestamp = (value: unknown): value is string => typeof value === "string"
 const states = ["seen", "snoozed", "dismissed", "resolved"];
 const day = 86_400_000;
 const empty = (): OpportunityActionsSnapshot => ({ schema: 1, revision: "empty", decisions: {}, history: [], totals: { seen: 0, snoozed: 0, dismissed: 0, resolved: 0, restored: 0 } });
+function validContext(value: unknown, opportunityId: string): value is OpportunityActionContext {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const c = value as OpportunityActionContext;
+  return Object.keys(c).length === 3 && Object.keys(c).every(k => ["kind", "recordId", "dueDate"].includes(k))
+    && c.kind === "insurance-renewal" && identity(c.recordId) && c.recordId.length <= 100
+    && typeof c.dueDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(c.dueDate) && Number.isFinite(Date.parse(c.dueDate + "T12:00:00Z"))
+    && new Date(c.dueDate + "T12:00:00Z").toISOString().slice(0, 10) === c.dueDate
+    && opportunityId === insuranceRenewalOpportunityId(c.recordId);
+}
 function validDecision(value: unknown, history = false): value is OpportunityActionHistory {
   const d = value as OpportunityActionHistory;
   return !!d && typeof d === "object" && identity(d.opportunityId) && identity(d.evidenceVersion)
     && [...states, ...(history ? ["restored"] : [])].includes(d.state) && timestamp(d.at)
+    && (d.context === undefined || validContext(d.context, d.opportunityId))
     && (d.reason === undefined || typeof d.reason === "string" && d.reason.length <= 240)
     && (d.state === "snoozed" ? timestamp(d.snoozedUntil) && Date.parse(d.snoozedUntil) > Date.parse(d.at) : d.snoozedUntil === undefined);
 }
@@ -53,10 +65,11 @@ export class OpportunityActions {
       const state = await this.load(), body = input as Record<string, unknown>;
       if (!body || typeof body !== "object" || Array.isArray(body)) throw new Error("Action d’accueil invalide.");
       if (body.expectedRevision !== state.revision) throw new OpportunityActionsConflict("Les actions d’accueil ont changé. Actualisez avant de réessayer.");
-      if (Object.keys(body).some(k => !["expectedRevision", "opportunityId", "evidenceVersion", "action", "snoozedUntil", "reason"].includes(k))
-        || !identity(body.opportunityId) || !identity(body.evidenceVersion) || !["seen", "snooze", "dismiss", "resolve", "restore"].includes(String(body.action))
+      if (Object.keys(body).some(k => !["expectedRevision", "opportunityId", "evidenceVersion", "action", "snoozedUntil", "reason", "context"].includes(k))
+        || !identity(body.opportunityId) || !identity(body.evidenceVersion) || body.context !== undefined && !validContext(body.context, body.opportunityId) || !["seen", "snooze", "dismiss", "resolve", "restore"].includes(String(body.action))
         || body.reason !== undefined && (typeof body.reason !== "string" || body.reason.length > 240)) throw new Error("Action d’accueil invalide.");
       const id = body.opportunityId, previous = state.decisions[id], at = now.toISOString(), evidenceVersion = body.evidenceVersion;
+      const context = (body.context ?? (previous?.evidenceVersion === evidenceVersion ? previous.context : undefined)) as OpportunityActionContext | undefined;
       if (body.action !== "snooze" && body.snoozedUntil !== undefined) throw new Error("Date de report inattendue.");
       if (body.action === "snooze" && (!timestamp(body.snoozedUntil) || Date.parse(body.snoozedUntil) <= now.getTime()
         || Date.parse(body.snoozedUntil) > now.getTime() + 90 * day)) throw new Error("Choisissez un report futur, dans les 90 prochains jours.");
@@ -67,13 +80,13 @@ export class OpportunityActions {
         delete state.decisions[id];
       } else {
         if (!previous && Object.keys(state.decisions).length >= 5000) throw new Error("La limite des décisions d’accueil est atteinte. Les décisions existantes sont conservées.");
-        const decision: OpportunityDecision = { opportunityId: id, evidenceVersion, at,
+        const decision: OpportunityDecision = { opportunityId: id, evidenceVersion, at, ...(context ? { context } : {}),
           state: body.action === "snooze" ? "snoozed" : body.action === "dismiss" ? "dismissed" : body.action === "resolve" ? "resolved" : "seen",
           ...(body.action === "snooze" ? { snoozedUntil: new Date(body.snoozedUntil as string).toISOString() } : {}),
           ...(typeof body.reason === "string" && body.reason.trim() ? { reason: body.reason.trim() } : {}) };
         state.decisions[id] = decision;
       }
-      state.history.push(body.action === "restore" ? { opportunityId: id, evidenceVersion, at, state: "restored" } : { ...state.decisions[id] });
+      state.history.push(body.action === "restore" ? { opportunityId: id, evidenceVersion, at, state: "restored", ...(context ? { context } : {}) } : { ...state.decisions[id] });
       const countKey = state.history.at(-1)!.state;
       if (state.totals[countKey] === Number.MAX_SAFE_INTEGER) throw new Error("La limite du compteur est atteinte. Aucun fichier remplacé.");
       state.totals[countKey]++;

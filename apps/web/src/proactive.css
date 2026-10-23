@@ -159,3 +159,7 @@
   .proactive-shell .opportunity-description { margin-top: 6px; margin-bottom: 12px; }
   .proactive-shell .opportunity-meta { margin-bottom: 10px; }
 }
+
+.proactive-shell .section-load-error { margin-top: 48px; }
+.proactive-shell .section-load-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+.proactive-shell .section-load-actions .button { min-height: 48px; }

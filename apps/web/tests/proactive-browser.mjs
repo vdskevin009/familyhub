@@ -45,7 +45,7 @@ async function setup(width, paired = true) {
   const contract = { ...newContract("home-insurance", "synthetic-home"), name: "Synthetic home policy", provider: "Synthetic insurer", renewal: new Date(Date.now() + 30 * 86_400_000).toISOString().slice(0, 10), updatedAt: new Date().toISOString() };
   const contracts = { schema: 1, records: [{ contract, revision: "synthetic-contract-revision" }], documents: [] };
   const plan = { ...emptyPlan(), revision: "synthetic-plan", items: [{ id: "synthetic-oats", name: "Synthetic oats", quantity: 1, size: 1, unit: "kg", preference: "", substitutions: false, active: true, origin: "synthetic" }] };
-  const state = { failed: false, rejectNext: false, snapshot };
+  const state = { failed: false, rejectNext: false, snapshot, lifecycleRequests: [], actionReadGate: null, blockFinancesChunk: false, blockedChunks: 0 };
   await context.addInitScript(({ paired, endpoint, stale }) => {
     if (sessionStorage.getItem("synthetic-proactive-initialized")) return;
     sessionStorage.setItem("synthetic-proactive-initialized", "1");
@@ -54,7 +54,10 @@ async function setup(width, paired = true) {
   }, { paired, endpoint: apiOrigin, stale: { ...household.state, Reconciliations: [{ ...household.snapshot.reconciliations[0], Provider: "LOCAL_ONLY_STALE_CARD", PotentialRemaining: 999999 }] } });
   await context.route("**/*", async route => {
     const request = route.request(), url = new URL(request.url());
-    if (url.origin === new URL(base).origin) return route.continue();
+    if (url.origin === new URL(base).origin) {
+      if (state.blockFinancesChunk && /\/FinancesView-[^/]+\.js$/.test(url.pathname)) { state.blockedChunks++; return route.abort("internetdisconnected"); }
+      return route.continue();
+    }
     if (url.origin !== apiOrigin) { external.push(url.origin); return route.abort(); }
     const reply = (body, status = 200) => route.fulfill({ status, contentType: "application/json", headers: { "Access-Control-Allow-Origin": new URL(base).origin, "Access-Control-Allow-Headers": "content-type,x-familyhub-key" }, body: JSON.stringify(body) });
     if (request.method() === "OPTIONS") return reply({});
@@ -63,7 +66,11 @@ async function setup(width, paired = true) {
       assert.equal(url.pathname, "/opportunity-actions", "Only explicit opportunity lifecycle writes are allowed");
     }
     if (url.pathname === "/opportunity-actions") {
-      if (request.method() === "GET") return reply(await actions.read());
+      if (request.method() === "GET") {
+        if (state.actionReadGate) await state.actionReadGate;
+        return reply(await actions.read());
+      }
+      state.lifecycleRequests.push(request.postDataJSON());
       if (state.rejectNext) { state.rejectNext = false; return reply({ error: "Synthetic revision conflict" }, 409); }
       try { return reply(await actions.mutate(request.postDataJSON())); } catch (error) { return reply({ error: error.message }, 409); }
     }
@@ -81,17 +88,17 @@ async function setup(width, paired = true) {
     return reply({}, 404);
   });
   const page = await context.newPage(); page.setDefaultTimeout(15000); page.on("pageerror", error => allErrors.push(error.message)); diagnostic = page;
-  return { page, context, actions, state };
+  return { page, context, actions, state, contract };
 }
 
 try {
   await mkdir(output, { recursive: true });
   browser = await chromium.launch({ headless: true, channel: process.env.FAMILYHUB_TEST_BROWSER_CHANNEL || undefined });
   for (const width of [320, 360, 384, 390, 412, 1280]) {
-    const { page, context, actions, state } = await setup(width);
+    const { page, context, actions, state, contract } = await setup(width);
     await page.goto(base); await waitReady(page);
     assert.equal(await page.locator(".bottom-nav button").count(), 5);
-    const nav = page.locator(width < 860 ? ".bottom-nav" : ".app-rail nav");
+    const nav = page.locator(".bottom-nav:visible, .app-rail nav:visible");
     assert.equal(await nav.locator('button[aria-current="page"]' ).getAttribute("aria-label") ?? await nav.locator('button[aria-current="page"]' ).innerText(), "Aujourd’hui");
     assert.equal(await page.locator(".today-priorities .opportunity-card").count(), 3);
     assert.equal(await page.getByText("LOCAL_ONLY_STALE_CARD", { exact: false }).count(), 0);
@@ -121,12 +128,32 @@ try {
     // Persisted lifecycle survives a full page reload; failed writes never disappear optimistically.
     const target = page.locator(".today-priorities .opportunity-card").first();
     const targetHref = await target.getByRole("link").getAttribute("href");
+    const targetUrl = new URL(targetHref, base);
+    assert.equal(targetUrl.searchParams.get("view"), "savings");
+    assert.equal(targetUrl.searchParams.get("record"), contract.id, "Lifecycle exercises the exact insurance renewal, not an unrelated card");
+    const renewalContext = { kind: "insurance-renewal", recordId: contract.id, dueDate: contract.renewal };
     await target.getByRole("button", { name: /^Sources et options/ }).click();
     let dialog = page.locator("dialog[open]");
     await dialog.getByRole("button", { name: "Reporter de 7 jours", exact: true }).click();
     await page.getByText(/Piste reportée de 7 jours/).waitFor();
-    assert.equal(Object.values((await actions.read()).decisions).filter(decision => decision.state === "snoozed").length, 1);
-    await page.reload(); await waitReady(page);
+    const snoozed = Object.values((await actions.read()).decisions);
+    assert.equal(snoozed.length, 1); assert.equal(snoozed[0].state, "snoozed");
+    assert.deepEqual(state.lifecycleRequests.at(-1).context, renewalContext, "Renewal context is sent with the single lifecycle mutation");
+    assert.deepEqual(snoozed[0].context, renewalContext, "Renewal notification context is persisted with the home decision");
+    if (width === 320) {
+      let releaseActions;
+      state.actionReadGate = new Promise(done => { releaseActions = done; });
+      try {
+        await page.reload();
+        await page.locator(".today-source-status").click();
+        await page.waitForFunction(() => [...document.querySelectorAll(".today-source-list .opportunity-status")].filter(element => element.textContent === "Accessible").length === 7);
+        assert.equal(await page.locator(".today-priorities").getAttribute("aria-busy"), "true");
+        assert.equal(await page.locator(".today-priorities .opportunity-card").count(), 0, "A pending decision read must not flash a previously snoozed card");
+        await page.keyboard.press("Escape");
+      } finally { releaseActions(); state.actionReadGate = null; }
+      await waitReady(page);
+    } else { await page.reload(); await waitReady(page); }
+    assert.deepEqual(Object.values((await actions.read()).decisions)[0].context, renewalContext);
 
     assert.equal(await page.locator(".today-priorities").locator("a").evaluateAll((elements, href) => elements.filter(element => element.getAttribute("href") === href).length, targetHref), 0);
     await page.getByRole("button", { name: /^Pistes gérées/ }).click();
@@ -134,7 +161,12 @@ try {
     dialog = page.locator("dialog[open]");
     await dialog.getByRole("button", { name: "Réafficher dans mes actions", exact: true }).click();
     await page.getByText("Piste réaffichée dans vos actions.", { exact: true }).waitFor();
+    assert.equal(state.lifecycleRequests.at(-1).action, "restore");
+    assert.deepEqual(state.lifecycleRequests.at(-1).context, renewalContext);
     assert.equal(Object.keys((await actions.read()).decisions).length, 0);
+    await page.reload(); await waitReady(page);
+    assert.equal(await page.locator(".today-priorities a").evaluateAll((elements, href) => elements.filter(element => element.getAttribute("href") === href).length, targetHref), 1, "Restored renewal reappears after reload");
+    assert.equal(Object.keys((await actions.read()).decisions).length, 0, "Restoration survives a fresh worker-state read");
 
     if (width === 384) {
       await page.locator(".today-priorities .opportunity-card").first().getByRole("button", { name: /^Sources et options/ }).click();
@@ -149,7 +181,23 @@ try {
       await page.locator("dialog[open]").getByText("Marquer comme traitée ne valide aucun gain ni aucune soumission.", { exact: true }).waitFor();
       await page.locator("dialog[open]").getByRole("button", { name: "Marquer comme traitée", exact: true }).click();
       await page.getByText(/Piste marquée comme traitée/).waitFor();
+      assert.equal(state.lifecycleRequests.at(-1).action, "resolve");
+      assert.deepEqual(state.lifecycleRequests.at(-1).context, renewalContext);
+      const resolved = Object.values((await actions.read()).decisions);
+      assert.equal(resolved.length, 1); assert.equal(resolved[0].state, "resolved");
+      assert.deepEqual(resolved[0].context, renewalContext);
+      await page.reload(); await waitReady(page);
+      assert.equal(await page.locator(".today-priorities a").evaluateAll((elements, href) => elements.filter(element => element.getAttribute("href") === href).length, targetHref), 0, "Treated renewal stays managed after reload");
       await page.locator(".benefit-tile").nth(2).getByText("Non mesuré", { exact: true }).waitFor();
+      await page.getByRole("button", { name: /^Pistes gérées/ }).click();
+      await page.locator(".opportunity-managed").getByRole("button", { name: /^Sources et options/ }).click();
+      await page.locator("dialog[open]").getByRole("button", { name: "Réafficher dans mes actions", exact: true }).click();
+      await page.getByText("Piste réaffichée dans vos actions.", { exact: true }).waitFor();
+      assert.equal(state.lifecycleRequests.at(-1).action, "restore");
+      assert.deepEqual(state.lifecycleRequests.at(-1).context, renewalContext);
+      await page.reload(); await waitReady(page);
+      assert.equal(Object.keys((await actions.read()).decisions).length, 0);
+      assert.equal(await page.locator(".today-priorities a").evaluateAll((elements, href) => elements.filter(element => element.getAttribute("href") === href).length, targetHref), 1);
 
       state.failed = true;
       await page.getByRole("button", { name: "Actualiser les priorités", exact: true }).click();
@@ -189,6 +237,38 @@ try {
     metrics.push({ width, defaultToday: true, fiveTabs: true, overflow: false, persistence: true, deepLinks: true });
     await context.close();
   }
+  // A missing lazy section leaves the navigation usable; retry reloads the same route without clearing saved data.
+  {
+    const { page, context, state } = await setup(360);
+    await page.goto(base); await waitReady(page);
+    const saved = await page.evaluate(() => ({ records: localStorage.getItem("familyhub.reimbursements.v1"), pairing: localStorage.getItem("familyhub.worker.v1") }));
+    state.blockFinancesChunk = true;
+    const nav = page.locator(".bottom-nav:visible, .app-rail nav:visible");
+    await nav.getByRole("button", { name: "Plus", exact: true }).click();
+    await page.locator(".other-link").filter({ hasText: "Finances" }).click();
+    await page.getByRole("heading", { name: "Section indisponible", exact: true }).waitFor();
+    assert.ok(state.blockedChunks >= 1, "The synthetic request failure must reach the unloaded Finances chunk");
+    assert.equal(await nav.getByRole("button").count(), 5);
+    assert.equal(new URL(page.url()).searchParams.get("view"), "finances");
+    await noOverflow(page, "Unloaded section failure");
+    const retryBox = await page.getByRole("button", { name: "Réessayer", exact: true }).boundingBox();
+    assert.ok(retryBox.width >= 48 && retryBox.height >= 48);
+    await nav.getByRole("button", { name: "Aujourd’hui", exact: true }).click(); await waitReady(page);
+    await nav.getByRole("button", { name: "Plus", exact: true }).click();
+    await page.locator(".other-link").filter({ hasText: "Finances" }).click();
+    await page.getByRole("heading", { name: "Section indisponible", exact: true }).waitFor();
+    await page.getByRole("button", { name: "Retour à l’accueil", exact: true }).click(); await waitReady(page);
+    await nav.getByRole("button", { name: "Plus", exact: true }).click();
+    await page.locator(".other-link").filter({ hasText: "Finances" }).click();
+    await page.getByRole("heading", { name: "Section indisponible", exact: true }).waitFor();
+    state.blockFinancesChunk = false;
+    await page.getByRole("button", { name: "Réessayer", exact: true }).click();
+    await page.getByRole("heading", { name: "Finances", exact: true }).waitFor();
+    assert.equal(new URL(page.url()).searchParams.get("view"), "finances", "Retry preserves the requested section");
+    assert.deepEqual(await page.evaluate(() => ({ records: localStorage.getItem("familyhub.reimbursements.v1"), pairing: localStorage.getItem("familyhub.worker.v1") })), saved, "Section recovery does not clear private records or worker pairing");
+    await noOverflow(page, "Recovered Finances section");
+    await context.close();
+  }
   const { page, context } = await setup(360, false);
   await page.goto(base);
   await page.getByRole("heading", { name: "Retrouver vos priorités", exact: true }).waitFor();
@@ -199,7 +279,7 @@ try {
   assert.deepEqual(external, []); assert.deepEqual(allErrors, []);
   assert.ok(mutations.length >= 12); assert.ok(mutations.every(path => path === "/opportunity-actions"));
   await writeFile(join(output, "report.json"), JSON.stringify({ metrics, errors: allErrors, external, lifecycleWrites: mutations.length }, null, 2));
-  console.log("PASS proactive home: six widths, source authority, partial/offline/unpaired states, five-tab navigation, exact links, persisted and rejected lifecycle writes.");
+  console.log("PASS proactive home: six widths, source authority, partial/offline/unpaired states, five-tab navigation, exact links, persisted renewal context, delayed reads, restores, rejected writes, and failed-chunk recovery.");
 } catch (error) {
   if (diagnostic && !diagnostic.isClosed()) { await diagnostic.screenshot({ path: join(output, "failure.png"), fullPage: true }); await writeFile(join(output, "failure.txt"), await diagnostic.locator("body").innerText()); }
   throw error;
