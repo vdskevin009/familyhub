@@ -17,3 +17,72 @@
 @media(max-width:859px) { .app-shell .bottom-nav { grid-template-columns:repeat(7,minmax(0,1fr)); } }
 
 .mortgage p { max-width:80ch; overflow-wrap:anywhere; } .mortgage select { font-size:1rem; } .mortgage summary { padding-block:10px; }
+
+/* Approved compact presentation; policy data and contacts are supplied privately at runtime. */
+.mortgage-compact { max-width:760px; padding:20px 22px; }
+.mortgage-compact h1 { font-size:26px; }
+.mortgage-compact small,.mortgage-detail-sheet small { display:block; font-size:12px; line-height:1.5; color:var(--muted); }
+.mortgage-compact button { font:inherit; }
+.mortgage-compact .mortgage-refresh { font-size:12px; border:0; color:var(--accent); background:transparent; }
+.mortgage-tabs { display:flex; gap:16px; border-bottom:1px solid var(--line); margin:12px 0 20px; }
+.mortgage-compact .mortgage-tabs button { border:0; border-bottom:3px solid transparent; border-radius:0; background:transparent; padding:12px 0; color:var(--muted); font-size:12px; font-weight:700; }
+.mortgage-compact .mortgage-tabs button[aria-selected="true"] { color:var(--accent); border-bottom-color:var(--accent); }
+.mortgage-compact .mortgage-tabs:has(#mortgage-source-offers) { padding:3px; gap:3px; background:var(--surface-soft,#f2f5f9); border:0; border-radius:9px; }
+.mortgage-compact .mortgage-tabs:has(#mortgage-source-offers) button { width:50%; padding:8px; border:0; border-radius:7px; text-transform:none; }
+.mortgage-compact .mortgage-tabs:has(#mortgage-source-offers) button[aria-selected="true"] { background:var(--surface,#fff); }
+.mortgage-load-status { font-size:12px; color:var(--muted); }
+.mortgage-load-status:not(:empty) { margin:12px 0; }
+.mortgage-filters,.mortgage-sort,.mortgage-contact-heading { display:flex; justify-content:space-between; align-items:center; gap:12px; }
+.mortgage-filters { border-bottom:1px solid var(--line); padding-bottom:12px; }
+.mortgage-compact .mortgage-filters button,.mortgage-compact .mortgage-sort button { border:0; background:transparent; padding:8px 10px; color:var(--muted); font-size:13px; }
+.mortgage-compact button[aria-pressed="true"] { color:var(--accent); font-weight:700; }
+.mortgage-compact .mortgage-filters select { border:0; background:var(--accent-soft,#edf3ff); color:var(--accent); font-size:13px; font-weight:700; }
+.mortgage-sort { margin:8px 0; }
+.mortgage-sort > div { display:flex; gap:12px; }
+.mortgage-offer-columns,.mortgage-compact .mortgage-offer-row { display:grid; grid-template-columns:minmax(0,1fr) auto minmax(66px,auto); gap:12px; align-items:start; }
+.mortgage-offer-columns { text-transform:uppercase; font-size:10px; color:var(--muted); padding:12px 0; border-bottom:1px solid var(--line); }
+.mortgage-offer-columns span:not(:first-child) { text-align:right; }
+.mortgage-compact .mortgage-offer-row { width:100%; text-align:left; padding:16px 0; border:0; border-bottom:1px solid var(--line); border-radius:0; background:transparent; }
+.mortgage-offer-row b { font-size:13px; display:block; overflow-wrap:anywhere; }
+.mortgage-offer-row > strong { font-size:20px; font-variant-numeric:tabular-nums; white-space:nowrap; }
+.mortgage-offer-row > span:last-child { text-align:right; font-size:13px; }
+.mortgage-offer-row > span > small:last-child { margin-top:8px; }
+.mortgage-incentive { color:var(--success,#286b50); font-weight:600; }
+.mortgage-conditions { margin-top:24px; font-size:13px; color:var(--warning-text,#895b15); }
+.mortgage-conditions small { margin-top:8px; font-weight:400; }
+.mortgage-compact .mortgage-market-link { display:flex; width:100%; justify-content:space-between; align-items:center; gap:12px; text-align:left; padding:14px 0; border:0; background:transparent; color:var(--accent); font-size:13px; }
+.mortgage-market-link b { color:var(--text); }
+.mortgage-contact-heading { margin:20px 0; }
+.mortgage-contacts { display:grid; gap:10px; }
+.mortgage-compact .mortgage-contact-card { width:100%; display:block; text-align:left; padding:12px; border:1px solid var(--line); border-radius:11px; background:var(--surface,#fff); }
+.mortgage-contact-title,.mortgage-contact-rate,.mortgage-contact-meta { display:flex; justify-content:space-between; gap:10px; }
+.mortgage-contact-title > span:first-child { min-width:0; }
+.mortgage-contact-title b { display:block; font-size:14px; overflow-wrap:anywhere; }
+.mortgage-contact-rate { justify-content:start; margin-top:10px; align-items:start; }
+.mortgage-contact-rate > strong { font-size:24px; line-height:1.3; min-width:105px; font-variant-numeric:tabular-nums; }
+.mortgage-contact-rate b { font-size:12px; }
+.mortgage-contact-meta { margin-top:8px; align-items:center; font-size:12px; }
+.mortgage-contact-meta > small { color:var(--accent); }
+.mortgage-badge { display:inline-block; flex:none; align-self:start; border-radius:5px; background:var(--surface-soft,#eef1f5); color:var(--muted); padding:3px 7px; font-size:10px; font-weight:700; }
+.mortgage-badge.status-appointment { color:var(--success,#286b50); background:var(--success-soft,#eaf5ef); }
+.mortgage-badge.status-email-sent { color:var(--accent); background:var(--accent-soft,#edf3ff); }
+.mortgage-badge.status-awaiting-response { color:var(--warning-text,#895b15); background:var(--warning-soft,#fff4df); }
+.mortgage-contact-appointment { display:block; min-height:18px; margin-top:8px; text-align:right; color:var(--success,#286b50); font-size:12px; }
+.mortgage-no-rate { display:block; margin-top:12px; color:var(--muted); font-size:13px; }
+.mortgage-no-rate + .mortgage-contact-appointment { margin-top:-20px; padding-left:68px; }
+.mortgage .is-historical { color:var(--muted); }
+.mortgage-detail-sheet .mortgage { padding:0; max-width:none; }
+.mortgage-offer-tile { width:100%; text-align:left; display:grid; grid-template-columns:auto minmax(0,1fr); gap:8px 20px; border:1px solid var(--line); background:var(--accent-soft,#f6f9fe); border-radius:11px; padding:14px; margin:12px 0; }
+.mortgage-offer-tile > strong { font-size:26px; font-variant-numeric:tabular-nums; }
+.mortgage-offer-tile b { font-size:13px; }
+.mortgage-offer-tile p { grid-column:1/-1; margin:6px 0 0; color:var(--success,#286b50); font-size:13px; }
+.mortgage-market-rate { display:grid; margin:20px 0; gap:4px; }
+.mortgage-market-rate > strong { font-size:36px; font-variant-numeric:tabular-nums; }
+.mortgage-market-rate > span { font-size:13px; }
+.mortgage-eligibility { color:var(--muted); font-size:12px; }
+.mortgage-periods { display:flex; gap:6px; overflow-x:auto; padding:4px 3px 8px; }
+.mortgage-compact .mortgage-periods button { flex:none; font-size:12px; padding:6px 10px; border-color:var(--line); }
+.mortgage-delta { display:flex; flex-direction:column; }
+.mortgage-delta strong { font-size:24px; }.mortgage-delta span { font-size:12px; color:var(--muted); }
+@media(min-width:760px) { .mortgage-contacts { grid-template-columns:repeat(2,minmax(0,1fr)); align-items:start; } }
+@media(max-width:360px) { .mortgage-compact { padding-inline:12px; }.mortgage-offer-row > strong { font-size:18px; }.mortgage-contact-title b { font-size:13px; }.mortgage-contact-rate > strong { min-width:94px; } }

@@ -1,0 +1,9 @@
+import { mortgageScenario, type Quote, type MortgageAssumptions } from "../../../worker/src/mortgage-model";
+import { cad, percent } from "../mortgage-display";
+export function QuoteIllustration({rate,quote,assumptions:a}:{rate:number;quote:Quote;assumptions:MortgageAssumptions|undefined}) {
+  if(!a) return <p>Hypothèses privées indisponibles. Enregistrez les hypothèses sur le PC pour calculer cette illustration.</p>;
+  if(quote.variant === "unconfirmed-payment") return <p>Structure des paiements non confirmée : aucune comparaison de versements ou d’intérêts n’est calculée pour cette proposition.</p>;
+  if(quote.variant === "fixed-payment") return <p>Variable à paiements fixes : montant contractuel et règles du prêteur nécessaires pour estimer les versements et intérêts. Aucune économie de trésorerie n’est présumée.</p>;
+  const months=quote.product.endsWith("3")?36:60,current=mortgageScenario(a.principal,a.currentRate,a.remainingMonths,months),offer=mortgageScenario(a.principal,rate,a.remainingMonths,months,quote.product.startsWith("variable")?"monthly":"semiannual");
+  return <><p>Illustration à taux constant : {cad(a.principal)} et {a.remainingMonths} mois restants supposés, taux actuel fourni {percent(a.currentRate)}, pénalité et frais exclus. Le taux actuel est maintenu sur toute la durée illustrée; son échéance reste à confirmer. {quote.product.startsWith("variable") ? "Capitalisation mensuelle supposée; les versements futurs ne sont pas garantis." : "Capitalisation semestrielle canadienne."}</p><dl className="mortgage-numbers"><div><dt>Versement mensuel illustratif</dt><dd>{cad(offer.payment)}</dd></div><div><dt>Baisse du versement mensuel</dt><dd>{cad(current.payment-offer.payment)}</dd></div><div><dt>Intérêts évités sur {months} mois</dt><dd>{cad(current.interest-offer.interest)}</dd></div></dl></>;
+}

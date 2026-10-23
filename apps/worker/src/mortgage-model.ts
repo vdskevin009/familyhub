@@ -1,3 +1,4 @@
+import { validateContact, validateCashback, type MortgageContact, type MortgageCashback } from "./mortgage-contacts.js";
 /** Public observations and private indicative quotes are deliberately different records. */
 export const mortgageBaseline = "2026-10-20";
 export const mortgageZone = "America/Vancouver";
@@ -6,10 +7,10 @@ export type ProductKey = typeof productKeys[number];
 export type Filters = { purpose: "renewing"; balance: number; amortizationMonths: number; location: "Vancouver BC"; occupancy: "owner"; payment: "monthly"; cmhc: "no"; ltv: "unavailable" };
 export type Observation = { product: ProductKey; status: "observed" | "unavailable"; rate: number | null; lender: string | null; reason: string | null; eligibility: string[] };
 export type Snapshot = { schema: 1; id: string; collectedAt: string; localDate: string; source: { url: string; title: string; method: string; publishedAt: string | null; controlsVerified: boolean }; filters: Filters; status: "complete" | "partial" | "failed"; observations: Observation[]; error: string | null };
-export type Quote = { id: string; receivedDate: string; source: string; lender: string; product: ProductKey; variant: "fixed" | "adjustable-payment" | "fixed-payment"; rate: number; limitations: string[] };
+export type Quote = { id: string; receivedDate: string; source: string; lender: string; product: ProductKey; variant: "fixed" | "adjustable-payment" | "fixed-payment" | "unconfirmed-payment"; rate: number; limitations: string[]; contactId?: string; cashback?: MortgageCashback | null; status?: "indicative" | "historical"; supersedes?: string | null };
 export type MortgageAssumptions = { id: string; recordedAt: string; principal: number; currentRate: number; remainingMonths: number; source: string; principalBasis: "assumption"; amortizationBasis: "assumption"; currentRateBasis: "user-reported"; currentMaturity: null };
-export type MortgageState = { schema: 1; baselineDate: typeof mortgageBaseline; baselineSnapshotId: string | null; snapshots: Snapshot[]; quotes: Quote[]; assumptions: MortgageAssumptions[] };
-export const emptyMortgage = (): MortgageState => ({ schema: 1, baselineDate: mortgageBaseline, baselineSnapshotId: null, snapshots: [], quotes: [], assumptions: [] });
+export type MortgageState = { schema: 1; baselineDate: typeof mortgageBaseline; baselineSnapshotId: string | null; snapshots: Snapshot[]; quotes: Quote[]; assumptions: MortgageAssumptions[]; contacts?: MortgageContact[]; offers?: Quote[] };
+export const emptyMortgage = (): MortgageState => ({ schema: 1, baselineDate: mortgageBaseline, baselineSnapshotId: null, snapshots: [], quotes: [], assumptions: [], contacts: [], offers: [] });
 export function localDate(at: string | Date): string {
   const d = new Date(at); if (!Number.isFinite(d.getTime())) throw new Error("Invalid timestamp");
   return new Intl.DateTimeFormat("en-CA", { timeZone: mortgageZone, year: "numeric", month: "2-digit", day: "2-digit" }).format(d);
@@ -39,7 +40,9 @@ export function validateSnapshot(value: unknown): Snapshot {
 export function validateQuote(value: unknown): Quote {
   const q = value as Quote;
   if (!q || !text(q.id) || !date(q.receivedDate) || !text(q.source) || !text(q.lender) || !productKeys.includes(q.product) || !rate(q.rate) || !strings(q.limitations)) fail();
-  if (q.product.startsWith("fixed") ? q.variant !== "fixed" : !["adjustable-payment", "fixed-payment"].includes(q.variant)) fail();
+  if (q.product.startsWith("fixed") ? q.variant !== "fixed" : !["adjustable-payment", "fixed-payment", "unconfirmed-payment"].includes(q.variant)) fail();
+  if (q.contactId !== undefined && !text(q.contactId) || q.status !== undefined && !["indicative", "historical"].includes(q.status) || q.supersedes !== undefined && q.supersedes !== null && (!text(q.supersedes) || q.supersedes === q.id)) fail();
+  if (q.cashback !== undefined && q.cashback !== null) validateCashback(q.cashback);
   return JSON.parse(JSON.stringify(q));
 }
 export function validateAssumptions(value: unknown): MortgageAssumptions {
@@ -52,6 +55,16 @@ export function validateState(value: unknown): MortgageState {
   const s = value as MortgageState;
   if (!s || s.schema !== 1 || s.baselineDate !== mortgageBaseline || !Array.isArray(s.snapshots) || !Array.isArray(s.quotes)) fail();
   s.snapshots.forEach(validateSnapshot); s.quotes.forEach(validateQuote);
+  if(s.offers === undefined) s.offers=[];
+  if(!Array.isArray(s.offers)) fail();
+  s.offers.forEach(validateQuote);
+  const allOffers=[...s.quotes,...s.offers];
+  if(new Set(allOffers.map(q=>q.id)).size !== allOffers.length) fail();
+  if(s.contacts === undefined) s.contacts=[];
+  if(!Array.isArray(s.contacts)) fail();
+  s.contacts.forEach(validateContact);
+  if(new Set(s.contacts.map(c=>c.id)).size !== s.contacts.length) fail();
+  for(const q of allOffers){ if(q.contactId && !s.contacts.some(c=>c.contactId === q.contactId)) fail(); if(q.supersedes && !allOffers.some(old=>old.id === q.supersedes && old.product === q.product && old.variant === q.variant && old.lender === q.lender)) fail(); const seen=new Set<string>();let cursor:Quote|undefined=q;while(cursor){if(seen.has(cursor.id)) fail();seen.add(cursor.id);cursor=allOffers.find(other=>other.id === cursor!.supersedes);} }
   if(s.assumptions === undefined) s.assumptions=[];
   if(!Array.isArray(s.assumptions)) fail();
   s.assumptions.forEach(validateAssumptions);

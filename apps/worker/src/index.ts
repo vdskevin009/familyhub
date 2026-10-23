@@ -53,7 +53,7 @@ type ResearchWatch = {
 };
 type PersistedState = { watches: ResearchWatch[] };
 
-const version = "2.26.14";
+const version = "2.26.15";
 let claimOperationBusy = false;
 const host = process.env.FAMILYHUB_WORKER_HOST?.trim() || "127.0.0.1";
 const port = Number(process.env.FAMILYHUB_WORKER_PORT || "4713");
@@ -263,8 +263,8 @@ const server = createServer(async (request, response) => {
   try {
     if (parts[0] === "mortgage") {
       if (parts.length === 1 && request.method === "GET") { json(response, 200, await mortgageStore.read(), origin); return; }
-      if (parts.length === 2 && request.method === "POST" && (parts[1] === "snapshots" || parts[1] === "quotes" || parts[1] === "assumptions")) {
-        json(response, 200, await mortgageStore.ingest(parts[1] === "snapshots" ? "snapshot" : parts[1] === "quotes" ? "quote" : "assumptions", await readJson(request, 32_000)), origin); return;
+      if (parts.length === 2 && request.method === "POST" && (parts[1] === "snapshots" || parts[1] === "quotes" || parts[1] === "assumptions" || parts[1] === "contacts" || parts[1] === "offers")) {
+        json(response, 200, await mortgageStore.ingest(parts[1] === "snapshots" ? "snapshot" : parts[1] === "quotes" ? "quote" : parts[1] === "contacts" ? "contact" : parts[1] === "offers" ? "offer" : "assumptions", await readJson(request, 32_000)), origin); return;
       }
     }
     if (parts[0] === "notifications" && parts.length === 1) {
@@ -534,7 +534,7 @@ const server = createServer(async (request, response) => {
       }
     }
     if (request.method === "GET" && parts.length === 1 && parts[0] === "health") {
-      json(response, 200, { status: "ok", codex: "sdk-ready", version, capabilities: ["insurance-reference-v1", "mortgage-evidence-v1", "grocery-source-type-v1", "grocery-fulfillment-v1", "grocery-receipts-v1", "grocery-planning-v1", "grocery-weekly-v1", groceryExpandedListCapability] }, origin);
+      json(response, 200, { status: "ok", codex: "sdk-ready", version, capabilities: ["insurance-reference-v1", "mortgage-evidence-v1", "mortgage-contacts-v1", "grocery-source-type-v1", "grocery-fulfillment-v1", "grocery-receipts-v1", "grocery-planning-v1", "grocery-weekly-v1", groceryExpandedListCapability] }, origin);
       return;
     }
 

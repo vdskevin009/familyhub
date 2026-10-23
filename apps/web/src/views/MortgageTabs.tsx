@@ -1,0 +1,3 @@
+export default function MortgageTabs({id,value,options,onChange}:{id:string;value:string;options:[string,string][];onChange:(value:string)=>void}) {
+  return <div className="mortgage-tabs" role="tablist">{options.map(([key,label],index)=><button type="button" id={`${id}-${key}`} role="tab" aria-selected={value===key} aria-controls={`${id}-panel`} tabIndex={value===key?0:-1} key={key} onClick={()=>onChange(key)} onKeyDown={e=>{const next=e.key==="ArrowRight"?(index+1)%options.length:e.key==="ArrowLeft"?(index+options.length-1)%options.length:e.key==="Home"?0:e.key==="End"?options.length-1:null;if(next!==null){e.preventDefault();onChange(options[next][0]);(e.currentTarget.parentElement!.children[next] as HTMLButtonElement).focus();}}}>{label}</button>)}</div>;
+}
