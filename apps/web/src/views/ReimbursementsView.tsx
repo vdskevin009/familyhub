@@ -485,7 +485,7 @@ export default function ReimbursementsView({ hub }: Props) {
         <details className="data-coverage"><summary>Invoice-search coverage</summary><p>{hub.reimbursements.InvoiceCoverage?.complete
           ? "Potential invoice search completed since June 1, 2025 for connected accounts. Scanned images and unreadable attachments may still need review."
           : "Historical collection since June 1, 2025 is not yet confirmed complete. Run the PC collection to resume it."} Insurance coverage is not confirmed by a receipt.</p></details>
-        {!paired && <p className="privacy-note">Connect your PC in Other → Settings & tools to refresh or update sources. Saved records remain available offline.</p>}
+        {!paired && <p className="privacy-note">Connect your PC in Plus → Réglages et outils to refresh or update sources. Saved records remain available offline.</p>}
       </div>
     </Sheet>
 
@@ -496,7 +496,7 @@ export default function ReimbursementsView({ hub }: Props) {
       {model.warnings.map(warning => <p key={warning}>{warning}</p>)}
     </details>}
 
-    {linkedRecord && <Notice onDismiss={() => setLinkedRecord(null)}>Dossier ouvert depuis une notification. Les filtres précédents sont conservés. {busy ? "Actualisation en cours." : filteredCases.length || model.unmatched.some(entry => entry.item.Id === linkedRecord) ? "" : "Ce dossier n'est plus disponible ou a été rapproché depuis cette notification."}<button type="button" className="button secondary" onClick={() => setLinkedRecord(null)}>Revenir à la liste</button></Notice>}
+    {linkedRecord && <Notice onDismiss={() => setLinkedRecord(null)}>Dossier ouvert depuis un lien direct. Les filtres précédents sont conservés. {busy ? "Actualisation en cours." : filteredCases.length || model.unmatched.some(entry => entry.item.Id === linkedRecord) ? "" : "Ce dossier n'est plus disponible ou a été rapproché depuis la création du lien."}<button type="button" className="button secondary" onClick={() => setLinkedRecord(null)}>Revenir à la liste</button></Notice>}
     <section className="reimbursement-mode-tabs" aria-label="Claims workspace">
       <button type="button" className={(linkedRecord ? !linkedQueue || filteredCases.length > 0 : screen === "claims") ? "active" : ""} aria-pressed={linkedRecord ? !linkedQueue || filteredCases.length > 0 : screen === "claims"} onClick={() => { setLinkedRecord(null); setScreen("claims"); }}>
         Claims

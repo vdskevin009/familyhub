@@ -13,7 +13,7 @@ const server=createServer(async(req,res)=>{
  try{const data=await readFile(file===root||path.endsWith('/')?join(root,'index.html'):file);res.setHeader('Content-Type',({'.js':'text/javascript','.css':'text/css','.html':'text/html','.svg':'image/svg+xml'})[extname(file)]||'text/html');res.end(data)}catch{res.writeHead(404);res.end()}
 });
 server.listen(0,'127.0.0.1');await once(server,'listening');
-const base=`http://127.0.0.1:${server.address().port}/familyhub/`;
+const base=`http://127.0.0.1:${server.address().port}/familyhub/?view=reimbursements`;
 
 const { tmpdir } = await import('node:os');
 const dir=await mkdtemp(join(tmpdir(),'familyhub-pair-browser-'));

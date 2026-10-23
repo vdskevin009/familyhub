@@ -1,0 +1,161 @@
+/* Opportunity home and navigation. Existing domain screens retain their own styles. */
+.proactive-shell .today-view { max-width: 1100px; margin-inline: auto; gap: 20px; }
+.proactive-shell .today-view .page-heading { margin-bottom: 0; }
+.proactive-shell .today-view h1 { font-size: clamp(23px, 3.4vw, 30px); letter-spacing: -.035em; }
+.proactive-shell .today-view .page-subtitle { margin-top: 5px; font-size: 14px; }
+.proactive-shell .shell-tools .icon-button { width: 48px; height: 48px; min-height: 48px; box-shadow: none; }
+.proactive-shell .rail-settings, .proactive-shell .header-install-button { min-height: 48px; }
+.proactive-shell .rail-brand { text-align: left; }
+.proactive-shell .today-view button, .proactive-shell .today-view .button, .proactive-shell .today-sheet button, .proactive-shell .today-sheet .button, .proactive-shell .today-sheet summary { min-height: 48px; }
+.proactive-shell .today-view .icon-button, .proactive-shell .today-sheet .icon-button { min-width: 48px; width: 48px; height: 48px; }
+.proactive-shell .today-view .app-notice { align-items: center; }
+.proactive-shell .today-view .app-notice .icon-button, .proactive-shell .today-sheet .app-notice .icon-button { margin: -6px; }
+.proactive-shell .today-source-status { display: flex; align-items: center; gap: 9px; align-self: flex-start; padding: 6px 12px; margin: -9px 0 -7px -12px; border: 0; border-radius: 10px; background: transparent; color: var(--muted); font-size: 12px; text-align: left; }
+.proactive-shell .today-source-status:hover { background: var(--soft); }
+.proactive-shell .today-source-status.caution { color: var(--warning); }
+.proactive-shell .source-dot { width: 7px; height: 7px; flex: 0 0 7px; border-radius: 50%; background: currentColor; }
+.proactive-shell .source-dot.loading { background: var(--accent); }
+.proactive-shell .today-benefits { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); border: 1px solid var(--line); background: var(--surface); border-radius: var(--radius-lg); overflow: hidden; }
+.proactive-shell .benefit-tile { display: flex; flex-direction: column; gap: 9px; padding: 18px 16px; min-width: 0; border: 0; border-right: 1px solid var(--line); text-align: left; background: transparent; }
+.proactive-shell .benefit-tile:last-child { border-right: 0; }
+.proactive-shell .benefit-tile:hover { background: var(--soft); }
+.proactive-shell .benefit-tile.recovery-tile { background: var(--accent-soft); }
+.proactive-shell .benefit-tile > span { color: var(--muted); font-size: 12px; font-weight: 600; line-height: 1.35; }
+.proactive-shell .benefit-tile strong { display: block; margin-top: auto; font-size: clamp(16px,2.3vw,25px); font-weight: 720; line-height: 1.15; letter-spacing: -.035em; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.proactive-shell .benefit-tile.recovery-tile strong { color: var(--accent-hover); }
+.proactive-shell .benefit-tile small { color: var(--muted); font-size: 11px; line-height: 1.35; }
+.proactive-shell .today-section-heading { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 14px; }
+.proactive-shell .today-section-heading h2 { font-size: 17px; letter-spacing: -.02em; }
+.proactive-shell .today-section-heading p { margin: 4px 0 0; color: var(--muted); font-size: 12px; }
+.proactive-shell .opportunity-list { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 14px; }
+.proactive-shell .opportunity-card { display: flex; flex-direction: column; min-width: 0; padding: 18px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-lg); }
+.proactive-shell .opportunity-first { border-color: var(--accent-line); box-shadow: inset 0 3px 0 var(--accent); }
+.proactive-shell .opportunity-top { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 15px; }
+.proactive-shell .opportunity-domain { display: inline-flex; align-items: center; gap: 7px; font-size: 12px; font-weight: 650; color: var(--accent-hover); }
+.proactive-shell .opportunity-status { display: inline-block; padding: 4px 7px; background: var(--soft); border-radius: 6px; color: var(--muted); font-size: 10px; font-weight: 650; line-height: 1.35; }
+.proactive-shell .opportunity-status.caution { color: var(--warning); background: var(--warning-soft); }
+.proactive-shell .opportunity-card h3 { font-size: 18px; line-height: 1.25; letter-spacing: -.025em; margin: 0; text-wrap: balance; }
+.proactive-shell .opportunity-description { margin: 7px 0 18px; color: var(--muted); font-size: 13px; line-height: 1.45; overflow-wrap: anywhere; }
+.proactive-shell .opportunity-benefit { display: flex; flex-wrap: wrap; align-items: baseline; gap: 5px 8px; margin-top: auto; }
+.proactive-shell .opportunity-benefit strong { font-size: 21px; font-weight: 720; line-height: 1.2; letter-spacing: -.03em; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.proactive-shell .opportunity-benefit span { font-size: 12px; color: var(--muted); }
+.proactive-shell .opportunity-qualification { margin: 6px 0 0; font-size: 11px; color: var(--muted); }
+.proactive-shell .opportunity-meta { display: flex; flex-wrap: wrap; gap: 5px 12px; color: var(--muted); margin: 14px 0 16px; font-size: 11px; }
+.proactive-shell .opportunity-meta span { display: inline-flex; gap: 5px; align-items: center; }
+.proactive-shell .opportunity-meta svg { flex-shrink: 0; }
+.proactive-shell .opportunity-actions { display: grid; gap: 4px; }
+.proactive-shell .opportunity-actions .button { width: 100%; justify-content: space-between; padding-inline: 13px; text-align: left; }
+.proactive-shell .opportunity-actions .button svg { flex-shrink: 0; }
+.proactive-shell .opportunity-details { display: inline-flex; align-items: center; justify-content: center; gap: 7px; padding: 5px 8px; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--muted); font-size: 12px; }
+.proactive-shell .opportunity-details:hover { background: var(--soft); color: var(--ink); }
+.proactive-shell .today-more-button { display: flex; align-items: center; justify-content: center; width: 100%; gap: 8px; margin-top: 12px; padding: 8px 14px; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--surface); color: var(--accent-hover); font-size: 13px; font-weight: 650; }
+.proactive-shell .today-managed { display: grid; gap: 12px; }
+.proactive-shell .today-managed .today-disclosure { border-bottom: 1px solid var(--line); padding-inline: 0; }
+.proactive-shell .opportunity-managed { background: var(--soft); }
+.proactive-shell .today-disclosure { display: flex; align-items: center; justify-content: space-between; width: 100%; gap: 12px; padding: 15px 16px; background: transparent; border: 0; border-radius: var(--radius-md); text-align: left; font-size: 14px; font-weight: 650; }
+.proactive-shell .today-disclosure > svg { flex-shrink: 0; }
+.proactive-shell .today-disclosure[aria-expanded="true"] > svg { transform: rotate(180deg); }
+.proactive-shell .today-disclosure small { color: var(--muted); font-size: 12px; font-weight: 400; }
+.proactive-shell .today-assistant { border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--surface); }
+.proactive-shell .today-ask-label { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.proactive-shell .today-ask-label > svg { color: var(--accent-hover); flex-shrink: 0; }
+.proactive-shell .today-ask-label strong, .proactive-shell .today-ask-label small { display: block; }
+.proactive-shell .today-ask-label small { margin-top: 4px; line-height: 1.4; }
+.proactive-shell .today-ask-body { display: grid; gap: 12px; padding: 0 16px 16px; }
+.proactive-shell .today-ask-body form { display: grid; gap: 10px; }
+.proactive-shell .today-ask-body label { font-size: 13px; font-weight: 650; }
+.proactive-shell .today-ask-body textarea { width: 100%; min-height: 104px; resize: vertical; padding: 12px; border: 1px solid var(--control-line); border-radius: var(--radius-sm); background: var(--surface); font-size: 16px; line-height: 1.5; }
+.proactive-shell .today-ask-body .button { justify-self: end; min-width: 124px; }
+.proactive-shell .today-answer { padding: 16px; border-radius: var(--radius-md); background: var(--accent-soft); font-size: 14px; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; }
+.proactive-shell .today-fine-print { font-size: 12px; line-height: 1.5; color: var(--muted); margin: 0; }
+.proactive-shell .today-state { display: flex; gap: 12px; padding: 14px; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--surface); }
+.proactive-shell .today-state > svg { flex-shrink: 0; color: var(--warning); margin-top: 2px; }
+.proactive-shell .today-state p { font-size: 13px; color: var(--muted); margin: 5px 0 0; }
+.proactive-shell .today-empty { padding: 25px 20px; display: grid; justify-items: start; gap: 12px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-lg); }
+.proactive-shell .today-empty p { margin: 0; color: var(--muted); font-size: 14px; line-height: 1.5; max-width: 50ch; }
+.proactive-shell .today-empty > svg { color: var(--accent-hover); }
+.proactive-shell .today-empty-icon { display: grid; place-items: center; width: 48px; height: 48px; border-radius: 12px; background: var(--accent-soft); color: var(--accent-hover); }
+.proactive-shell .today-sheet { width: min(560px, calc(100vw - 24px)); }
+.proactive-shell .today-sheet .sheet-header h2 { font-size: 19px; line-height: 1.3; }
+.proactive-shell .today-sheet .sheet-content { display: grid; gap: 20px; }
+.proactive-shell .today-sheet .sheet-footer { flex-wrap: wrap; }
+.proactive-shell .today-sheet .sheet-footer .button { flex: 1; }
+.proactive-shell .today-sheet .sheet-header .icon-button { margin: 0; }
+.proactive-shell .today-sheet p, .proactive-shell .today-sheet li { font-size: 14px; line-height: 1.55; }
+.proactive-shell .today-sheet summary { display: flex; align-items: center; padding-block: 10px; font-size: 13px; color: var(--accent-hover); }
+.proactive-shell .today-sheet summary::before { content: "+"; margin-right: 10px; font-size: 19px; }
+.proactive-shell .today-sheet details[open] summary::before { content: "−"; }
+.proactive-shell .today-source-list { display: grid; gap: 16px; }
+.proactive-shell .today-source-list article { padding: 16px; border: 1px solid var(--line); border-radius: var(--radius-md); }
+.proactive-shell .today-source-list article > div { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: space-between; }
+.proactive-shell .today-source-list article > p { overflow-wrap: anywhere; }
+.proactive-shell .today-facts { margin: 0; display: grid; gap: 0; }
+.proactive-shell .today-source-list .today-facts { margin-top: 14px; }
+.proactive-shell .today-facts > div { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1.25fr); gap: 12px; padding: 11px 0; border-bottom: 1px solid var(--line); align-items: start; font-size: 12px; }
+.proactive-shell .today-facts dt { color: var(--muted); }
+.proactive-shell .today-facts dd { margin: 0; text-align: right; font-weight: 600; overflow-wrap: anywhere; }
+.proactive-shell .today-detail-benefit { background: var(--accent-soft); border-radius: var(--radius-md); padding: 18px; }
+.proactive-shell .today-detail-benefit > span { display: block; color: var(--muted); font-size: 12px; }
+.proactive-shell .today-detail-benefit strong { display: block; font-size: 27px; letter-spacing: -.035em; font-variant-numeric: tabular-nums; margin-top: 8px; color: var(--accent-hover); overflow-wrap: anywhere; }
+.proactive-shell .today-detail-benefit p { color: var(--muted); margin: 6px 0 0; }
+.proactive-shell .today-evidence { margin: -8px 0 0; padding-left: 21px; display: grid; gap: 9px; }
+.proactive-shell .today-card-options { border-top: 1px solid var(--line); padding-top: 20px; }
+.proactive-shell .today-card-options > p { color: var(--muted); font-size: 13px; }
+.proactive-shell .today-option-buttons { display: grid; gap: 8px; }
+.proactive-shell .today-explanation { border-bottom: 1px solid var(--line); padding-bottom: 15px; }
+.proactive-shell .today-explanation:last-child { border-bottom: 0; padding-bottom: 0; }
+.proactive-shell .today-explanation > svg { color: var(--accent-hover); margin-bottom: 8px; }
+.proactive-shell .today-explanation p { color: var(--muted); }
+.proactive-shell .more-hub .other-link { min-height: 84px; min-width: 0; text-align: left; }
+.proactive-shell .more-hub .other-link > span:nth-child(2) { min-width: 0; }
+.proactive-shell .more-hub .other-link small { line-height: 1.4; }
+.proactive-shell .grocery-workflow button, .proactive-shell .document-tabs button { min-height: 48px; }
+
+@media (max-width: 1179px) and (min-width: 860px) {
+  .proactive-shell .opportunity-list { grid-template-columns: minmax(0,1fr); }
+  .proactive-shell .opportunity-actions { grid-template-columns: minmax(0,1fr) auto; gap: 12px; }
+}
+@media (max-width: 859px) {
+  .proactive-shell .bottom-nav { grid-template-columns: repeat(5,minmax(0,1fr)); padding: 6px 5px calc(8px + env(safe-area-inset-bottom)); }
+  .proactive-shell .bottom-nav button { min-width: 48px; min-height: 52px; padding: 4px 1px; gap: 5px; font-size: 10px; overflow-wrap: normal; white-space: nowrap; letter-spacing: -.02em; }
+  .proactive-shell .app-main { padding-bottom: calc(100px + env(safe-area-inset-bottom)); }
+  .proactive-shell .today-view { gap: 18px; }
+  .proactive-shell .today-view .page-heading { padding-right: 44px; }
+  .proactive-shell .today-view .page-subtitle { font-size: 13px; max-width: 28ch; }
+  .proactive-shell .today-benefits { border-radius: 14px; }
+  .proactive-shell .benefit-tile { padding: 13px 9px; gap: 9px; }
+  .proactive-shell .benefit-tile > span { font-size: 11px; min-height: 30px; }
+  .proactive-shell .benefit-tile strong { font-size: clamp(16px, 4.7vw, 22px); min-height: 40px; display: flex; align-items: center; }
+  .proactive-shell .benefit-tile small { font-size: 10px; }
+  .proactive-shell .opportunity-list { grid-template-columns: minmax(0,1fr); gap: 13px; }
+  .proactive-shell .opportunity-card { padding: 17px; }
+  .proactive-shell .opportunity-card h3 { font-size: 19px; }
+  .proactive-shell .opportunity-benefit strong { font-size: 24px; }
+  .proactive-shell .opportunity-top { margin-bottom: 12px; }
+  .proactive-shell .opportunity-description { margin-bottom: 16px; }
+  .proactive-shell .opportunity-actions { gap: 0; }
+  .proactive-shell .opportunity-actions .button { font-size: 14px; }
+  .proactive-shell .today-sheet { width: calc(100vw - 16px); max-height: calc(94dvh - env(safe-area-inset-top)); margin: auto auto 0; border-radius: 18px 18px 0 0; }
+  .proactive-shell .today-sheet .sheet-header { padding: 17px 16px 13px; }
+  .proactive-shell .today-sheet .sheet-content { padding: 0 16px 20px; }
+  .proactive-shell .today-sheet .sheet-footer { padding: 12px 16px calc(14px + env(safe-area-inset-bottom)); }
+  .proactive-shell .today-sheet .sheet-footer .button { font-size: 13px; padding-inline: 10px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .proactive-shell .today-sheet[open] { animation: none; }
+}
+
+
+/* Keep unknown gains in supporting copy; reserve numerical emphasis for sourced amounts. */
+.proactive-shell .opportunity-benefit.unknown strong { font-size: 15px; line-height: 1.4; font-weight: 600; letter-spacing: 0; color: var(--muted); }
+.proactive-shell .opportunity-benefit.unknown { margin-bottom: 12px; }
+.proactive-shell .opportunity-benefit.unknown + .opportunity-meta { margin-top: 0; }
+.proactive-shell .opportunity-qualification { margin-bottom: 12px; }
+.proactive-shell .opportunity-qualification + .opportunity-meta { margin-top: 0; }
+@media (max-width: 859px) {
+  .proactive-shell .opportunity-card { padding: 15px; }
+  .proactive-shell .opportunity-top { margin-bottom: 10px; }
+  .proactive-shell .opportunity-card h3 { font-size: 18px; }
+  .proactive-shell .opportunity-description { margin-top: 6px; margin-bottom: 12px; }
+  .proactive-shell .opportunity-meta { margin-bottom: 10px; }
+}

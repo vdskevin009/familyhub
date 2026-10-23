@@ -38,7 +38,22 @@ test("paired notification HTTP API enforces authorization, bounds, conflicts and
     assert.equal((await post({ action: "setup", expectedRevision: state.revision })).status, 400);
     assert.equal((await call("/notifications/unexpected", { headers })).status, 404);
     const oversized = await post({ action: "preferences", expectedRevision: state.revision, padding: "x".repeat(13000) }); assert.ok([400, 413].includes(oversized.status));
-    await stop(); await start(); const after = await (await call("/notifications", { headers })).json(); assert.equal(after.preferences.weekly, false); assert.deepEqual(after.events.map(e => e.id), state.events.map(e => e.id));
+    for (const method of ["GET", "POST"]) {
+      assert.equal((await call("/opportunity-actions", { method })).status, 401);
+      assert.equal((await call("/opportunity-actions", { method, headers: { ...headers, Origin: "https://untrusted.invalid" } })).status, 403);
+    }
+    const opportunityResponse = await call("/opportunity-actions", { headers });
+    assert.equal(opportunityResponse.headers.get("cache-control"), "no-store");
+    let actions = await opportunityResponse.json(); assert.equal(actions.revision, "empty");
+    assert.equal((await readdir(dir)).includes("opportunities"), false, "empty GET must not create storage");
+    const decide = body => call("/opportunity-actions", { method: "POST", headers, body: JSON.stringify(body) });
+    const decision = { action: "resolve", opportunityId: "claim:synthetic", evidenceVersion: "v1-synthetic", expectedRevision: actions.revision };
+    let decided = await decide(decision); assert.equal(decided.status, 200); actions = await decided.json();
+    assert.equal(actions.totals.resolved, 1); assert.equal(actions.decisions["claim:synthetic"].state, "resolved");
+    assert.equal((await decide(decision)).status, 409);
+    assert.equal((await decide({ ...decision, expectedRevision: actions.revision, amount: 100 })).status, 400);
+    assert.ok([400, 413].includes((await decide({ ...decision, padding: "x".repeat(5000) })).status));
+    await stop(); await start(); const persistedActions = await (await call("/opportunity-actions", { headers })).json(); assert.deepEqual(persistedActions, actions); const after = await (await call("/notifications", { headers })).json(); assert.equal(after.preferences.weekly, false); assert.deepEqual(after.events.map(e => e.id), state.events.map(e => e.id));
     assert.deepEqual(await readFile(join(dir, "finances", "ledger.json")), financialBefore); assert.deepEqual(await readFile(join(dir, "savings", "household-contracts.json")), contractsBefore);
     assert.equal((await readdir(dir)).includes("notifications-vapid.private.json"), false); assert.equal(logs.includes("synthetic-notification-key"), false);
   } finally { await stop(); await rm(dir, { recursive: true, force: true }); }

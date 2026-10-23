@@ -54,3 +54,47 @@ test("daily client waits for each saved comparison, never replays an uncertain P
   const busy = await runDaily(async (path: string, body?: unknown) => { assert.equal(body, undefined); return path === "/savings/research" ? { jobs: [{ status: "running" }] } : request(path); }, async () => {});
   assert.equal(busy.outcome, "research-busy"); assert.equal(busy.results.length, 0);
 });
+
+import { researchIntervalDays, reusableResearch } from "../apps/worker/src/savings-cadence.ts";
+import { requestFailure } from "../scripts/savings-daily.mjs";
+test("adaptive research cadence preserves explicit expiry, fingerprint changes and unknown renewal", () => {
+  const now = new Date("2026-10-23T16:00:00Z"), contract = newContract("home-insurance", "cadence");
+  assert.equal(researchIntervalDays(contract, now), 30);
+  contract.renewal = "2026-12-18"; assert.equal(researchIntervalDays(contract, now), 7);
+  contract.renewal = "2026-10-27"; assert.equal(researchIntervalDays(contract, now), 1);
+  contract.renewal = "2026-02-30"; assert.equal(researchIntervalDays(contract, now), 30);
+  const job: any = { id: "one", contractId: contract.id, baselineKey: "current", status: "complete", createdAt: "2026-10-22T16:00:00Z", completedAt: "2026-10-22T16:00:00Z", report: { offers: [], missing: [], summary: "No comparable current offers" } };
+  assert.equal(reusableResearch(contract, "current", [job], now)?.id, "one");
+  assert.equal(reusableResearch(contract, "changed", [job], now), undefined);
+  assert.equal(reusableResearch(contract, "current", [{ ...job, status: "failed" }], now), undefined);
+  assert.equal(reusableResearch(contract, "current", [{ ...job, completedAt: "2026-11-01T00:00:00Z" }], now), undefined);
+  assert.equal(reusableResearch(contract, "current", [{ ...job, report: { offers: [{ validUntil: "2026-10-22" }] } }], now), undefined);
+  contract.renewal = "2026-10-25"; assert.equal(reusableResearch(contract, "current", [job], now), undefined);
+});
+test("uncertain daily start is recovered only from a unique new dated job, never re-POSTed", async () => {
+  const now = Date.parse("2026-10-23T16:00:00Z"); let posts = 0, reads = 0;
+  const job = { id: "new", contractId: "one", scheduledDate: "2026-10-23", createdAt: new Date(now).toISOString(), status: "complete" };
+  const run = async (matches: unknown[]) => runDaily(async (path: string, body?: unknown) => {
+    if (body) { posts++; throw Object.assign(new Error("PRIVATE endpoint/key must not persist"), { name: "TimeoutError" }); }
+    if (path === "/savings/contracts") return { records: [{ contract: { id: "one" } }] };
+    return { jobs: ++reads % 2 === 1 ? [] : matches };
+  }, async () => {}, () => now, async () => {});
+  const recovered = await run([job]); assert.equal(recovered.success, true); assert.equal(recovered.results[0].recoveredByRead, true); assert.equal(posts, 1);
+  const ambiguous = await run([job, { ...job, id: "another" }]); assert.equal(ambiguous.outcome, "request-failed-no-retry"); assert.equal(posts, 2);
+  assert.deepEqual(ambiguous.failure, { kind: "timeout" }); assert.doesNotMatch(JSON.stringify(ambiguous), /PRIVATE/);
+  assert.equal((await run([{ ...job, scheduledDate: "2026-10-22" }])).outcome, "request-failed-no-retry");
+  assert.deepEqual(requestFailure({ status: 503, message: "PRIVATE" }), { kind: "http", status: 503 });
+  assert.deepEqual(requestFailure({ cause: { code: "SECRET" } }), { kind: "unconfirmed" });
+});
+test("research reuse is counted distinctly and polling failures preserve a terminal diagnosis", async () => {
+  const snapshots: any[] = [];
+  const reused = await runDaily(async (path: string, body?: unknown) => path === "/savings/contracts" ? { records: [{ contract: { id: "one" } }] } : body ? { id: "one", status: "complete", dailyReused: true } : { jobs: [] }, async (v: any) => { snapshots.push(structuredClone(v)); });
+  assert.equal(reused.success, true); assert.equal(reused.results[0].reused, true);
+  const failed = await runDaily(async (path: string, body?: unknown) => {
+    if (path === "/savings/contracts") return { records: [{ contract: { id: "one" } }] };
+    if (body) return { id: "one", status: "running" };
+    if (path === "/savings/research") return { jobs: [] };
+    throw Object.assign(new Error("private"), { cause: { code: "ECONNRESET" } });
+  }, async () => {}, () => 0, async () => {});
+  assert.equal(failed.outcome, "connection-lost-no-retry"); assert.ok(failed.completedAt); assert.deepEqual(failed.failure, { kind: "connection", code: "ECONNRESET" });
+});

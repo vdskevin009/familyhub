@@ -53,10 +53,11 @@ try {
       const overflow = await page.evaluate(() => document.documentElement.scrollWidth > innerWidth);
       if (overflow) console.log('OVERFLOW', JSON.stringify(await page.evaluate(() => [...document.querySelectorAll('body *')].map(e => ({ tag: e.tagName, cls: e.className, right: e.getBoundingClientRect().right, width: e.getBoundingClientRect().width, position: getComputedStyle(e).position, overflow: getComputedStyle(e).overflowX })).filter(e => e.width && e.right > innerWidth + 1))));
       assert.equal(overflow, false, `${view} ${width} overflow`);
-      assert.equal(await page.locator('main h1').first().evaluate(e => getComputedStyle(e).fontSize), view === 'groceries' ? '28px' : '20px');
+      const titleSize = await page.locator('main h1').first().evaluate(e => parseFloat(getComputedStyle(e).fontSize));
+      if (view === 'today') assert.ok(titleSize >= 23 && titleSize <= 30); else assert.equal(titleSize, view === 'groceries' ? 28 : 20);
       if (['invoices', 'desjardins', 'blue-cross'].includes(view)) {
         const bell = await page.getByRole('button', { name: 'Ouvrir les notifications', exact: true }).boundingBox();
-        const tabs = page.getByRole('navigation', { name: 'Document sources', exact: true });
+        const tabs = page.getByRole('navigation', { name: 'Sources documentaires', exact: true });
         for (const button of await tabs.getByRole('button').all()) {
           const box = await button.boundingBox();
           assert.ok(box.x + box.width <= bell.x || box.y >= bell.y + bell.height, 'Source tab label/control must not sit beneath notification bell');
@@ -82,14 +83,18 @@ try {
     }
     // Use actual navigation controls and browser history; no storage/route hacks.
     page = await context.newPage(); await page.goto(base + '?view=other');
-    const nav = page.locator(width <= 760 ? '.bottom-nav' : '.app-rail nav');
+    const nav = page.locator(width <= 859 ? '.bottom-nav' : '.app-rail nav');
     await nav.getByRole('button', { name: 'Courses', exact: true }).click(); await page.getByRole('switch', { name: 'Comparaisons', exact: true }).click();
     await page.getByRole('button', { name: 'Achats', exact: true }).click();
     assert.equal(await page.evaluate(() => getComputedStyle(document.body).backgroundColor), 'rgb(245, 246, 248)');
     assert.equal(await page.locator('main h1').first().evaluate(e => getComputedStyle(e).fontSize), '20px');
     await page.getByRole('button', { name: 'Catalogue', exact: true }).click();
     assert.equal(await page.evaluate(() => getComputedStyle(document.body).backgroundColor), 'rgb(241, 243, 246)');
-    await nav.getByRole('button', { name: 'Finances', exact: true }).click(); await page.goBack(); await page.getByRole('heading', { name: 'Courses', exact: true }).waitFor();
+    await nav.getByRole('button', { name: 'Plus', exact: true }).click();
+    await page.locator('.other-link').filter({ hasText: 'Finances' }).click();
+    await page.goBack(); await page.getByRole('heading', { name: 'Plus', exact: true }).waitFor();
+    await page.goBack(); await page.getByRole('heading', { name: 'Courses', exact: true }).waitFor();
+    await page.goForward(); await page.getByRole('heading', { name: 'Plus', exact: true }).waitFor();
     await page.goForward(); await page.getByRole('heading', { name: 'Finances', exact: true }).waitFor();
     await context.close();
   }

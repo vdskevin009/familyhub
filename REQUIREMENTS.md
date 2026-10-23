@@ -1,5 +1,22 @@
 # FamilyHub - Canonical Requirements
 
+## Proactive mobile assistant — FH-PROACTIVE-001..005 (#256)
+
+Accepted implementation, Testing. The reviewed audit direction supersedes the legacy Today projection and claims-only default entry; preserve every existing domain route and financial/manual authority.
+
+| ID | Durable behavior | Status |
+|---|---|---|
+| FH-PROACTIVE-001 | Today reads current authoritative domain snapshots, never old browser subscriptions, planner counts or unmatched historical claim rows as current opportunities. Partial failures, source age and missing evidence stay visible; only source-supported amounts can be displayed with kind, period and certainty. | Testing |
+| FH-PROACTIVE-002 | Five mobile destinations: Aujourd'hui, Remboursements, Courses, Récurrent, Plus. Cards prioritize useful next actions and open the corresponding source detail; all older useful routes remain accessible. Layout, errors and progressive detail work at 320/360/384/390/412 CSS pixels. | Testing |
+| FH-PROACTIVE-003 | Shared opportunity decisions are separate from notifications and source records. Seen, snoozed, dismissed and resolved actions carry a stable identity and evidence fingerprint. A materially changed proof invalidates an old dismissal; unavailable sources do not resolve anything. Treating a card never proves a saving. | Testing |
+| FH-PROACTIVE-004 | Reuse existing notification infrastructure; distinguish read from action lifecycle, suppress stale/unchanged/resolved/snoozed automatic pushes, preserve silent baseline and generic private payload. No automatic permission, new device registration, uncertain-send retry or new schedule. | Testing |
+| FH-PROACTIVE-005 | Existing daily Savings task checks due work with cadence adapted to deadlines and unchanged comparison fingerprints. An uncertain POST is never replayed; a uniquely identified new saved job may be recovered through GET. Persist allowlisted failure diagnosis and separate reused results from actual searches. | Testing |
+
+Confirmed savings, recovered cash and time saved require their own admissible outcome evidence. Until the available sources establish these, display unknown/not measured; do not turn action counts, quotations, promotional prices, insurer residuals or scheduled jobs into realized financial results. Banking sync, missing equivalent insurance quotes, lender approval and physical-phone notification receipt remain separate external/data acceptance gates. No provider contact, claim submission, financial transaction, new paid service or new automatic collection is authorized by these implementations.
+
+See [implementation and acceptance contract](docs/PROACTIVE-ASSISTANT.md). Private household evidence is not part of source fixtures or public release notes.
+
+
 ## Compact Mortgage rates and contacts — FH-MORTGAGE-002 (#236)
 
 Testing: implement the approved Rates/Contacts presentation, with separate personal offers and public observations, matching term/type filters, option-specific incentives, dated historical offers and compact contact/status/appointment cards opening evidence details. Preserve daily observations, baseline and original quotes; no public rate becomes a personal offer. Private contacts and incentive facts belong in append-only authenticated Mortgage evidence, never static frontend data. Extended offers are additive and preserve the legacy quote/daily-reader contract; unknown payment structure cannot produce assumed cash savings. The source-based reconstruction of the approved mockup was inspected locally after the Library metadata helper proved incompatible with Windows. Local UI, contact/offer metadata, legacy storage/math tests and four-width responsive/keyboard/navigation acceptance pass. Release and installed capability/private readback remain separate gates.

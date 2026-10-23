@@ -13,7 +13,7 @@ const money = (n: number, currency: string) => `${n.toFixed(2)} ${currency}`;
 function Numeric({ label, value, onChange, step = "0.01" }: { label: string; value: number | null; onChange: (v: number | null) => void; step?: string }) {
   return <label>{label}<input type="number" inputMode="decimal" min="0" step={step} value={value ?? ""} placeholder="Inconnu" onChange={e => onChange(amount(e.target.value))} /></label>;
 }
-export default function GroceriesView({ config }: { config: WorkerConfig }) {
+export default function GroceriesView({ config, initialRecordId }: { config: WorkerConfig; initialRecordId?: string }) {
   const [records, setRecords] = useState<GroceryRecord[]>([]), [uploads, setUploads] = useState<UploadSource[]>([]);
   const [edit, setEdit] = useState<Edit | null>(null), [busy, setBusy] = useState(false), [ready, setReady] = useState(false);
   const [error, setError] = useState(""), [notice, setNotice] = useState(""), [offline, setOffline] = useState(false);
@@ -22,9 +22,12 @@ export default function GroceriesView({ config }: { config: WorkerConfig }) {
   const fileInput = useRef<HTMLInputElement>(null), cameraInput = useRef<HTMLInputElement>(null);
   const actionLock = useRef(false);
   const [toolsOpen, setToolsOpen] = useState(false);
+  const [initialLoadComplete, setInitialLoadComplete] = useState(false);
+  const openedTarget = useRef<string | null>(null);
   const scope = config.Endpoint.trim().replace(/\/$/, "") || "unpaired";
   const paired = Boolean(config.Endpoint.trim() && config.ApiKey.trim());
   useEffect(() => { let active = true;
+    setInitialLoadComplete(false); openedTarget.current = null;
     (async () => {
       try {
         const cached = await groceryCache<GroceryRecord[]>(scope + ":records"), pending = await groceryCache<UploadSource[]>("pending-upload");
@@ -34,6 +37,7 @@ export default function GroceriesView({ config }: { config: WorkerConfig }) {
           catch (e) { if (active) { setOffline(true); setError((e as Error).message); } }
         }
       } catch (e) { if (active) { setReady(true); setError((e as Error).message); } }
+      finally { if (active) setInitialLoadComplete(true); }
     })();
     return () => { active = false; };
   // Pairing changes should load only the selected PC's cache.
@@ -58,6 +62,13 @@ export default function GroceriesView({ config }: { config: WorkerConfig }) {
     }
     setConfirmed(false); setDistinct(false); setSources([]);
   }
+  useEffect(() => {
+    if (!initialRecordId || !initialLoadComplete || openedTarget.current === initialRecordId) return;
+    openedTarget.current = initialRecordId;
+    const target = records.find(record => record.id === initialRecordId);
+    if (target) void action(() => open(target));
+    else setError("Ce ticket n’est pas disponible dans les données consultées. Actualisez ou retrouvez-le dans les achats.");
+  }, [initialRecordId, initialLoadComplete, records, scope]);
   const patch = (value: Partial<GroceryReceipt>) => { setEdit(e => e && ({ ...e, receipt: { ...e.receipt, ...value } })); setConfirmed(false); setDistinct(false); };
   const patchItem = (index: number, value: Partial<GroceryItem>) => edit && patch({ items: edit.receipt.items.map((i, n) => n === index ? { ...i, ...value } : i) });
   async function addFiles(files: FileList | null) {
@@ -101,7 +112,7 @@ export default function GroceriesView({ config }: { config: WorkerConfig }) {
       <input ref={cameraInput} className="sr-only" type="file" accept="image/jpeg,image/png,image/webp" capture="environment" aria-label="Prendre une photo du ticket" onChange={e => void addFiles(e.target.files)} disabled={busy} />
       <input ref={fileInput} className="sr-only" type="file" accept="image/jpeg,image/png,image/webp,application/pdf,text/plain" multiple aria-label="Choisir les photos ou le reçu numérique" onChange={e => void addFiles(e.target.files)} disabled={busy} />
       <div className="grocery-actions"><button className="button" disabled={busy || !ready} onClick={() => cameraInput.current?.click()}><Camera size={18} />Prendre une photo</button><button className="button secondary" disabled={busy || !ready} onClick={() => fileInput.current?.click()}><ImagePlus size={18} />Galerie ou reçu</button></div>
-      {!paired && <p>Appairez le PC dans Other → Settings & tools → Local AI. Les photos choisies restent sur cet appareil jusque-là.</p>}
+      {!paired && <p>Appairez le PC dans Plus → Réglages et outils → Local AI. Les photos choisies restent sur cet appareil jusque-là.</p>}
       {!!uploads.length && <><div className="grocery-thumbnails">{uploads.map((s, i) => <div key={i}>{s.type.startsWith("image/") && <img src={`data:${s.type};base64,${s.data}`} alt={`Photo ${i + 1} du ticket`} />}<span>{i + 1}. {s.name}</span><button className="icon-button" disabled={busy} aria-label={`Retirer la source ${i + 1}`} onClick={() => setUploads(u => u.filter((_, n) => n !== i))}><Trash2 size={16} /></button></div>)}</div><p>{uploads.length} source(s) dans ce ticket. JPG, PNG, WebP jusqu'à 5 Mo ; PDF ou texte également acceptés.</p><button className="button" disabled={busy || !paired} onClick={() => void action(importTicket)}>Importer ce ticket</button></>}
     </section>
     <section className="grocery-month" aria-label="Achats du mois"><div className="grocery-section-heading"><h2>Vos achats du mois</h2><label>Mois<input type="month" value={month} onChange={e => setMonth(e.target.value)} /></label></div>

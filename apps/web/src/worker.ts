@@ -128,7 +128,7 @@ async function request<T>(config: WorkerConfig, path: string, init: RequestInit 
     ...init,
     headers: requestHeaders
   }); } catch {
-    throw new Error("Cannot reach your FamilyHub PC. Check that the PC worker and HTTPS connection are running, then verify the endpoint in Other → Settings & tools → Local AI. Temporary tunnel addresses change after a restart. Saved results are still available; refresh before retrying an unconfirmed change.");
+    throw new Error("Cannot reach your FamilyHub PC. Check that the PC worker and HTTPS connection are running, then verify the endpoint in Plus → Réglages et outils → Local AI. Temporary tunnel addresses change after a restart. Saved results are still available; refresh before retrying an unconfirmed change.");
   }
   if (!response.ok) {
     const body = await response.json().catch(() => ({})) as { error?: string };

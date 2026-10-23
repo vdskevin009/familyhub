@@ -11,6 +11,7 @@ import { SavingsLibrary, SavingsConflict } from "./savings-library.js";
 import { MortgageStore, MortgageConflict } from "./mortgage-store.js";
 import { FinanceLibrary, FinanceConflict } from "./finance-library.js";
 import { NotificationLibrary, NotificationConflict } from "./notification-library.js";
+import { OpportunityActions, OpportunityActionsConflict } from "./opportunity-actions.js";
 import { PushConfiguration, sendPush } from "./notification-push.js";
 import type { NotificationEvidence } from "./notification-model.js";
 
@@ -53,7 +54,7 @@ type ResearchWatch = {
 };
 type PersistedState = { watches: ResearchWatch[] };
 
-const version = "2.26.19";
+const version = "2.27.0";
 let claimOperationBusy = false;
 const host = process.env.FAMILYHUB_WORKER_HOST?.trim() || "127.0.0.1";
 const port = Number(process.env.FAMILYHUB_WORKER_PORT || "4713");
@@ -75,6 +76,7 @@ const savingsLibrary = new SavingsLibrary(join(savingsDirectory, "household-cont
 const mortgageStore = new MortgageStore(join(stateDir, "mortgage", "evidence"));
 const financeLibrary = new FinanceLibrary(join(stateDir, "finances"));
 const pushConfiguration = new PushConfiguration(stateDir);
+const opportunityActions = new OpportunityActions(join(stateDir, "opportunities", "actions.json"));
 const notifications = new NotificationLibrary(join(stateDir, "notifications", "history.json"), () => pushConfiguration.read(), sendPush);
 let notificationScan: Promise<unknown> | null = null;
 function scanNotifications() {
@@ -266,6 +268,10 @@ const server = createServer(async (request, response) => {
       if (parts.length === 2 && request.method === "POST" && (parts[1] === "snapshots" || parts[1] === "quotes" || parts[1] === "assumptions" || parts[1] === "contacts" || parts[1] === "offers")) {
         json(response, 200, await mortgageStore.ingest(parts[1] === "snapshots" ? "snapshot" : parts[1] === "quotes" ? "quote" : parts[1] === "contacts" ? "contact" : parts[1] === "offers" ? "offer" : "assumptions", await readJson(request, 32_000)), origin); return;
       }
+    }
+    if (parts[0] === "opportunity-actions" && parts.length === 1) {
+      if (request.method === "GET") { json(response, 200, await opportunityActions.read(), origin); return; }
+      if (request.method === "POST") { json(response, 200, await opportunityActions.mutate(await readJson(request, 4_000)), origin); return; }
     }
     if (parts[0] === "notifications" && parts.length === 1) {
       if (request.method === "GET") { json(response, 200, await notifications.read(), origin); return; }
@@ -535,7 +541,7 @@ const server = createServer(async (request, response) => {
       }
     }
     if (request.method === "GET" && parts.length === 1 && parts[0] === "health") {
-      json(response, 200, { status: "ok", codex: "sdk-ready", version, capabilities: ["insurance-reference-v1", "mortgage-evidence-v1", "mortgage-contacts-v1", "grocery-source-type-v1", "grocery-fulfillment-v1", "grocery-comparison-evidence-v1", "grocery-source-estimates-v1", "grocery-receipts-v1", "grocery-planning-v1", "grocery-weekly-v1", groceryExpandedListCapability] }, origin);
+      json(response, 200, { status: "ok", codex: "sdk-ready", version, capabilities: ["opportunity-actions-v1", "notification-lifecycle-v1", "insurance-reference-v1", "mortgage-evidence-v1", "mortgage-contacts-v1", "grocery-source-type-v1", "grocery-fulfillment-v1", "grocery-comparison-evidence-v1", "grocery-source-estimates-v1", "grocery-receipts-v1", "grocery-planning-v1", "grocery-weekly-v1", groceryExpandedListCapability] }, origin);
       return;
     }
 
@@ -603,7 +609,7 @@ const server = createServer(async (request, response) => {
     json(response, 404, { error: "Endpoint not found." }, origin);
   } catch (error) {
     const grocery = parts[0] === "groceries";
-    json(response, error instanceof MortgageConflict || error instanceof SavingsConflict || error instanceof FinanceConflict || error instanceof NotificationConflict || error instanceof GroceryConflict ? 409 : 400, { error: grocery && !(error instanceof GroceryError) ? "Action Courses indisponible. Les données restent conservées ; actualisez avant de réessayer." : error instanceof Error ? error.message : "Request failed." }, origin);
+    json(response, error instanceof MortgageConflict || error instanceof SavingsConflict || error instanceof FinanceConflict || error instanceof NotificationConflict || error instanceof OpportunityActionsConflict || error instanceof GroceryConflict ? 409 : 400, { error: grocery && !(error instanceof GroceryError) ? "Action Courses indisponible. Les données restent conservées ; actualisez avant de réessayer." : error instanceof Error ? error.message : "Request failed." }, origin);
   }
 });
 

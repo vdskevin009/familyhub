@@ -23,3 +23,9 @@
 .notification-device { padding: 14px 0; border-bottom: 1px solid var(--line); display: grid; gap: 8px; }
 @media (max-width: 859px) { .shell-tools { right: 16px; top: calc(16px + env(safe-area-inset-top)); } }
 @media (max-width: 480px) { .notification-card { padding: 16px; } .notification-meta { display: grid; gap: 4px; } }
+
+.notification-filters { display: flex; flex-wrap: wrap; gap: 8px; }
+.notification-filters button { min-height: 44px; padding: 10px 14px; border: 1px solid var(--line); border-radius: 12px; color: var(--muted); background: var(--surface); font: inherit; }
+.notification-filters button.active { color: var(--green); border-color: var(--green); font-weight: 700; }
+.notification-state { color: var(--muted); font-size: 12px; font-weight: 700; }
+.notification-actions .text-action { min-height: 44px; }

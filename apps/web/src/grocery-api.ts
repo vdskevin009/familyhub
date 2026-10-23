@@ -3,7 +3,7 @@ import type { GroceryLibrary, GroceryRecord, GroceryReceipt } from "../../worker
 export type UploadSource = { name: string; type: string; data: string };
 export type SourceBytes = UploadSource & { hash: string; size: number };
 export async function groceryRequest<T>(config: WorkerConfig, path: string, body?: unknown): Promise<T> {
-  if (!config.Endpoint.trim() || !config.ApiKey.trim()) throw new Error("Appairez votre PC dans Other → Settings & tools → Local AI pour conserver les achats du foyer.");
+  if (!config.Endpoint.trim() || !config.ApiKey.trim()) throw new Error("Appairez votre PC dans Plus → Réglages et outils → Local AI pour conserver les achats du foyer.");
   const evidencePlan = body as { plan?: { purchaseComparisons?: unknown[]; sourceEstimates?: unknown[] } } | undefined;
   if (body !== undefined && path === "/groceries/planning" && (evidencePlan?.plan?.purchaseComparisons?.length || evidencePlan?.plan?.sourceEstimates?.length)) {
     const health = await groceryRequest<{ capabilities?: string[] }>(config, "/health");
