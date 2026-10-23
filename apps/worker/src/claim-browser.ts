@@ -16,6 +16,7 @@ import type { LoginRecoveryRequest } from "./portal-login-recovery.js";
 import { claimPortalDiagnostic } from "./claim-portal-diagnostic.js";
 import { resolveClaimReceiptCopies } from "./claim-receipt-copies.js";
 import { automaticClaimValues } from "./claim-autofill.js";
+import { isDesjardinsHistory, openDesjardinsClaimEntry } from "./desjardins-claim-entry.js";
 import { desjardinsRadioField } from "./desjardins-claim-form.js";
 import { reserveClaimUpload, reserveClaimUploadRetry } from "./claim-upload-guard.js";
 import { confirmedInvoicePractitioner } from "./claim-practitioner-answers.js";
@@ -175,6 +176,13 @@ async function inspect(s: Session) {
       if (s.page !== previousPage || s.page.url() !== previousUrl) return inspect(s);
     }
     return { status: "navigate", fields: [], revision: "", submitAllowed: false, portalStage: "member-home", answerWarning: "The signed-in member page did not open a unique supported claim entry. The invoice is unchanged; inspect the insurer window before resuming." };
+  }
+  if (s.autonomous && s.dossier.insurer === "desjardins" && isDesjardinsHistory(s.page.url())) {
+    if (!s.claimEntryAttempted) {
+      const opened = await openDesjardinsClaimEntry(s.page, s.dossier, () => { s.claimEntryAttempted = true; }).catch(() => false);
+      if (opened) return inspect(s);
+    }
+    return { status: "navigate", fields: [], revision: "", submitAllowed: false, portalStage: "member-home", answerWarning: "The authenticated history did not expose a unique supported online claim entry. No claim details were sent." };
   }
   const completed = /your claim has been (?:processed|submitted)|réclamation a été (?:transmise|soumise)/i.test(body);
   const atReview = completed || /review (?:your )?claim|claim summary|I confirm all the information above is correct and I have read and agree|vérifi(?:ez|cation).*réclamation|résumé de (?:la|votre) réclamation/i.test(body);
