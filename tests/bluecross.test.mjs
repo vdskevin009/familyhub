@@ -258,3 +258,72 @@ test('real importer workflow previews, backs up, deduplicates and preserves corr
     assert.equal(result.status, 0, result.stderr || result.stdout);
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
+
+function dentalPair(service = 'Scaling, Two units', translated = 'DÉTARTRAGE DEUX UNITÉS') {
+  const bc = documents(table([row('Kevin Vanderstraeten', service, 140, 28)]))[1];
+  const dj = { ...bc, Id: 'dental-dj-' + service, Insurer: 'desjardins', StructuredSource: 'desjardins-portal',
+    ClaimedService: translated, Provider: 'Desjardins · ' + translated, ReimbursedAmount: 112, DetectedAmount: 112,
+    Notes: 'Submitted 140.00; paid 112.00;', Healthcare: undefined };
+  return [dj, bc];
+}
+
+test('invoice-free bilingual dental pairs close separately despite identical dates and amounts', () => {
+  const rows = [...dentalPair(), ...dentalPair('Root Planing, Two units', 'APLAN. DE RACINES')];
+  const before = structuredClone(rows);
+  const result = buildReconciliationSnapshot(rows);
+  assert.equal(result.cases.length, 2); assert.equal(result.unmatched.length, 0);
+  assert.equal(new Set(result.cases.flatMap(x => x.DocumentIds)).size, 4);
+  for (const entry of result.cases) {
+    assert.equal(entry.Status, 'fully-reimbursed'); assert.equal(entry.Action, 'complete');
+    assert.equal(entry.OriginalAmount, 140); assert.equal(entry.ReimbursedAmount, 140);
+    assert.equal(entry.PotentialRemaining, 0); assert.equal(entry.DesjardinsReimbursedAmount, 112);
+    assert.equal(entry.BlueCrossReimbursedAmount, 28); assert.equal(entry.PrimaryInsurer, null);
+    assert.equal(entry.SecondaryInsurer, null); assert.equal(entry.InferredFromInsurer, true);
+    assert.equal(entry.OriginalInvoiceMissing, true); assert.equal(entry.InsurerEvidencePair, true);
+    assert.deepEqual(entry.ExpenseDocumentIds, []); assert.deepEqual(entry.MatchAssignments, []);
+    assert.equal(entry.DocumentIds.length, 2);
+  }
+  assert.deepEqual(buildReconciliationSnapshot([...rows].reverse()), result);
+  assert.deepEqual(rows, before);
+});
+
+test('invoice-free pairing abstains on incomplete, conflicting, unsupported or manual evidence', () => {
+  const patches = [
+    { Member: 'unknown' }, { Member: 'Jasmine' }, { ServiceDate: '2026-09-04' }, { Currency: 'USD' },
+    { Currency: '' }, { ReimbursedAmount: 111 }, { ReimbursedAmount: 113 }, { ReimbursedAmount: null },
+    { ReimbursedAmount: 0 }, { BilledAmount: 141, Notes: '' }, { NeedsReview: true }, { Confidence: 89 },
+    { StructuredSource: undefined }, { Insurer: 'blue-cross' }, { PortalClaimStatus: 'pended' },
+    { ClaimedService: 'Détartrage trois unités' }, { ClaimedService: 'APLAN. DE RACINES' },
+    { ClaimedService: 'Dental care' }, { ClaimedService: 'Détartrage deux unités quadrant 4' },
+    { Healthcare: { Conflicts: ['source conflict'] } }, { CorrectedAt: '2026-09-05' },
+    { ClassificationSource: 'manual' }, { ManualOverride: { Version: 1, Reasons: ['match-decision'] } },
+    { IgnoredAt: '2026-09-05' }
+  ];
+  for (const patch of patches) {
+    const [dj, bc] = dentalPair();
+    const result = buildReconciliationSnapshot([{ ...dj, ...patch }, bc]);
+    assert.equal(result.cases.length, 0, JSON.stringify(patch));
+  }
+});
+
+test('invoice-free pairing never hides duplicate, pending or manually rejected competitors', () => {
+  const [dj, bc] = dentalPair();
+  for (const patch of [{}, { PortalClaimStatus: 'pended', ReimbursedAmount: null }, { NeedsReview: true, ReimbursedAmount: 0 }]) {
+    const result = buildReconciliationSnapshot([dj, bc, { ...dj, Id: 'competing-row', ...patch }]);
+    assert.equal(result.cases.length, 0);
+  }
+  for (const decision of ['confirmed', 'rejected']) {
+    assert.equal(buildReconciliationSnapshot([dj, bc], [{ reimbursementId: dj.Id, expenseId: 'old-expense', decision, at: '2026-09-05' }]).cases.length, 0);
+  }
+});
+
+test('ordinary invoice matching takes precedence and competing expenses block invoice-free fallback', () => {
+  const [dj, bc] = dentalPair();
+  const receipt = expense({ Id: 'dental-receipt', Member: 'Kevin', Provider: 'Détartrage', BilledAmount: 140 });
+  const result = buildReconciliationSnapshot([dj, bc, receipt]);
+  assert.equal(result.cases.length, 1); assert.equal(result.cases[0].ExpenseDocumentId, receipt.Id);
+  assert.equal(result.cases[0].MatchAssignments.length, 2); assert.equal(result.unmatched.length, 0);
+  const mismatch = buildReconciliationSnapshot([dj, bc, { ...receipt, BilledAmount: 150 }]);
+  assert.equal(mismatch.cases.filter(x => x.InsurerEvidencePair).length, 0);
+  assert.equal(mismatch.unmatched.length, 2);
+});

@@ -315,7 +315,10 @@ function workflowExpenseId(entry: ReconciliationCase): string {
 
 function workflowRecord(entry: ReconciliationCase): ReimbursementWorkflowRecord | undefined {
   const expenseIds = new Set([workflowExpenseId(entry), ...(entry.ExpenseDocumentIds ?? [])].filter(Boolean));
+  const inherited = state.workflowRecords.filter(item => item.ManualStatus && item.InsurerEvidenceDocumentIds?.length === 2
+    && item.InsurerEvidenceDocumentIds.every(id => entry.DocumentIds.includes(id)));
   return state.workflowRecords.find(item => expenseIds.has(item.ExpenseDocumentId) && item.ManualStatus)
+    ?? (inherited.length === 1 ? inherited[0] : undefined)
     ?? state.workflowRecords.find(item => expenseIds.has(item.ExpenseDocumentId));
 }
 
@@ -343,6 +346,7 @@ function syncWorkflowRecords(cases: ReconciliationCase[], at = new Date().toISOS
       const origin = ignoredAt ? "manual" : "automatic";
       record = {
         ExpenseDocumentId: expenseId,
+        ...(entry.InsurerEvidencePair ? { InsurerEvidenceDocumentIds: [...entry.DocumentIds] } : {}),
         ManualStatus: ignoredAt ? "ignore" : undefined,
         AutomaticStatus: automatic,
         ChangedAt: ignoredAt || at,
@@ -1072,7 +1076,7 @@ export async function setManualMatch(reimbursementId: unknown, expenseId: unknow
     const statement = state.items.find(item => item.Id === reimbursementId);
     const entry = snapshot.cases.find(item => item.ExpenseDocumentId === expenseId || item.ExpenseDocumentIds?.includes(expenseId));
     if (!statement || (statement.DocumentRole !== "insurer-statement" && statement.DocumentType !== "claim")) throw new Error("Reimbursement source not found.");
-    if (!entry) throw new Error("Target expense not found. Refresh before assigning it.");
+    if (!entry || entry.InferredFromInsurer || !entry.ExpenseDocumentIds.length) throw new Error("Target expense not found. Refresh before assigning it.");
     if (statement.Member === "unknown" || entry.Member === "unknown" || statement.Member !== entry.Member)
       throw new Error("Manual matching requires the same known family member.");
     const statementDate = statement.ServiceDate?.slice(0, 10);

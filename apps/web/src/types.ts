@@ -174,6 +174,7 @@ export type ReconciliationCase = {
   PreviouslyFound?: boolean;
   Unreconciled?: boolean;
   InferredFromInsurer?: boolean;
+  InsurerEvidencePair?: boolean;
   OriginalInvoiceMissing?: boolean;
   HasUnresolvedReimbursementEvidence?: boolean;
   UnallocatedReimbursedAmount?: number;
