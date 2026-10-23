@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import { atomicJson } from "./private-store.js";
 import { validateContract, contractSignature, documentIdPattern, type SharedContract, type SharedDocument } from "./savings-sharing-model.js";
+import { preserveInsuranceReference } from "./insurance-reference.js";
 type Library = { schema: 1; records: SharedContract[]; documents: SharedDocument[] };
 export class SavingsConflict extends Error {}
 export class SavingsLibrary {
@@ -70,6 +71,8 @@ export class SavingsLibrary {
       const contract = validateContract(value.contract), library = await this.read();
       const existing = library.records.find(record => record.contract.id === id);
       if (contract.id !== id || !existing || value.expectedRevision !== existing.revision) throw new SavingsConflict("This shared contract changed on another device. Your edit remains on this device; refresh and review both versions before sharing it.");
+      const insurance = preserveInsuranceReference(existing.contract.insuranceReference, contract.insuranceReference);
+      if (insurance) contract.insuranceReference = insurance;
       const documents = this.prepare(library, [contract], value.documents);
       if (contractSignature(existing.contract) === contractSignature(contract)) return { records: library.records };
       const records = library.records.map(record => record === existing ? { contract, revision: randomUUID() } : record);

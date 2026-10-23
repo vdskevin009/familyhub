@@ -1,4 +1,5 @@
 /** Portable, deterministic Savings model shared by the PWA and private worker. */
+import type { InsuranceReference } from "./insurance-reference.js";
 export const categories = {
   subscription: "Subscriptions", telecom: "Phone & internet", "credit-card": "Credit cards & fees",
   "car-insurance": "Car insurance", "home-insurance": "Home insurance", mortgage: "Mortgage", other: "Other recurring costs"
@@ -20,6 +21,7 @@ export type SavingsContract = {
   sourceSubscriptionId?: string; updatedAt: string;
   billing?: ContractBilling; services?: ContractService[];
   promotionEnd?: { date: string; source: string };
+  insuranceReference?: InsuranceReference;
 };
 export type PublicBaseline = Pick<SavingsContract, "category" | "price" | "cycle" | "taxesIncluded" | "province" |
   "cancellationFee" | "annualLostDiscounts" | "currentPromoMonths" | "priceAfterPromo" |
@@ -91,7 +93,7 @@ export function recurringTotals(contracts: SavingsContract[]) {
 }
 export function baselineKey(contract: SavingsContract): string {
   // Include local comparison requirements: changing them invalidates a prior result without disclosing them.
-  return JSON.stringify([publicBaseline(contract), contract.provider, contract.needs, contract.discounts, contract.renewal, contract.commitmentEnd]);
+  return JSON.stringify([publicBaseline(contract), contract.provider, contract.needs, contract.discounts, contract.renewal, contract.commitmentEnd, ...(contract.insuranceReference ? [contract.insuranceReference] : [])]);
 }
 export function monthlyPrice(price: number | null, cycle: SavingsContract["cycle"]): number | null {
   return price === null ? null : cycle === "annual" ? price / 12 : cycle === "weekly" ? price * 52 / 12 : price;
