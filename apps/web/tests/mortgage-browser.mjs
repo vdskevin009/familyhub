@@ -49,7 +49,7 @@ try {
     await page.goto(base+'?view=mortgage');await mortgage().getByRole('tab',{name:'Contacts',exact:true}).waitFor();
     assert.equal(await mortgage().getByRole('tab',{name:'Contacts',exact:true}).getAttribute('aria-selected'),'true');
     assert.equal(await mortgage().locator('.mortgage-scenario-card').count(),4);
-    assert.equal(await mortgage().locator('.mortgage-scenario-card.is-unavailable').count(),3);
+    assert.equal(await mortgage().locator('.mortgage-scenario-card.is-unavailable').count(),2);
     await mortgage().locator('.mortgage-scenario-card').filter({hasText:'Fixe 3 ans'}).click();
     assert.match(await mortgage().locator('.mortgage-selected-offer').innerText(),/Aucune proposition actuelle/);
     await mortgage().getByRole('tab',{name:'Taux',exact:true}).click();await mortgage().locator('.mortgage-offer-row').first().waitFor();assert.equal(await mortgage().locator('.mortgage-offer-row').count(),2);
