@@ -1,5 +1,9 @@
 # Courses — Issue #155 / FH-GROCERY-001/002/003
 
+## PC Express collection — local preparation, FH-GROCERY-011
+
+The independent Gmail collector and existing daily runner provide PC Express confirmation intake. They require complete same-account confirmation/delivery evidence and never turn estimates into final paid receipts. Authenticated collection status is separate from invoice status; Actualiser still only reads the stored purchase library. See [contract, preservation rules and coordinated release gates](requirements/FH-GROCERY-011.md). Activation requires updating the existing worker and daily runner; no new Windows task is created.
+
 ## Achats — local candidate, FH-GROCERY-010
 
 The purchase-first tab is specified in [FH-GROCERY-010](requirements/FH-GROCERY-010.md). It reuses this receipt library and the existing reviewed planning observations; opening a purchase never writes either store. Product-only normalized costs and whole-pack outlay remain separate, with per-line coverage and missing-data reasons. No new live data connector, public retailer submission or shopping cart mutation is introduced.

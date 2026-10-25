@@ -9,7 +9,8 @@ export type GroceryReceipt = { sourceType?: "unknown" | "confirmation" | "final-
 export type GrocerySource = { hash: string; name: string; type: string; size: number };
 export type GroceryRecord = { id: string; revision: string; status: "draft" | "saved"; createdAt: string;
   sources: GrocerySource[]; receipt: GroceryReceipt; extraction: "pending" | "running" | "complete" | "failed";
-  reviewedAt: string | null; duplicateOf: string | null };
+  reviewedAt: string | null; duplicateOf: string | null;
+  automaticImport?: { kind: "pc-express-gmail"; importedAt: string; orderId: string; sourceMessageIds: string[] } };
 export type GroceryLibrary = { records: GroceryRecord[] };
 export function receiptSourceType(record: GroceryRecord): NonNullable<GroceryReceipt["sourceType"]> {
   // An explicitly reviewed final receipt can coexist with its original confirmation sources.
