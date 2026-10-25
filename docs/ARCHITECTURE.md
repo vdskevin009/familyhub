@@ -1,5 +1,9 @@
 # FamilyHub architecture
 
+## PC Express purchase collection (local candidate)
+
+`pc-express-mail.ts` parses bounded complete MIME evidence before generic invoice text truncation. `GroceryCollection` owns separate Gmail coverage, pending evidence and sanitized status in `groceries/collection-status.json`. Complete same-account confirmation/delivery pairs append through the existing `GroceryStore` serialization queue; existing records are never overwritten. Automatic confirmations remain estimated and have explicit automatic provenance rather than a human review timestamp. Paired GET `/groceries/collection-status` is read-only; paired POST `/groceries/collect` starts one bounded phase. The existing daily runner executes invoice and grocery phases with independent outcomes and no uncertain-POST replay. See FH-GROCERY-011 for validation and coordinated-release/rollback gates; this source change does not activate the installed worker.
+
 ## Authoritative opportunities and mobile entry (#256)
 
 `opportunities.ts` is a deterministic projection over existing domain APIs; `useOpportunities` loads sources independently with stale-result guards. A current matching contract fingerprint and locally reviewed unchanged offer are required before a sourced first-year net estimate can be shown. Overlapping alternatives cannot be added. Retrieval timestamps never become source dates. Shared lifecycle is a separate atomic revision-protected `opportunities/actions.json` via authenticated `GET/POST /opportunity-actions`; no source record is rewritten. Notification decisions remain separate in existing history and do not equate read, resolved or recovered money.
