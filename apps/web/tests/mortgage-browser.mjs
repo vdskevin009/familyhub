@@ -75,7 +75,7 @@ try {
     mode='error';await refresh().click();await mortgage().getByText('Historique indisponible. Vérifiez le PC puis actualisez.').waitFor();
     mode='complete';delay=400;await refresh().click();await navigate('Courses');await navigate('Hypothèque');delay=0;await mortgage().locator('.mortgage-offer-row').first().waitFor();
     for(let n=0;n<3;n++){await navigate('Courses');await navigate('Hypothèque');await mortgage().locator('.mortgage-offer-row').first().waitFor();}
-    await page.goBack();await page.getByRole('heading',{name:'Plus',exact:true}).waitFor();await page.goForward();await mortgage().locator('.mortgage-offer-row').first().waitFor();
+    await page.goBack();await page.getByRole('heading',{name:'Plus',exact:true}).waitFor();await page.goForward();await mortgage().getByRole('tab',{name:'Taux',exact:true}).click();await mortgage().locator('.mortgage-offer-row').first().waitFor();
     assert.equal(await page.evaluate(()=>localStorage.getItem('unrelated-mortgage-test-sentinel')),'preserved');assert.deepEqual(errors,[]);assert.deepEqual(writes,[]);
     report.push({width,compactOffers:true,optionSpecificIncentives:true,fixedPaymentCaution:true,marketSeparate:true,periodGaps:true,contacts:6,historical:true,keyboard:true,partial:true,failed:true,empty:true,interruptedNavigation:true,repeatedNavigation:true,noWrites:true});await context.close();
   }
