@@ -1,9 +1,10 @@
 import { useState } from "react";
 import { currentAssumptions, mortgageScenario, type MortgageState, type ProductKey, type Quote } from "../../../worker/src/mortgage-model";
 import type { MortgageContact } from "../../../worker/src/mortgage-contacts";
-import { cad, percent, productLabel, variantLabel, shortDate, appointmentDate } from "../mortgage-display";
+import { cad, percent, variantLabel, shortDate, appointmentDate } from "../mortgage-display";
 
 const products: ProductKey[] = ["variable-3", "variable-5", "fixed-3", "fixed-5"];
+const scenarioName = (key:ProductKey) => (key.startsWith("fixed")?"Fixe ":"Variable ") + (key.endsWith("3")?"3":"5") + " ans";
 const contactStatus = {active:"Actif",appointment:"RDV prévu","email-sent":"Mail envoyé","awaiting-response":"Réponse attendue",paused:"En pause"};
 
 type Props = {
@@ -45,8 +46,8 @@ export default function MortgageContactOffers({contact,quotes,state,initiallyExp
           const offers=choices(product),q=offers[0],historical=own.some(v=>v.product===product && v.status==="historical"),monthly=payment(q),selectedCard=selectedProduct===product;
           return <button type="button" key={product} className={"mortgage-scenario-card"+(selectedCard?" is-selected":"")+(q?"":" is-unavailable")}
             aria-pressed={selectedCard} onClick={()=>{setSelectedProduct(product);setSelectedVariant("");}}
-            aria-label={productLabel(product)+", "+(q?percent(q.rate):"information non reçue")}>
-            <span className="mortgage-scenario-label">{productLabel(product)}</span>
+            aria-label={scenarioName(product)+", "+(q?percent(q.rate):"information non reçue")}>
+            <span className="mortgage-scenario-label">{scenarioName(product)}</span>
             <strong>{q?percent(q.rate):"—"}</strong>
             <small>Mensualité estimée</small>
             <b className="mortgage-monthly">{monthly===null?"—":cad(monthly)}</b>
@@ -56,8 +57,8 @@ export default function MortgageContactOffers({contact,quotes,state,initiallyExp
           </button>;
         })}
       </div>
-      <section className="mortgage-selected-offer" aria-label={"Résumé de "+productLabel(selectedProduct)}>
-        <div className="mortgage-selected-header"><b>{productLabel(selectedProduct)} · scénario sélectionné</b>{selected?<span className="mortgage-badge">Offre indicative</span>:<span className="mortgage-badge">À confirmer</span>}</div>
+      <section className="mortgage-selected-offer" aria-label={"Résumé de "+scenarioName(selectedProduct)}>
+        <div className="mortgage-selected-header"><b>{scenarioName(selectedProduct)} · scénario sélectionné</b>{selected?<span className="mortgage-badge">Offre indicative</span>:<span className="mortgage-badge">À confirmer</span>}</div>
         {selected?<>
           {selectedOffers.length>1&&<label className="mortgage-variant-picker">Structure des paiements
             <select value={selected.id} onChange={e=>setSelectedVariant(e.target.value)}>{selectedOffers.map(q=><option key={q.id} value={q.id}>{variantLabel(q)} · {percent(q.rate)} · {shortDate(q.receivedDate)}</option>)}</select>
