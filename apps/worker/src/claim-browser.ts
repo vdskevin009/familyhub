@@ -31,6 +31,8 @@ import { isBlueCrossClaimCausePage, openBlueCrossClaimCause, blueCrossClaimCause
 import { desjardinsDetailsPath, desjardinsDetailText, desjardinsDetailSuggestion, desjardinsDetailRadios, desjardinsDetailRadioSuggestion } from "./desjardins-claim-details.js";
 import { confirmedGovernmentReimbursement } from "./claim-coordination-answers.js";
 import {desjardinsSummaryPath,desjardinsReviewPath,openDesjardinsSummaryDetails,readDesjardinsExpenseSummary,advanceDesjardinsSummary,readDesjardinsFinalReview} from "./desjardins-claim-summary.js";
+import { desjardinsSessionExpired } from "./desjardins-history-reader.js";
+import { currentDesjardinsPage, restartableDesjardinsExpiry } from "./desjardins-session-expiry.js";
 import { isBlueCrossClaimKindPage, openBlueCrossHealthcareClaim } from "./bluecross-claim-kind.js";
 import { blueCrossReceiptFile, blueCrossReceiptMatches, openBlueCrossReceiptUpload, blueCrossReceiptAlreadyListed, blueCrossReceiptUploadEvidence, blueCrossReceiptUploadAvailable } from "./bluecross-claim-upload.js";
 
@@ -161,6 +163,7 @@ async function inspect(s: Session) {
   if (!allowed(s.page.url(), s.dossier.insurer) || await s.page.locator('input[type="password"]').isVisible().catch(() => false)) return { status: s.authReason === "human-required" ? "human-required" : "login-required", authReason: s.authReason, fields: [], revision: "", submitAllowed: false };
   const body = (await s.page.locator("body").innerText()).slice(0, 30_000);
   if (classifyLoginScreen(body) === "human-required") return { status: "human-required", fields: [], revision: "", submitAllowed: false };
+  if (s.dossier.insurer === "desjardins" && await desjardinsSessionExpired(s.page)) return { status: "login-required", authReason: s.authReason, fields: [], revision: "", submitAllowed: false };
   if (s.autonomous && s.dossier.insurer === "desjardins" && !s.authPersistenceAttempted
     && (await authenticatedClaimPages(s.page, "desjardins")).length === 1) {
     s.authPersistenceAttempted = true;
@@ -718,6 +721,17 @@ async function prepareStep(id: unknown,
     }
     step = await inspectClaimStep(id);
     if (step.status === "fields") s.detailsReadBackVerified = false;
+    // Expiration before any claim answers may re-enter ordinary guarded login once.
+    // After a fill or an uncertain continuation, never reconstruct/replay the claim.
+    if (s.autonomous && s.dossier.insurer === "desjardins" && step.status === "login-required" && !s.authReason && !s.loginRefreshAttempted
+      && !s.approved && !s.claimKindAttempted && !s.detailsNextAttempted && !s.attemptedAttachments.size
+      && await restartableDesjardinsExpiry(s.page)) {
+      s.loginRefreshAttempted = true;
+      s.authReason = await (s.authenticate || loginForClaim)(s.page, s.dossier.insurer);
+      s.page = currentDesjardinsPage(s.page);
+      if (!s.authReason && isDesjardinsHistory(s.page.url()) && (await authenticatedClaimPages(s.page, "desjardins")).length === 1) s.claimEntryAttempted = false;
+      step = await inspectClaimStep(id);
+    }
     // A restored SPA can briefly look authenticated before the server rejects
     // stale cookies. Recheck once, using the unchanged durable login gate.
     if (s.autonomous && s.dossier.insurer === "blue-cross" && step.status === "login-required" && !s.authReason && !s.loginRefreshAttempted

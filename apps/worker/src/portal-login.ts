@@ -156,7 +156,12 @@ const defaults: LoginDependencies = {
   reserveRecovery: reserveLoginRecovery
 };
 /** One attempt only; latch before ANY credential fill. Ordinary retries never rearm a stop. Caller owns profile lock. */
-export async function tryPortalLogin(page: Page, insurer: Insurer, ready: () => Promise<boolean>, deps: LoginDependencies = defaults, recovery?: LoginRecoveryRequest): Promise<LoginReason | undefined> {
+export async function tryPortalLogin(page: Page, insurer: Insurer, ready: () => Promise<boolean>, deps: LoginDependencies = defaults, recovery?: LoginRecoveryRequest, currentPage?: () => Page): Promise<LoginReason | undefined> {
+  const isReady = async () => {
+    const result = await ready();
+    if (currentPage) page = currentPage();
+    return result;
+  };
   let phase: LoginPhase = "checking-form";
   let audit: Awaited<ReturnType<typeof reserveLoginRecovery>> | undefined;
   const record = async (outcome: Parameters<NonNullable<typeof audit>>[0]) => { if (audit) await audit(outcome, phase); };
@@ -184,14 +189,14 @@ export async function tryPortalLogin(page: Page, insurer: Insurer, ready: () => 
   };
   // Wait for the reused session or a rendered login/challenge, not a transient redirect.
   const restoreDeadline = deps.now() + 20_000;
-  while (!await ready()) {
+  while (!await isReady()) {
     const password = page.locator(insurer === "bluecross" ? "#password" : "#Password");
     if (allowedLoginUrl(insurer, page.url()) && await password.isVisible().catch(() => false)) break;
     if (classifyLoginScreen(await page.locator("body").innerText().catch(() => ""))) break;
     if (deps.now() >= restoreDeadline) break;
     await page.waitForTimeout(1000).catch(() => new Promise(resolve => setTimeout(resolve, 1000)));
   }
-  if (await ready()) return undefined;
+  if (await isReady()) return undefined;
   const previous = await deps.read(insurer);
   originalFailure = previous.firstFailure;
   originalFailureUnavailable = previous.blocked && !originalFailure;
@@ -240,7 +245,7 @@ export async function tryPortalLogin(page: Page, insurer: Insurer, ready: () => 
     phase = "awaiting-history";
     const deadline = deps.now() + 30_000;
     while (deps.now() < deadline) {
-      if (await ready()) {
+      if (await isReady()) {
         authenticationConfirmed = true;
         originalFailure = previous.firstFailure;
         await deps.save(insurer, { blocked: false, attemptedAt, ...(originalFailure ? { firstFailure: originalFailure } : {}) });
