@@ -1,4 +1,4 @@
-import type { Page } from "playwright";
+import type { Cookie, Page } from "playwright";
 import { claimPortals } from "./claim-preparation.js";
 import { classifyLoginScreen } from "./portal-login.js";
 import { desjardinsSessionExpired } from "./desjardins-history-reader.js";
@@ -8,6 +8,13 @@ const replacements = new WeakMap<Page, Page>();
 export function currentDesjardinsPage(page: Page) {
   while (replacements.has(page)) page = replacements.get(page)!;
   return page;
+}
+/** Existing OneTrust privacy choices only, never an authentication/session cookie.
+ * https://docs.onetrust.com/en/consent--preferences/cookie-consent/managing-cookie-scripts-cookie-blocking-and-technical-implementation/onetrust-cookies */
+export function desjardinsConsentCookies(cookies: Cookie[], now = Date.now()) {
+  return cookies.filter(cookie => ["OptanonConsent", "OptanonAlertBoxClosed"].includes(cookie.name)
+    && /(?:^|\.)(?:desjardins\.com|dsf-dfs\.com)$/i.test(cookie.domain)
+    && (cookie.expires < 0 || cookie.expires > now / 1000));
 }
 
 /** Positive insurer expiry evidence only; never act on a challenge or a claim form. */
@@ -26,14 +33,18 @@ export async function reopenExpiredDesjardinsSession(page: Page, reserve: () => 
   const browser = page.context().browser();
   if (!browser || !await restartableDesjardinsExpiry(page) || !reserve()) return false;
   const observedAt = new Date().toISOString();
-  const record = (stage: string) => atomicJson(join(dataDirectory, "desjardins", "session-expiry-diagnostic.json"), { version: 1, observedAt, stage }).catch(() => {});
+  let consentPreferencesReused = 0;
+  const record = (stage: string) => atomicJson(join(dataDirectory, "desjardins", "session-expiry-diagnostic.json"), { version: 1, observedAt, stage, consentPreferencesReused }).catch(() => {});
   await record("authentication-entry-started");
   // The old context has an initialization script restoring expired sessionStorage.
   // A fresh isolated context discards that script and stale ephemeral cookies,
   // while leaving encrypted saved state, credentials and retry controls intact.
   let fresh: Page;
   try {
+    const consent = desjardinsConsentCookies(await page.context().cookies());
     const context = await browser.newContext();
+    await context.addCookies(consent);
+    consentPreferencesReused = consent.length;
     fresh = await context.newPage();
     replacements.set(page, fresh);
     await page.context().close();
