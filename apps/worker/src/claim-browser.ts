@@ -561,7 +561,9 @@ async function verifySnapshot(s: Session) {
     const final=await readDesjardinsFinalReview(s.page,s.dossier,government.value==="no"&&cause.value==="unrelated",!!s.receiptIdentity,await loadMemberAliases());
     const ready=!!final?.summary.matches&&!!s.detailsReadBackVerified&&!!s.summaryNextAttempted&&!!s.desjardinsExpenseReadback?.matches
       &&final.fileInputs===0&&!s.attemptedAttachments.size&&!s.approved?.attachment;
-    return {revision:s.revision,fields:[],attachment:null,receiptUploadAvailable:false,expenseSummary:final?.summary??null,
+    // Older PWAs treat any ready expenseSummary as proof of a receipt upload.
+    // Keep that legacy Blue Cross field empty for this new Desjardins result.
+    return {revision:s.revision,fields:[],attachment:null,receiptUploadAvailable:false,expenseSummary:null,desjardinsReview:final?.summary??null,
       receiptCopiesEquivalent:!!s.sourceDossier&&s.dossier.attachments.length===1,
       receiptRequirement:final?.fileInputs===0?"not-requested-before-confirmation" as const:"requested" as const,
       finalConfirmationManual:true,preparedForReview:ready,readyForManualNext:false,

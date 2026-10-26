@@ -109,6 +109,7 @@ export default function PrepareClaim({ expenseId, initialInsurer, config, onClos
   const summaryPage = step?.portalStage === "expense-summary";
   const pending = !!step?.fields.some(f => f.type !== "file" && !f.optional);
   const canReview = !!verification?.readyForManualNext && !!step && !pending && ["fields", "navigate"].includes(step.status);
+  const insurerSummary = verification?.desjardinsReview || verification?.expenseSummary;
   const labels: Record<string, string> = { patient: "Patient", provider: "Clinic / provider", practitioner: "Practitioner", serviceDate: "Service date", originalAmount: "Original expense", service: "Invoice service", invoiceNumber: "Invoice number", otherInsurance: "Other insurance", otherInsurancePaid: "Paid by other insurer" };
   return <Sheet open onClose={busy ? () => {} : onClose} title={insurer === "blue-cross" ? "Prepare Blue Cross claim" : insurer === "desjardins" ? "Prepare Desjardins claim" : "Prepare claim"} description={verification?.preparedForReview&&verification.receiptRequirement === "not-requested-before-confirmation" ? "The insurer form is ready. Review the values and confirm in Desjardins." : "The PC prepares the insurer form and original receipt. Review the actual results before continuing."}>
     <div className="prepare-claim">
@@ -206,11 +207,11 @@ export default function PrepareClaim({ expenseId, initialInsurer, config, onClos
           })}>Reset saved service choices for this service</button>}
           {verification && <section aria-label="Prepared portal answers">
             <strong>Actually prepared in the portal</strong>
-            {verification.expenseSummary && <Notice error={!verification.expenseSummary.matches}>
+            {insurerSummary && <Notice error={!insurerSummary.matches}>
               {verification.preparedForReview ? verification.receiptRequirement === "not-requested-before-confirmation"
                 ? "Ready for your final review — no receipt upload is requested on this screen. Confirm in Desjardins yourself."
                 : "Ready for your final review — receipt upload verified. Consent and submission remain yours." : "Current insurer summary"}
-              <dl className="claim-preparation-facts">{Object.entries(verification.expenseSummary).filter(([key]) => key !== "matches").map(([key, value]) => <div key={key}><dt>{({ patient: "Patient", benefit: "Benefit", practitioner: "Practitioner", service: "Service", date: "Date", amount: "Expense", illness: "Your illness/injury answer", duration: "Duration", otherInsurancePaid: "Other-insurer payment", remaining: "Amount to claim", accident: "Accident", governmentReimbursement: "Government reimbursement", privateInsuranceClaim: "Other private claim", otherInsurance: "Prior reimbursement", reimbursementMethod: "Reimbursement method" } as Record<string, string>)[key] || key}</dt><dd>{value ?? "Not verified"}</dd></div>)}</dl>
+              <dl className="claim-preparation-facts">{Object.entries(insurerSummary).filter(([key]) => key !== "matches").map(([key, value]) => <div key={key}><dt>{({ patient: "Patient", benefit: "Benefit", practitioner: "Practitioner", service: "Service", date: "Date", amount: "Expense", illness: "Your illness/injury answer", duration: "Duration", otherInsurancePaid: "Other-insurer payment", remaining: "Amount to claim", accident: "Accident", governmentReimbursement: "Government reimbursement", privateInsuranceClaim: "Other private claim", otherInsurance: "Prior reimbursement", reimbursementMethod: "Reimbursement method" } as Record<string, string>)[key] || key}</dt><dd>{value ?? "Not verified"}</dd></div>)}</dl>
             </Notice>}
             {(step?.status === "review" || summaryPage) && verification.fields.some(f => f.status === "unreadable") && <p>The earlier form controls are no longer on this page. Check those answers in the insurer's final claim summary.</p>}
             {verification.fields.filter(f => step?.status !== "review" && !summaryPage || f.status !== "unreadable").map(f => <Notice key={f.key} error={f.status !== "match"}>{f.label}: {f.status === "match" ? f.optionLabel || f.actual : f.actual ?? "Unreadable"}. {f.status === "match" ? "✓ Read back and matched" : `Needs attention — ${f.status}; expected ${f.optionLabel || f.value}`}</Notice>)}
