@@ -1,5 +1,7 @@
 import { useState } from "react";
 import { currentAssumptions, mortgageScenario, type MortgageState, type ProductKey, type Quote } from "../../../worker/src/mortgage-model";
+import { compareMortgage, latestDecisionProfile, decisionTermsFor } from "../../../worker/src/mortgage-decision";
+import { localDate } from "../../../worker/src/mortgage-model";
 import type { MortgageContact } from "../../../worker/src/mortgage-contacts";
 import { cad, percent, variantLabel, shortDate, appointmentDate } from "../mortgage-display";
 
@@ -9,9 +11,9 @@ const contactStatus = {active:"Actif",appointment:"RDV prévu","email-sent":"Mai
 
 type Props = {
   contact: MortgageContact; quotes: Quote[]; state: MortgageState;
-  initiallyExpanded: boolean; onContact: () => void; onQuote: (id: string) => void;
+  initiallyExpanded: boolean; onContact: () => void; onQuote: (id: string) => void; onCompare?: (id?: string) => void;
 };
-export default function MortgageContactOffers({contact,quotes,state,initiallyExpanded,onContact,onQuote}: Props) {
+export default function MortgageContactOffers({contact,quotes,state,initiallyExpanded,onContact,onQuote,onCompare}: Props) {
   const [expanded,setExpanded] = useState(initiallyExpanded);
   const [selectedProduct,setSelectedProduct] = useState<ProductKey>("variable-5");
   const [selectedVariant,setSelectedVariant] = useState("");
@@ -22,6 +24,7 @@ export default function MortgageContactOffers({contact,quotes,state,initiallyExp
   const selected=selectedOffers.find(q=>q.id===selectedVariant) || selectedOffers[0];
   const assumptions=currentAssumptions(state);
   const payment=(q:Quote|undefined) => {
+    if (onCompare) { if (!q) return null; const comparison=compareMortgage(latestDecisionProfile(state.profiles??[])??null,q,decisionTermsFor(state.terms??[],q.id)??null,localDate(new Date())); return comparison.replacement?.initialPayment??null; }
     if(!q || !assumptions || q.variant==="fixed-payment" || q.variant==="unconfirmed-payment") return null;
     try {return mortgageScenario(assumptions.principal,q.rate,assumptions.remainingMonths,Math.min(assumptions.remainingMonths,q.product.endsWith("3")?36:60),q.product.startsWith("variable")?"monthly":"semiannual").payment;}
     catch {return null;}
@@ -67,19 +70,19 @@ export default function MortgageContactOffers({contact,quotes,state,initiallyExp
             <span><small>Taux proposé</small><b>{percent(selected.rate)}</b></span>
             <span><small>Mensualité estimée</small><b>{payment(selected)===null?"—":cad(payment(selected)!)}</b></span>
           </div>
-          {payment(selected)===null&&<p className="mortgage-contact-subnote">{!assumptions?"Solde et amortissement privés non disponibles.":"Paiement contractuel variable non confirmé : mensualité non calculable."}</p>}
+          {payment(selected)===null&&<p className="mortgage-contact-subnote">{onCompare?"Mensualité à confirmer avec le solde daté, le versement et les conditions du prêt.":!assumptions?"Solde et amortissement privés non disponibles.":"Paiement contractuel variable non confirmé : mensualité non calculable."}</p>}
           <div className="mortgage-incentive-details"><b>Remises supplémentaires</b>
             {selected.cashback?<><p>{selected.cashback.basis==="total-incentive"?"Avantages totaux déclarés":"Cashback"} : {cad(selected.cashback.amount)}</p>{selected.cashback.conditions.map((condition,i)=><small key={i}>• {condition}</small>)}</>:<p>Montant et conditions non reçus.</p>}
           </div>
           <button type="button" className="mortgage-detail-link" onClick={()=>onQuote(selected.id)}>Conditions et détails de cette offre ›</button>
         </>:<p className="mortgage-contact-subnote">Aucune proposition actuelle enregistrée pour ce produit. Les champs restent visibles pour faciliter la comparaison.</p>}
-        <details className="mortgage-refinance-estimate"><summary>Estimation du coût de refinancement</summary>
+        {onCompare ? <button type="button" className="mortgage-detail-link" disabled={!selected} onClick={()=>selected&&onCompare(selected.id)}>Comparer jusqu’à mon échéance actuelle ›</button> : <details className="mortgage-refinance-estimate"><summary>Estimation du coût de refinancement</summary>
           <p>Simulation locale non sauvegardée. Renseigner la pénalité et les frais confirmés avant d’estimer le coût.</p>
           <div className="mortgage-refinance-fields">{([["Pénalité de remboursement",penalty,setPenalty],["Frais juridiques",legal,setLegal],["Évaluation",appraisal,setAppraisal],["Autres frais",other,setOther]] as const).map(([label,value,change])=><label key={label}>{label}<input type="number" min="0" step="0.01" inputMode="decimal" value={value} onChange={e=>change(e.target.value)} placeholder="À confirmer" /></label>)}</div>
           <div className="mortgage-refinance-total"><span>Coût brut estimé</span><b>{gross===null?"—":cad(gross)}</b></div>
           <div className="mortgage-refinance-total"><span>Coût net après cashback</span><b>{net===null?"À confirmer":cad(net)}</b></div>
           <small>Les avantages « totaux » ne sont pas déduits comme du cashback. Le coût net reste inconnu sans montant de cashback confirmé et tous les frais.</small>
-        </details>
+        </details>}
       </section>
       <div className="mortgage-contact-footer"><span>{contact.status==="awaiting-response"||contact.status==="email-sent"?"Réponse attendue":"Conditions et pénalité à confirmer"}</span><button type="button" onClick={onContact}>Historique et échanges ›</button></div>
     </div>}

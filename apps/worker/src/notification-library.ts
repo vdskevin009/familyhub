@@ -14,7 +14,7 @@ export class NotificationConflict extends Error {}
 const hash = (s: string) => createHash("sha256").update(s).digest("hex");
 const empty = (): Stored => ({ schema: 1, revision: "empty", initialized: [], seen: [], events: [], preferences: defaultNotificationPreferences(), devices: [], sourceErrors: [] });
 const idPattern = /^[a-f0-9]{64}$/;
-const sources = ["invoices", "collections", "contracts", "finance"];
+const sources = ["invoices", "collections", "contracts", "finance", "mortgage"];
 const text = (v: unknown, max: number) => typeof v === "string" && v.length <= max;
 const timestamp = (v: unknown) => typeof v === "string" && v.length <= 40 && Number.isFinite(Date.parse(v));
 export class NotificationLibrary {
@@ -28,6 +28,7 @@ export class NotificationLibrary {
   private async load(): Promise<Stored> {
     try {
       const data = JSON.parse(await readFile(this.path, "utf8")) as Stored;
+      if (data?.schema === 1 && data.preferences && data.preferences.mortgage === undefined) data.preferences.mortgage = true; // Additive category; existing choices preserved, first evidence remains silent.
       if (!data || data.schema !== 1 || !text(data.revision, 100) || !Array.isArray(data.initialized) || data.initialized.some(s => !sources.includes(s)) || !Array.isArray(data.seen) || data.seen.some(id => typeof id !== "string" || !idPattern.test(id)) || !Array.isArray(data.events) || data.events.length > 500 || !data.preferences || notificationKinds.some(k => typeof data.preferences[k] !== "boolean") || Object.keys(data.preferences).some(k => !notificationKinds.includes(k as typeof notificationKinds[number])) || !Array.isArray(data.devices) || data.devices.length > 20 || !Array.isArray(data.sourceErrors) || data.sourceErrors.some(s => !text(s, 100)) || data.scannedAt !== undefined && !timestamp(data.scannedAt)) throw new Error();
       if (new Set(data.events.map(e => e.id)).size !== data.events.length || new Set(data.devices.map(d => d.id)).size !== data.devices.length) throw new Error();
       if (data.lastAutomaticPushAt !== undefined && !timestamp(data.lastAutomaticPushAt) || data.decisions !== undefined && (!data.decisions || typeof data.decisions !== "object" || Array.isArray(data.decisions) || Object.keys(data.decisions).length > 5000 || Object.entries(data.decisions).some(([id, d]) => !idPattern.test(id) || !this.validDecision(d)))) throw new Error();
@@ -35,7 +36,7 @@ export class NotificationLibrary {
       for (const event of data.events) {
         if (event.pendingDeviceIds !== undefined && (!Array.isArray(event.pendingDeviceIds) || event.pendingDeviceIds.length > 20 || event.pendingDeviceIds.some(id => !idPattern.test(id)))) throw new Error();
         if (event.groupId !== undefined && !idPattern.test(event.groupId) || event.evidenceVersion !== undefined && !idPattern.test(event.evidenceVersion) || event.actionable !== undefined && typeof event.actionable !== "boolean" || event.expiresAt !== undefined && !timestamp(event.expiresAt) || event.priority !== undefined && (!Number.isInteger(event.priority) || event.priority < 0 || event.priority > 3) || event.pushState !== undefined && !["pending", "handled", "expired"].includes(event.pushState)) throw new Error();
-        if (!idPattern.test(event.id) || !notificationKinds.includes(event.kind) || !text(event.title, 1000) || !text(event.detail, 5000) || !timestamp(event.createdAt) || event.readAt !== undefined && !timestamp(event.readAt) || event.sourceDate !== undefined && !timestamp(event.sourceDate) || typeof event.baseline !== "boolean" || typeof event.active !== "boolean" || !["savings", "finances", "reimbursements"].includes(event.target?.view)) throw new Error();
+        if (!idPattern.test(event.id) || !notificationKinds.includes(event.kind) || !text(event.title, 1000) || !text(event.detail, 5000) || !timestamp(event.createdAt) || event.readAt !== undefined && !timestamp(event.readAt) || event.sourceDate !== undefined && !timestamp(event.sourceDate) || typeof event.baseline !== "boolean" || typeof event.active !== "boolean" || !["savings", "finances", "reimbursements", "mortgage"].includes(event.target?.view)) throw new Error();
         const target = event.target;
         if (Object.keys(target).some(k => !["view", "recordId", "queue", "tab", "accountId", "from", "to", "currency", "sources"].includes(k)) || [target.recordId, target.accountId, target.from, target.to, target.currency].some(v => v !== undefined && !text(v, 500)) || target.queue !== undefined && target.queue !== "unmatched" || target.tab !== undefined && target.tab !== "investments" || target.sources !== undefined && typeof target.sources !== "boolean") throw new Error();
       }
@@ -90,7 +91,7 @@ export class NotificationLibrary {
             sourceDate: candidate.sourceDate, groupId, evidenceVersion, actionable: candidate.actionable,
             expiresAt: candidate.expiresAt, priority: candidate.priority });
           event.pushState ??= "handled"; // Upgrade never sends the historical backlog.
-        } else if (ready.includes(event.kind === "collection" ? "collections" : ["reimbursement", "unmatched"].includes(event.kind) ? "invoices" : event.target.view === "savings" ? "contracts" : "finance")) {
+        } else if (ready.includes(event.kind === "collection" ? "collections" : ["reimbursement", "unmatched"].includes(event.kind) ? "invoices" : event.target.view === "mortgage" ? "mortgage" : event.target.view === "savings" ? "contracts" : "finance")) {
           event.active = false;
           if (event.pushState === "pending") event.pushState = "expired";
         }
