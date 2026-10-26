@@ -29,6 +29,7 @@ import { receiptProviderOption, type ReceiptPractitioner } from "./split-paid-re
 import { advanceBlueCrossDetails, advanceBlueCrossExpenses, readBlueCrossExpenseSummary } from "./bluecross-claim-progress.js";
 import { isBlueCrossClaimCausePage, openBlueCrossClaimCause, blueCrossClaimCauseAnswer } from "./bluecross-claim-cause.js";
 import { desjardinsDetailsPath, desjardinsDetailText, desjardinsDetailSuggestion, desjardinsDetailRadios, desjardinsDetailRadioSuggestion } from "./desjardins-claim-details.js";
+import { confirmedGovernmentReimbursement } from "./claim-coordination-answers.js";
 import { isBlueCrossClaimKindPage, openBlueCrossHealthcareClaim } from "./bluecross-claim-kind.js";
 import { blueCrossReceiptFile, blueCrossReceiptMatches, openBlueCrossReceiptUpload, blueCrossReceiptAlreadyListed, blueCrossReceiptUploadEvidence, blueCrossReceiptUploadAvailable } from "./bluecross-claim-upload.js";
 
@@ -263,11 +264,16 @@ async function inspect(s: Session) {
           field.suggested = desjardinsProviderOption(s.dossier, s.receiptIdentity, options, await s.page.locator("main").innerText());
           field.suggestionReason = "Unique saved practitioner name and physiotherapy specialty match the original receipt. The printed licence is source evidence, not registry verification.";
         }
-        if (["accident","otherInsurance","reimbursementMethod"].includes(definition.kind)) {
+        if (["accident","otherInsurance","reimbursementMethod","governmentReimbursement","privateInsuranceClaim"].includes(definition.kind)) {
           const cause = await blueCrossClaimCauseAnswer().catch(() => null);
           field.suggested = desjardinsDetailRadioSuggestion(definition.kind,s.dossier,options,cause?.value === "unrelated",!!s.receiptIdentity);
           if (definition.kind === "accident" && field.suggested) { field.suggestionSource="confirmed-answer"; field.suggestionReason="Your previously confirmed all-invoice answer excludes any accident. Reused for the same factual question."; }
           if (definition.kind === "reimbursementMethod" && field.suggested) field.suggestionReason="The source receipt proves the patient paid the residual; reimbursement is prepared to the insured's existing direct-deposit account.";
+          if (definition.kind === "governmentReimbursement") {
+            const answer=await confirmedGovernmentReimbursement(s.dossier).catch(()=>null);
+            const matches=answer?.value?options.filter(o=>o.label.replace(/^\s*\*/,"").replace(/\(facultatif\)$/,"").trim()===(answer.value==="no"?"Non":"Oui")):[];
+            if(matches.length===1){field.suggested=matches[0].value;field.suggestionSource="confirmed-answer";field.suggestionReason=answer?.source==="physiotherapy-default"?"Your confirmed physiotherapy default. Verify it for this claim.":"Your confirmed answer for this invoice.";}
+          }
         }
         s.fields.set(field.key, { locator: choices.first(), providers: choices, field, signature: JSON.stringify(metadata), initialValue: "" });
       }
@@ -458,6 +464,7 @@ export async function fillClaimStep(id: unknown, revision: unknown, values: unkn
           // keyboard interaction; never force a click or set checked in script.
           await choice.press("Space",{timeout:7000});
           await choice.waitFor({state:"visible",timeout:3000});
+          for (let read=0;read<20&&!await choice.isChecked();read++) await s.page.waitForTimeout(100);
           if (!await choice.isChecked()) throw new Error("The selected Desjardins choice was not checked.");
         } else await choice.check({timeout:7000});
         filled++; markFilled(target);
@@ -477,7 +484,7 @@ export async function fillClaimStep(id: unknown, revision: unknown, values: unkn
         await option.click(); filled++; markFilled(target);
         return await finish("The selected option updates the Blue Cross form. Read its fields again to prepare the remaining details.");
       } else if (target.field.type === "select") await target.locator.selectOption(value as string);
-      else { await target.locator.fill(value as string); if (target.field.kind === "serviceDate" || target.field.format === "decimal-comma") await target.locator.press("Tab"); }
+      else { await target.locator.fill(value as string); if (["serviceDate","durationMinutes"].includes(target.field.kind || "") || target.field.format === "decimal-comma") await target.locator.press("Tab"); }
       filled++;
       markFilled(target);
       if (target.field.type === "select") return await finish("The selected option may update the form. Read its fields again.");

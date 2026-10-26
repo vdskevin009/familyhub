@@ -2,7 +2,13 @@ import test from 'node:test';import assert from 'node:assert/strict';
 import {desjardinsReceiptEvidence} from '../apps/worker/dist/desjardins-receipt.js';
 import {desjardinsPatientOption,desjardinsProviderOption} from '../apps/worker/dist/desjardins-claim-form.js';
 import {desjardinsAliasFingerprint} from '../apps/worker/dist/desjardins-collector.js';
+import {desjardinsDetailSuggestion} from '../apps/worker/dist/desjardins-claim-details.js';
 import {dossier,receipt} from './fixtures/desjardins-receipt.mjs';
+test('duration is extracted only from the explicit supported service duration',()=>{
+ assert.equal(desjardinsDetailSuggestion('durationMinutes',dossier,[],''),'30');
+ assert.equal(desjardinsDetailSuggestion('durationMinutes',{...dossier,fields:{...dossier.fields,service:'Physiotherapy'}},[],''),null);
+ assert.equal(desjardinsDetailSuggestion('durationMinutes',{...dossier,fields:{...dossier.fields,service:'Subsequent Physiotherapy Session (999 minutes)'}},[],''),null);
+});
 test('paid residual receipt uses source service date and corroborated gross, preserving printed identity',()=>assert.deepEqual(desjardinsReceiptEvidence(receipt,dossier),{patient:'Alice Example',provider:'Example Clinic',practitioner:'Morgan Example',licence:'1234567',address:'123 Fiction St, #101, Example City, BC, V1V 1V1'}));
 for(const [name,body,source] of [
  ['wrong amount',receipt.replaceAll('$25.00','$26.00'),dossier],
