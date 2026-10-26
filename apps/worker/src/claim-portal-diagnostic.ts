@@ -36,6 +36,8 @@ export async function claimPortalDiagnostic(page: Page) {
     const controls = await candidate.locator('input,select,textarea,button').evaluateAll(elements => elements.filter(el => el.getClientRects().length
       && !['hidden','password'].includes((el as HTMLInputElement).type)).slice(0, 100).map(el => ({
       tag: el.tagName, id: el.id, name: el.getAttribute('name'), type: el.getAttribute('type'),
+      disabled: (el as HTMLInputElement).disabled, required: el.hasAttribute('required') || el.getAttribute('aria-required') === 'true',
+      placeholder: el.getAttribute('placeholder')?.slice(0, 200), inputMode: el.getAttribute('inputmode'),
       label: el.getAttribute('aria-label') || Array.from((el as HTMLInputElement).labels || []).map(l => l.textContent?.trim()).join(' '),
       caption: el.tagName === 'BUTTON' ? el.textContent?.trim() : ['button','submit'].includes((el as HTMLInputElement).type) ? (el as HTMLInputElement).value : undefined,
       checked: ['checkbox','radio'].includes((el as HTMLInputElement).type) ? (el as HTMLInputElement).checked : undefined,
