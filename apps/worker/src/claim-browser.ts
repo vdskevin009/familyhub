@@ -30,6 +30,7 @@ import { advanceBlueCrossDetails, advanceBlueCrossExpenses, readBlueCrossExpense
 import { isBlueCrossClaimCausePage, openBlueCrossClaimCause, blueCrossClaimCauseAnswer } from "./bluecross-claim-cause.js";
 import { desjardinsDetailsPath, desjardinsDetailText, desjardinsDetailSuggestion, desjardinsDetailRadios, desjardinsDetailRadioSuggestion } from "./desjardins-claim-details.js";
 import { confirmedGovernmentReimbursement } from "./claim-coordination-answers.js";
+import {desjardinsSummaryPath,openDesjardinsSummaryDetails} from "./desjardins-claim-summary.js";
 import { isBlueCrossClaimKindPage, openBlueCrossHealthcareClaim } from "./bluecross-claim-kind.js";
 import { blueCrossReceiptFile, blueCrossReceiptMatches, openBlueCrossReceiptUpload, blueCrossReceiptAlreadyListed, blueCrossReceiptUploadEvidence, blueCrossReceiptUploadAvailable } from "./bluecross-claim-upload.js";
 
@@ -40,6 +41,7 @@ type ApprovedSnapshot = { revision: string; url: string; entries: { target: Targ
 type Session = { id: string; browser: Browser; page: Page; dossier: ClaimPreparation; createdAt: number;
   sourceDossier?: ClaimPreparation;
   desjardinsNextAttempts?: Set<string>;
+  desjardinsSummaryExpanded?: boolean;
   receiptIdentity?: ReceiptPractitioner | null;
   fields: Map<string, Target>; attemptedAttachments: Set<string>; busy: boolean; preparing?: boolean; closing?: boolean; revision: string; inspectedUrl: string; approved?: ApprovedSnapshot;
   authenticate?: typeof loginForClaim; autonomous?: boolean; loginRefreshAttempted?: boolean; authPersistenceAttempted?: boolean; authReason?: LoginReason; release?: () => Promise<void>; claimEntryAttempted?: boolean; claimKindAttempted?: boolean; claimCauseAttempted?: boolean; detailsNextAttempted?: boolean; detailsReadBackVerified?: boolean; detailsNextVerified?: boolean; summaryNextAttempted?: boolean; receiptRetryUsed?: boolean; authorizedRetryHash?: string; uploadEntryAttempted?: boolean };
@@ -201,6 +203,9 @@ async function inspect(s: Session) {
       if (opened) return inspect(s);
     }
     return { status: "navigate", fields: [], revision: "", submitAllowed: false, portalStage: "member-home", answerWarning: "The authenticated history did not expose a unique supported online claim entry. No claim details were sent." };
+  }
+  if(s.dossier.insurer==="desjardins"&&new URL(s.page.url()).pathname===desjardinsSummaryPath&&!s.desjardinsSummaryExpanded){
+    if(await openDesjardinsSummaryDetails(s.page,s.dossier,()=>{s.desjardinsSummaryExpanded=true;}))return inspect(s);
   }
   const completed = /your claim has been (?:processed|submitted)|réclamation a été (?:transmise|soumise)/i.test(body);
   const atReview = completed || /review (?:your )?claim|claim summary|I confirm all the information above is correct and I have read and agree|vérifi(?:ez|cation).*réclamation|résumé de (?:la|votre) réclamation/i.test(body);
@@ -717,7 +722,7 @@ async function prepareStep(id: unknown,
           step = await inspectClaimStep(id); verification = s.approved ? await verifySnapshot(s) : undefined; continue;
         }
       }
-      if (step.status === "navigate" && (s.detailsNextVerified || s.detailsReadBackVerified) && !s.summaryNextAttempted) {
+      if (s.dossier.insurer === "blue-cross" && step.status === "navigate" && (s.detailsNextVerified || s.detailsReadBackVerified) && !s.summaryNextAttempted) {
         const illness = s.approved?.entries.find(e => e.target.field.kind === "natureOfIllness" && e.filled)?.approved.value;
         const practitioner = s.approved?.entries.find(e => e.target.field.kind === "practitioner" && e.filled)?.approved.optionLabel;
         const advanced = await advanceBlueCrossExpenses(s.page, s.dossier, illness, () => { s.summaryNextAttempted = true; }, practitioner);
