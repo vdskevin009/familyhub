@@ -22,16 +22,19 @@ export async function advanceDesjardinsIntroduction(page: Page, dossier: ClaimPr
 export async function advanceDesjardinsRadio(page: Page, ready: boolean, reserve: () => void) {
   const url = new URL(page.url());
   const group = url.pathname === "/AGEA-GBIM/Reclamation/TypeReclamation_TypeOfClaim.aspx" ? "typeReclamation"
-    : url.pathname === "/AGEA-GBIM/Reclamation/PersonneAssuree_InsuredPerson.aspx" ? "personneAssuree" : null;
+    : url.pathname === "/AGEA-GBIM/Reclamation/PersonneAssuree_InsuredPerson.aspx" ? "personneAssuree"
+    : url.pathname === "/AGEA-GBIM/Reclamation/Fournisseur/ListeFournisseur_ProviderList.aspx" ? "fournisseur" : null;
   if (!ready || !group || url.origin !== origin || url.username || url.password) return false;
   const main = page.locator("main"), choices = main.locator(`input[type="radio"][name="${group}"]`).filter({ visible: true });
-  if (await main.count() !== 1 || await choices.locator("xpath=.").evaluateAll((els: HTMLInputElement[]) => els.filter(e => e.checked).length) !== 1
+  if (await main.count() !== 1 || await choices.evaluateAll((els: HTMLInputElement[]) => els.filter(e => e.checked).length) !== 1
+    || await main.locator('input[type="radio"]').filter({ visible: true }).count() !== await choices.count()
     || await main.locator('input:not([type="radio"]):not([type="hidden"]):not([type="submit"]):not([type="button"]),select,textarea').filter({ visible: true }).count()) return false;
   const next = main.getByRole("button", { name: "Continuer", exact: true }).filter({ visible: true });
   if (await next.count() !== 1 || !await next.isEnabled()) return false;
   reserve(); await next.click({ timeout: 10000 });
-  await page.waitForURL(u => u.origin === origin && u.pathname !== url.pathname && /^\/AGEA-GBIM\/Reclamation\/[A-Za-z_]+\.aspx$/.test(u.pathname), { timeout: 15000 }).catch(() => {});
+  await page.waitForURL(u => u.origin === origin && u.pathname !== url.pathname && /^\/AGEA-GBIM\/Reclamation\/(?:[A-Za-z_]+\/)*[A-Za-z_]+\.aspx$/.test(u.pathname), { timeout: 15000 }).catch(() => {});
   await page.waitForLoadState("domcontentloaded", { timeout: 10000 }).catch(() => {});
   if (group === "typeReclamation") await page.locator('main input[type="radio"][name="personneAssuree"]').first().waitFor({ state: "visible", timeout: 10000 }).catch(() => {});
+  else await page.locator('main input:not([type="hidden"]), main select, main textarea').filter({ visible: true }).first().waitFor({ state: "visible", timeout: 10000 }).catch(() => {});
   return new URL(page.url()).origin === origin && new URL(page.url()).pathname !== url.pathname;
 }

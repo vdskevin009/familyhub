@@ -12,6 +12,9 @@ const origin='https://www.agea-gbim.dsf-dfs.com',history='/AGEA-GBIM/Rclmtn/Rclm
 const cookie={name:'synthetic-session',value:'synthetic-valid',domain:'www.agea-gbim.dsf-dfs.com',path:'/',expires:-1,httpOnly:true,secure:true,sameSite:'Lax'};
 let session,lastContext,loginVisits=0,historyVisits=0;
 const attemptedAt='2026-01-01T00:00:00.000Z';
+// DPAPI persistence is Windows-only. Linux verifies restored-context routing
+// with synthetic cookies; the Windows run also exercises the shared sign-in.
+const authenticate=process.platform==='win32'?undefined:async()=>undefined;
 await mkdir(join(dir,'desjardins'),{recursive:true});await writeFile(join(dir,'desjardins','login-control.json'),JSON.stringify({blocked:true,reason:'login-incomplete',attemptedAt}));
 if(process.platform==='win32')await savePrivate(join(dir,'desjardins','auth-state.dpapi'),{cookies:[cookie],session:{origin,values:{}}});
 const launch=async()=>{
@@ -28,13 +31,13 @@ const launch=async()=>{
 try {
  for(let visit=0;visit<2;visit++){
   const dossier={expenseId:'synthetic',insurer:'desjardins',portalUrl:claimPortals.desjardins,preparationUrl:claimPreparationPortals.desjardins,blocked:false,reviewableWarnings:[],fields:{},attachments:[]};
-  const result=await openClaimBrowser(dossier,false,false,launch,true);session=result.sessionId;
+  const result=await openClaimBrowser(dossier,false,false,launch,true,authenticate);session=result.sessionId;
   assert.equal(result.step.status,'navigate');assert.equal(loginVisits,0);assert.equal(historyVisits,visit+1);
   assert.equal(JSON.parse(await readFile(join(dir,'desjardins','login-control.json'),'utf8')).attemptedAt,attemptedAt);
   if(process.platform==='win32'){const diagnostic=JSON.parse(await readFile(join(dir,'desjardins','claim-session-restore-diagnostic.json'),'utf8'));assert.equal(diagnostic.status,'restored');assert.equal(diagnostic.restoredCookieCount,1);assert.ok(!JSON.stringify(diagnostic).includes('synthetic-valid'));}
   await closeClaimBrowser(session);session=undefined;
  }
- const ambiguous=await openClaimBrowser({expenseId:'synthetic',insurer:'desjardins',portalUrl:claimPortals.desjardins,preparationUrl:claimPreparationPortals.desjardins,blocked:false,reviewableWarnings:[],fields:{},attachments:[]},false,false,launch,true);session=ambiguous.sessionId;
+ const ambiguous=await openClaimBrowser({expenseId:'synthetic',insurer:'desjardins',portalUrl:claimPortals.desjardins,preparationUrl:claimPreparationPortals.desjardins,blocked:false,reviewableWarnings:[],fields:{},attachments:[]},false,false,launch,true,authenticate);session=ambiguous.sessionId;
  for(let tab=0;tab<2;tab++){const extra=await lastContext.newPage();await extra.goto(origin+'/AGEA-GBIM/Reclamation/TypeReclamation_TypeOfClaim.aspx');}
  const stopped=await inspectClaimStep(session);assert.equal(stopped.status,'navigate');assert.match(stopped.answerWarning,/Several Desjardins/);assert.deepEqual(stopped.fields,[]);
  await closeClaimBrowser(session);session=undefined;

@@ -1,5 +1,7 @@
 # FamilyHub architecture
 
+Desjardins preparation uses the existing guarded session, a bounded original-PDF identity parser and explicit adapters for observed intermediate pages. Confirmed beneficiary aliases retain all full-name tokens; paid patient-share receipt amounts remain distinct from the imported primary adjudication's gross. Nested provider-page recognition does not authorize arbitrary claim-page navigation: continuation is limited to known radio stages, freshly verified selections and no extra unresolved controls, with a session reservation before each click. Unknown pages, consent and submission remain stopped. Live end-to-end acceptance is tracked separately in #258.
+
 ## Authoritative opportunities and mobile entry (#256)
 
 `opportunities.ts` is a deterministic projection over existing domain APIs; `useOpportunities` loads sources independently with stale-result guards. A current matching contract fingerprint and locally reviewed unchanged offer are required before a sourced first-year net estimate can be shown. Overlapping alternatives cannot be added. Retrieval timestamps never become source dates. Shared lifecycle is a separate atomic revision-protected `opportunities/actions.json` via authenticated `GET/POST /opportunity-actions`; no source record is rewritten. Notification decisions remain separate in existing history and do not equate read, resolved or recovered money.

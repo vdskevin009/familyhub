@@ -1,9 +1,8 @@
 import test from 'node:test';import assert from 'node:assert/strict';
 import {desjardinsReceiptEvidence} from '../apps/worker/dist/desjardins-receipt.js';
-import {desjardinsPatientOption} from '../apps/worker/dist/desjardins-claim-form.js';
+import {desjardinsPatientOption,desjardinsProviderOption} from '../apps/worker/dist/desjardins-claim-form.js';
 import {desjardinsAliasFingerprint} from '../apps/worker/dist/desjardins-collector.js';
-const dossier={insurer:'desjardins',blocked:false,coordination:{importedStatementAvailable:true},fields:{patient:'Alice',provider:'Example Clinic',practitioner:'Morgan Example',invoiceNumber:'TEST-42',serviceDate:'2026-01-12',service:'Subsequent Physiotherapy Session (30 minutes)',originalAmount:120,otherInsurancePaid:95}};
-const receipt=`Example Clinic
+import {dossier,receipt} from './fixtures/desjardins-receipt.mjs';const receipt=`Example Clinic
 123 Fiction St, #101, Example City, BC, V1V 1V1
 Alice Example
 Receipt
@@ -41,4 +40,14 @@ test('confirmed patient name supports rotation without dropping or adding tokens
  assert.equal(desjardinsPatientOption(dossier,[{...option,label:option.label.replace(' MIDDLE','')}],aliases),null);
  assert.equal(desjardinsPatientOption(dossier,[option],{}),null);
  assert.equal(desjardinsPatientOption(dossier,[option],{...aliases,[desjardinsAliasFingerprint('ALICE MIDDLE EXAMPLE')]:'Other'}),null);
+});
+test('saved provider requires the verified receipt identity, unique name and matching visible specialty',()=>{
+ const identity=desjardinsReceiptEvidence(receipt,dossier),option={value:'provider-radio',label:'Morgan Example'};
+ const text='Other Person\nChiropraticien\nMorgan Example\nPhysiothérapeute';
+ assert.equal(desjardinsProviderOption(dossier,identity,[option],text),'provider-radio');
+ assert.equal(desjardinsProviderOption(dossier,null,[option],text),null);
+ assert.equal(desjardinsProviderOption(dossier,identity,[option,option],text),null);
+ assert.equal(desjardinsProviderOption(dossier,identity,[option],text.replace('Physiothérapeute','Massothérapeute')),null);
+ assert.equal(desjardinsProviderOption(dossier,identity,[option],text+'\nMorgan Example\nPhysiothérapeute'),null);
+ assert.equal(desjardinsProviderOption({...dossier,fields:{...dossier.fields,practitioner:'Other Person'}},identity,[option],text),null);
 });

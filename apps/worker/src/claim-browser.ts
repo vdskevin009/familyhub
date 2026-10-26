@@ -17,7 +17,7 @@ import { claimPortalDiagnostic } from "./claim-portal-diagnostic.js";
 import { resolveClaimReceiptCopies } from "./claim-receipt-copies.js";
 import { automaticClaimValues } from "./claim-autofill.js";
 import { isDesjardinsHistory, openDesjardinsClaimEntry } from "./desjardins-claim-entry.js";
-import { desjardinsRadioField, desjardinsRadioSuggestion, desjardinsPatientOption } from "./desjardins-claim-form.js";
+import { desjardinsRadioField, desjardinsRadioSuggestion, desjardinsPatientOption, desjardinsProviderOption } from "./desjardins-claim-form.js";
 import { loadMemberAliases } from "./desjardins-collector.js";
 import { readDesjardinsReceipt } from "./desjardins-receipt.js";
 import { advanceDesjardinsIntroduction, advanceDesjardinsRadio } from "./desjardins-claim-progress.js";
@@ -146,7 +146,7 @@ async function inspect(s: Session) {
   // A portal may open its form in a new tab. Never target another origin.
   const candidates = s.page.context().pages().filter(p => !p.isClosed() && allowed(p.url(), s.dossier.insurer));
   if (s.dossier.insurer === "desjardins") {
-    const claims = candidates.filter(p => /^\/AGEA-GBIM\/Reclamation\/[A-Za-z_]+\.aspx$/.test(new URL(p.url()).pathname));
+    const claims = candidates.filter(p => /^\/AGEA-GBIM\/Reclamation\/(?:[A-Za-z_]+\/)*[A-Za-z_]+\.aspx$/.test(new URL(p.url()).pathname));
     if (claims.length > 1) { s.fields.clear(); s.revision = ""; return { status: "navigate", fields: [], revision: "", submitAllowed: false, answerWarning: "Several Desjardins claim tabs are open. No tab was selected for preparation." }; }
     if (claims.length === 1) s.page = claims[0];
     else if (candidates.length === 1) s.page = candidates[0];
@@ -256,6 +256,10 @@ async function inspect(s: Session) {
         if (definition.kind === "patient") {
           field.suggested = desjardinsPatientOption(s.dossier, options, await loadMemberAliases().catch(() => ({})));
           if (field.suggested) { field.suggestionSource = "confirmed-choice"; field.suggestionReason = "Exact previously confirmed full beneficiary name, preserving every name token."; }
+        }
+        if (definition.kind === "practitioner") {
+          field.suggested = desjardinsProviderOption(s.dossier, s.receiptIdentity, options, await s.page.locator("main").innerText());
+          field.suggestionReason = "Unique saved practitioner name and physiotherapy specialty match the original receipt. The printed licence is source evidence, not registry verification.";
         }
         s.fields.set(field.key, { locator: choices.first(), providers: choices, field, signature: JSON.stringify(metadata), initialValue: "" });
       }
