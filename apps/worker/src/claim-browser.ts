@@ -451,9 +451,19 @@ export async function fillClaimStep(id: unknown, revision: unknown, values: unkn
       if (target.providers) {
         const now = await target.providers.evaluateAll((els: HTMLInputElement[]) => els.map(el => ({ id: el.id, name: el.name, label: Array.from(el.labels || []).map(l => l.textContent?.trim()).filter(Boolean).join(" "), checked: el.checked })));
         if (JSON.stringify(now) !== target.signature || s.page.url() !== s.inspectedUrl || !allowed(s.page.url(), s.dossier.insurer)) throw new Error("Provider choices changed. Read the form again.");
-        const choice = s.page.locator(`[id="${value}"]`);
+        const choice = s.page.locator(`[id=${JSON.stringify(value)}]`);
         if (!await choice.isVisible() || !await choice.isEnabled()) throw new Error("The selected provider is unavailable.");
-        await choice.check(); filled++; markFilled(target);
+        if (s.dossier.insurer === "desjardins") {
+          // DSD radios can cover the native input with their visible label.
+          // Click only its unique associated label, never force a hidden input.
+          const direct = s.page.locator(`label[for=${JSON.stringify(value)}]`).filter({visible:true});
+          const enclosing = choice.locator("xpath=ancestor::label[1]").filter({visible:true});
+          const label = await direct.count() === 1 ? direct : await enclosing.count() === 1 ? enclosing : null;
+          if (label) await label.click({timeout:7000}); else await choice.check({timeout:7000});
+          await choice.waitFor({state:"visible",timeout:3000});
+          if (!await choice.isChecked()) throw new Error("The selected Desjardins choice was not checked.");
+        } else await choice.check();
+        filled++; markFilled(target);
         return await finish("The selected choice may update the form. Read its fields again.");
       }
       // Refuse to follow postbacks/navigation with stale form locators.
