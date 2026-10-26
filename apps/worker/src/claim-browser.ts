@@ -32,7 +32,7 @@ import { desjardinsDetailsPath, desjardinsDetailText, desjardinsDetailSuggestion
 import { confirmedGovernmentReimbursement } from "./claim-coordination-answers.js";
 import {desjardinsSummaryPath,desjardinsReviewPath,openDesjardinsSummaryDetails,readDesjardinsExpenseSummary,advanceDesjardinsSummary,readDesjardinsFinalReview} from "./desjardins-claim-summary.js";
 import { desjardinsSessionExpired } from "./desjardins-history-reader.js";
-import { restartableDesjardinsExpiry } from "./desjardins-session-expiry.js";
+import { currentDesjardinsPage, restartableDesjardinsExpiry } from "./desjardins-session-expiry.js";
 import { isBlueCrossClaimKindPage, openBlueCrossHealthcareClaim } from "./bluecross-claim-kind.js";
 import { blueCrossReceiptFile, blueCrossReceiptMatches, openBlueCrossReceiptUpload, blueCrossReceiptAlreadyListed, blueCrossReceiptUploadEvidence, blueCrossReceiptUploadAvailable } from "./bluecross-claim-upload.js";
 
@@ -728,6 +728,7 @@ async function prepareStep(id: unknown,
       && await restartableDesjardinsExpiry(s.page)) {
       s.loginRefreshAttempted = true;
       s.authReason = await (s.authenticate || loginForClaim)(s.page, s.dossier.insurer);
+      s.page = currentDesjardinsPage(s.page);
       if (!s.authReason && isDesjardinsHistory(s.page.url()) && (await authenticatedClaimPages(s.page, "desjardins")).length === 1) s.claimEntryAttempted = false;
       step = await inspectClaimStep(id);
     }

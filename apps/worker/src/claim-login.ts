@@ -9,16 +9,19 @@ import { desjardinsHistoryReady } from "./desjardins-navigation.js";
 import { desjardinsRadioField } from "./desjardins-claim-form.js";
 import { desjardinsAuthCookies } from "./desjardins-collector.js";
 import { desjardinsSessionExpired } from "./desjardins-history-reader.js";
-import { reopenExpiredDesjardinsSession } from "./desjardins-session-expiry.js";
+import { currentDesjardinsPage, reopenExpiredDesjardinsSession } from "./desjardins-session-expiry.js";
 
 /** Uses the same guarded DPAPI login as collection, under the caller's portal lock. */
 export async function loginForClaim(page: Page, insurer: "blue-cross" | "desjardins", recovery?: LoginRecoveryRequest, attempt: typeof tryPortalLogin = tryPortalLogin): Promise<LoginReason | undefined> {
   let expiryEntryAttempted = false;
   const ready = async () => {
-    if (insurer === "desjardins") await reopenExpiredDesjardinsSession(page, () => {
+    if (insurer === "desjardins") {
+      const fresh = await reopenExpiredDesjardinsSession(page, () => {
       if (expiryEntryAttempted) return false;
       expiryEntryAttempted = true; return true;
-    });
+      });
+      if (fresh) page = fresh;
+    }
     if ((await authenticatedClaimPages(page, insurer)).length === 1) return true;
     if (insurer === "desjardins") {
       const continuation = await continueDesjardinsSignIn(page);
@@ -26,7 +29,7 @@ export async function loginForClaim(page: Page, insurer: "blue-cross" | "desjard
     }
     return (await authenticatedClaimPages(page, insurer)).length === 1;
   };
-  const reason = await attempt(page, insurer === "blue-cross" ? "bluecross" : "desjardins", ready, undefined, recovery);
+  const reason = await attempt(page, insurer === "blue-cross" ? "bluecross" : "desjardins", ready, undefined, recovery, () => page);
   if (!reason && insurer === "desjardins") {
     const pages = await authenticatedClaimPages(page, insurer);
     if (pages.length === 1) await preserveDesjardinsClaimSession(pages[0]);
@@ -36,6 +39,7 @@ export async function loginForClaim(page: Page, insurer: "blue-cross" | "desjard
 
 /** Login can open a new tab; require unique visible authenticated evidence in this context. */
 export async function authenticatedClaimPages(page: Page, insurer: "blue-cross" | "desjardins") {
+  if (insurer === "desjardins") page = currentDesjardinsPage(page);
   const ready: Page[] = [];
   for (const candidate of page.context().pages().filter(p => !p.isClosed())) {
     let url: URL;
