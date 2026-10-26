@@ -9,6 +9,7 @@ export const claimPortals = {
 } as const;
 export const claimPreparationPortals = {
   ...claimPortals,
+  desjardins: "https://www.agea-gbim.dsf-dfs.com/AGEA-GBIM/Rclmtn/RclmtnTrt/HistoriqueReclamation_ClaimHistory.aspx",
   "blue-cross": "https://service.pac.bluecross.ca/member/"
 } as const;
 const clean = (value = "") => value.normalize("NFKC").toLowerCase().replace(/\s+/g, " ").trim();

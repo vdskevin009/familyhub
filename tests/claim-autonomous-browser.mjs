@@ -5,7 +5,7 @@ import { mkdtemp, rm, access } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 const directory=await mkdtemp(join(tmpdir(),'familyhub-auto-claim-'));process.env.FAMILYHUB_WORKER_DATA=directory;
-const {openClaimBrowser,prepareCurrentClaimStep,verifyClaimStep,closeClaimBrowser}=await import('../apps/worker/dist/claim-browser.js');
+const {openClaimBrowser,prepareCurrentClaimStep,verifyClaimStep,closeClaimBrowser,claimSessionExpense}=await import('../apps/worker/dist/claim-browser.js');
 const {acquirePortalLock}=await import('../apps/worker/dist/portal-login.js');
 const {confirmedInvoiceIllness,confirmInvoiceIllness}=await import('../apps/worker/dist/claim-invoice-answers.js');
 const dossier={expenseId:'synthetic',insurer:'blue-cross',portalUrl:'https://service.pac.bluecross.ca/ACESWeb/Pages/Claims/eClaim.aspx',blocked:false,reviewableWarnings:[],fields:{patient:null,provider:'Synthetic Clinic',service:'Physiotherapy',originalAmount:100,otherInsurance:'Yes',otherInsurancePaid:0},attachments:[{documentId:'synthetic',attachmentId:'pdf',name:'synthetic.pdf'}]};
@@ -61,10 +61,21 @@ try{
  await closeClaimBrowser(session);session=undefined;
  // Multiple source PDFs must abstain, without losing the rest of preparation.
  const again=await openClaimBrowser({...dossier,attachments:[...dossier.attachments,{documentId:'copy',attachmentId:'pdf',name:'copy.pdf'}]},false,false,launch,true);session=again.sessionId;
- const multi=await prepare();assert.equal(multi.verification.attachment,null);assert.equal(uploads,1);
+ const multi=await prepareCurrentClaimStep(session,async id=>({name:id==='copy'?'copy.pdf':'synthetic.pdf',bytes:Buffer.from('%PDF-'+id)}));assert.equal(multi.verification.attachment,null);assert.equal(uploads,1);
+ // Identical forwarded/original copies are one choice; source freshness still sees both.
+ await closeClaimBrowser(session);session=undefined;
+ const duplicateDossier={...dossier,expenseId:'identical-copy-test',attachments:[{documentId:'original',attachmentId:'one',name:'synthetic.pdf'},{documentId:'forward',attachmentId:'two',name:'synthetic.pdf'}]};
+ const duplicate=await openClaimBrowser(duplicateDossier,false,false,launch,true);session=duplicate.sessionId;
+ const copyLoader=async()=>({name:'synthetic.pdf',bytes:Buffer.from('%PDF-identical-copies')});
+ const resolved=await prepareCurrentClaimStep(session,copyLoader,()=>assert.deepEqual(claimSessionExpense(session).attachments,duplicateDossier.attachments));
+ assert.equal(resolved.verification.attachment.status,'verified');
+ assert.equal(await page.evaluate(()=>window.uploads),1);
+ assert.deepEqual(claimSessionExpense(session).attachments,duplicateDossier.attachments);
+ await prepareCurrentClaimStep(session,copyLoader);
+ assert.equal(await page.evaluate(()=>window.uploads),1,'Identical-copy resolution must not bypass upload no-replay');
  // A final review never invokes any field fill or upload.
  await page.locator('h1').evaluate(el=>el.textContent='Review your claim');
  const review=await prepare();assert.equal(review.step.status,'review');assert.equal(uploads,1);
  assert.equal(await page.evaluate(()=>!!window.sent||!!window.next),false);
- console.log(JSON.stringify({passed:4,coverage:['automatic-text-select-dependent-zero','unique-upload-readback-no-replay','unknown-diagnosis','cumulative-mismatch','shared-login-lock','session-reuse-no-credentials','ambiguous-documents','explanation-upload-is-not-receipt','final-review-no-submit'],interceptedRequests:contacts,insurerContact:false}));
+ console.log(JSON.stringify({passed:5,coverage:['automatic-text-select-dependent-zero','unique-upload-readback-no-replay','unknown-diagnosis','cumulative-mismatch','shared-login-lock','session-reuse-no-credentials','ambiguous-documents','byte-identical-copies-source-freshness-no-replay','explanation-upload-is-not-receipt','final-review-no-submit'],interceptedRequests:contacts,insurerContact:false}));
 }finally{if(session)await closeClaimBrowser(session);await rm(directory,{recursive:true,force:true});}

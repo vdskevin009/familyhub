@@ -1,4 +1,4 @@
-export type ApprovedField = { key: string; label: string; kind: string | null; type: string; value: string; optionLabel?: string };
+export type ApprovedField = { key: string; label: string; kind: string | null; type: string; value: string; optionLabel?: string; format?: "decimal-comma" };
 export type ObservedField = { value: string; signatureMatches: boolean; selectedLabel?: string };
 export type CheckedField = ApprovedField & { actual: string | null; status: "match" | "mismatch" | "unreadable" | "not-filled" };
 function amount(value: string): number | null {
@@ -9,7 +9,8 @@ export function checkedField(approved: ApprovedField, observed: ObservedField | 
   if (!filled) return { ...approved, actual: observed?.value ?? null, status: "not-filled" };
   if (!observed || !observed.signatureMatches) return { ...approved, actual: null, status: "unreadable" };
   const monetary = ["originalAmount", "otherInsurancePaid"].includes(approved.kind || "");
-  const equal = monetary ? amount(approved.value) != null && amount(approved.value) === amount(observed.value) : approved.value === observed.value;
+  const decimal = (s:string) => approved.format === "decimal-comma" && /^\d+(?:,\d{1,2})?$/.test(s) ? s.replace(",", ".") : s;
+  const equal = monetary ? amount(decimal(approved.value)) != null && amount(decimal(approved.value)) === amount(decimal(observed.value)) : approved.value === observed.value;
   const selectedEqual = !["select", "provider", "radio"].includes(approved.type) || !!approved.optionLabel && approved.optionLabel === observed.selectedLabel;
   return { ...approved, actual: observed.value, status: equal && selectedEqual ? "match" : "mismatch" };
 }

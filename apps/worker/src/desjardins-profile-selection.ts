@@ -42,6 +42,11 @@ export async function claimDesjardinsProfileSelection(url: string): Promise<bool
 /** Ordinary post-password profile selection only. No token/API access, credential submit, consent or verification code. */
 export async function continueDesjardinsProfileSelection(page: Page, preferred: () => Promise<string | undefined>, claim = claimDesjardinsProfileSelection): Promise<boolean> {
   if (!isDesjardinsProfileSelection(page.url()) || attempted.has(page)) return false;
+  const diagnose = async (stage: string, optionCount?: number, selected?: boolean) => {
+    await atomicJson(join(dataDirectory, "desjardins", "profile-selection-diagnostic.json"),
+      { version: 1, observedAt: new Date().toISOString(), stage, optionCount, selected }).catch(() => {});
+  };
+  await diagnose("observed");
   if (classifyLoginScreen(await page.locator("body").innerText().catch(() => ""))) return false;
   const form = page.locator('dsd-form[aria-label="profil-select"]');
   if (await form.count() !== 1 || !await form.isVisible()) return false;
@@ -49,16 +54,29 @@ export async function continueDesjardinsProfileSelection(page: Page, preferred: 
   if (!tiles.length) return false;
   const labels = await Promise.all(tiles.map(tile => tile.innerText()));
   const chosen = uniqueDesjardinsProfile(labels, await preferred());
-  if (chosen == null || !await tiles[chosen].isVisible() || !await tiles[chosen].isEnabled()) return false;
+  if (chosen == null || !await tiles[chosen].isVisible() || !await tiles[chosen].isEnabled()) { await diagnose("choice-unavailable", labels.length); return false; }
   const submit = form.locator('dsd-button[data-testid="primary-button"][type="submit"]');
   if (await submit.count() !== 1 || !await submit.isVisible() || !await submit.isEnabled() || !isDesjardinsProfileSelection(page.url())) return false;
-  if (!await claim(page.url())) return false;
+  if (!await claim(page.url())) { await diagnose("transaction-already-consumed", labels.length); return false; }
   attempted.add(page); // An uncertain selection/submit must never be replayed.
+  await diagnose("selection-reserved", labels.length);
   await tiles[chosen].click({ timeout: 5000 });
-  const checked = await tiles[chosen].evaluate(element => (element as HTMLElement & { checked?: boolean }).checked === true
-    || element.getAttribute("aria-checked") === "true" || !!element.querySelector('input[type="radio"]:checked'));
+  // Custom elements can render their selected native radio in a shadow root,
+  // or reflect the checked property asynchronously after the click.
+  let checked = false;
+  for (let read = 0; read < 20 && isDesjardinsProfileSelection(page.url()); read++) {
+    checked = await tiles[chosen].evaluate(element => (element as HTMLElement & { checked?: boolean }).checked === true
+      || element.getAttribute("aria-checked") === "true" || !!element.querySelector('input[type="radio"]:checked')
+      || !!element.shadowRoot?.querySelector('input[type="radio"]:checked'));
+    if (checked) break;
+    await page.waitForTimeout(100);
+  }
+  await diagnose(checked ? "selection-confirmed" : "selection-unconfirmed", labels.length, checked);
   if (!checked || !isDesjardinsProfileSelection(page.url())) return false;
+  await diagnose("continuation-starting", labels.length, checked);
   await submit.click({ timeout: 10000 });
   await page.waitForURL(url => url.origin === portalOrigin, { timeout: 10000 }).catch(() => {});
-  return new URL(page.url()).origin === portalOrigin;
+  const arrived = new URL(page.url()).origin === portalOrigin;
+  await diagnose(arrived ? "portal-reached" : "continuation-unconfirmed", labels.length, checked);
+  return arrived;
 }

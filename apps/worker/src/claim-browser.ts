@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { chromium, type Browser, type Page, type Locator } from "playwright";
 import { join } from "node:path";
-import { dataDirectory, loadPrivate } from "./private-store.js";
+import { atomicJson, dataDirectory, loadPrivate } from "./private-store.js";
 import type { ClaimPreparation } from "./claim-preparation.js";
 import { exactServiceOption } from "./claim-preparation.js";
 import { blueCrossComboFields, blueCrossSuggestion, blueCrossTextField } from "./bluecross-claim-form.js";
@@ -12,23 +12,38 @@ import { codexServiceRunner, validatedServiceProposals, type ServiceRunner } fro
 import { checkedField, uploadEvidence, type ApprovedField, type ObservedField } from "./claim-field-verification.js";
 import { acquirePortalLock, classifyLoginScreen, type LoginReason } from "./portal-login.js";
 import { loginForClaim, authenticatedClaimPages, preserveBlueCrossClaimSession, preserveDesjardinsClaimSession } from "./claim-login.js";
+import type { LoginRecoveryRequest } from "./portal-login-recovery.js";
+import { claimPortalDiagnostic } from "./claim-portal-diagnostic.js";
+import { resolveClaimReceiptCopies } from "./claim-receipt-copies.js";
 import { automaticClaimValues } from "./claim-autofill.js";
-import { desjardinsRadioField } from "./desjardins-claim-form.js";
+import { isDesjardinsHistory, openDesjardinsClaimEntry } from "./desjardins-claim-entry.js";
+import { desjardinsRadioField, desjardinsRadioSuggestion, desjardinsPatientOption, desjardinsProviderOption } from "./desjardins-claim-form.js";
+import { loadMemberAliases } from "./desjardins-collector.js";
+import { readDesjardinsReceipt } from "./desjardins-receipt.js";
+import { advanceDesjardinsIntroduction, advanceDesjardinsRadio, advanceDesjardinsDetails } from "./desjardins-claim-progress.js";
 import { reserveClaimUpload, reserveClaimUploadRetry } from "./claim-upload-guard.js";
 import { confirmedInvoicePractitioner } from "./claim-practitioner-answers.js";
 import { confirmedInvoiceIllness } from "./claim-invoice-answers.js";
 import { blueCrossReceiptCheckbox, verifyDetailedReceipt, readReceiptPractitioner } from "./bluecross-receipt-checklist.js";
 import { receiptProviderOption, type ReceiptPractitioner } from "./split-paid-receipt.js";
 import { advanceBlueCrossDetails, advanceBlueCrossExpenses, readBlueCrossExpenseSummary } from "./bluecross-claim-progress.js";
-import { isBlueCrossClaimCausePage, openBlueCrossClaimCause } from "./bluecross-claim-cause.js";
+import { isBlueCrossClaimCausePage, openBlueCrossClaimCause, blueCrossClaimCauseAnswer } from "./bluecross-claim-cause.js";
+import { desjardinsDetailsPath, desjardinsDetailText, desjardinsDetailSuggestion, desjardinsDetailRadios, desjardinsDetailRadioSuggestion } from "./desjardins-claim-details.js";
+import { confirmedGovernmentReimbursement } from "./claim-coordination-answers.js";
+import {desjardinsSummaryPath,desjardinsReviewPath,openDesjardinsSummaryDetails,readDesjardinsExpenseSummary,advanceDesjardinsSummary,readDesjardinsFinalReview} from "./desjardins-claim-summary.js";
 import { isBlueCrossClaimKindPage, openBlueCrossHealthcareClaim } from "./bluecross-claim-kind.js";
 import { blueCrossReceiptFile, blueCrossReceiptMatches, openBlueCrossReceiptUpload, blueCrossReceiptAlreadyListed, blueCrossReceiptUploadEvidence, blueCrossReceiptUploadAvailable } from "./bluecross-claim-upload.js";
 
 export type Field = { key: string; label: string; type: string; options: { value: string; label: string }[];
-  suggested: string | null; kind: string | null; suggestionSource?: "confirmed-choice" | "confirmed-answer" | "invoice" | "codex"; suggestionReason?: string; autoAttachment?: boolean; optional?: boolean };
+  suggested: string | null; kind: string | null; suggestionSource?: "confirmed-choice" | "confirmed-answer" | "invoice" | "codex"; suggestionReason?: string; autoAttachment?: boolean; optional?: boolean; format?: "decimal-comma" };
 type Target = { locator: Locator; field: Field; signature: string; initialValue: string; dropdown?: Locator; providers?: Locator };
 type ApprovedSnapshot = { revision: string; url: string; entries: { target: Target; approved: ApprovedField; filled: boolean }[]; attachment?: { name: string; selected: boolean; blocked?: boolean } };
 type Session = { id: string; browser: Browser; page: Page; dossier: ClaimPreparation; createdAt: number;
+  sourceDossier?: ClaimPreparation;
+  desjardinsNextAttempts?: Set<string>;
+  desjardinsSummaryExpanded?: boolean;
+  desjardinsReviewExpanded?: boolean;
+  desjardinsExpenseReadback?: NonNullable<Awaited<ReturnType<typeof readDesjardinsExpenseSummary>>>;
   receiptIdentity?: ReceiptPractitioner | null;
   fields: Map<string, Target>; attemptedAttachments: Set<string>; busy: boolean; preparing?: boolean; closing?: boolean; revision: string; inspectedUrl: string; approved?: ApprovedSnapshot;
   authenticate?: typeof loginForClaim; autonomous?: boolean; loginRefreshAttempted?: boolean; authPersistenceAttempted?: boolean; authReason?: LoginReason; release?: () => Promise<void>; claimEntryAttempted?: boolean; claimKindAttempted?: boolean; claimCauseAttempted?: boolean; detailsNextAttempted?: boolean; detailsReadBackVerified?: boolean; detailsNextVerified?: boolean; summaryNextAttempted?: boolean; receiptRetryUsed?: boolean; authorizedRetryHash?: string; uploadEntryAttempted?: boolean };
@@ -44,14 +59,14 @@ function current(id: unknown): Session {
   return session;
 }
 export async function openClaimBrowser(dossier: ClaimPreparation, historyReviewed: unknown, warningsReviewed: unknown = false,
-  launch?: () => Promise<Browser>, autonomous = false, authenticate: typeof loginForClaim = loginForClaim) {
+  launch?: () => Promise<Browser>, autonomous = false, authenticate: typeof loginForClaim = loginForClaim, recovery?: LoginRecoveryRequest) {
   if (opening) throw new Error("A preparation window is already opening. Wait before resuming it.");
   opening = true;
-  try { return await openBrowser(dossier, historyReviewed, warningsReviewed, launch, autonomous, authenticate); }
+  try { return await openBrowser(dossier, historyReviewed, warningsReviewed, launch, autonomous, authenticate, recovery); }
   finally { opening = false; }
 }
 async function openBrowser(dossier: ClaimPreparation, historyReviewed: unknown, warningsReviewed: unknown,
-  launch: () => Promise<Browser> = () => chromium.launch({ headless: false, channel: process.platform === "win32" ? dossier.insurer === "desjardins" ? "msedge" : "chrome" : undefined }), autonomous = false, authenticate: typeof loginForClaim = loginForClaim) {
+  launch: () => Promise<Browser> = () => chromium.launch({ headless: false, channel: process.platform === "win32" ? dossier.insurer === "desjardins" ? "msedge" : "chrome" : undefined }), autonomous = false, authenticate: typeof loginForClaim = loginForClaim, recovery?: LoginRecoveryRequest) {
   if (dossier.blocked) throw new Error(dossier.coordination?.message || "Resolve the recorded or possible duplicate and source conflicts before preparing a claim.");
   if (!autonomous && historyReviewed !== true) throw new Error("Review the insurer's current history for this invoice before opening preparation.");
   if (!autonomous && dossier.reviewableWarnings.length && warningsReviewed !== true) throw new Error("Review the original PDF and confirm the shown gross expense and other-insurer payment before preparing this claim.");
@@ -68,11 +83,15 @@ async function openBrowser(dossier: ClaimPreparation, historyReviewed: unknown, 
   try { browser = await launch(); } catch { await release(); throw new Error("The insurer preparation browser could not open."); }
   try {
     const context = await browser.newContext();
+    let restoredCookieCount = 0, restoredSessionStorage = false, restoreStatus = "unavailable";
     // Reuse only previously authorized insurer cookies; no new credentials are saved.
     try {
       const auth = await loadPrivate<{ cookies?: import("playwright").Cookie[]; session?: { origin: string; value?: string; values?: Record<string, string> } }>(join(dataDirectory, dossier.insurer === "blue-cross" ? "bluecross" : "desjardins", "auth-state.dpapi"));
       const domains = dossier.insurer === "blue-cross" ? /(?:^|\.)pac\.bluecross\.ca$/i : /(?:^|\.)(?:dsf-dfs\.com|desjardins\.com)$/i;
-      if (auth.cookies) await context.addCookies(auth.cookies.filter(c => domains.test(c.domain.replace(/^\./, ""))));
+      if (auth.cookies) {
+        const cookies = auth.cookies.filter(c => domains.test(c.domain.replace(/^\./, "")) && (c.expires < 0 || c.expires > Date.now() / 1000));
+        await context.addCookies(cookies); restoredCookieCount = cookies.length;
+      }
       if (dossier.insurer === "blue-cross") {
         const marker = blueCrossSessionMarker(auth.session?.origin || "", auth.session?.value);
         if (marker) await context.addInitScript(value => {
@@ -85,11 +104,14 @@ async function openBrowser(dossier: ClaimPreparation, historyReviewed: unknown, 
           for (const [key, value] of Object.entries(values))
             if (typeof value === "string" && !sessionStorage.getItem(key)) sessionStorage.setItem(key, value);
         }, auth.session.values);
+        restoredSessionStorage = true;
       }
+      restoreStatus = "restored";
     } catch { /* A normal visible login remains available. */ }
+    if (dossier.insurer === "desjardins") await atomicJson(join(dataDirectory, "desjardins", "claim-session-restore-diagnostic.json"), { version: 1, observedAt: new Date().toISOString(), status: restoreStatus, restoredCookieCount, restoredSessionStorage }).catch(() => {});
     let page = await context.newPage();
     await page.goto(dossier.preparationUrl || dossier.portalUrl, { waitUntil: "domcontentloaded", timeout: 45_000 });
-    const authReason = autonomous ? await authenticate(page, dossier.insurer) : undefined;
+    const authReason = autonomous ? await authenticate(page, dossier.insurer, recovery) : undefined;
     if (autonomous) {
       const authenticated = await authenticatedClaimPages(page, dossier.insurer);
       if (authenticated.length > 1) throw new Error("Several authenticated insurer tabs are open.");
@@ -129,7 +151,12 @@ export async function inspectClaimStep(id: unknown) {
 async function inspect(s: Session) {
   // A portal may open its form in a new tab. Never target another origin.
   const candidates = s.page.context().pages().filter(p => !p.isClosed() && allowed(p.url(), s.dossier.insurer));
-  if (candidates.length) s.page = candidates[candidates.length - 1];
+  if (s.dossier.insurer === "desjardins") {
+    const claims = candidates.filter(p => /^\/AGEA-GBIM\/Reclamation\/(?:[A-Za-z_]+\/)*[A-Za-z_]+\.aspx$/.test(new URL(p.url()).pathname));
+    if (claims.length > 1) { s.fields.clear(); s.revision = ""; return { status: "inspect-required", fields: [], revision: "", submitAllowed: false, answerWarning: "Several Desjardins claim tabs are open. No tab was selected for preparation." }; }
+    if (claims.length === 1) s.page = claims[0];
+    else if (candidates.length === 1) s.page = candidates[0];
+  } else if (candidates.length) s.page = candidates[candidates.length - 1];
   s.fields.clear(); s.revision = "";
   if (!allowed(s.page.url(), s.dossier.insurer) || await s.page.locator('input[type="password"]').isVisible().catch(() => false)) return { status: s.authReason === "human-required" ? "human-required" : "login-required", authReason: s.authReason, fields: [], revision: "", submitAllowed: false };
   const body = (await s.page.locator("body").innerText()).slice(0, 30_000);
@@ -171,6 +198,19 @@ async function inspect(s: Session) {
       if (s.page !== previousPage || s.page.url() !== previousUrl) return inspect(s);
     }
     return { status: "navigate", fields: [], revision: "", submitAllowed: false, portalStage: "member-home", answerWarning: "The signed-in member page did not open a unique supported claim entry. The invoice is unchanged; inspect the insurer window before resuming." };
+  }
+  if (s.autonomous && s.dossier.insurer === "desjardins" && isDesjardinsHistory(s.page.url())) {
+    if (!s.claimEntryAttempted) {
+      const opened = await openDesjardinsClaimEntry(s.page, s.dossier, () => { s.claimEntryAttempted = true; }).catch(() => false);
+      if (opened) return inspect(s);
+    }
+    return { status: "navigate", fields: [], revision: "", submitAllowed: false, portalStage: "member-home", answerWarning: "The authenticated history did not expose a unique supported online claim entry. No claim details were sent." };
+  }
+  if(s.dossier.insurer==="desjardins"){
+    const path=new URL(s.page.url()).pathname,isReview=path===desjardinsReviewPath;
+    if((path===desjardinsSummaryPath&&!s.desjardinsSummaryExpanded)||(isReview&&!s.desjardinsReviewExpanded)){
+      if(await openDesjardinsSummaryDetails(s.page,s.dossier,()=>{if(isReview)s.desjardinsReviewExpanded=true;else s.desjardinsSummaryExpanded=true;}))return inspect(s);
+    }
   }
   const completed = /your claim has been (?:processed|submitted)|réclamation a été (?:transmise|soumise)/i.test(body);
   const atReview = completed || /review (?:your )?claim|claim summary|I confirm all the information above is correct and I have read and agree|vérifi(?:ez|cation).*réclamation|résumé de (?:la|votre) réclamation/i.test(body);
@@ -218,13 +258,33 @@ async function inspect(s: Session) {
     }
   }
   if (s.dossier.insurer === "desjardins" && !atReview) {
-    const definition = desjardinsRadioField(new URL(s.page.url()).pathname);
-    if (definition) {
+    const path = new URL(s.page.url()).pathname, basic = desjardinsRadioField(path);
+    const definitions = basic ? [basic] : desjardinsDetailRadios(path);
+    for (const definition of definitions) {
       const choices = s.page.locator(`main input[type="radio"][name="${definition.name}"]`).filter({ visible: true });
       const metadata = await choices.evaluateAll((els: HTMLInputElement[]) => els.map(el => ({ id: el.id, name: el.name, label: Array.from(el.labels || []).map(l => l.textContent?.trim()).filter(Boolean).join(" "), checked: el.checked })));
       if (metadata.length && !metadata.some(o => o.checked)) {
         const options = metadata.filter(o => o.id && o.label).map(o => ({ value: o.id, label: o.label }));
-        const field: Field = { key: randomUUID(), label: definition.label, kind: definition.kind, type: "radio", options, suggested: null };
+        const field: Field = { key: randomUUID(), label: definition.label, kind: definition.kind, type: "radio", options, suggested: desjardinsRadioSuggestion(definition.kind, s.dossier, options) };
+        if (definition.kind === "patient") {
+          field.suggested = desjardinsPatientOption(s.dossier, options, await loadMemberAliases().catch(() => ({})));
+          if (field.suggested) { field.suggestionSource = "confirmed-choice"; field.suggestionReason = "Exact previously confirmed full beneficiary name, preserving every name token."; }
+        }
+        if (definition.kind === "practitioner") {
+          field.suggested = desjardinsProviderOption(s.dossier, s.receiptIdentity, options, await s.page.locator("main").innerText());
+          field.suggestionReason = "Unique saved practitioner name and physiotherapy specialty match the original receipt. The printed licence is source evidence, not registry verification.";
+        }
+        if (["accident","otherInsurance","reimbursementMethod","governmentReimbursement","privateInsuranceClaim"].includes(definition.kind)) {
+          const cause = await blueCrossClaimCauseAnswer().catch(() => null);
+          field.suggested = desjardinsDetailRadioSuggestion(definition.kind,s.dossier,options,cause?.value === "unrelated",!!s.receiptIdentity);
+          if (definition.kind === "accident" && field.suggested) { field.suggestionSource="confirmed-answer"; field.suggestionReason="Your previously confirmed all-invoice answer excludes any accident. Reused for the same factual question."; }
+          if (definition.kind === "reimbursementMethod" && field.suggested) field.suggestionReason="The source receipt proves the patient paid the residual; reimbursement is prepared to the insured's existing direct-deposit account.";
+          if (definition.kind === "governmentReimbursement") {
+            const answer=await confirmedGovernmentReimbursement(s.dossier).catch(()=>null);
+            const matches=answer?.value?options.filter(o=>o.label.replace(/^\s*\*/,"").replace(/\(facultatif\)$/,"").trim()===(answer.value==="no"?"Non":"Oui")):[];
+            if(matches.length===1){field.suggested=matches[0].value;field.suggestionSource="confirmed-answer";field.suggestionReason=answer?.source==="physiotherapy-default"?"Your confirmed physiotherapy default. Verify it for this claim.":"Your confirmed answer for this invoice.";}
+          }
+        }
         s.fields.set(field.key, { locator: choices.first(), providers: choices, field, signature: JSON.stringify(metadata), initialValue: "" });
       }
     }
@@ -255,7 +315,8 @@ async function inspect(s: Session) {
     const stableLocator = byId && await byId.count() === 1 ? byId : locator;
     if (s.dossier.insurer === "blue-cross" && blueCrossComboFields.some(f => id.endsWith(`_${f.suffix}`))) continue;
     const blueCross = s.dossier.insurer === "blue-cross" && /\/Claims\/eClaim\.aspx$/i.test(new URL(s.page.url()).pathname) ? blueCrossTextField(id) : null;
-    const kind = blueCross?.kind || fieldKind(metadata.label);
+    const desjardins = s.dossier.insurer === "desjardins" ? desjardinsDetailText(new URL(s.page.url()).pathname,metadata.label,await locator.getAttribute("name") || "",metadata.type) : null;
+    const kind = desjardins?.kind || blueCross?.kind || fieldKind(metadata.label);
     const source = kind ? s.dossier.fields[kind as keyof typeof s.dossier.fields] : null;
     let suggested = source == null ? null : String(source);
     if (blueCross) suggested = blueCrossSuggestion(blueCross.kind, s.dossier);
@@ -263,10 +324,11 @@ async function inspect(s: Session) {
       const exact = metadata.options.filter(o => o.value && o.label.toLowerCase() === suggested?.toLowerCase());
       suggested = kind === "service" ? exactServiceOption(s.dossier.fields.service, metadata.options) : exact.length === 1 ? exact[0].value : null;
     }
+    if (desjardins) suggested = desjardinsDetailSuggestion(kind!,s.dossier,metadata.options,await s.page.locator("main").innerText());
     // Date text masks vary by portal. Only native date fields get an automatic date.
-    if (kind === "serviceDate" && metadata.type !== "date" && !blueCross) suggested = null;
+    if (kind === "serviceDate" && metadata.type !== "date" && !blueCross && !desjardins) suggested = null;
     if (metadata.type === "file") suggested = null;
-    const field: Field = { key: randomUUID(), label: blueCross?.label || metadata.label || (metadata.type === "file" ? "Supporting document" : "Unlabelled field — fill in the portal"), type: metadata.type, options: metadata.options, kind, suggested };
+    const field: Field = { key: randomUUID(), label: desjardins?.label || blueCross?.label || metadata.label || (metadata.type === "file" ? "Supporting document" : "Unlabelled field — fill in the portal"), type: metadata.type, options: metadata.options, kind, suggested, ...(desjardins && "format" in desjardins ? {format:desjardins.format} : {}) };
     if (metadata.type === "file") field.autoAttachment = /invoice|receipt|supporting document|facture|reçu|pièce justificative/i.test(metadata.label)
       && !/explanation|benefit statement|other insurer|décompte|autre assureur|coordination/i.test(metadata.label);
     if (metadata.type === "file" && receiptFile && await receiptFile.getAttribute("id") === id) {
@@ -353,7 +415,7 @@ export async function fillClaimStep(id: unknown, revision: unknown, values: unkn
     const approvedEntries = entries.filter(([,value]) => !!value).map(([key,value]) => {
       const target = s.fields.get(key)!;
       return { target, filled: false, approved: { key, label: target.field.label, kind: target.field.kind, type: target.field.type, value: value as string,
-        optionLabel: target.field.options.find(o => o.value === value)?.label } };
+        optionLabel: target.field.options.find(o => o.value === value)?.label, ...(target.field.format ? {format:target.field.format} : {}) } };
     });
     // Preserve the approved answers from earlier postbacks in this claim only.
     // Re-read every prior answer; a later fill must not erase an earlier mismatch.
@@ -405,9 +467,17 @@ export async function fillClaimStep(id: unknown, revision: unknown, values: unkn
       if (target.providers) {
         const now = await target.providers.evaluateAll((els: HTMLInputElement[]) => els.map(el => ({ id: el.id, name: el.name, label: Array.from(el.labels || []).map(l => l.textContent?.trim()).filter(Boolean).join(" "), checked: el.checked })));
         if (JSON.stringify(now) !== target.signature || s.page.url() !== s.inspectedUrl || !allowed(s.page.url(), s.dossier.insurer)) throw new Error("Provider choices changed. Read the form again.");
-        const choice = s.page.locator(`[id="${value}"]`);
+        const choice = s.page.locator(`[id=${JSON.stringify(value)}]`);
         if (!await choice.isVisible() || !await choice.isEnabled()) throw new Error("The selected provider is unavailable.");
-        await choice.check(); filled++; markFilled(target);
+        if (s.dossier.insurer === "desjardins" && new URL(s.page.url()).pathname === desjardinsDetailsPath) {
+          // DSD detail radios cover the native pointer target. Use its normal
+          // keyboard interaction; never force a click or set checked in script.
+          await choice.press("Space",{timeout:7000});
+          await choice.waitFor({state:"visible",timeout:3000});
+          for (let read=0;read<20&&!await choice.isChecked();read++) await s.page.waitForTimeout(100);
+          if (!await choice.isChecked()) throw new Error("The selected Desjardins choice was not checked.");
+        } else await choice.check({timeout:7000});
+        filled++; markFilled(target);
         return await finish("The selected choice may update the form. Read its fields again.");
       }
       // Refuse to follow postbacks/navigation with stale form locators.
@@ -424,7 +494,7 @@ export async function fillClaimStep(id: unknown, revision: unknown, values: unkn
         await option.click(); filled++; markFilled(target);
         return await finish("The selected option updates the Blue Cross form. Read its fields again to prepare the remaining details.");
       } else if (target.field.type === "select") await target.locator.selectOption(value as string);
-      else { await target.locator.fill(value as string); if (target.field.kind === "serviceDate") await target.locator.press("Tab"); }
+      else { await target.locator.fill(value as string); if (["serviceDate","durationMinutes"].includes(target.field.kind || "") || target.field.format === "decimal-comma") await target.locator.press("Tab"); }
       filled++;
       markFilled(target);
       if (target.field.type === "select") return await finish("The selected option may update the form. Read its fields again.");
@@ -484,8 +554,21 @@ export async function retryCurrentClaimReceipt(id: unknown, revision: unknown, r
   } finally { s.authorizedRetryHash = undefined; }
 }
 
-export function claimSessionExpense(id: unknown) { return current(id).dossier; }
+export function claimSessionExpense(id: unknown) { const s = current(id); return s.sourceDossier || s.dossier; }
 async function verifySnapshot(s: Session) {
+  if(s.dossier.insurer==="desjardins"&&new URL(s.page.url()).pathname===desjardinsReviewPath){
+    const government=await confirmedGovernmentReimbursement(s.dossier),cause=await blueCrossClaimCauseAnswer();
+    const final=await readDesjardinsFinalReview(s.page,s.dossier,government.value==="no"&&cause.value==="unrelated",!!s.receiptIdentity,await loadMemberAliases());
+    const ready=!!final?.summary.matches&&!!s.detailsReadBackVerified&&!!s.summaryNextAttempted&&!!s.desjardinsExpenseReadback?.matches
+      &&final.fileInputs===0&&!s.attemptedAttachments.size&&!s.approved?.attachment;
+    // Older PWAs treat any ready expenseSummary as proof of a receipt upload.
+    // Keep that legacy Blue Cross field empty for this new Desjardins result.
+    return {revision:s.revision,fields:[],attachment:null,receiptUploadAvailable:false,expenseSummary:null,desjardinsReview:final?.summary??null,
+      receiptCopiesEquivalent:!!s.sourceDossier&&s.dossier.attachments.length===1,
+      receiptRequirement:final?.fileInputs===0?"not-requested-before-confirmation" as const:"requested" as const,
+      finalConfirmationManual:true,preparedForReview:ready,readyForManualNext:false,
+      scope:"Read-back from Desjardins' final review, source evidence and your saved answers. No receipt upload is offered before confirmation on this screen. Coverage, current claim-history absence and submission are not verified."};
+  }
   if (!s.approved) throw new Error("There are no filled, approved answers to verify.");
   const validPage = s.page.url() === s.approved.url && allowed(s.page.url(), s.dossier.insurer);
   const fields = [];
@@ -543,10 +626,12 @@ async function verifySnapshot(s: Session) {
     } catch { /* An unreadable consent control cannot make the claim ready. */ }
   }
   return { revision: s.approved.revision, fields, attachment, receiptUploadAvailable, expenseSummary,
+    receiptCopiesEquivalent:!!s.sourceDossier&&s.dossier.attachments.length===1,
     preparedForReview: !!expenseSummary?.matches && !!s.detailsReadBackVerified && attachment?.status === "verified" && consentUnchecked,
     readyForManualNext: (fields.length > 0 || !!attachment) && fields.every(f => f.status === "match") && (!attachment || attachment.status === "verified"),
     scope: "Read-back against the values prepared from invoice evidence or your answers. This does not verify eligibility, coverage, current claim history or submission." };
 }
+function canVerify(s:Session){return !!s.approved||s.dossier.insurer==="desjardins"&&new URL(s.page.url()).pathname===desjardinsReviewPath;}
 export async function verifyClaimStep(id: unknown) {
   const s = current(id);
   if (s.busy) throw new Error("Wait for the current preparation action to finish.");
@@ -577,6 +662,11 @@ export async function forgetClaimServiceChoices(id: unknown) {
   return inspectClaimStep(id);
 }
 /** Paired discovery only exposes the worker-owned preparation, never a collector. */
+export async function diagnoseClaimWindow(id: unknown) {
+  const s = current(id);
+  if (s.busy || s.preparing || s.closing) throw new Error("Wait for the current preparation action to finish.");
+  return claimPortalDiagnostic(s.page);
+}
 export function claimWindowState() {
   return { sessionId: session?.id || null, insurer: session?.dossier.insurer || null,
     canClose: !!session && !opening && !session.busy && !session.preparing && !session.closing,
@@ -614,9 +704,17 @@ async function prepareStep(id: unknown,
   let verification: Awaited<ReturnType<typeof verifySnapshot>> | undefined;
   let warning: string | undefined;
   try {
+    if (!s.sourceDossier) {
+      const resolved = await resolveClaimReceiptCopies(s.dossier, loadAttachment);
+      if (resolved !== s.dossier) { s.sourceDossier = s.dossier; s.dossier = resolved; }
+    }
     if (s.receiptIdentity === undefined && s.dossier.insurer === "blue-cross" && /^RMT - Follow Up Massage /i.test(s.dossier.fields.service || "")) {
       const receipt = s.dossier.attachments.length === 1 ? s.dossier.attachments[0] : undefined;
       s.receiptIdentity = receipt ? await readReceiptPractitioner((await loadAttachment(receipt.documentId, receipt.attachmentId)).bytes, s.dossier).catch(() => null) : null;
+    }
+    if (s.receiptIdentity === undefined && s.dossier.insurer === "desjardins") {
+      const receipt = s.dossier.attachments.length === 1 ? s.dossier.attachments[0] : undefined;
+      s.receiptIdentity = receipt ? await readDesjardinsReceipt((await loadAttachment(receipt.documentId, receipt.attachmentId)).bytes, s.dossier).catch(() => null) : null;
     }
     step = await inspectClaimStep(id);
     if (step.status === "fields") s.detailsReadBackVerified = false;
@@ -630,15 +728,33 @@ async function prepareStep(id: unknown,
         && (await authenticatedClaimPages(s.page, s.dossier.insurer)).length === 1) s.claimEntryAttempted = false;
       step = await inspectClaimStep(id);
     }
-    verification = s.approved ? await verifySnapshot(s) : undefined;
-    for (let pass = 0; pass < 16 && ["fields", "review", "navigate"].includes(step.status); pass++) {
+    verification = canVerify(s) ? await verifySnapshot(s) : undefined;
+    for (let pass = 0; pass < 32 && ["fields", "review", "navigate"].includes(step.status); pass++) {
       assertFresh();
-      if (step.status === "navigate" && (s.detailsNextVerified || s.detailsReadBackVerified) && !s.summaryNextAttempted) {
+      if(s.dossier.insurer==="desjardins"&&new URL(s.page.url()).pathname===desjardinsSummaryPath&&s.detailsReadBackVerified&&!s.summaryNextAttempted){
+        const government=await confirmedGovernmentReimbursement(s.dossier),cause=await blueCrossClaimCauseAnswer();
+        const summary=await readDesjardinsExpenseSummary(s.page,s.dossier,government.value==="no"&&cause.value==="unrelated",!!s.receiptIdentity);
+        if(summary?.matches&&await advanceDesjardinsSummary(s.page,true,()=>{s.summaryNextAttempted=true;s.desjardinsExpenseReadback=summary;})){
+          step=await inspectClaimStep(id);verification=canVerify(s)?await verifySnapshot(s):undefined;continue;
+        }
+      }
+      if (s.dossier.insurer === "desjardins" && !s.claimKindAttempted
+        && await advanceDesjardinsIntroduction(s.page, s.dossier, () => { s.claimKindAttempted = true; })) {
+        step = await inspectClaimStep(id); continue;
+      }
+      if (s.dossier.insurer === "desjardins" && verification?.readyForManualNext && !step.fields.length) {
+        const path = new URL(s.page.url()).pathname;
+        s.desjardinsNextAttempts ||= new Set();
+        if (!s.desjardinsNextAttempts.has(path) && await advanceDesjardinsRadio(s.page, true, () => { s.desjardinsNextAttempts!.add(path); })) {
+          step = await inspectClaimStep(id); verification = canVerify(s) ? await verifySnapshot(s) : undefined; continue;
+        }
+      }
+      if (s.dossier.insurer === "blue-cross" && step.status === "navigate" && (s.detailsNextVerified || s.detailsReadBackVerified) && !s.summaryNextAttempted) {
         const illness = s.approved?.entries.find(e => e.target.field.kind === "natureOfIllness" && e.filled)?.approved.value;
         const practitioner = s.approved?.entries.find(e => e.target.field.kind === "practitioner" && e.filled)?.approved.optionLabel;
         const advanced = await advanceBlueCrossExpenses(s.page, s.dossier, illness, () => { s.summaryNextAttempted = true; }, practitioner);
         if (!advanced) { warning = "The current expense summary could not be matched to this invoice and the verified prepared answers. Automatic continuation stopped."; break; }
-        step = await inspectClaimStep(id); verification = s.approved ? await verifySnapshot(s) : undefined; continue;
+        step = await inspectClaimStep(id); verification = canVerify(s) ? await verifySnapshot(s) : undefined; continue;
       }
       // Never automatically retry a field whose previous write could not be verified.
       if (step.status !== "review" && verification?.fields.some(f => f.status !== "match")) break;
@@ -661,6 +777,15 @@ async function prepareStep(id: unknown,
         && (step.status !== "review" || s.dossier.insurer === "blue-cross" && await blueCrossReceiptMatches(s.page, s.dossier) && !!await blueCrossReceiptFile(s.page))
         ? `${receipt.documentId}:${receipt.attachmentId}` : null;
       if (!Object.keys(values).length && !attachment) {
+        if(s.dossier.insurer==="desjardins"&&!step.fields.length&&verification?.readyForManualNext){
+          const required=["serviceDate","service","durationMinutes","originalAmount","otherInsurancePaid","accident","otherInsurance","governmentReimbursement","privateInsuranceClaim","reimbursementMethod"];
+          const prepared=new Set(s.approved?.entries.filter(e=>e.filled).map(e=>e.target.field.kind)),path=new URL(s.page.url()).pathname;
+          s.desjardinsNextAttempts ||= new Set();
+          if(required.every(k=>prepared.has(k))&&!s.desjardinsNextAttempts.has(path)
+            &&await advanceDesjardinsDetails(s.page,true,()=>{s.desjardinsNextAttempts!.add(path);s.detailsReadBackVerified=true;})){
+            step=await inspectClaimStep(id);verification=canVerify(s)?await verifySnapshot(s):undefined;continue;
+          }
+        }
         const required = ["patient", "benefit", "service", "serviceDate", "originalAmount", "natureOfIllness", "otherInsurance", "otherInsurancePaid", "practitioner", "supportingReceipt"];
         const prepared = new Set(s.approved?.entries.filter(e => e.filled).map(e => e.target.field.kind));
         const ready = step.status === "fields" && !!verification?.readyForManualNext && !step.fields.some(f => !f.optional)
@@ -668,7 +793,7 @@ async function prepareStep(id: unknown,
         if (ready && s.dossier.insurer === "blue-cross") s.detailsReadBackVerified = true;
         if (s.dossier.insurer === "blue-cross" && !s.detailsNextAttempted
           && await advanceBlueCrossDetails(s.page, ready, () => { s.detailsNextAttempted = true; })) {
-          s.detailsNextVerified = true; step = await inspectClaimStep(id); verification = s.approved ? await verifySnapshot(s) : undefined; continue;
+          s.detailsNextVerified = true; step = await inspectClaimStep(id); verification = canVerify(s) ? await verifySnapshot(s) : undefined; continue;
         }
         break;
       }
@@ -676,7 +801,7 @@ async function prepareStep(id: unknown,
       await fillClaimStep(id, step.revision, values, attachment, loadAttachment);
       await s.page.waitForLoadState("domcontentloaded", { timeout: 5000 }).catch(() => {});
       step = await inspectClaimStep(id);
-      verification = s.approved ? await verifySnapshot(s) : undefined;
+      verification = canVerify(s) ? await verifySnapshot(s) : undefined;
       if (JSON.stringify(before) === JSON.stringify(step.fields.map(f => [f.label, f.type, f.suggested]))) break;
     }
   } catch {
@@ -685,7 +810,7 @@ async function prepareStep(id: unknown,
       : "Preparation stopped after the portal changed or a value could not be verified. Check the actual results before continuing; do not repeat an uncertain upload.";
     const knownUpload = s.approved?.attachment?.blocked && !!await blueCrossReceiptFile(s.page).catch(() => null);
     step = { status: knownUpload ? "review" : "inspect-required", fields: [], revision: "", submitAllowed: false };
-    verification = s.approved ? await verifySnapshot(s).catch(() => undefined) : undefined;
+    verification = canVerify(s) ? await verifySnapshot(s).catch(() => undefined) : undefined;
   }
   return { sessionId: s.id, step, verification, warning, submitAllowed: false };
 }

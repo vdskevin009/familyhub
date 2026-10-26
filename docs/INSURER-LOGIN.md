@@ -58,3 +58,13 @@ verified sign-in or the existing explicitly authorized one-attempt recovery.
 The latest verified protected session also takes precedence over same-name
 persistent browser cookies; stale profile cookies must not mask a newer session
 saved by claim preparation. Expired and foreign-domain cookies are excluded.
+
+## Guarded preparation recovery and diagnostics (#258)
+
+The shared Desjardins continuation follows a unique profile or active-dossier tab in the same owned browser context. Multiple selection tabs remain unresolved. Fixed-stage diagnostics describe selection progress without profile names, tokens or credentials. A paired `claim-preparation/diagnostic` request can read visible control metadata on known insurer pages and bounded visible instructions within the claim form in the current preparation session; password/hidden values, query strings and untrusted pages are excluded. It performs no portal action.
+
+An explicitly authorized `prepare` may include a parsed `loginRecovery` request using the existing single-use request ID, exact prior attempt timestamp, uncertainty acknowledgement and 30-minute cooldown. The original stop and durable audit remain authoritative. Recovery is passed only to the initial login; resume never automatically retries it. No collection/import is needed to recover a preparation session.
+
+Profile continuation waits briefly for checked-state rendering after its one reserved selection. It accepts the approved tile's checked property, ARIA state or native radio (including an open shadow root); an unchecked or different tile never permits Continue. These rendering cases are covered with intercepted browser fixtures; they do not by themselves establish the cause of a particular live failure.
+
+Desjardins preparation starts at the existing authenticated history route, preserving the ordinary sign-in destination only as its portal link. A fresh browser context must prove history without revisiting the authentication bootstrap. Sanitized restore diagnostics record only status/counts, never cookie names or values. Intercepted fresh-context and repeated-open scenarios preserve the prior credential-attempt timestamp.
