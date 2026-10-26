@@ -16,6 +16,7 @@ import { PushConfiguration, sendPush } from "./notification-push.js";
 import type { NotificationEvidence } from "./notification-model.js";
 
 import { GroceryStore, GroceryConflict } from "./grocery-store.js";
+import { GroceryCollection } from "./grocery-collection.js";
 import { GroceryError } from "./grocery-model.js";
 import { extractGrocery } from "./grocery-extraction.js";
 import { GroceryPlanningStore } from "./grocery-planning-store.js";
@@ -54,7 +55,7 @@ type ResearchWatch = {
 };
 type PersistedState = { watches: ResearchWatch[] };
 
-const version = "2.27.1";
+const version = "2.27.3";
 let claimOperationBusy = false;
 const host = process.env.FAMILYHUB_WORKER_HOST?.trim() || "127.0.0.1";
 const port = Number(process.env.FAMILYHUB_WORKER_PORT || "4713");
@@ -96,6 +97,7 @@ function scanNotifications() {
 }
 
 const groceryStore = new GroceryStore(join(stateDir, "groceries"), extractGrocery);
+const groceryCollection = new GroceryCollection(join(stateDir, "groceries"), groceryStore);
 const groceryPlanning = new GroceryPlanningStore(join(stateDir, "groceries"), () => groceryStore.list());
 const groceryResearch = new GroceryResearch(join(stateDir, "groceries"));
 const researchDirectory = join(savingsDirectory, "public-research");
@@ -278,6 +280,17 @@ const server = createServer(async (request, response) => {
       if (request.method === "POST") { json(response, 200, await notifications.mutate(await readJson(request, 12_000)), origin); return; }
     }
     if (parts[0] === "groceries") {
+      if (parts.length === 2 && parts[1] === "collection-status" && request.method === "GET") {
+        json(response, 200, await groceryCollection.status(), origin); return;
+      }
+      if (parts.length === 2 && parts[1] === "collect" && request.method === "POST") {
+        if (groceryCollection.isBusy() || (await invoiceSnapshot()).busy || claimOperationBusy
+          || [getBlueCrossStatus(), getDesjardinsStatus()].some(status => status.state === "syncing")) {
+          json(response, 409, { error: "A collection is already running. Read its status before retrying." }, origin); return;
+        }
+        void groceryCollection.collect().catch(() => { /* Sanitized failure is retained in the collection status. */ });
+        json(response, 202, { status: "running" }, origin); return;
+      }
       if (parts.length === 2 && parts[1] === "research" && request.method === "POST") { json(response, 200, await groceryResearch.run(await readJson(request)), origin); return; }
       if (parts.length === 1 && request.method === "GET") { json(response, 200, await groceryStore.list(), origin); return; }
       if (parts.length === 2 && parts[1] === "planning") {
@@ -516,7 +529,7 @@ const server = createServer(async (request, response) => {
       if (request.method === "POST" && parts.length === 2 && parts[1] === "collect") {
         const snapshot = await invoiceSnapshot();
         if (snapshot.setupRequired) { json(response, 409, { error: "Connect Gmail on the PC before collecting." }, origin); return; }
-        if (snapshot.busy) { json(response, 409, { error: "Collection already running." }, origin); return; }
+        if (snapshot.busy || groceryCollection.isBusy()) { json(response, 409, { error: "Collection already running." }, origin); return; }
         void collectInvoices().catch(() => { /* Error is available through the authenticated status endpoint. */ });
         json(response, 202, { status: "running" }, origin); return;
       }
@@ -543,7 +556,7 @@ const server = createServer(async (request, response) => {
       }
     }
     if (request.method === "GET" && parts.length === 1 && parts[0] === "health") {
-      json(response, 200, { status: "ok", codex: "sdk-ready", version, capabilities: ["opportunity-actions-v1", "notification-lifecycle-v1", "insurance-reference-v1", "mortgage-evidence-v1", "mortgage-contacts-v1", "grocery-source-type-v1", "grocery-fulfillment-v1", "grocery-comparison-evidence-v1", "grocery-source-estimates-v1", "grocery-receipts-v1", "grocery-planning-v1", "grocery-weekly-v1", groceryExpandedListCapability] }, origin);
+      json(response, 200, { status: "ok", codex: "sdk-ready", version, capabilities: ["opportunity-actions-v1", "notification-lifecycle-v1", "insurance-reference-v1", "mortgage-evidence-v1", "mortgage-contacts-v1", "grocery-collection-v1", "grocery-source-type-v1", "grocery-fulfillment-v1", "grocery-comparison-evidence-v1", "grocery-source-estimates-v1", "grocery-receipts-v1", "grocery-planning-v1", "grocery-weekly-v1", groceryExpandedListCapability] }, origin);
       return;
     }
 
