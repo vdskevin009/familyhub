@@ -7,7 +7,7 @@ const {openClaimBrowser,prepareCurrentClaimStep,closeClaimBrowser}=await import(
 const {confirmBlueCrossClaimCause}=await import('../apps/worker/dist/bluecross-claim-cause.js');
 const {checkedField}=await import('../apps/worker/dist/claim-field-verification.js');
 const url='https://www.agea-gbim.dsf-dfs.com/AGEA-GBIM/Reclamation/DetailFrais_ExpenseDetail.aspx';let session;
-const radio=(name,values)=>values.map(([id,text])=>'<span class="dsd-radio"><input type="radio" name="'+name+'" id="'+id+'" '+(id==='other-yes'?'onchange="document.querySelector(\'#dependent\').innerHTML=\'<label>New insurer detail<input id=unknown-detail></label>\'"':'')+'><label for="'+id+'">*'+text+'(facultatif)</label></span>').join('');
+const radio=(name,values)=>values.map(([id,text])=>'<span class="dsd-radio"><input type="radio" name="'+name+'" id="'+id+'" '+(id==='other-yes'?'onchange="document.querySelector(\'#dependent\').innerHTML=\'<label>New insurer detail<input id=unknown-detail></label>\'"':'')+'><label onclick="event.preventDefault()" for="'+id+'">*'+text+'(facultatif)</label></span>').join('');
 try{
  for(const scenario of ['no-default','confirmed','wrong-mask','ambiguous-service']){
   if(scenario==='confirmed')await confirmBlueCrossClaimCause({confirmed:true,allInvoices:true,expectedRevision:0,value:'unrelated'});
