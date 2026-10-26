@@ -163,3 +163,40 @@
 .proactive-shell .section-load-error { margin-top: 48px; }
 .proactive-shell .section-load-actions { display: flex; flex-wrap: wrap; gap: 10px; }
 .proactive-shell .section-load-actions .button { min-height: 48px; }
+
+.proactive-shell .today-follow-ups { display: grid; gap: 10px; }
+.proactive-shell .today-follow-up { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-width: 0; padding: 16px; border: 1px solid var(--line); border-radius: 16px; background: var(--surface); }
+.proactive-shell .today-follow-up > div { min-width: 0; }
+.proactive-shell .today-follow-up h3 { margin: 8px 0 4px; font-size: 15px; overflow-wrap: anywhere; }
+.proactive-shell .today-follow-up p { margin: 0; color: var(--muted); font-size: 13px; }
+.proactive-shell .today-follow-up button { flex-shrink: 0; min-height: 48px; }
+.claim-dossier { display: grid; gap: 16px; min-width: 0; padding: 20px; border: 1px solid var(--line); border-radius: 18px; background: var(--surface); }
+.claim-dossier-heading { display: flex; align-items: flex-start; gap: 10px; }
+.claim-dossier-heading > svg { flex-shrink: 0; margin-top: 3px; }
+.claim-dossier-heading h2 { margin: 0; font-size: 19px; }
+.claim-dossier-heading p,.claim-dossier-limit { margin: 6px 0 0; color: var(--muted); font-size: 13px; line-height: 1.5; }
+.claim-dossier-facts { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 8px; }
+.claim-dossier-facts > div { min-width: 0; padding: 12px; border-radius: 12px; background: var(--canvas); }
+.claim-dossier-facts span { display: block; color: var(--muted); font-size: 12px; line-height: 1.4; }
+.claim-dossier-facts strong { display: block; margin-top: 6px; font-size: 18px; overflow-wrap: anywhere; }
+.claim-dossier-state { display: grid; gap: 6px; }
+.claim-dossier-state > span { width: fit-content; padding: 4px 8px; border-radius: 6px; background: var(--canvas); font-size: 12px; color: var(--muted); }
+.claim-dossier-needs,.claim-dossier-checks ul { margin: 0; padding: 0; list-style: none; }
+.claim-dossier-needs { display: grid; gap: 12px; }
+.claim-dossier-needs li { display: flex; gap: 8px; font-size: 13px; }
+.claim-dossier-needs svg { flex-shrink: 0; margin-top: 2px; }
+.claim-dossier-needs strong { display: block; margin-bottom: 4px; }
+.claim-dossier-checks summary { display: flex; align-items: center; min-height: 48px; cursor: pointer; font-weight: 600; font-size: 14px; }
+.claim-dossier-checks li { padding: 14px 0; border-top: 1px solid var(--line); }
+.claim-dossier-checks li > strong { display: block; margin-top: 7px; font-size: 14px; }
+.claim-dossier-checks p { color: var(--muted); font-size: 13px; line-height: 1.5; margin: 6px 0 0; }
+.claim-check-state { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12px; }
+.claim-dossier-checks .claim-check-value { color: var(--ink); font-weight: 600; overflow-wrap: anywhere; }
+.claim-dossier > .button { min-height: 48px; white-space: normal; }
+.claim-dossier-return { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+.claim-dossier-return button { min-height: 48px; }
+.claim-dossier-return small { color: var(--muted); }
+.claim-dossier-coverage summary { display: flex; align-items: center; min-height: 48px; cursor: pointer; font-size: 14px; font-weight: 600; }
+.claim-dossier-coverage > p { color: var(--muted); font-size: 13px; }
+.reimbursement-dossier-view > .page-heading h1 { font-size: 24px; }
+@media(max-width: 430px) { .claim-dossier { padding: 16px; } .claim-dossier-facts { grid-template-columns: repeat(2,minmax(0,1fr)); } .claim-dossier-facts > div:last-child { grid-column: 1/-1; } .proactive-shell .today-follow-up { flex-wrap: wrap; } }

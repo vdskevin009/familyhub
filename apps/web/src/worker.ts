@@ -40,6 +40,8 @@ export const bulkDocumentWorkerVersion = "2.11.0";
 export type ClaimPreparation = {
   expenseId: string; insurer: "blue-cross" | "desjardins"; portalUrl: string; blocked: boolean; submitAllowed: false;
   preparationUrl?: string;
+  readiness?: import("../../worker/src/claim-readiness").ClaimReadiness;
+  originalAmountEvidence?: { source: string; confidence: string };
   coordination?: { required: boolean; ready: boolean; primaryInsurer: string | null; message: string | null; importedStatementAvailable?: boolean; ownerConfirmationRevision?: number;
     ownerConfirmation?: { insurer: "desjardins" | "blue-cross"; amount: number; reason: string; at: string; revision: number; provenance: "owner-confirmed" } | null };
   fields: { patient: string | null; provider: string | null; practitioner: string | null; serviceDate: string | null; originalAmount: number | null; service: string | null; invoiceNumber: string | null; otherInsurance?: string | null; otherInsurancePaid?: number | null };

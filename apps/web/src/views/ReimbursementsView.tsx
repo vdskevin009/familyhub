@@ -12,6 +12,7 @@ import ReconciliationQueue from "./ReconciliationQueue";
 import { manualMatchExpenseId, manualMatchUnavailableReason } from "../reconciliation-triage";
 import ClaimCard from "./ClaimCard";
 import PrepareClaim from "./PrepareClaim";
+import ClaimDossier from "./ClaimDossier";
 import { FilterButton, FilterChips, Notice, PageHeader, SearchField, Sheet, SkeletonList, useSessionValue, type ActiveFilter } from "../ui/primitives";
 import { applicableInsurerPreview, insurerSyncMessage, insurerCollectionNeedsRefresh, insurerCoverageNotice, invoiceCollectionNotice } from "../insurer-sync";
 import { useMutations } from "../ui/use-mutations";
@@ -39,6 +40,11 @@ function dateValue(value: string | null | undefined): number {
   return Number.isNaN(time) ? Number.NEGATIVE_INFINITY : time;
 }
 
+function dossierDate(value: string | null | undefined) {
+  const date = new Date((value?.slice(0, 10) || "") + "T12:00:00Z");
+  return Number.isFinite(date.getTime()) ? new Intl.DateTimeFormat("fr-CA", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" }).format(date) : "Date à confirmer";
+}
+
 function unmatchedReason(item: UnmatchedReimbursement): string {
   if (item.Reason === "ambiguous-match") return "More than one expense could match this reimbursement. FamilyHub left it unmatched.";
   if (item.Reason === "missing-insurer") return "The insurer could not be identified confidently.";
@@ -52,6 +58,8 @@ function reimbursementAmount(item: ReimbursementItem): number | null {
 
 export default function ReimbursementsView({ hub }: Props) {
   const [preparingExpense, setPreparingExpense] = useState("");
+  const [preparingInsurer, setPreparingInsurer] = useState<"blue-cross" | "desjardins">();
+  const [reviewingExpense, setReviewingExpense] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [invoiceNotice, setInvoiceNotice] = useState<string | null>(null);
@@ -429,23 +437,35 @@ export default function ReimbursementsView({ hub }: Props) {
   ];
 
   const preparingNextInsurer = hub.reimbursements.Reconciliations?.find(entry => entry.ExpenseDocumentId === preparingExpense || entry.ExpenseDocumentIds?.includes(preparingExpense))?.NextInsurer;
-  return <div className="view-stack reimbursement-app-view">
+  const linkedCase = linkedRecord ? filteredCases[0] : undefined;
+  const linkedExpenseId = linkedCase ? workflowExpenseId(linkedCase) : null;
+  const reviewingCase = model.cases.find(item => workflowExpenseId(item) === reviewingExpense);
+  const dossierRevision = (item?: ReconciliationCase) => JSON.stringify([lastSuccess, item, item?.DocumentIds.map(id => invoiceById.get(id))]);
+  const insurerFor = (item?: ReconciliationCase) => item?.NextInsurer === "Desjardins" ? "desjardins" as const : item?.NextInsurer === "Blue Cross" ? "blue-cross" as const : undefined;
+  function beginPreparation(expenseId: string, insurer?: "blue-cross" | "desjardins") {
+    setReviewingExpense(""); setPreparingInsurer(insurer); setPreparingExpense(expenseId);
+  }
+  function returnToList() {
+    setLinkedRecord(null);
+    const url = new URL(location.href); url.searchParams.delete("record"); url.searchParams.delete("queue");
+    history.replaceState(null, "", url);
+  }
+  const coverageWarnings = ([["Desjardins", desjardinsStatus], ["Blue Cross", blueCrossStatus]] as const).flatMap(([name, status]) => {
+    const message = insurerCoverageNotice(status); return message ? [{ name, status, message }] : [];
+  });
+  const coveragePanel = <section className="collection-coverage" aria-label="Insurer collection coverage">{coverageWarnings.map(({ name, status, message }) => <div className="collection-warning" key={name} role="status"><div><strong>{name}</strong><p>{message}</p><small>{status?.lastSuccess ? `Last complete read: ${new Date(status.lastSuccess).toLocaleString()}` : "No complete read confirmed"}</small></div><button type="button" className="button secondary compact-button" onClick={() => setSourcesOpen(true)} aria-haspopup="dialog">Review Sources</button></div>)}</section>;
+  return <div className={`view-stack reimbursement-app-view${linkedRecord ? " reimbursement-dossier-view" : ""}`}>
     {preparingExpense && <PrepareClaim key={preparingExpense} expenseId={preparingExpense}
-      initialInsurer={preparingNextInsurer === "Desjardins" ? "desjardins" : preparingNextInsurer === "Blue Cross" ? "blue-cross" : undefined}
+      initialInsurer={preparingInsurer || (preparingNextInsurer === "Desjardins" ? "desjardins" : preparingNextInsurer === "Blue Cross" ? "blue-cross" : undefined)}
       config={hub.worker} onClose={() => setPreparingExpense("")} />}
-    <PageHeader title="Claims" subtitle={paired ? lastSuccess ? `Updated ${new Date(lastSuccess).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : "Saved results" : "Saved on this device"}>
-      <button type="button" className="button secondary" onClick={() => setSourcesOpen(true)} aria-haspopup="dialog">Sources{blueCrossStatus?.state === "error" || desjardinsStatus?.state === "error" || blueCrossStatus?.state === "login-required" || desjardinsStatus?.state === "login-required" ? " · !" : ""}</button>
+    <Sheet open={Boolean(reviewingExpense)} onClose={() => setReviewingExpense("")} title="Dossier de remboursement" description={reviewingCase ? `${reviewingCase.Member} · ${healthcareTitle(reviewingCase)}` : "Pièces et préparation"}>
+      {reviewingExpense && <ClaimDossier key={reviewingExpense + ":" + reviewingCase?.NextInsurer} expenseId={reviewingExpense} initialInsurer={insurerFor(reviewingCase)} config={hub.worker} remaining={reviewingCase?.PotentialRemaining} sourceRevision={dossierRevision(reviewingCase)} preparationAllowed={Boolean(reviewingCase && reimbursementWorkflowStatus(reviewingCase) === "open" && !reviewingCase.InferredFromInsurer)} onPrepare={insurer => beginPreparation(reviewingExpense, insurer)} />}
+    </Sheet>
+    <PageHeader title={linkedRecord ? "Remboursement" : "Claims"} subtitle={linkedCase ? `${healthcareTitle(linkedCase)} · ${linkedCase.Member === "unknown" ? "Personne à confirmer" : linkedCase.Member} · ${dossierDate(linkedCase.ServiceDate)}` : paired ? lastSuccess ? `Updated ${new Date(lastSuccess).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : "Saved results" : "Saved on this device"}>
+      <button type="button" className="button secondary" onClick={() => setSourcesOpen(true)} aria-haspopup="dialog">Sources{paired && coverageWarnings.length ? " · !" : ""}</button>
       <button type="button" className="icon-button" aria-label="Refresh reimbursements" disabled={!paired || busy || pending.length > 0 || bulkIgnoring} onClick={() => void refresh()}><RefreshCw size={18} className={busy ? "spin" : ""} /></button>
     </PageHeader>
-    {paired && <section className="collection-coverage" aria-label="Insurer collection coverage">
-      {([["Desjardins", desjardinsStatus], ["Blue Cross", blueCrossStatus]] as const).map(([name, status]) => {
-        const message = insurerCoverageNotice(status);
-        return message && <div className="collection-warning" key={name} role="status">
-          <div><strong>{name}</strong><p>{message}</p><small>{status?.lastSuccess ? `Last complete read: ${new Date(status.lastSuccess).toLocaleString()}` : "No complete read confirmed"}</small></div>
-          <button type="button" className="button secondary compact-button" onClick={() => setSourcesOpen(true)} aria-haspopup="dialog">Review Sources</button>
-        </div>;
-      })}
-    </section>}
+    {paired && !linkedRecord && coveragePanel}
     <Sheet open={sourcesOpen} onClose={() => setSourcesOpen(false)} title="Sources & sync" description="Update collects a preview and uses automatic sign-in when configured. Reconnect opens the PC browser for verification. Review before applying changes.">
       <div className="source-tools">
       {error && <Notice error onDismiss={() => setError("")}>{error}</Notice>}
@@ -494,22 +514,23 @@ export default function ReimbursementsView({ hub }: Props) {
     {error && <Notice error onDismiss={() => setError("")}>{error}</Notice>}
     {workerVersion && !manualActionsAvailable && <div className="banner error" role="status"><AlertTriangle size={17} />PC worker {workerVersion} is outdated for manual reimbursement matching. Update/restart the FamilyHub worker to {manualReconciliationWorkerVersion} or later, then refresh this page.</div>}
     {savedMessage && <Notice onDismiss={() => setSavedMessage("")}>{savedMessage}</Notice>}
-    {model.warnings.length > 0 && <details className="source-notices"><summary>Source notes · {model.warnings.length}</summary>
+    {!linkedRecord && model.warnings.length > 0 && <details className="source-notices"><summary>Source notes · {model.warnings.length}</summary>
       {model.warnings.map(warning => <p key={warning}>{warning}</p>)}
     </details>}
 
-    {linkedRecord && <Notice onDismiss={() => setLinkedRecord(null)}>Dossier ouvert depuis un lien direct. Les filtres précédents sont conservés. {busy ? "Actualisation en cours." : filteredCases.length || model.unmatched.some(entry => entry.item.Id === linkedRecord) ? "" : "Ce dossier n'est plus disponible ou a été rapproché depuis la création du lien."}<button type="button" className="button secondary" onClick={() => setLinkedRecord(null)}>Revenir à la liste</button></Notice>}
-    <section className="reimbursement-mode-tabs" aria-label="Claims workspace">
+    {linkedRecord && <div className="claim-dossier-return"><button type="button" className="text-action" onClick={returnToList}>Revenir à la liste</button><small>Filtres conservés</small></div>}
+    {linkedRecord && !busy && !filteredCases.length && !model.unmatched.some(entry => entry.item.Id === linkedRecord) && <Notice>Ce dossier n’est plus disponible ou a été rapproché depuis la création du lien.</Notice>}
+    {!linkedRecord && <section className="reimbursement-mode-tabs" aria-label="Claims workspace">
       <button type="button" className={(linkedRecord ? !linkedQueue || filteredCases.length > 0 : screen === "claims") ? "active" : ""} aria-pressed={linkedRecord ? !linkedQueue || filteredCases.length > 0 : screen === "claims"} onClick={() => { setLinkedRecord(null); setScreen("claims"); }}>
         Claims
       </button>
       <button type="button" className={(linkedRecord ? linkedQueue && !filteredCases.length : screen === "reconcile") ? "active" : ""} aria-pressed={linkedRecord ? linkedQueue && !filteredCases.length : screen === "reconcile"} onClick={() => { setLinkedRecord(null); setScreen("reconcile"); }}>
         À réconcilier <span>{model.unmatched.length}</span>
       </button>
-    </section>
+    </section>}
 
     {(linkedRecord ? !linkedQueue || filteredCases.length > 0 : screen === "claims") ? <>
-    <div className="claim-scope-summary">
+    {!linkedRecord && <div className="claim-scope-summary">
     <section className="reimbursement-family-scopes" aria-label="Reimbursements by family member">
       {(["all", "Kevin", "Jasmine", "Nathan"] as ReimbursementPersonScope[]).map(scope => {
         const summary = scopeSummaries.get(scope)!;
@@ -539,14 +560,14 @@ export default function ReimbursementsView({ hub }: Props) {
         <article className={finance.attention ? "summary-attention" : ""}><small>Needs attention</small><strong>{finance.attention}</strong><span>items</span></article>
       </section>
     </details>
-    </div>
+    </div>}
 
-    <section className="workspace-controls" aria-label="Filter reimbursement history">
+    {!linkedRecord && <section className="workspace-controls" aria-label="Filter reimbursement history">
       <div className="search-filter-row"><SearchField value={query} onChange={setQuery} label="Search claims" placeholder="Search claims…" /><FilterButton count={activeFilterCount} onClick={() => setFiltersOpen(true)} /></div>
       <div className="workflow-tabs" aria-label="Claim status">{(["open", "closed", "ignore", "all"] as WorkflowStatusFilter[]).map(status =>
         <button type="button" key={status} className={workflowFilter === status ? "active" : ""} aria-pressed={workflowFilter === status} onClick={() => setWorkflowFilter(status)}>{status === "ignore" ? "Ignored" : status[0].toUpperCase() + status.slice(1)}<span>{status === "all" ? scopedCases.length : workflowCounts[status]}</span></button>)}</div>
       <FilterChips filters={activeChips} onReset={resetFilters} />
-    </section>
+    </section>}
     <Sheet open={filtersOpen} onClose={() => setFiltersOpen(false)} title="Filter claims"
       footer={<><button type="button" className="button secondary" onClick={resetFilters}>Reset</button><button type="button" className="button" onClick={() => setFiltersOpen(false)}>Show {filteredCases.length} claims</button></>}>
       <div className="filter-groups">
@@ -596,6 +617,8 @@ export default function ReimbursementsView({ hub }: Props) {
       </div>
     </Sheet>
 
+    {linkedCase && linkedExpenseId && !linkedCase.InferredFromInsurer && reimbursementWorkflowStatus(linkedCase) === "open" && <ClaimDossier key={linkedCase.Id + ":" + linkedCase.NextInsurer} expenseId={linkedExpenseId} initialInsurer={insurerFor(linkedCase)} config={hub.worker} remaining={linkedCase.PotentialRemaining} sourceRevision={dossierRevision(linkedCase)} preparationAllowed onPrepare={insurer => beginPreparation(linkedExpenseId, insurer)} />}
+    {linkedRecord && paired && <details className="claim-dossier-coverage"><summary>{coverageWarnings.length ? `${coverageWarnings.length} collecte(s) à vérifier` : "Collectes et fraîcheur"}</summary>{coveragePanel}<p>Consultez Sources pour les dates et la couverture des dernières lectures.</p></details>}
     <section className="reimbursement-history" aria-labelledby="reimbursement-history-title">
       <div className="reimbursement-history-heading">
         <h2 id="reimbursement-history-title">{filteredCases.length} claims <span>· Newest first</span></h2>
@@ -631,7 +654,7 @@ export default function ReimbursementsView({ hub }: Props) {
           unmatchedSourceIds={new Set((hub.reimbursements.UnmatchedReimbursements || []).map(source => source.DocumentId))}
           reviewExplanation={reviews.get(`case:${item.DocumentIds[0]}`)?.explanation}
           changeWorkflow={changeWorkflow} decideMatch={decideMatch} matchUnmatched={matchUnmatched}
-          changeUnmatchedIgnored={changeUnmatchedIgnored} openInvoicePdf={openInvoicePdf} prepareClaim={workerVersionAtLeast(workerVersion, "2.12.0") ? setPreparingExpense : undefined} />)}
+          changeUnmatchedIgnored={changeUnmatchedIgnored} openInvoicePdf={openInvoicePdf} reviewDossier={!linkedRecord ? setReviewingExpense : undefined} prepareClaim={workerVersionAtLeast(workerVersion, "2.12.0") ? beginPreparation : undefined} />)}
       </div>
     </section>
 

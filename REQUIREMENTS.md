@@ -45,6 +45,17 @@ Financial evidence stays in the authenticated local worker. Source, software tes
 
 Testing: release candidate; deployment and real collection acceptance remain separate. [FH-GROCERY-011](docs/requirements/FH-GROCERY-011.md) defines an independent Gmail collection feeding Achats from complete matched confirmation/delivery evidence. Preserve estimates, source identity, manual records and separate collection errors; never infer a final receipt, paid amount, substitution or human review. Implementation: pc-express-mail, grocery-collection, GroceryStore and daily-collections. Synthetic validation and live release/next natural run are separate gates.
 
+## Reimbursement dossiers and actionable priorities — FH-CLAIM-008 / FH-PROACTIVE-006 (#250, #256)
+
+Testing — prepared implementation and local tests; deployment is not authorized for this phase.
+
+| ID | Durable behavior | Status |
+|---|---|---|
+| FH-CLAIM-008 | A read-only dossier preview separates source facts, missing/conflicting evidence and unverified portal work. Gross expense, known other-insurer payment (including zero), potential remaining amount, original-PDF candidates, configured insurer order and genuine explanation requirements remain distinct. Local absence never certifies no current/pending portal claim. The existing explicit preparation action, upload reservations and final human consent/submission remain authoritative. | Testing |
+| FH-PROACTIVE-006 | Fresh source-supported actions precede passive quote waiting; a verified deadline within seven days returns to attention. Waiting follow-up has its own compact section, not an action count. Stable identities and unchanged evidence versions preserve existing decisions. Exact reimbursement links show the target person's dossier without another person's list totals or filters; returning restores the saved list context. | Testing |
+
+This supplements FH-PROACTIVE-001..005 and FH-CLAIM-007. It does not claim an automated current/pending portal-history reader, durable preparation recovery journal, new provider directory, new insurer journey, completed upload, realized saving or live insurer acceptance. Those gates remain tracked separately in #250/#110 and related claim work. No new collector, schedule, notification delivery, external contact or protected financial write is added. See [scope and validation](docs/REIMBURSEMENT-DOSSIERS.md).
+
 ## Proactive mobile assistant — FH-PROACTIVE-001..005 (#256)
 
 Accepted implementation, Testing. The reviewed audit direction supersedes the legacy Today projection and claims-only default entry; preserve every existing domain route and financial/manual authority.

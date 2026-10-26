@@ -38,13 +38,14 @@ type Props = {
   changeUnmatchedIgnored: (reimbursementId: string, ignored: boolean) => Promise<boolean>;
   openInvoicePdf: (option: ReimbursementInvoicePdfOption) => Promise<void>;
   prepareClaim?: (expenseId: string) => void;
+  reviewDossier?: (expenseId: string) => void;
   allCases?: ReconciliationCase[];
   ignoredSourceIds?: ReadonlySet<string>;
   unmatchedSourceIds?: ReadonlySet<string>;
 };
 
 export default function ClaimCard({ item, invoiceById, unmatched, paired, manualActionsAvailable, busy, savingId,
-  selecting, selected, toggleSelected, pending, reviewExplanation, operationError, operationMessage, changeWorkflow, decideMatch, matchUnmatched, changeUnmatchedIgnored, openInvoicePdf, prepareClaim, allCases = [], ignoredSourceIds = new Set<string>(), unmatchedSourceIds = new Set<string>() }: Props) {
+  selecting, selected, toggleSelected, pending, reviewExplanation, operationError, operationMessage, changeWorkflow, decideMatch, matchUnmatched, changeUnmatchedIgnored, openInvoicePdf, prepareClaim, reviewDossier, allCases = [], ignoredSourceIds = new Set<string>(), unmatchedSourceIds = new Set<string>() }: Props) {
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [reviewSource, setReviewSource] = useState<DocumentLibraryKind | null>(null);
   const status = reimbursementCaseStatus(item);
@@ -105,6 +106,7 @@ export default function ClaimCard({ item, invoiceById, unmatched, paired, manual
     </div>
     {sameDayUnmatched.length > 0 && <button type="button" className="candidate-shortcut" onClick={() => setDetailsOpen(true)}><Link2 size={15} /><span>{sameDayUnmatched.length} same-day reimbursement{sameDayUnmatched.length > 1 ? "s" : ""} to review</span><ChevronRight size={16} /></button>}
     <footer className="claim-footer">
+      {!item.InferredFromInsurer && workflow === "open" && reviewDossier && <button type="button" className="text-action" disabled={!paired || busy || !!pending} onClick={() => reviewDossier(item.ExpenseDocumentId || item.ExpenseDocumentIds?.[0] || item.DocumentIds[0])}>Pièces et préparation</button>}
       {!item.InferredFromInsurer && workflow === "open" && prepareClaim && <button type="button" className="text-action" disabled={!paired || busy || !!pending} onClick={() => prepareClaim(item.ExpenseDocumentId || item.ExpenseDocumentIds?.[0] || item.DocumentIds[0])}>{item.NextInsurer === "Blue Cross" ? "Prepare Blue Cross claim" : "Prepare claim"}</button>}
       {invoice && invoicePdfOptions.length === 1 ? invoice.Source === "drive" && invoice.Url
         ? <a className="text-action" href={invoice.Url} target="_blank" rel="noreferrer"><ExternalLink size={15} />Invoice</a>
