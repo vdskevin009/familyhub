@@ -199,4 +199,9 @@
 .claim-dossier-coverage summary { display: flex; align-items: center; min-height: 48px; cursor: pointer; font-size: 14px; font-weight: 600; }
 .claim-dossier-coverage > p { color: var(--muted); font-size: 13px; }
 .reimbursement-dossier-view > .page-heading h1 { font-size: 24px; }
+.reimbursement-dossier-view,.claim-dossier { grid-template-columns: minmax(0,1fr); }
+.reimbursement-dossier-view > *,.claim-dossier > *,.claim-dossier-heading > div { min-width: 0; }
+.reimbursement-dossier-view > .page-heading { flex-wrap: wrap; }
+.reimbursement-dossier-view .page-heading-copy { flex: 1 1 160px; }
+.reimbursement-dossier-view .page-heading-actions { margin-left: auto; }
 @media(max-width: 430px) { .claim-dossier { padding: 16px; } .claim-dossier-facts { grid-template-columns: repeat(2,minmax(0,1fr)); } .claim-dossier-facts > div:last-child { grid-column: 1/-1; } .proactive-shell .today-follow-up { flex-wrap: wrap; } }

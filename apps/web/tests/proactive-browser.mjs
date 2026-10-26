@@ -32,8 +32,8 @@ let browser, diagnostic;
 const allErrors = [], external = [], mutations = [], metrics = [];
 
 async function noOverflow(page, label) {
-  const size = await page.evaluate(() => ({ actual: innerWidth, scroll: document.documentElement.scrollWidth }));
-  assert.ok(size.scroll <= size.actual + 1, label + " horizontal overflow: " + JSON.stringify(size));
+  const size = await page.evaluate(() => ({ actual: innerWidth, client: document.documentElement.clientWidth, scroll: document.documentElement.scrollWidth }));
+  assert.ok(size.scroll <= size.client + 1, label + " horizontal overflow: " + JSON.stringify(size));
 }
 async function waitReady(page) {
   await page.getByRole("heading", { name: "Aujourd’hui", exact: true }).waitFor();
