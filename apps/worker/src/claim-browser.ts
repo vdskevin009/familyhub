@@ -114,6 +114,7 @@ async function openBrowser(dossier: ClaimPreparation, historyReviewed: unknown, 
     let page = await context.newPage();
     await page.goto(dossier.preparationUrl || dossier.portalUrl, { waitUntil: "domcontentloaded", timeout: 45_000 });
     const authReason = autonomous ? await authenticate(page, dossier.insurer, recovery) : undefined;
+    if (dossier.insurer === "desjardins") page = currentDesjardinsPage(page);
     if (autonomous) {
       const authenticated = await authenticatedClaimPages(page, dossier.insurer);
       if (authenticated.length > 1) throw new Error("Several authenticated insurer tabs are open.");

@@ -61,5 +61,34 @@ try{
   }else{assert.equal(await reopenExpiredDesjardinsSession(p,reserve),false,scenario);assert.equal(reserved,false);assert.equal(visits,before);}
   await c.close();passed++;
  }
- console.log(JSON.stringify({passed,insurerContact:false,coverage:'positive expiry, real durable login gate, session reuse, challenge/unknown/ambiguous stops and no uncertain navigation replay'}));
+ const {openClaimBrowser,closeClaimBrowser,claimWindowState,inspectClaimStep}=await import('../apps/worker/dist/claim-browser.js');
+ for(const scenario of ['cooldown','expired']){
+  let owned,id,active,contexts=0,credentials=0,clock=Date.now();
+  let control=scenario==='cooldown'?{blocked:false,attemptedAt:new Date(clock-1000).toISOString()}:{blocked:false};
+  const deps={read:async()=>control,save:async(_i,v)=>{control=v;},credentials:async()=>{credentials++;return {version:1,insurer:'desjardins',username:'synthetic',password:'synthetic-only'};},submit:submitPortalLogin,now:()=>clock};
+  const authenticate=async(page,insurer)=>{const result=await loginForClaim(page,insurer,undefined,(p,i,ready,_d,recovery,current)=>tryPortalLogin(p,i,ready,deps,recovery,current));active=currentDesjardinsPage(page);return result;};
+  const launch=async()=>{
+   owned=await chromium.launch({headless:true,channel:process.platform==='win32'?'msedge':undefined});const create=owned.newContext.bind(owned);
+   owned.newContext=async()=>{
+    const c=await create({serviceWorkers:'block'});contexts++;
+    if(contexts===1)await c.addInitScript(()=>{window.syntheticExpiredRestore=true;});
+    const createPage=c.newPage.bind(c);c.newPage=async()=>{const p=await createPage(),wait=p.waitForTimeout.bind(p);p.waitForTimeout=async ms=>{clock+=ms;await wait(1);};return p;};
+    await c.route('**/*',r=>{const u=new URL(r.request().url());
+     if(u.href===claimPortals.desjardins)return r.fulfill({contentType:'text/html; charset=utf-8',body:'<script>location.href="https://id.desjardins.com/login"</script>'});
+     if(u.origin==='https://id.desjardins.com')return r.fulfill({contentType:'text/html',body:`<form method="post" action="${origin+history}"><input id="UserName" type="text"><input id="Password" type="password"><button id="submitButton" type="submit">Login</button></form>`});
+     return r.fulfill({contentType:'text/html; charset=utf-8',body:u.pathname===history?'<table class="tableau-donnees"><tr><td>Synthetic history</td></tr></table>':expired});
+    });return c;
+   };return owned;
+  };
+  try{
+   const opened=await openClaimBrowser({expenseId:'synthetic-expiry',insurer:'desjardins',portalUrl:claimPortals.desjardins,preparationUrl:origin+'/session-expired.html',blocked:false,reviewableWarnings:[],fields:{},attachments:[]},false,false,launch,true,authenticate);id=opened.sessionId;
+   assert.equal(contexts,2);assert.equal(active.isClosed(),false);assert.equal(await active.evaluate(()=>!!window.syntheticExpiredRestore),false);
+   assert.equal(opened.step.status,scenario==='cooldown'?'login-required':'navigate');
+   if(scenario==='cooldown')assert.equal(opened.step.authReason,'cooldown');
+   assert.equal(credentials,scenario==='cooldown'?0:1);assert.equal(claimWindowState().expired,false);assert.equal(claimWindowState().canClose,true);
+   assert.equal((await inspectClaimStep(id)).status,opened.step.status);
+  }finally{if(id)await closeClaimBrowser(id);else if(owned?.isConnected())await owned.close();}
+  passed++;
+ }
+ console.log(JSON.stringify({passed,insurerContact:false,coverage:'fresh expiry context through the actual preparation owner, guarded login success and cooldown handoff, reuse and negative stops'}));
 }finally{await browser.close();await rm(dir,{recursive:true,force:true});}
