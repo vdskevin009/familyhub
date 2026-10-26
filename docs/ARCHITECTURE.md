@@ -296,3 +296,6 @@ requires a separate restart click. No external collector termination, arbitrary
 process API, lock-stealing endpoint or upload-reservation reset is added.
 
 FH-REIMB-046 derives complementary dental insurer-only cases after the ordinary assignment graph. Their stable identity hashes both source row IDs, ExpenseDocumentIds is empty and InferredFromInsurer/OriginalInvoiceMissing remain true. InsurerEvidencePair distinguishes a worker-owned workflow from the browser-only single-row projection. Both statements disappear from unmatched only while reciprocal unique evidence remains valid; no financial row is synthesized or changed. Existing grouped workflow actions retain source provenance and manual choices, and new original expenses take precedence on the next reconciliation. Bilingual identity is deliberately limited to observed scaling/root-planing labels; units may be unknown on one side but cannot conflict. Tests cover the equal-amount distinct-procedure trap and ambiguity/manual boundaries.
+
+
+Mortgage decision analysis reuses the existing daily source automation and the authoritative paired worker. It adds private source-dated reports, same-maturity net comparisons, explicit variable scenarios, material alerts and mobile charts while preserving the frozen baseline and all original evidence. See [Mortgage assistant](MORTGAGE-ASSISTANT.md).

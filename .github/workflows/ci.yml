@@ -85,6 +85,15 @@ jobs:
       - name: Verify Mortgage mobile history and interrupted navigation
         run: npm run test:mortgage:browser
 
+      - name: Upload synthetic Mortgage mobile evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mortgage-browser-evidence
+          path: artifacts/mortgage-assistant/
+          if-no-files-found: ignore
+          retention-days: 7
+
       - name: Verify Finances mobile and desktop flows
         run: npm run test:finances:browser
 

@@ -1,5 +1,20 @@
 # FamilyHub - Canonical Requirements
 
+## Proactive Mortgage decision assistant — FH-MORTGAGE-003..007 (#236)
+
+Testing. The accepted daily decision flow extends FH-MORTGAGE-001/002; their immutable observations, October 20 reference, original quotes and contacts remain authoritative. This supersedes the earlier absence of daily analysis while reusing its existing source automation.
+
+| ID | Durable behavior | Status |
+|---|---|---|
+| FH-MORTGAGE-003 | One private daily report from the existing four-product collection, source-dated official indicators, honest failures and separate forecasts. No duplicate task or invented history. | Testing |
+| FH-MORTGAGE-004 | Compare keeping/switching through current maturity at comparable principal/amortization, including payments, interest, ending balances, financed penalties/fees, cashback/clawback and break-even. Unknown/stale essentials block net decisions. | Testing |
+| FH-MORTGAGE-005 | Dated stability and plus/minus 0.25/0.50 point variable simulations, no probabilities, mechanical prime/bond equivalence or forecast guarantee. | Testing |
+| FH-MORTGAGE-006 | Configurable material alerts with stable evidence identities, silent unchanged reports, uncertainty/next action and generic existing push transport. No lender contact/application/documents/contract changes. | Testing |
+| FH-MORTGAGE-007 | S24-first daily synthesis, interactive four-product observed history with quote markers/ranges/reference, separate market/scenario views and detailed report history. Progressive disclosure and accessible chart data. | Testing |
+
+Financial evidence stays in the authenticated local worker. Source, software tests, deployed PWA, installed worker, actual daily persistence and physical phone acceptance are independent gates. See docs/MORTGAGE-ASSISTANT.md.
+
+
 ## PC Express purchase intake — FH-GROCERY-011 (#155 follow-up)
 
 Testing: release candidate; deployment and real collection acceptance remain separate. [FH-GROCERY-011](docs/requirements/FH-GROCERY-011.md) defines an independent Gmail collection feeding Achats from complete matched confirmation/delivery evidence. Preserve estimates, source identity, manual records and separate collection errors; never infer a final receipt, paid amount, substitution or human review. Implementation: pc-express-mail, grocery-collection, GroceryStore and daily-collections. Synthetic validation and live release/next natural run are separate gates.

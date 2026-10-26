@@ -1,12 +1,13 @@
+import type { MortgageDailyReport } from "./mortgage-daily.js";
 import type { FinanceState } from "./finance-model.js";
 import { classifiedRows, recurringObservations, summarizeSpending } from "./finance-model.js";
 import type { SavingsContract } from "./savings-model.js";
 import type { invoiceSnapshot } from "./invoices.js";
 
-export const notificationKinds = ["collection", "reimbursement", "unmatched", "price", "deadline", "weekly"] as const;
+export const notificationKinds = ["collection", "reimbursement", "unmatched", "price", "deadline", "weekly", "mortgage"] as const;
 export type NotificationKind = typeof notificationKinds[number];
-export type NotificationTarget = { view: "reimbursements" | "savings" | "finances"; recordId?: string; queue?: "unmatched"; tab?: "investments"; accountId?: string; from?: string; to?: string; currency?: string; sources?: boolean };
-export type Candidate = { baselineGroup?: "insurance-policy"; groupKey?: string; evidenceKey?: string; actionable?: boolean; pushEligible?: boolean; expiresAt?: string; priority?: number; key: string; source: "invoices" | "collections" | "contracts" | "finance"; kind: NotificationKind; title: string; detail: string; target: NotificationTarget; sourceDate?: string };
+export type NotificationTarget = { view: "reimbursements" | "savings" | "finances" | "mortgage"; recordId?: string; queue?: "unmatched"; tab?: "investments"; accountId?: string; from?: string; to?: string; currency?: string; sources?: boolean };
+export type Candidate = { baselineGroup?: "insurance-policy"; groupKey?: string; evidenceKey?: string; actionable?: boolean; pushEligible?: boolean; expiresAt?: string; priority?: number; key: string; source: "invoices" | "collections" | "contracts" | "finance" | "mortgage"; kind: NotificationKind; title: string; detail: string; target: NotificationTarget; sourceDate?: string };
 export type NotificationDecision = { evidenceVersion: string; state: "snoozed" | "resolved" | "dismissed"; at: string; snoozedUntil?: string };
 export type NotificationEvent = Omit<Candidate, "key" | "source" | "baselineGroup" | "groupKey" | "evidenceKey" | "pushEligible"> & { id: string; groupId?: string; evidenceVersion?: string; createdAt: string; baseline: boolean; readAt?: string; active: boolean; decision?: NotificationDecision; pushState?: "pending" | "handled" | "expired" };
 export const notificationDeliveryPolicy = { timeZone: "America/Vancouver", fromHour: 8, untilHour: 21, maximumPerDay: 1, actionOnly: true } as const;
@@ -18,7 +19,7 @@ export function notificationNeedsAttention(event: NotificationEvent, now = Date.
   return event.active && !event.baseline && event.actionable !== false && notificationActionState(event, now) === "open";
 }
 export type CollectionEvidence = { id: string; label: string; state: string; lastAttempt?: string; lastSuccess?: string; authReason?: string; error?: string };
-export type NotificationEvidence = { invoices?: Awaited<ReturnType<typeof invoiceSnapshot>>; collections?: CollectionEvidence[]; contracts?: SavingsContract[]; finance?: FinanceState };
+export type NotificationEvidence = { invoices?: Awaited<ReturnType<typeof invoiceSnapshot>>; collections?: CollectionEvidence[]; contracts?: SavingsContract[]; finance?: FinanceState; mortgage?: MortgageDailyReport[] };
 export type NotificationPreferences = Record<NotificationKind, boolean>;
 export const defaultNotificationPreferences = (): NotificationPreferences => Object.fromEntries(notificationKinds.map(k => [k, true])) as NotificationPreferences;
 const day = 86_400_000;
@@ -40,6 +41,18 @@ export function notificationCandidates(evidence: NotificationEvidence, now = new
     const window = remaining <= 1 ? "1" : remaining <= 7 ? "7" : "30";
     candidates.push({ baselineGroup, groupKey: `deadline:${key}`, evidenceKey: date, actionable: true, pushEligible, priority: remaining <= 1 ? 3 : remaining <= 7 ? 2 : 1, expiresAt: expiry(date + "T12:00:00Z", 1), key: `deadline:${key}:${date}:${window}`, source, kind: "deadline", title: label, detail: `Date enregistrée : ${date}. ${remaining === 0 ? "Aujourd’hui." : `Dans ${remaining} jour(s).`} Vérifiez les conditions et la source avant toute décision.`, target, sourceDate: date });
   };
+  if (evidence.mortgage) {
+    const history=evidence.mortgage.filter(r=>Number.isFinite(Date.parse(r.generatedAt)) && Date.parse(r.generatedAt)<=now.getTime());
+    const report=[...history].sort((a,b)=>b.generatedAt.localeCompare(a.generatedAt))[0];
+    // notify marks a newly material report, not delivery completion. A still-current signal
+    // remains eligible while quiet hours/budget defer its durable pending notification.
+    // First baselines never had a material notify=true; handled/seen events never rearm.
+    const materialSignals=new Set(history.flatMap(r=>r.signals.filter(signal=>signal.notify).map(signal=>signal.id+":"+signal.evidenceFingerprint)));
+    if(report?.localDate===today) {
+      ready.push("mortgage");
+      for(const signal of report.signals) candidates.push({source:"mortgage",kind:"mortgage",key:"mortgage:"+signal.id+":"+signal.evidenceFingerprint,groupKey:"mortgage:"+signal.id,evidenceKey:signal.evidenceFingerprint,actionable:true,pushEligible:materialSignals.has(signal.id+":"+signal.evidenceFingerprint),priority:signal.kind==="net-gain"?2:1,expiresAt:expiry(report.generatedAt,1),title:signal.title,detail:[signal.changed,signal.nextAction,...signal.uncertainties.slice(0,3)].join(" "),target:{view:"mortgage"},sourceDate:report.generatedAt});
+    }
+  }
   if (evidence.collections) {
     ready.push("collections");
     for (const c of evidence.collections) {

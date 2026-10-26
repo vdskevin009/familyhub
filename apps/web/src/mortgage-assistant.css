@@ -1,0 +1,94 @@
+.mortgage-assistant { max-width:900px; margin-inline:auto; padding:20px; color:var(--ink); }
+.ma-heading { display:flex; gap:12px; align-items:center; justify-content:space-between; padding-inline-end:44px; }
+.ma-heading p { font-size:12px; margin-top:5px; }
+.mortgage-assistant button,.mortgage-assistant select,.mortgage-assistant summary { min-height:44px; }
+.mortgage-assistant button,.mortgage-assistant select { border:1px solid var(--line); border-radius:8px; background:var(--surface); padding:8px 12px; }
+.ma-heading button { color:var(--accent); border:0; font-size:13px; background:transparent; }
+.mortgage-assistant .mortgage-tabs { gap:20px; overflow-x:auto; padding-bottom:2px; scrollbar-width:thin; margin:18px 0; }
+.mortgage-assistant .mortgage-tabs button { flex:none; border:0; border-bottom:3px solid transparent; background:transparent; border-radius:0; padding:10px 1px; color:var(--muted); font-size:13px; font-weight:650; white-space:nowrap; }
+.mortgage-assistant .mortgage-tabs button[aria-selected="true"] { color:var(--accent); border-bottom-color:var(--accent); }
+.ma-status { font-size:13px; color:var(--muted); }
+.ma-status:not(:empty) { margin:12px 0; }
+.ma-decision { border-top:3px solid var(--accent); background:var(--surface); padding:18px; border-radius:0 0 12px 12px; }
+.ma-decision[data-status="blocked"] { border-top-color:var(--warning); }
+.ma-decision[data-status="opportunity"] { border-top-color:var(--success); }
+.ma-decision-heading { display:flex; justify-content:space-between; gap:12px; align-items:start; }
+.ma-decision-heading h2 { max-width:26ch; }
+.ma-decision-heading span { color:var(--muted); font-size:12px; white-space:nowrap; }
+.ma-decision > p { font-size:14px; margin-top:10px; }
+.ma-key-number { margin:16px 0; }
+.ma-key-number strong { display:block; font-size:30px; line-height:1.25; font-weight:650; letter-spacing:-.03em; font-variant-numeric:tabular-nums; }
+.ma-key-number span { font-size:12px; color:var(--muted); }
+.ma-next { padding-top:13px; border-top:1px solid var(--line); font-size:14px; }
+.ma-next strong { display:block; font-size:12px; color:var(--accent); margin-bottom:5px; }
+.ma-freshness { display:flex; justify-content:space-between; flex-wrap:wrap; gap:6px 12px; margin-top:14px; font-size:12px; color:var(--muted); }
+.ma-actions { display:flex; flex-wrap:wrap; gap:10px; margin:16px 0; }
+.ma-actions button { color:var(--accent); }
+.mortgage-assistant details { border-top:1px solid var(--line); margin-top:14px; padding-top:3px; }
+.mortgage-assistant summary { font-size:13px; font-weight:600; padding:12px 2px; }
+.mortgage-assistant details p,.mortgage-assistant details li { font-size:13px; line-height:1.6; overflow-wrap:anywhere; margin:8px 0; }
+.mortgage-assistant details ul { padding-left:20px; }
+.ma-section-title { display:flex; gap:12px; justify-content:space-between; align-items:baseline; margin:18px 0 12px; }
+.ma-section-title span { font-size:12px; color:var(--muted); }
+.ma-range { display:flex; gap:5px; overflow-x:auto; padding:3px 2px 8px; }
+.ma-range button { flex:none; font-size:12px; padding:7px 11px; }
+.mortgage-assistant button[aria-pressed="true"] { border-color:var(--accent-line); background:var(--accent-soft); color:var(--accent); }
+.ma-series { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:7px; margin:10px 0; }
+.ma-series button { display:flex; align-items:center; gap:7px; font-size:12px; text-align:left; }
+.ma-series button[aria-pressed="false"] { color:var(--muted); }
+.ma-series button[aria-pressed="false"] i { opacity:.35; }
+.ma-series i,.ma-selected-observation dt i { display:inline-block; flex:none; width:9px; height:9px; border-radius:50%; margin-right:5px; }
+.ma-check { display:flex; align-items:center; gap:10px; min-height:44px; font-size:12px; }
+.ma-check input { width:18px; height:18px; accent-color:var(--accent); flex:none; }
+.ma-rate-chart figure,.ma-simulation-chart { margin:12px 0; }
+.ma-rate-chart svg,.ma-simulation-chart svg { display:block; width:100%; max-height:340px; overflow:visible; }
+.ma-rate-chart svg text,.ma-simulation-chart svg text { font-family:inherit; font-size:12px; fill:var(--muted); }
+.ma-chart-hit { cursor:pointer; }
+.ma-chart-hit:focus { stroke:var(--ink); stroke-width:2px; outline:none; }
+.ma-rate-chart figcaption,.ma-simulation-chart figcaption { font-size:11px; line-height:1.5; color:var(--muted); margin:8px 0; }
+.ma-selected-observation { border:1px solid var(--line); border-radius:10px; padding:12px; background:var(--surface); }
+.ma-selected-observation > label { display:flex; justify-content:space-between; align-items:center; gap:10px; font-size:12px; color:var(--muted); }
+.ma-selected-observation select { max-width:62%; font-size:13px; }
+.ma-selected-observation dl { margin:10px 0 0; }
+.ma-selected-observation dl > div { display:flex; justify-content:space-between; gap:12px; padding:7px 0; font-size:13px; }
+.ma-selected-observation dd { margin:0; font-weight:650; font-variant-numeric:tabular-nums; }
+.ma-note,.ma-empty { font-size:13px; margin:14px 0; }
+.ma-empty { padding:16px; background:var(--soft); border-radius:8px; }
+.ma-table-scroll { overflow:auto; padding-bottom:6px; }
+.ma-table-scroll table { border-collapse:collapse; width:100%; font-size:12px; font-variant-numeric:tabular-nums; }
+.ma-table-scroll td,.ma-table-scroll th { padding:10px 12px; text-align:right; border-bottom:1px solid var(--line); white-space:nowrap; }
+.ma-table-scroll th:first-child { text-align:left; }
+.ma-table-scroll caption { text-align:left; font-size:12px; margin:8px 0; color:var(--muted); }
+.ma-indicators { display:grid; gap:0; }
+.ma-indicator { padding:14px 0; border-bottom:1px solid var(--line); }
+.ma-indicator > div { display:flex; align-items:baseline; justify-content:space-between; gap:12px; }
+.ma-indicator h3 { font-size:14px; }
+.ma-indicator strong { font-size:21px; font-variant-numeric:tabular-nums; }
+.ma-indicator p,.ma-indicator small { font-size:12px; margin:5px 0; }
+.ma-indicator[data-status="failed"] strong,.ma-indicator[data-status="unavailable"] strong { font-size:14px; color:var(--muted); }
+.ma-report-select,.ma-offer-select { display:grid; gap:6px; font-size:13px; margin:12px 0; }
+.ma-report-select select,.ma-offer-select select { width:100%; min-width:0; text-overflow:ellipsis; }
+.ma-report-header { border-bottom:1px solid var(--line); padding-bottom:12px; margin-bottom:14px; }
+.ma-report-header h2 { margin-bottom:6px; }
+.ma-report-header p,.ma-report-body p { font-size:13px; margin:8px 0; }
+.ma-signal { padding:13px 0; border-top:1px solid var(--line); }
+.ma-signal h3 { font-size:14px; }
+.ma-signal p { font-size:13px; margin:7px 0; }
+.ma-signal small { display:block; font-size:12px; }
+.ma-simulation-summary { background:var(--surface); border:1px solid var(--line); border-radius:10px; padding:16px; margin:16px 0; }
+.ma-simulation-summary dl { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:18px 12px; margin:0; }
+.ma-simulation-summary dt { font-size:12px; color:var(--muted); }
+.ma-simulation-summary dd { margin:5px 0 0; font-size:20px; font-weight:650; font-variant-numeric:tabular-nums; }
+.ma-scenario-select { display:flex; flex-wrap:wrap; gap:6px; margin:14px 0; }
+.ma-scenario-select button { font-size:12px; }
+.ma-costs { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:9px 15px; font-size:13px; }
+.ma-costs dt { color:var(--muted); }
+.ma-costs dd { margin:0; font-variant-numeric:tabular-nums; text-align:right; }
+.ma-chart-legend { display:flex; flex-wrap:wrap; gap:12px; font-size:12px; color:var(--muted); }
+.ma-chart-legend i { display:inline-block; width:18px; border-top:2px dashed var(--accent); vertical-align:middle; margin-right:5px; }
+.ma-chart-legend span:first-child i { border-color:var(--muted); }
+.ma-offers-embedded .mortgage-compact { padding:0; }
+.ma-offers-embedded .mortgage-heading { display:none; }
+@media(min-width:700px) { .ma-series { grid-template-columns:repeat(4,minmax(0,1fr)); }.ma-decision { padding:22px; }.ma-key-number strong { font-size:36px; }.ma-simulation-summary dl { grid-template-columns:repeat(3,minmax(0,1fr)); } }
+@media(max-width:420px) { .mortgage-assistant { padding:14px 12px; }.mortgage-assistant .mortgage-tabs { gap:16px; }.ma-decision { padding:15px; }.ma-heading { padding-inline-end:37px; }.ma-heading h1 { font-size:21px; }.ma-heading button { padding-inline:3px; }.ma-section-title { align-items:start; }.ma-section-title span { max-width:100px; text-align:right; } }
+.ma-threshold-form { display:grid; gap:12px; margin:12px 0 20px; }.ma-threshold-form label { display:grid; grid-template-columns:minmax(0,1fr) 90px; gap:12px; align-items:center; font-size:13px; }.ma-threshold-form label small { display:block; font-size:11px; }.ma-threshold-form input { width:100%; min-height:44px; border:1px solid var(--control-line); border-radius:8px; padding:8px; }.ma-threshold-form button { justify-self:start; color:var(--accent); }.ma-upcoming { margin:12px 0; font-size:12px; color:var(--muted); }.ma-context { margin-top:20px; }.ma-rate-chart svg text,.ma-simulation-chart svg text { font-size:15px; }.ma-table-scroll .ma-comparison-table { table-layout:fixed; }.ma-table-scroll .ma-comparison-table th:first-child { width:36%; white-space:normal; }.ma-table-scroll .ma-comparison-table th:not(:first-child),.ma-table-scroll .ma-comparison-table td { width:32%; padding-inline:6px; }
