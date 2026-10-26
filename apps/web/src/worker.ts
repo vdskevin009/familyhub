@@ -57,12 +57,14 @@ export type ClaimStep = { status: string; revision: string; submitAllowed: false
   fields: { key: string; label: string; type: string; kind: string | null; suggested: string | null; suggestionSource?: string; suggestionReason?: string; optional?: boolean; options: { value: string; label: string }[] }[] };
 export type ClaimVerification = { revision: string; readyForManualNext: boolean; scope: string;
   preparedForReview?: boolean;
-  expenseSummary?: { matches: boolean; patient: string; benefit: string; practitioner: string; service: string; date: string; amount: string; illness: string } | null;
+  expenseSummary?: { matches: boolean; patient: string; benefit: string; practitioner: string; service: string | null; date: string | null; amount: string | null; illness?: string;
+    duration?: string | null; otherInsurancePaid?: string | null; remaining?: string | null; accident?: string | null; governmentReimbursement?: string | null; privateInsuranceClaim?: string | null; otherInsurance?: string | null; reimbursementMethod?: string | null } | null;
+  receiptRequirement?: "not-requested-before-confirmation" | "requested"; finalConfirmationManual?: boolean;
   receiptUploadAvailable?: boolean;
   fields: { key: string; label: string; value: string; optionLabel?: string; actual: string | null; status: "match" | "mismatch" | "unreadable" | "not-filled" }[];
   attachment: { name: string; status: "verified" | "unverified" | "failed"; selected?: boolean; blocked?: boolean } | null };
 export type PreparedClaim = { preparation: ClaimPreparation; sessionId?: string; step: ClaimStep; verification?: ClaimVerification; warning?: string; submitAllowed: false };
-export async function claimAction<T>(config: WorkerConfig, action: "window" | "practitioner-answer" | "retry-receipt" | "invoice-answer" | "validate" | "prepare" | "resume" | "correct" | "preview" | "open" | "inspect" | "fill" | "close" | "forget-service-choices" | "suggest-service" | "verify" | "confirm-adjudication", body: object): Promise<T> {
+export async function claimAction<T>(config: WorkerConfig, action: "window" | "coordination-answer" | "practitioner-answer" | "retry-receipt" | "invoice-answer" | "validate" | "prepare" | "resume" | "correct" | "preview" | "open" | "inspect" | "fill" | "close" | "forget-service-choices" | "suggest-service" | "verify" | "confirm-adjudication", body: object): Promise<T> {
   if (action !== "close") {
     const health = await testWorker(config);
     if (action === "practitioner-answer" && !workerVersionAtLeast(health.version, "2.26.8")) throw new Error("Invoice-specific practitioner answers need the updated PC worker.");

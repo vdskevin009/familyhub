@@ -30,7 +30,7 @@ import { advanceBlueCrossDetails, advanceBlueCrossExpenses, readBlueCrossExpense
 import { isBlueCrossClaimCausePage, openBlueCrossClaimCause, blueCrossClaimCauseAnswer } from "./bluecross-claim-cause.js";
 import { desjardinsDetailsPath, desjardinsDetailText, desjardinsDetailSuggestion, desjardinsDetailRadios, desjardinsDetailRadioSuggestion } from "./desjardins-claim-details.js";
 import { confirmedGovernmentReimbursement } from "./claim-coordination-answers.js";
-import {desjardinsSummaryPath,openDesjardinsSummaryDetails,readDesjardinsExpenseSummary,advanceDesjardinsSummary} from "./desjardins-claim-summary.js";
+import {desjardinsSummaryPath,desjardinsReviewPath,openDesjardinsSummaryDetails,readDesjardinsExpenseSummary,advanceDesjardinsSummary,readDesjardinsFinalReview} from "./desjardins-claim-summary.js";
 import { isBlueCrossClaimKindPage, openBlueCrossHealthcareClaim } from "./bluecross-claim-kind.js";
 import { blueCrossReceiptFile, blueCrossReceiptMatches, openBlueCrossReceiptUpload, blueCrossReceiptAlreadyListed, blueCrossReceiptUploadEvidence, blueCrossReceiptUploadAvailable } from "./bluecross-claim-upload.js";
 
@@ -42,6 +42,7 @@ type Session = { id: string; browser: Browser; page: Page; dossier: ClaimPrepara
   sourceDossier?: ClaimPreparation;
   desjardinsNextAttempts?: Set<string>;
   desjardinsSummaryExpanded?: boolean;
+  desjardinsReviewExpanded?: boolean;
   desjardinsExpenseReadback?: NonNullable<Awaited<ReturnType<typeof readDesjardinsExpenseSummary>>>;
   receiptIdentity?: ReceiptPractitioner | null;
   fields: Map<string, Target>; attemptedAttachments: Set<string>; busy: boolean; preparing?: boolean; closing?: boolean; revision: string; inspectedUrl: string; approved?: ApprovedSnapshot;
@@ -205,8 +206,11 @@ async function inspect(s: Session) {
     }
     return { status: "navigate", fields: [], revision: "", submitAllowed: false, portalStage: "member-home", answerWarning: "The authenticated history did not expose a unique supported online claim entry. No claim details were sent." };
   }
-  if(s.dossier.insurer==="desjardins"&&new URL(s.page.url()).pathname===desjardinsSummaryPath&&!s.desjardinsSummaryExpanded){
-    if(await openDesjardinsSummaryDetails(s.page,s.dossier,()=>{s.desjardinsSummaryExpanded=true;}))return inspect(s);
+  if(s.dossier.insurer==="desjardins"){
+    const path=new URL(s.page.url()).pathname,isReview=path===desjardinsReviewPath;
+    if((path===desjardinsSummaryPath&&!s.desjardinsSummaryExpanded)||(isReview&&!s.desjardinsReviewExpanded)){
+      if(await openDesjardinsSummaryDetails(s.page,s.dossier,()=>{if(isReview)s.desjardinsReviewExpanded=true;else s.desjardinsSummaryExpanded=true;}))return inspect(s);
+    }
   }
   const completed = /your claim has been (?:processed|submitted)|réclamation a été (?:transmise|soumise)/i.test(body);
   const atReview = completed || /review (?:your )?claim|claim summary|I confirm all the information above is correct and I have read and agree|vérifi(?:ez|cation).*réclamation|résumé de (?:la|votre) réclamation/i.test(body);
@@ -552,6 +556,16 @@ export async function retryCurrentClaimReceipt(id: unknown, revision: unknown, r
 
 export function claimSessionExpense(id: unknown) { const s = current(id); return s.sourceDossier || s.dossier; }
 async function verifySnapshot(s: Session) {
+  if(s.dossier.insurer==="desjardins"&&new URL(s.page.url()).pathname===desjardinsReviewPath){
+    const government=await confirmedGovernmentReimbursement(s.dossier),cause=await blueCrossClaimCauseAnswer();
+    const final=await readDesjardinsFinalReview(s.page,s.dossier,government.value==="no"&&cause.value==="unrelated",!!s.receiptIdentity,await loadMemberAliases());
+    const ready=!!final?.summary.matches&&!!s.detailsReadBackVerified&&!!s.summaryNextAttempted&&!!s.desjardinsExpenseReadback?.matches
+      &&final.fileInputs===0&&!s.attemptedAttachments.size&&!s.approved?.attachment;
+    return {revision:s.revision,fields:[],attachment:null,receiptUploadAvailable:false,expenseSummary:final?.summary??null,
+      receiptRequirement:final?.fileInputs===0?"not-requested-before-confirmation" as const:"requested" as const,
+      finalConfirmationManual:true,preparedForReview:ready,readyForManualNext:false,
+      scope:"Read-back from Desjardins' final review, source evidence and your saved answers. No receipt upload is offered before confirmation on this screen. Coverage, current claim-history absence and submission are not verified."};
+  }
   if (!s.approved) throw new Error("There are no filled, approved answers to verify.");
   const validPage = s.page.url() === s.approved.url && allowed(s.page.url(), s.dossier.insurer);
   const fields = [];
@@ -613,6 +627,7 @@ async function verifySnapshot(s: Session) {
     readyForManualNext: (fields.length > 0 || !!attachment) && fields.every(f => f.status === "match") && (!attachment || attachment.status === "verified"),
     scope: "Read-back against the values prepared from invoice evidence or your answers. This does not verify eligibility, coverage, current claim history or submission." };
 }
+function canVerify(s:Session){return !!s.approved||s.dossier.insurer==="desjardins"&&new URL(s.page.url()).pathname===desjardinsReviewPath;}
 export async function verifyClaimStep(id: unknown) {
   const s = current(id);
   if (s.busy) throw new Error("Wait for the current preparation action to finish.");
@@ -709,14 +724,14 @@ async function prepareStep(id: unknown,
         && (await authenticatedClaimPages(s.page, s.dossier.insurer)).length === 1) s.claimEntryAttempted = false;
       step = await inspectClaimStep(id);
     }
-    verification = s.approved ? await verifySnapshot(s) : undefined;
+    verification = canVerify(s) ? await verifySnapshot(s) : undefined;
     for (let pass = 0; pass < 32 && ["fields", "review", "navigate"].includes(step.status); pass++) {
       assertFresh();
       if(s.dossier.insurer==="desjardins"&&new URL(s.page.url()).pathname===desjardinsSummaryPath&&s.detailsReadBackVerified&&!s.summaryNextAttempted){
         const government=await confirmedGovernmentReimbursement(s.dossier),cause=await blueCrossClaimCauseAnswer();
         const summary=await readDesjardinsExpenseSummary(s.page,s.dossier,government.value==="no"&&cause.value==="unrelated",!!s.receiptIdentity);
         if(summary?.matches&&await advanceDesjardinsSummary(s.page,true,()=>{s.summaryNextAttempted=true;s.desjardinsExpenseReadback=summary;})){
-          step=await inspectClaimStep(id);verification=s.approved?await verifySnapshot(s):undefined;continue;
+          step=await inspectClaimStep(id);verification=canVerify(s)?await verifySnapshot(s):undefined;continue;
         }
       }
       if (s.dossier.insurer === "desjardins" && !s.claimKindAttempted
@@ -727,7 +742,7 @@ async function prepareStep(id: unknown,
         const path = new URL(s.page.url()).pathname;
         s.desjardinsNextAttempts ||= new Set();
         if (!s.desjardinsNextAttempts.has(path) && await advanceDesjardinsRadio(s.page, true, () => { s.desjardinsNextAttempts!.add(path); })) {
-          step = await inspectClaimStep(id); verification = s.approved ? await verifySnapshot(s) : undefined; continue;
+          step = await inspectClaimStep(id); verification = canVerify(s) ? await verifySnapshot(s) : undefined; continue;
         }
       }
       if (s.dossier.insurer === "blue-cross" && step.status === "navigate" && (s.detailsNextVerified || s.detailsReadBackVerified) && !s.summaryNextAttempted) {
@@ -735,7 +750,7 @@ async function prepareStep(id: unknown,
         const practitioner = s.approved?.entries.find(e => e.target.field.kind === "practitioner" && e.filled)?.approved.optionLabel;
         const advanced = await advanceBlueCrossExpenses(s.page, s.dossier, illness, () => { s.summaryNextAttempted = true; }, practitioner);
         if (!advanced) { warning = "The current expense summary could not be matched to this invoice and the verified prepared answers. Automatic continuation stopped."; break; }
-        step = await inspectClaimStep(id); verification = s.approved ? await verifySnapshot(s) : undefined; continue;
+        step = await inspectClaimStep(id); verification = canVerify(s) ? await verifySnapshot(s) : undefined; continue;
       }
       // Never automatically retry a field whose previous write could not be verified.
       if (step.status !== "review" && verification?.fields.some(f => f.status !== "match")) break;
@@ -764,7 +779,7 @@ async function prepareStep(id: unknown,
           s.desjardinsNextAttempts ||= new Set();
           if(required.every(k=>prepared.has(k))&&!s.desjardinsNextAttempts.has(path)
             &&await advanceDesjardinsDetails(s.page,true,()=>{s.desjardinsNextAttempts!.add(path);s.detailsReadBackVerified=true;})){
-            step=await inspectClaimStep(id);verification=s.approved?await verifySnapshot(s):undefined;continue;
+            step=await inspectClaimStep(id);verification=canVerify(s)?await verifySnapshot(s):undefined;continue;
           }
         }
         const required = ["patient", "benefit", "service", "serviceDate", "originalAmount", "natureOfIllness", "otherInsurance", "otherInsurancePaid", "practitioner", "supportingReceipt"];
@@ -774,7 +789,7 @@ async function prepareStep(id: unknown,
         if (ready && s.dossier.insurer === "blue-cross") s.detailsReadBackVerified = true;
         if (s.dossier.insurer === "blue-cross" && !s.detailsNextAttempted
           && await advanceBlueCrossDetails(s.page, ready, () => { s.detailsNextAttempted = true; })) {
-          s.detailsNextVerified = true; step = await inspectClaimStep(id); verification = s.approved ? await verifySnapshot(s) : undefined; continue;
+          s.detailsNextVerified = true; step = await inspectClaimStep(id); verification = canVerify(s) ? await verifySnapshot(s) : undefined; continue;
         }
         break;
       }
@@ -782,7 +797,7 @@ async function prepareStep(id: unknown,
       await fillClaimStep(id, step.revision, values, attachment, loadAttachment);
       await s.page.waitForLoadState("domcontentloaded", { timeout: 5000 }).catch(() => {});
       step = await inspectClaimStep(id);
-      verification = s.approved ? await verifySnapshot(s) : undefined;
+      verification = canVerify(s) ? await verifySnapshot(s) : undefined;
       if (JSON.stringify(before) === JSON.stringify(step.fields.map(f => [f.label, f.type, f.suggested]))) break;
     }
   } catch {
@@ -791,7 +806,7 @@ async function prepareStep(id: unknown,
       : "Preparation stopped after the portal changed or a value could not be verified. Check the actual results before continuing; do not repeat an uncertain upload.";
     const knownUpload = s.approved?.attachment?.blocked && !!await blueCrossReceiptFile(s.page).catch(() => null);
     step = { status: knownUpload ? "review" : "inspect-required", fields: [], revision: "", submitAllowed: false };
-    verification = s.approved ? await verifySnapshot(s).catch(() => undefined) : undefined;
+    verification = canVerify(s) ? await verifySnapshot(s).catch(() => undefined) : undefined;
   }
   return { sessionId: s.id, step, verification, warning, submitAllowed: false };
 }
