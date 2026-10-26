@@ -1,4 +1,4 @@
-export const dossier={expenseId:'synthetic-physio',insurer:'desjardins',blocked:false,reviewableWarnings:[],coordination:{importedStatementAvailable:true},fields:{patient:'Alice',provider:'Example Clinic',practitioner:'Morgan Example',invoiceNumber:'TEST-42',serviceDate:'2026-01-12',service:'Subsequent Physiotherapy Session (30 minutes)',originalAmount:120,otherInsurancePaid:95},attachments:[{documentId:'synthetic',attachmentId:'pdf',name:'synthetic.pdf'}]};
+export const dossier={expenseId:'synthetic-physio',insurer:'desjardins',blocked:false,reviewableWarnings:[],coordination:{importedStatementAvailable:true},fields:{patient:'Alice',provider:'Example Clinic',practitioner:'Morgan Example',invoiceNumber:'TEST-42',serviceDate:'2026-01-12',service:'Subsequent Physiotherapy Session (30 minutes)',originalAmount:120,otherInsurance:'Yes',otherInsurancePaid:95},attachments:[{documentId:'synthetic',attachmentId:'pdf',name:'synthetic.pdf'}]};
 export const receipt=`Example Clinic
 123 Fiction St, #101, Example City, BC, V1V 1V1
 Alice Example

@@ -14,8 +14,8 @@ export async function advanceDesjardinsIntroduction(page: Page, dossier: ClaimPr
   const start = main.getByRole("button", { name: "Commencer", exact: true }).filter({ visible: true });
   if (await start.count() !== 1 || !await start.isEnabled()) return false;
   reserve(); await start.click({ timeout: 10000 });
-  await page.waitForURL(u => u.origin === origin && u.pathname === "/AGEA-GBIM/Reclamation/TypeReclamation_TypeOfClaim.aspx", { timeout: 15000 }).catch(() => {});
-  await page.locator('main input[type="radio"][name="typeReclamation"]').first().waitFor({ state: "visible", timeout: 10000 }).catch(() => {});
+  await page.waitForURL(u => u.origin === origin && u.pathname === "/AGEA-GBIM/Reclamation/TypeReclamation_TypeOfClaim.aspx", { timeout: 30000, waitUntil: "domcontentloaded" });
+  await page.locator('main input[type="radio"][name="typeReclamation"]').first().waitFor({ state: "visible", timeout: 30000 });
   return new URL(page.url()).origin === origin && new URL(page.url()).pathname === "/AGEA-GBIM/Reclamation/TypeReclamation_TypeOfClaim.aspx";
 }
 
@@ -32,9 +32,9 @@ export async function advanceDesjardinsRadio(page: Page, ready: boolean, reserve
   const next = main.getByRole("button", { name: "Continuer", exact: true }).filter({ visible: true });
   if (await next.count() !== 1 || !await next.isEnabled()) return false;
   reserve(); await next.click({ timeout: 10000 });
-  await page.waitForURL(u => u.origin === origin && u.pathname !== url.pathname && /^\/AGEA-GBIM\/Reclamation\/(?:[A-Za-z_]+\/)*[A-Za-z_]+\.aspx$/.test(u.pathname), { timeout: 15000 }).catch(() => {});
-  await page.waitForLoadState("domcontentloaded", { timeout: 10000 }).catch(() => {});
-  if (group === "typeReclamation") await page.locator('main input[type="radio"][name="personneAssuree"]').first().waitFor({ state: "visible", timeout: 10000 }).catch(() => {});
-  else await page.locator('main input:not([type="hidden"]), main select, main textarea').filter({ visible: true }).first().waitFor({ state: "visible", timeout: 10000 }).catch(() => {});
+  await page.waitForURL(u => u.origin === origin && u.pathname !== url.pathname && /^\/AGEA-GBIM\/Reclamation\/(?:[A-Za-z_]+\/)*[A-Za-z_]+\.aspx$/.test(u.pathname), { timeout: 30000, waitUntil: "domcontentloaded" });
+  const nextGroup = group === "typeReclamation" ? "personneAssuree" : group === "personneAssuree" ? "fournisseur" : null;
+  if (nextGroup) await page.locator(`main input[type="radio"][name="${nextGroup}"]`).first().waitFor({ state: "visible", timeout: 30000 });
+  else await page.locator('main input:not([type="hidden"]), main select, main textarea').filter({ visible: true }).first().waitFor({ state: "visible", timeout: 30000 });
   return new URL(page.url()).origin === origin && new URL(page.url()).pathname !== url.pathname;
 }

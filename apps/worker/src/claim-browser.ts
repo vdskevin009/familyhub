@@ -27,12 +27,13 @@ import { confirmedInvoiceIllness } from "./claim-invoice-answers.js";
 import { blueCrossReceiptCheckbox, verifyDetailedReceipt, readReceiptPractitioner } from "./bluecross-receipt-checklist.js";
 import { receiptProviderOption, type ReceiptPractitioner } from "./split-paid-receipt.js";
 import { advanceBlueCrossDetails, advanceBlueCrossExpenses, readBlueCrossExpenseSummary } from "./bluecross-claim-progress.js";
-import { isBlueCrossClaimCausePage, openBlueCrossClaimCause } from "./bluecross-claim-cause.js";
+import { isBlueCrossClaimCausePage, openBlueCrossClaimCause, blueCrossClaimCauseAnswer } from "./bluecross-claim-cause.js";
+import { desjardinsDetailText, desjardinsDetailSuggestion, desjardinsDetailRadios, desjardinsDetailRadioSuggestion } from "./desjardins-claim-details.js";
 import { isBlueCrossClaimKindPage, openBlueCrossHealthcareClaim } from "./bluecross-claim-kind.js";
 import { blueCrossReceiptFile, blueCrossReceiptMatches, openBlueCrossReceiptUpload, blueCrossReceiptAlreadyListed, blueCrossReceiptUploadEvidence, blueCrossReceiptUploadAvailable } from "./bluecross-claim-upload.js";
 
 export type Field = { key: string; label: string; type: string; options: { value: string; label: string }[];
-  suggested: string | null; kind: string | null; suggestionSource?: "confirmed-choice" | "confirmed-answer" | "invoice" | "codex"; suggestionReason?: string; autoAttachment?: boolean; optional?: boolean };
+  suggested: string | null; kind: string | null; suggestionSource?: "confirmed-choice" | "confirmed-answer" | "invoice" | "codex"; suggestionReason?: string; autoAttachment?: boolean; optional?: boolean; format?: "decimal-comma" };
 type Target = { locator: Locator; field: Field; signature: string; initialValue: string; dropdown?: Locator; providers?: Locator };
 type ApprovedSnapshot = { revision: string; url: string; entries: { target: Target; approved: ApprovedField; filled: boolean }[]; attachment?: { name: string; selected: boolean; blocked?: boolean } };
 type Session = { id: string; browser: Browser; page: Page; dossier: ClaimPreparation; createdAt: number;
@@ -246,8 +247,9 @@ async function inspect(s: Session) {
     }
   }
   if (s.dossier.insurer === "desjardins" && !atReview) {
-    const definition = desjardinsRadioField(new URL(s.page.url()).pathname);
-    if (definition) {
+    const path = new URL(s.page.url()).pathname, basic = desjardinsRadioField(path);
+    const definitions = basic ? [basic] : desjardinsDetailRadios(path);
+    for (const definition of definitions) {
       const choices = s.page.locator(`main input[type="radio"][name="${definition.name}"]`).filter({ visible: true });
       const metadata = await choices.evaluateAll((els: HTMLInputElement[]) => els.map(el => ({ id: el.id, name: el.name, label: Array.from(el.labels || []).map(l => l.textContent?.trim()).filter(Boolean).join(" "), checked: el.checked })));
       if (metadata.length && !metadata.some(o => o.checked)) {
@@ -260,6 +262,12 @@ async function inspect(s: Session) {
         if (definition.kind === "practitioner") {
           field.suggested = desjardinsProviderOption(s.dossier, s.receiptIdentity, options, await s.page.locator("main").innerText());
           field.suggestionReason = "Unique saved practitioner name and physiotherapy specialty match the original receipt. The printed licence is source evidence, not registry verification.";
+        }
+        if (["accident","otherInsurance","reimbursementMethod"].includes(definition.kind)) {
+          const cause = await blueCrossClaimCauseAnswer().catch(() => null);
+          field.suggested = desjardinsDetailRadioSuggestion(definition.kind,s.dossier,options,cause?.value === "unrelated",!!s.receiptIdentity);
+          if (definition.kind === "accident" && field.suggested) { field.suggestionSource="confirmed-answer"; field.suggestionReason="Your previously confirmed all-invoice answer excludes any accident. Reused for the same factual question."; }
+          if (definition.kind === "reimbursementMethod" && field.suggested) field.suggestionReason="The source receipt proves the patient paid the residual; reimbursement is prepared to the insured's existing direct-deposit account.";
         }
         s.fields.set(field.key, { locator: choices.first(), providers: choices, field, signature: JSON.stringify(metadata), initialValue: "" });
       }
@@ -291,7 +299,8 @@ async function inspect(s: Session) {
     const stableLocator = byId && await byId.count() === 1 ? byId : locator;
     if (s.dossier.insurer === "blue-cross" && blueCrossComboFields.some(f => id.endsWith(`_${f.suffix}`))) continue;
     const blueCross = s.dossier.insurer === "blue-cross" && /\/Claims\/eClaim\.aspx$/i.test(new URL(s.page.url()).pathname) ? blueCrossTextField(id) : null;
-    const kind = blueCross?.kind || fieldKind(metadata.label);
+    const desjardins = s.dossier.insurer === "desjardins" ? desjardinsDetailText(new URL(s.page.url()).pathname,metadata.label,await locator.getAttribute("name") || "",metadata.type) : null;
+    const kind = desjardins?.kind || blueCross?.kind || fieldKind(metadata.label);
     const source = kind ? s.dossier.fields[kind as keyof typeof s.dossier.fields] : null;
     let suggested = source == null ? null : String(source);
     if (blueCross) suggested = blueCrossSuggestion(blueCross.kind, s.dossier);
@@ -299,10 +308,11 @@ async function inspect(s: Session) {
       const exact = metadata.options.filter(o => o.value && o.label.toLowerCase() === suggested?.toLowerCase());
       suggested = kind === "service" ? exactServiceOption(s.dossier.fields.service, metadata.options) : exact.length === 1 ? exact[0].value : null;
     }
+    if (desjardins) suggested = desjardinsDetailSuggestion(kind!,s.dossier,metadata.options,await s.page.locator("main").innerText());
     // Date text masks vary by portal. Only native date fields get an automatic date.
-    if (kind === "serviceDate" && metadata.type !== "date" && !blueCross) suggested = null;
+    if (kind === "serviceDate" && metadata.type !== "date" && !blueCross && !desjardins) suggested = null;
     if (metadata.type === "file") suggested = null;
-    const field: Field = { key: randomUUID(), label: blueCross?.label || metadata.label || (metadata.type === "file" ? "Supporting document" : "Unlabelled field — fill in the portal"), type: metadata.type, options: metadata.options, kind, suggested };
+    const field: Field = { key: randomUUID(), label: desjardins?.label || blueCross?.label || metadata.label || (metadata.type === "file" ? "Supporting document" : "Unlabelled field — fill in the portal"), type: metadata.type, options: metadata.options, kind, suggested, ...(desjardins && "format" in desjardins ? {format:desjardins.format} : {}) };
     if (metadata.type === "file") field.autoAttachment = /invoice|receipt|supporting document|facture|reçu|pièce justificative/i.test(metadata.label)
       && !/explanation|benefit statement|other insurer|décompte|autre assureur|coordination/i.test(metadata.label);
     if (metadata.type === "file" && receiptFile && await receiptFile.getAttribute("id") === id) {
@@ -389,7 +399,7 @@ export async function fillClaimStep(id: unknown, revision: unknown, values: unkn
     const approvedEntries = entries.filter(([,value]) => !!value).map(([key,value]) => {
       const target = s.fields.get(key)!;
       return { target, filled: false, approved: { key, label: target.field.label, kind: target.field.kind, type: target.field.type, value: value as string,
-        optionLabel: target.field.options.find(o => o.value === value)?.label } };
+        optionLabel: target.field.options.find(o => o.value === value)?.label, ...(target.field.format ? {format:target.field.format} : {}) } };
     });
     // Preserve the approved answers from earlier postbacks in this claim only.
     // Re-read every prior answer; a later fill must not erase an earlier mismatch.
@@ -460,7 +470,7 @@ export async function fillClaimStep(id: unknown, revision: unknown, values: unkn
         await option.click(); filled++; markFilled(target);
         return await finish("The selected option updates the Blue Cross form. Read its fields again to prepare the remaining details.");
       } else if (target.field.type === "select") await target.locator.selectOption(value as string);
-      else { await target.locator.fill(value as string); if (target.field.kind === "serviceDate") await target.locator.press("Tab"); }
+      else { await target.locator.fill(value as string); if (target.field.kind === "serviceDate" || target.field.format === "decimal-comma") await target.locator.press("Tab"); }
       filled++;
       markFilled(target);
       if (target.field.type === "select") return await finish("The selected option may update the form. Read its fields again.");
