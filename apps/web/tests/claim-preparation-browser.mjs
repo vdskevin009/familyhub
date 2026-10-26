@@ -20,11 +20,15 @@ const entry={Id:'synthetic-case',DocumentIds:[expense.Id],ExpenseDocumentId:expe
 let browser;
 try {
  browser=await chromium.launch({headless:true,channel:process.platform==='win32'?'msedge':undefined});
- for(const scenario of ['blocked-source','blocked-target','reviewable-source','prepared','unknown','mismatch','upload-failed','human-required','login-required','blocked','old-worker','refresh-failed','owner-zero','unknown-insurer','confirmed-illness','default-illness','auto-login','optional','required','review','blocked-upload','review-missing','review-no-verification','expense-summary','saved-practitioner','watch-upload','busy-window','collector-busy','closing-busy']) {
+ const scenarios=['blocked-source','blocked-target','reviewable-source','prepared','unknown','mismatch','upload-failed','human-required','login-required','blocked','old-worker','refresh-failed','owner-zero','unknown-insurer','confirmed-illness','default-illness','auto-login','optional','required','review','desjardins-review','blocked-upload','review-missing','review-no-verification','expense-summary','saved-practitioner','watch-upload','busy-window','collector-busy','closing-busy'];
+ const selected=scenarios.filter(s=>!process.env.FAMILYHUB_CLAIM_UI_SCENARIOS||process.env.FAMILYHUB_CLAIM_UI_SCENARIOS.split(',').includes(s));
+ for(const scenario of selected) {
   const context=await browser.newContext({viewport:{width:390,height:900},serviceWorkers:'block'}),page=await context.newPage(),posts=[],errors=[];
   const c={...entry,NextInsurer:scenario==='unknown-insurer'?null:'Blue Cross',DesjardinsReimbursedAmount:scenario==='owner-zero'?null:0};
-  const preparation=prepareClaim(expense.Id,'blue-cross',[expense],[c]);
+  if(scenario==='desjardins-review'){c.NextInsurer='Desjardins';c.PrimaryInsurer='Blue Cross';c.SecondaryInsurer='Desjardins';c.BlueCrossReimbursedAmount=80;}
+  const preparation=prepareClaim(expense.Id,scenario==='desjardins-review'?'desjardins':'blue-cross',[expense],[c]);
   preparation.attachments=[{documentId:expense.Id,attachmentId:'pdf',name:'synthetic.pdf'}];preparation.blocked=['blocked','blocked-source','blocked-target'].includes(scenario);
+  if(scenario==='desjardins-review')preparation.attachments.push({documentId:'synthetic-forward',attachmentId:'pdf',name:'synthetic.pdf'});
   const sourceConflict='OriginalBilledAmount differs from direct-insurance arithmetic (200 vs 80).';
   if(['blocked-source','reviewable-source'].includes(scenario))preparation.conflicts=[sourceConflict];
   if(scenario==='reviewable-source')preparation.reviewableWarnings=[sourceConflict];
@@ -40,6 +44,7 @@ try {
   if(scenario==='review-missing')step.fields.push({key:'illness',kind:'natureOfIllness',label:'Nature of illness/injury',type:'text',options:[],suggested:null});
   const verification={revision:'prepared',readyForManualNext:!['mismatch','upload-failed'].includes(scenario),scope:'Read-back only; not eligibility or submission.',fields:[{key:'gross',label:'Total expense',value:'100.00',actual:scenario==='mismatch'?'80.00':'100.00',status:scenario==='mismatch'?'mismatch':'match'}],attachment:{name:'synthetic.pdf',status:scenario==='upload-failed'?'failed':'verified'}};
   if(scenario==='review'){verification.preparedForReview=true;verification.expenseSummary={matches:true,patient:'Kevin',benefit:'Massage',practitioner:'Synthetic Practitioner',service:'Registered Massage 60 Minutes and Up - Subsequent Visit',date:'Oct 1, 2026',amount:'100.00',illness:'Owner-described symptom'};}
+  if(scenario==='desjardins-review'){step.status='review';verification.preparedForReview=true;verification.readyForManualNext=false;verification.fields=[];verification.attachment=null;verification.receiptRequirement='not-requested-before-confirmation';verification.receiptCopiesEquivalent=true;verification.expenseSummary={matches:true,patient:'SYNTHETIC PATIENT',benefit:'Professionnels de la santé',practitioner:'Synthetic Practitioner',service:'Traitement subséquent',date:'1 septembre 2026',amount:'100,00 $',otherInsurancePaid:'80,00 $',remaining:'20,00 $',governmentReimbursement:'Non',reimbursementMethod:'Par dépôt direct dans votre compte'};}
   if(scenario==='expense-summary'){verification.fields[0].status='unreadable';verification.fields[0].actual=null;verification.attachment=null;verification.readyForManualNext=false;}
   if(scenario==='review-no-verification')verification.attachment=null;
   if(scenario==='blocked-upload'){verification.attachment={name:'synthetic.pdf',status:'unverified',selected:false,blocked:true};verification.readyForManualNext=false;}
@@ -91,13 +96,13 @@ try {
    }
    return reply({state:'idle',accounts:[]});
   });
-  await page.goto(base);await page.getByRole('button',{name:scenario==='unknown-insurer'?'Prepare claim':'Prepare Blue Cross claim',exact:true}).click();
+  await page.goto(base);await page.getByRole('button',{name:scenario==='unknown-insurer'?'Prepare claim':scenario==='desjardins-review'?'Prepare claim':'Prepare Blue Cross claim',exact:true}).click();
   if(scenario==='unknown-insurer') {
     const choice=page.getByRole('dialog',{name:'Prepare claim',exact:true});await choice.getByText(/The next insurer is unknown/).waitFor();
     assert.equal(posts.length,0,'Unknown insurer must not silently prepare/upload to Blue Cross');
     await choice.getByRole('combobox').first().selectOption('blue-cross');
   }
-  const dialog=page.getByRole('dialog',{name:'Prepare Blue Cross claim',exact:true});await dialog.waitFor();
+  const dialog=page.getByRole('dialog',{name:scenario==='desjardins-review'?'Prepare Desjardins claim':'Prepare Blue Cross claim',exact:true});await dialog.waitFor();
   await dialog.getByText('Preparing and reading back the insurer form…',{exact:true}).waitFor({state:'hidden'});
   if(['busy-window','collector-busy','closing-busy'].includes(scenario)){
    await dialog.getByRole('alert').filter({hasText:/profile is busy/}).waitFor();
@@ -131,6 +136,16 @@ try {
      assert.equal(posts.filter(p=>p.path.endsWith('/resume')).length,1,'Login completion resumes automatically once');
     }
     await dialog.getByRole('region',{name:'Prepared portal answers'}).waitFor();
+    if(scenario==='desjardins-review'){
+      await dialog.getByText(/Ready for your final review — no receipt upload is requested/).waitFor();
+      await dialog.getByText('80,00 $',{exact:true}).waitFor();await dialog.getByText('20,00 $',{exact:true}).waitFor();
+      assert.equal(await dialog.getByText(/receipt upload verified|Upload success observed/).count(),0);
+      assert.equal(await dialog.getByText(/Several original PDFs are indexed/).count(),0);
+      assert.equal(await dialog.getByRole('button',{name:'Validate prepared step',exact:true}).count(),0);
+      assert.equal(posts.some(p=>/submit|claim-create|next|retry-receipt/.test(p.path)),false);
+      for(const width of [320,390,1280]){await page.setViewportSize({width,height:900});assert.equal(await dialog.evaluate(el=>el.scrollWidth<=el.clientWidth),true);await page.screenshot({path:join(output,'claim-desjardins-review-'+width+'.png')});}
+      assert.deepEqual(errors,[]);await context.close();continue;
+    }
     if(scenario==='watch-upload'){
      await dialog.getByText(/FamilyHub validation is not required/).waitFor({timeout:15000});
      assert.equal(posts.filter(p=>p.path.endsWith('/resume')).length,1,'Observed upload page resumes once without a second user click');
@@ -189,5 +204,5 @@ try {
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false,scenario+' mobile overflow');
   await page.screenshot({path:join(output,`claim-autonomous-${scenario}.png`),fullPage:true});await context.close();
  }
- console.log(JSON.stringify({passed:29,providerContact:false,submission:false,screenshots:output}));
+ console.log(JSON.stringify({passed:selected.length,providerContact:false,submission:false,screenshots:output}));
 }finally{await browser?.close();server.close();}

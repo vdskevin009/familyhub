@@ -110,20 +110,21 @@ export default function PrepareClaim({ expenseId, initialInsurer, config, onClos
   const pending = !!step?.fields.some(f => f.type !== "file" && !f.optional);
   const canReview = !!verification?.readyForManualNext && !!step && !pending && ["fields", "navigate"].includes(step.status);
   const labels: Record<string, string> = { patient: "Patient", provider: "Clinic / provider", practitioner: "Practitioner", serviceDate: "Service date", originalAmount: "Original expense", service: "Invoice service", invoiceNumber: "Invoice number", otherInsurance: "Other insurance", otherInsurancePaid: "Paid by other insurer" };
-  return <Sheet open onClose={busy ? () => {} : onClose} title={insurer === "blue-cross" ? "Prepare Blue Cross claim" : insurer === "desjardins" ? "Prepare Desjardins claim" : "Prepare claim"} description="The PC prepares the insurer form and original receipt. Review the actual results before continuing.">
+  return <Sheet open onClose={busy ? () => {} : onClose} title={insurer === "blue-cross" ? "Prepare Blue Cross claim" : insurer === "desjardins" ? "Prepare Desjardins claim" : "Prepare claim"} description={verification?.preparedForReview&&verification.receiptRequirement === "not-requested-before-confirmation" ? "The insurer form is ready. Review the values and confirm in Desjardins." : "The PC prepares the insurer form and original receipt. Review the actual results before continuing."}>
     <div className="prepare-claim">
       <label>Insurer<select value={insurer} disabled={busy || !!sessionId} onChange={e => setInsurer(e.target.value as typeof insurer)}><option value="" disabled>Choose insurer</option><option value="blue-cross">Blue Cross</option><option value="desjardins">Desjardins</option></select></label>
       {!insurer && <Notice>The next insurer is unknown. Choose where to prepare this invoice before opening its portal.</Notice>}
       {busy && <p role="status">Preparing and reading back the insurer form…</p>}
       {error && <Notice error>{error}</Notice>}{message && <Notice>{message}</Notice>}
-      {(!!sessionId || !!windowState?.sessionId) && <div>
+      {(!!sessionId || !!windowState?.sessionId) && <details open={!verification?.preparedForReview}>
+        <summary>Preparation window</summary>
         <p>Close the {windowState?.insurer === "desjardins" ? "Desjardins" : windowState?.insurer === "blue-cross" ? "Blue Cross" : "insurer"} preparation window to start again. An uploaded receipt may remain with the insurer; closing does not submit or cancel a claim.</p>
         <button type="button" className="button secondary" disabled={busy || windowState?.busy === true} onClick={() => void run(async () => {
           await claimAction(config, "close", { sessionId: windowState?.sessionId || sessionId });
           setSessionId(""); activeSession.current = ""; setStep(undefined); setVerification(undefined); setWindowState(undefined); opening.current = undefined;
           setRestartAvailable(true); setMessage("Preparation window closed and its lock released. Existing receipt-upload safeguards are preserved.");
         })}>Close preparation window</button>
-      </div>}
+      </details>}
       {(error || windowState?.busy || windowState && !windowState.sessionId) && <button type="button" className="text-action" disabled={busy} onClick={() => void run(async () => { await findWindow(); })}>Check active preparation window</button>}
       {error && windowState && !windowState.sessionId && <p>{windowState.busy ? "The PC is still opening a preparation. Check again when it finishes." : "There is no preparation window this worker can close. Let an active collection finish; an interrupted lock requires local recovery."}</p>}
       {restartAvailable && <button type="button" className="button" disabled={busy || !insurer} onClick={() => void run(async () => {
@@ -156,15 +157,17 @@ export default function PrepareClaim({ expenseId, initialInsurer, config, onClos
           <p>{dossier.duplicate.scope}</p>
         </details>
         {dossier.conflicts.map(c => <Notice key={c} error={!dossier.reviewableWarnings?.includes(c)} warning={dossier.reviewableWarnings?.includes(c)}>{c}</Notice>)}
-        {dossier.attachments.length > 1 && <p>Several original PDFs are indexed. Choose the correct receipt when its upload field is available.</p>}
+        {dossier.attachments.length > 1 && !verification?.receiptCopiesEquivalent && <p>Several original PDFs are indexed. Choose the correct receipt when its upload field is available.</p>}
         {!!sessionId && <>
-          <button type="button" className="button secondary" disabled={busy} onClick={() => void run(async () => { accept(await claimAction<PreparedClaim>(config, "resume", { sessionId, prepareAuthorized: true })); })}>Read and prepare current step</button>
+          <button type="button" className="button secondary" disabled={busy} onClick={() => void run(async () => { accept(await claimAction<PreparedClaim>(config, "resume", { sessionId, prepareAuthorized: true })); })}>{verification?.preparedForReview ? "Recheck final review" : "Read and prepare current step"}</button>
           {step?.status === "human-required" && <Notice>Complete the verification challenge in the insurer window. Preparation resumes automatically when the form becomes available.</Notice>}
           {step?.status === "login-required" && <Notice>Sign-in needs attention on the PC{step.authReason ? ` (${step.authReason})` : ""}. Complete sign-in in that window; preparation resumes automatically.</Notice>}
           {step?.status === "navigate" && !summaryPage && <p>Open the claim form in the insurer window, then read and prepare the current step.</p>}
           {summaryPage && <Notice>The insurer expense summary is open. FamilyHub must match this summary to the invoice and the verified details before continuing. The earlier form controls are no longer on this page.</Notice>}
           {step?.status === "inspect-required" && <Notice error>The portal changed during preparation. Re-read it before continuing.</Notice>}
-          {step?.status === "review" && <Notice>Review the final claim in the insurer window. FamilyHub may attach the original receipt, but only you may accept the attestation and submit. FamilyHub validation is not required to continue there.</Notice>}
+          {step?.status === "review" && <Notice>{verification?.receiptRequirement === "not-requested-before-confirmation"
+            ? "Review the final claim in Desjardins. Confirmer accepts the terms and sends your claim. No receipt upload is offered on this screen; the original remains available in FamilyHub."
+            : "Review the final claim in the insurer window. FamilyHub may attach the original receipt, but only you may accept the attestation and submit. FamilyHub validation is not required to continue there."}</Notice>}
           {step?.status === "complete" && <Notice>The portal reports completion. FamilyHub did not submit this claim.</Notice>}
           {step?.answerWarning && <Notice error>{step.answerWarning}</Notice>}
           {step?.confirmedIllness && !["review", "complete"].includes(step.status) && <details>

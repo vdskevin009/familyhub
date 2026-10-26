@@ -562,6 +562,7 @@ async function verifySnapshot(s: Session) {
     const ready=!!final?.summary.matches&&!!s.detailsReadBackVerified&&!!s.summaryNextAttempted&&!!s.desjardinsExpenseReadback?.matches
       &&final.fileInputs===0&&!s.attemptedAttachments.size&&!s.approved?.attachment;
     return {revision:s.revision,fields:[],attachment:null,receiptUploadAvailable:false,expenseSummary:final?.summary??null,
+      receiptCopiesEquivalent:!!s.sourceDossier&&s.dossier.attachments.length===1,
       receiptRequirement:final?.fileInputs===0?"not-requested-before-confirmation" as const:"requested" as const,
       finalConfirmationManual:true,preparedForReview:ready,readyForManualNext:false,
       scope:"Read-back from Desjardins' final review, source evidence and your saved answers. No receipt upload is offered before confirmation on this screen. Coverage, current claim-history absence and submission are not verified."};
@@ -623,6 +624,7 @@ async function verifySnapshot(s: Session) {
     } catch { /* An unreadable consent control cannot make the claim ready. */ }
   }
   return { revision: s.approved.revision, fields, attachment, receiptUploadAvailable, expenseSummary,
+    receiptCopiesEquivalent:!!s.sourceDossier&&s.dossier.attachments.length===1,
     preparedForReview: !!expenseSummary?.matches && !!s.detailsReadBackVerified && attachment?.status === "verified" && consentUnchecked,
     readyForManualNext: (fields.length > 0 || !!attachment) && fields.every(f => f.status === "match") && (!attachment || attachment.status === "verified"),
     scope: "Read-back against the values prepared from invoice evidence or your answers. This does not verify eligibility, coverage, current claim history or submission." };

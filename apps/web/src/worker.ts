@@ -60,6 +60,7 @@ export type ClaimVerification = { revision: string; readyForManualNext: boolean;
   expenseSummary?: { matches: boolean; patient: string; benefit: string; practitioner: string; service: string | null; date: string | null; amount: string | null; illness?: string;
     duration?: string | null; otherInsurancePaid?: string | null; remaining?: string | null; accident?: string | null; governmentReimbursement?: string | null; privateInsuranceClaim?: string | null; otherInsurance?: string | null; reimbursementMethod?: string | null } | null;
   receiptRequirement?: "not-requested-before-confirmation" | "requested"; finalConfirmationManual?: boolean;
+  receiptCopiesEquivalent?: boolean;
   receiptUploadAvailable?: boolean;
   fields: { key: string; label: string; value: string; optionLabel?: string; actual: string | null; status: "match" | "mismatch" | "unreadable" | "not-filled" }[];
   attachment: { name: string; status: "verified" | "unverified" | "failed"; selected?: boolean; blocked?: boolean } | null };
