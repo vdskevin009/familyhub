@@ -9,6 +9,11 @@ test('duration is extracted only from the explicit supported service duration',(
  assert.equal(desjardinsDetailSuggestion('durationMinutes',{...dossier,fields:{...dossier.fields,service:'Physiotherapy'}},[],''),null);
  assert.equal(desjardinsDetailSuggestion('durationMinutes',{...dossier,fields:{...dossier.fields,service:'Subsequent Physiotherapy Session (999 minutes)'}},[],''),null);
 });
+test('private reimbursement amount preserves recorded money including confirmed zero',()=>{
+ assert.equal(desjardinsDetailSuggestion('otherInsurancePaid',dossier,[],''),'95,00');
+ assert.equal(desjardinsDetailSuggestion('otherInsurancePaid',{...dossier,fields:{...dossier.fields,otherInsurancePaid:0}},[],''),'0,00');
+ assert.equal(desjardinsDetailSuggestion('otherInsurancePaid',{...dossier,fields:{...dossier.fields,otherInsurancePaid:null}},[],''),null);
+});
 test('paid residual receipt uses source service date and corroborated gross, preserving printed identity',()=>assert.deepEqual(desjardinsReceiptEvidence(receipt,dossier),{patient:'Alice Example',provider:'Example Clinic',practitioner:'Morgan Example',licence:'1234567',address:'123 Fiction St, #101, Example City, BC, V1V 1V1'}));
 for(const [name,body,source] of [
  ['wrong amount',receipt.replaceAll('$25.00','$26.00'),dossier],

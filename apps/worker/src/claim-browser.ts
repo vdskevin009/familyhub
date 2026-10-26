@@ -20,7 +20,7 @@ import { isDesjardinsHistory, openDesjardinsClaimEntry } from "./desjardins-clai
 import { desjardinsRadioField, desjardinsRadioSuggestion, desjardinsPatientOption, desjardinsProviderOption } from "./desjardins-claim-form.js";
 import { loadMemberAliases } from "./desjardins-collector.js";
 import { readDesjardinsReceipt } from "./desjardins-receipt.js";
-import { advanceDesjardinsIntroduction, advanceDesjardinsRadio } from "./desjardins-claim-progress.js";
+import { advanceDesjardinsIntroduction, advanceDesjardinsRadio, advanceDesjardinsDetails } from "./desjardins-claim-progress.js";
 import { reserveClaimUpload, reserveClaimUploadRetry } from "./claim-upload-guard.js";
 import { confirmedInvoicePractitioner } from "./claim-practitioner-answers.js";
 import { confirmedInvoiceIllness } from "./claim-invoice-answers.js";
@@ -704,7 +704,7 @@ async function prepareStep(id: unknown,
       step = await inspectClaimStep(id);
     }
     verification = s.approved ? await verifySnapshot(s) : undefined;
-    for (let pass = 0; pass < 16 && ["fields", "review", "navigate"].includes(step.status); pass++) {
+    for (let pass = 0; pass < 32 && ["fields", "review", "navigate"].includes(step.status); pass++) {
       assertFresh();
       if (s.dossier.insurer === "desjardins" && !s.claimKindAttempted
         && await advanceDesjardinsIntroduction(s.page, s.dossier, () => { s.claimKindAttempted = true; })) {
@@ -745,6 +745,15 @@ async function prepareStep(id: unknown,
         && (step.status !== "review" || s.dossier.insurer === "blue-cross" && await blueCrossReceiptMatches(s.page, s.dossier) && !!await blueCrossReceiptFile(s.page))
         ? `${receipt.documentId}:${receipt.attachmentId}` : null;
       if (!Object.keys(values).length && !attachment) {
+        if(s.dossier.insurer==="desjardins"&&!step.fields.length&&verification?.readyForManualNext){
+          const required=["serviceDate","service","durationMinutes","originalAmount","otherInsurancePaid","accident","otherInsurance","governmentReimbursement","privateInsuranceClaim","reimbursementMethod"];
+          const prepared=new Set(s.approved?.entries.filter(e=>e.filled).map(e=>e.target.field.kind)),path=new URL(s.page.url()).pathname;
+          s.desjardinsNextAttempts ||= new Set();
+          if(required.every(k=>prepared.has(k))&&!s.desjardinsNextAttempts.has(path)
+            &&await advanceDesjardinsDetails(s.page,true,()=>{s.desjardinsNextAttempts!.add(path);s.detailsReadBackVerified=true;})){
+            step=await inspectClaimStep(id);verification=s.approved?await verifySnapshot(s):undefined;continue;
+          }
+        }
         const required = ["patient", "benefit", "service", "serviceDate", "originalAmount", "natureOfIllness", "otherInsurance", "otherInsurancePaid", "practitioner", "supportingReceipt"];
         const prepared = new Set(s.approved?.entries.filter(e => e.filled).map(e => e.target.field.kind));
         const ready = step.status === "fields" && !!verification?.readyForManualNext && !step.fields.some(f => !f.optional)

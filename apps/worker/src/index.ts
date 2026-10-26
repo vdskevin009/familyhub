@@ -26,6 +26,7 @@ import { importConnectorMessage, claimPreparation, confirmOwnerAdjudication } fr
 import { parseLoginRecoveryRequest } from "./portal-login-recovery.js";
 import { portalReconnectStatus, startPortalReconnect } from "./portal-reconnect.js";
 import { diagnoseClaimWindow, claimWindowState, openClaimBrowser, inspectClaimStep, fillClaimStep, claimSessionExpense, closeClaimBrowser, forgetClaimServiceChoices, suggestClaimServiceChoices, verifyClaimStep, prepareCurrentClaimStep, retryCurrentClaimReceipt } from "./claim-browser.js";
+import { confirmedGovernmentReimbursement, confirmGovernmentReimbursement } from "./claim-coordination-answers.js";
 import { blueCrossClaimCauseAnswer, confirmBlueCrossClaimCause } from "./bluecross-claim-cause.js";
 import { confirmedInvoicePractitioner, confirmInvoicePractitioner } from "./claim-practitioner-answers.js";
 import { confirmedInvoiceIllness, confirmInvoiceIllness } from "./claim-invoice-answers.js";
@@ -354,6 +355,14 @@ const server = createServer(async (request, response) => {
         if (body.action === "read") { json(response, 200, { answer: await blueCrossClaimCauseAnswer() }, origin); return; }
         if (body.action !== "save") throw new Error("Choose whether to read or save the claim-cause default.");
         json(response, 200, { answer: await confirmBlueCrossClaimCause(body) }, origin); return;
+      }
+      if (parts[1] === "coordination-answer") {
+        const body = await readJson<{expenseId?:unknown;insurer?:unknown;action?:unknown;confirmed?:unknown;expectedScope?:unknown;expectedRevision?:unknown;value?:unknown;allPhysiotherapy?:unknown}>(request);
+        const preparation = claimPreparation(body.expenseId,body.insurer);
+        if(preparation.blocked)throw new Error("Resolve this invoice's conflicts before saving a coordination answer.");
+        if(body.action === "read"){json(response,200,{answer:await confirmedGovernmentReimbursement(preparation)},origin);return;}
+        if(body.action !== "save")throw new Error("Choose read or save for the government-reimbursement answer.");
+        json(response,200,{answer:await confirmGovernmentReimbursement(preparation,body)},origin);return;
       }
       if (parts[1] === "practitioner-answer") {
         const body = await readJson<{ expenseId?: unknown; insurer?: unknown; action?: unknown; confirmed?: unknown; expectedScope?: unknown; expectedRevision?: unknown; value?: unknown }>(request);
