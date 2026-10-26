@@ -4,7 +4,7 @@ import {join} from 'node:path';
 import {tmpdir} from 'node:os';
 import {chromium} from 'playwright';
 const dir=await mkdtemp(join(tmpdir(),'fh-expiry-'));process.env.FAMILYHUB_WORKER_DATA=dir;
-const {restartableDesjardinsExpiry,reopenExpiredDesjardinsSession,currentDesjardinsPage}=await import('../apps/worker/dist/desjardins-session-expiry.js');
+const {restartableDesjardinsExpiry,reopenExpiredDesjardinsSession,currentDesjardinsPage,desjardinsConsentCookies}=await import('../apps/worker/dist/desjardins-session-expiry.js');
 const {loginForClaim,authenticatedClaimPages}=await import('../apps/worker/dist/claim-login.js');
 const {tryPortalLogin,submitPortalLogin}=await import('../apps/worker/dist/portal-login.js');
 const {claimPortalDiagnostic}=await import('../apps/worker/dist/claim-portal-diagnostic.js');
@@ -59,6 +59,34 @@ try{
    assert.equal(await restartableDesjardinsExpiry(p),true);browser.newContext=async()=>{const fresh=await newContext({serviceWorkers:'block'});await fresh.route('**/*',r=>r.abort('failed'));return fresh;};
    await assert.rejects(reopenExpiredDesjardinsSession(p,reserve),/ERR_FAILED/);assert.equal(await reopenExpiredDesjardinsSession(p,reserve),false);await currentDesjardinsPage(p).context().close();browser.newContext=newContext;
   }else{assert.equal(await reopenExpiredDesjardinsSession(p,reserve),false,scenario);assert.equal(reserved,false);assert.equal(visits,before);}
+  await c.close();passed++;
+ }
+ {
+  const c=await newContext({serviceWorkers:'block'}),p=await c.newPage();
+  const base={path:'/',expires:Date.now()/1000+3600,httpOnly:false,secure:true,sameSite:'Lax'};
+  const prefs=['.desjardins.com','.dsf-dfs.com'].flatMap(domain=>['OptanonConsent','OptanonAlertBoxClosed'].map(name=>({...base,domain,name,value:'synthetic-existing-preference'})));
+  const extra=[{...base,domain:'.desjardins.com',name:'session',value:'must-not-copy'},{...base,domain:'.unrelated.invalid',name:'OptanonConsent',value:'foreign-must-not-copy'},{...base,domain:'.desjardins.com',name:'OptanonConsent',value:'expired',expires:1}];
+  assert.deepEqual(desjardinsConsentCookies([...prefs,...extra]),prefs,'only unexpired approved-domain privacy choices, without changing values/flags');
+  await c.addCookies([...prefs,...extra.slice(0,2)]);await c.addInitScript(()=>{window.syntheticExpiredRestore=true;});
+  await c.route('**/*',r=>r.fulfill({contentType:'text/html; charset=utf-8',body:expired}));await p.goto(origin+'/expired.html');
+  const expected=desjardinsConsentCookies(await c.cookies());
+  browser.newContext=async()=>{const fresh=await newContext({serviceWorkers:'block'});await fresh.route('**/*',r=>r.fulfill({contentType:'text/html',body:'<h1>Login</h1>'}));return fresh;};
+  const fresh=await reopenExpiredDesjardinsSession(p,()=>true);
+  assert.ok(fresh);assert.equal(p.isClosed(),true);assert.equal(await fresh.evaluate(()=>!!window.syntheticExpiredRestore),false);
+  const order=values=>values.sort((a,b)=>(a.domain+a.name).localeCompare(b.domain+b.name));assert.deepEqual(order(await fresh.context().cookies()),order(expected));
+  await fresh.context().close();browser.newContext=newContext;passed++;
+ }
+ {
+  const {continueDesjardinsProfileSelection}=await import('../apps/worker/dist/desjardins-profile-selection.js');
+  const c=await newContext({serviceWorkers:'block'}),p=await c.newPage();let reservations=0,choices=0;
+  await p.exposeFunction('syntheticChoice',()=>choices++);
+  const body=`<dsd-form aria-label="profil-select"><dsd-select-tile style="display:block;width:250px;height:50px" onclick="this.checked=true;syntheticChoice()">Synthetic profile</dsd-select-tile><dsd-button style="display:block;width:150px;height:40px" data-testid="primary-button" type="submit" onclick="location.href='${origin+history}'">Continue</dsd-button></dsd-form><div id="onetrust-banner-sdk" style="position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,.1)">Synthetic cookie overlay</div>`;
+  await c.route('**/*',r=>r.fulfill({contentType:'text/html',body:new URL(r.request().url()).origin===origin?'<table class="tableau-donnees"><tr><td>Synthetic history</td></tr></table>':body}));
+  await p.goto('https://id.desjardins.com/staticp/gia-externe-gpap-connect/connexion/selection-profil?state=synthetic-cookie-preflight');
+  const reserve=async()=>{reservations++;return true;};
+  assert.equal(await continueDesjardinsProfileSelection(p,async()=>undefined,reserve),false);assert.equal(reservations,0);assert.equal(choices,0);
+  await p.locator('#onetrust-banner-sdk').evaluate(el=>el.remove());
+  assert.equal(await continueDesjardinsProfileSelection(p,async()=>undefined,reserve),true);assert.equal(reservations,1);assert.equal(choices,1);
   await c.close();passed++;
  }
  const {openClaimBrowser,closeClaimBrowser,claimWindowState,inspectClaimStep}=await import('../apps/worker/dist/claim-browser.js');

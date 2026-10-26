@@ -57,6 +57,10 @@ export async function continueDesjardinsProfileSelection(page: Page, preferred: 
   if (chosen == null || !await tiles[chosen].isVisible() || !await tiles[chosen].isEnabled()) { await diagnose("choice-unavailable", labels.length); return false; }
   const submit = form.locator('dsd-button[data-testid="primary-button"][type="submit"]');
   if (await submit.count() !== 1 || !await submit.isVisible() || !await submit.isEnabled() || !isDesjardinsProfileSelection(page.url())) return false;
+  // A fresh context can expose a consent overlay. Prove click actionability
+  // without dispatching before consuming the profile transaction reservation.
+  try { await tiles[chosen].click({ trial: true, timeout: 1000 }); }
+  catch { await diagnose("choice-obstructed", labels.length); return false; }
   if (!await claim(page.url())) { await diagnose("transaction-already-consumed", labels.length); return false; }
   attempted.add(page); // An uncertain selection/submit must never be replayed.
   await diagnose("selection-reserved", labels.length);
