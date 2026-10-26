@@ -51,3 +51,9 @@ Run `npm run typecheck`, `npm run build`, `npm run test:mortgage`, `npm run test
 ## Local validation, 2026-10-23
 
 Worker and web TypeScript checks pass. The full Mortgage suite passes 69 tests; the notification lifecycle/push selection passes 39 tests including seven Mortgage integration cases. Official source adapters were verified live for seven indicators and three dated contexts. Runtime candidate compilation preserves the installed worker's newer claim preparation changes. Production installation, CI/deployment and physical handset acceptance are separate gates, recorded in issue #236.
+
+## Integration validation, 2026-10-26
+
+The merged PC Express intake and selectable contact comparison are retained. Embedded contact cards use the authoritative decision profile/terms and route to current-maturity simulations; legacy working assumptions cannot become displayed decision payments. All 72 Mortgage checks and 48 targeted notification/grocery regressions pass locally. Both Mortgage browser flows, Courses-to-Mortgage navigation and notification browser flows pass on their documented widths.
+
+The authoritative existing worker is installed at 2.27.4. Nine scoped modules were installed against its current sources; all other compiled modules match. Three scheduled tasks and 52 protected files were checked unchanged. The first actual report for 2026-10-26 is persisted with seven official indicators and three context sources; baseline/history, notification preferences/devices and one-shot repeat dedup were read back. Private essential facts remain unknown and the net result remains null. The day's public-rate snapshot was unavailable at this check and stays explicitly missing. Public PWA publication, the next natural daily run and physical handset acceptance remain separate gates tracked in issue #236.

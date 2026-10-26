@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp, readFile, writeFile, rm, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join, resolve, sep } from "node:path";
 import { once } from "node:events";
 import { spawn } from "node:child_process";
 import { createServer } from "node:http";
@@ -11,7 +11,12 @@ import { emptyReceipt, blankItem, unitPrice, validateReceipt, receiptWarnings, m
 const source = text => ({ name: "synthetic-receipt.txt", type: "text/plain", data: Buffer.from(text).toString("base64") });
 const item = { ...blankItem(), name: "Synthetic brand oats", product: "Synthetic brand oats", amount: 4, quantity: 2, size: 500, unit: "g", evidence: "SOURCE 1: synthetic oats 4.00", uncertain: false };
 const receipt = { ...emptyReceipt(), store: "Synthetic store", date: "2026-10-07", currency: "CAD", total: 7, delivery: 1, service: 1, tip: 1, tax: 0, discount: 0, items: [item] };
-async function fixture(t, extractor = async () => receipt) { const directory = await mkdtemp(join(tmpdir(), "fh-grocery-test-")); t.after(() => rm(directory, { recursive: true, force: true })); return { directory, store: new GroceryStore(join(directory, "groceries"), extractor) }; }
+async function removeFixtureDirectory(directory, prefix) {
+  const target = resolve(directory), allowed = resolve(tmpdir()) + sep;
+  assert.ok(target.startsWith(allowed) && basename(target).startsWith(prefix));
+  await rm(target, { recursive: true, force: true });
+}
+async function fixture(t, extractor = async () => receipt) { const directory = await mkdtemp(join(tmpdir(), "fh-grocery-test-")); t.after(() => removeFixtureDirectory(directory, "fh-grocery-test-")); return { directory, store: new GroceryStore(join(directory, "groceries"), extractor) }; }
 const saved = (r, store, data = receipt, options = {}) => store.review(r.id, { receipt: data, expectedRevision: r.revision, save: true, confirmed: true, ...options });
 
 test("source classification survives save/restart; original confirmations do not count as paid spending", async t => {
@@ -119,25 +124,69 @@ test("damaged storage fails closed and unrelated ledgers/contracts remain byte-i
   await assert.rejects(store.list(), /préservée/); await assert.rejects(store.import({ sources: [source("new")] }), /préservée/); assert.equal(await readFile(path, "utf8"), "damaged");
 });
 test("authenticated real-worker API: origin, pairing, no-store, upload/review/source/restart", async t => {
-  const directory = await mkdtemp(join(tmpdir(), "fh-grocery-api-")); t.after(() => rm(directory, { recursive: true, force: true }));
+  const directory = await mkdtemp(join(tmpdir(), "fh-grocery-api-"));
+  let worker, logs = "", leakedSource = false, spawnError, lastHealth = "not-attempted";
+  t.after(async () => { await stop(); await removeFixtureDirectory(directory, "fh-grocery-api-"); });
   const reservation = createServer(); reservation.listen(0, "127.0.0.1"); await once(reservation, "listening"); const port = reservation.address().port; await new Promise(r => reservation.close(r));
+  assert.notEqual(port, 4713, "Synthetic tests must never use the installed service port.");
   const key = "synthetic-grocery-key", origin = "http://127.0.0.1:5173"; await writeFile(join(directory, "pairing-key.txt"), key);
-  let worker, logs = "";
   async function start() {
-    worker = spawn(process.execPath, [process.env.FAMILYHUB_TEST_WORKER_ENTRY || "apps/worker/dist/index.js"], { windowsHide: true, env: { ...process.env, FAMILYHUB_WORKER_DATA: directory, FAMILYHUB_WORKER_HOST: "127.0.0.1", FAMILYHUB_WORKER_PORT: String(port), FAMILYHUB_ALLOWED_ORIGINS: origin }, stdio: ["ignore", "pipe", "pipe"] });
-    worker.stdout.on("data", x => { logs += x; }); worker.stderr.on("data", x => { logs += x; });
-    for (let i = 0; i < 100; i++) { try { if ((await fetch(`http://127.0.0.1:${port}/health`, { headers: { "x-familyhub-key": key } })).ok) return; } catch {} await new Promise(r => setTimeout(r, 100)); }
-    throw new Error("Synthetic worker did not start.");
+    logs = ""; spawnError = undefined; lastHealth = "not-attempted";
+    const childEnv = Object.fromEntries(Object.entries(process.env).filter(([name]) => !/^FAMILYHUB_PUSH_/i.test(name)));
+    worker = spawn(process.execPath, [process.env.FAMILYHUB_TEST_WORKER_ENTRY || "apps/worker/dist/index.js"], { windowsHide: true, env: { ...childEnv, FAMILYHUB_WORKER_DATA: directory, FAMILYHUB_WORKER_HOST: "127.0.0.1", FAMILYHUB_WORKER_PORT: String(port), FAMILYHUB_ALLOWED_ORIGINS: origin }, stdio: ["ignore", "pipe", "pipe"] });
+    worker.on("error", error => { spawnError = error; });
+    const capture = x => {
+      logs = (logs + x.toString()).slice(-12000);
+      leakedSource ||= logs.includes("Synthetic API receipt");
+    };
+    worker.stdout.on("data", capture); worker.stderr.on("data", capture);
+    const deadline = Date.now() + 15000;
+    while (Date.now() < deadline && !spawnError && worker.exitCode === null && worker.signalCode === null) {
+      try {
+        const response = await fetch(`http://127.0.0.1:${port}/health`, { headers: { "x-familyhub-key": key }, signal: AbortSignal.timeout(1000), redirect: "error" });
+        lastHealth = `HTTP ${response.status}`;
+        if (response.ok) { t.diagnostic(`Synthetic worker ready on loopback port ${port}.`); return; }
+      } catch (error) { lastHealth = error.cause?.code || error.code || error.name; }
+      await new Promise(r => setTimeout(r, 100));
+    }
+    throw new Error(`Synthetic worker did not start: spawn=${spawnError?.code || "ok"}; exit=${worker.exitCode}; signal=${worker.signalCode}; health=${lastHealth}\n${logs.replaceAll(key, "[synthetic key]")}`);
   }
-  async function stop() { const exited = once(worker, "exit"); worker.kill(); await exited; worker = null; }
-  t.after(async () => { if (worker?.exitCode === null) await stop(); }); await start();
-  const request = (path, body, headers = {}) => fetch(`http://127.0.0.1:${port}${path}`, { method: body === undefined ? "GET" : "POST", headers: { "x-familyhub-key": key, "Content-Type": "application/json", Origin: origin, ...headers }, body: body === undefined ? undefined : JSON.stringify(body) });
+  async function stop() {
+    if (!worker) return;
+    const current = worker;
+    if (current.pid && current.exitCode === null && current.signalCode === null) {
+      const exited = once(current, "exit", { signal: AbortSignal.timeout(5000) });
+      current.kill(); await exited;
+    }
+    worker = null;
+    t.diagnostic("Synthetic worker process stopped.");
+  }
+  await start();
+  const request = (path, body, headers = {}) => fetch(`http://127.0.0.1:${port}${path}`, { method: body === undefined ? "GET" : "POST", headers: { "x-familyhub-key": key, "Content-Type": "application/json", Origin: origin, ...headers }, body: body === undefined ? undefined : JSON.stringify(body), signal: AbortSignal.timeout(5000), redirect: "error" });
   assert.equal((await request("/groceries", undefined, { "x-familyhub-key": "wrong" })).status, 401);
   assert.equal((await request("/groceries", undefined, { Origin: "https://untrusted.invalid" })).status, 403);
   const health = await (await request("/health")).json(); assert.ok(health.capabilities.includes("grocery-source-type-v1")); assert.ok(health.capabilities.includes("grocery-receipts-v1"));
+  assert.ok(health.capabilities.includes("grocery-collection-v1"));
+  const collectionFile = join(directory, "groceries", "collection-status.json");
+  const collectionStatus = await request("/groceries/collection-status");
+  assert.equal(collectionStatus.status, 200); assert.equal(collectionStatus.headers.get("cache-control"), "no-store");
+  assert.deepEqual((await collectionStatus.json()).accounts, []);
+  await assert.rejects(readFile(collectionFile), { code: "ENOENT" }, "status reads do not create collection state");
+  assert.equal((await request("/groceries/collect", {}, { "x-familyhub-key": "wrong" })).status, 401);
+  assert.equal((await request("/groceries/collect", {}, { Origin: "https://untrusted.invalid" })).status, 403);
+  assert.equal((await request("/groceries/collect", {})).status, 202);
+  let collection;
+  for (let i = 0; i < 50; i++) {
+    collection = await (await request("/groceries/collection-status")).json();
+    if (!collection.busy) break;
+    await new Promise(r => setTimeout(r, 20));
+  }
+  assert.equal(collection.busy, false); assert.equal(collection.incomplete, true); assert.equal(collection.error, "setup-required");
+  assert.equal(collection.lastSuccess, undefined); assert.equal(collection.counts.imported, 0);
+  assert.deepEqual((await (await request("/groceries")).json()).records, []);
   assert.ok(health.capabilities.includes("grocery-weekly-v1")); assert.ok(health.capabilities.includes("grocery-fulfillment-v1"));
   assert.ok(health.capabilities.includes("grocery-comparison-evidence-v1")); assert.ok(health.capabilities.includes("grocery-source-estimates-v1"));
-  assert.ok(health.capabilities.includes("grocery-items-300-v1")); assert.equal(health.version, "2.27.2");
+  assert.ok(health.capabilities.includes("grocery-items-300-v1")); assert.equal(health.version, "2.27.4");
   const plan = (await (await request("/groceries/planning")).json()); assert.equal(plan.schema, 1);
   plan.area = "Synthetic city";
   plan.items = [{ id: "synthetic-month", name: "Synthetic monthly packs", quantity: 3, size: null, unit: null, preference: "Format unknown", substitutions: false, active: false, origin: "", cadence: "month", every: 1, bucket: "household", measure: "pack", provisional: true, basketQuantity: null }];
@@ -169,5 +218,5 @@ test("authenticated real-worker API: origin, pairing, no-store, upload/review/so
   assert.equal((await (await request("/groceries/planning")).json()).revision, planningRevision);
   assert.deepEqual((await (await request("/groceries/planning")).json()), maximumSaved);
   // Startup logs predate this module; never output private source text from a Courses route.
-  assert.ok(!logs.includes("Synthetic API receipt")); await stop();
+  await stop(); assert.equal(leakedSource, false);
 });

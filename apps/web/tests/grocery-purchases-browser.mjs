@@ -42,7 +42,7 @@ try {
     await page.keyboard.press("Escape"); await page.waitForFunction(el => document.activeElement === el, await open.elementHandle()); assert.equal(await open.evaluate(el => document.activeElement === el), true); await page.getByRole("button", { name: "Catalogue", exact: true }).click(); await page.getByRole("button", { name: "Achats", exact: true }).click(); await open.waitFor();
     // Both newly integrated areas remain reachable; returning retains receipt cards and data.
     const nav = page.locator(".bottom-nav:visible, .app-rail nav:visible");
-    await nav.getByRole("button", {name:"Plus",exact:true}).click(); await page.locator(".other-link").filter({hasText:"Hypothèque"}).click(); await page.locator(".mortgage").getByText(/Aucun historique enregistré/).waitFor();
+    await nav.getByRole("button", {name:"Plus",exact:true}).click(); await page.locator(".other-link").filter({hasText:"Hypothèque"}).click(); await page.getByRole("region",{name:"Assistant hypothécaire",exact:true}).getByRole("heading",{name:"Mortgage",exact:true}).waitFor(); await page.getByRole("tab",{name:"Offres et contacts",exact:true}).click(); await page.locator(".mortgage-compact").getByText(/Aucun historique enregistré/).waitFor();
     await nav.getByRole("button", {name:"Courses",exact:true}).click(); await page.getByRole("button",{name:"Achats",exact:true}).click(); await open.waitFor();
     // Equal formats have no calculation badge. Repeat visits never mutate the shared plan.
     plan.prices[0].size = 12; await page.reload(); await page.getByRole("button", { name: "Achats", exact: true }).click(); await open.click(); await dialog.waitFor(); assert.equal(await dialog.getByText("Calculé", { exact: true }).count(), 0);

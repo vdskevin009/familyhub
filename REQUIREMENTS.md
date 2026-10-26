@@ -15,6 +15,10 @@ Testing. The accepted daily decision flow extends FH-MORTGAGE-001/002; their imm
 Financial evidence stays in the authenticated local worker. Source, software tests, deployed PWA, installed worker, actual daily persistence and physical phone acceptance are independent gates. See docs/MORTGAGE-ASSISTANT.md.
 
 
+## PC Express purchase intake — FH-GROCERY-011 (#155 follow-up)
+
+Testing: release candidate; deployment and real collection acceptance remain separate. [FH-GROCERY-011](docs/requirements/FH-GROCERY-011.md) defines an independent Gmail collection feeding Achats from complete matched confirmation/delivery evidence. Preserve estimates, source identity, manual records and separate collection errors; never infer a final receipt, paid amount, substitution or human review. Implementation: pc-express-mail, grocery-collection, GroceryStore and daily-collections. Synthetic validation and live release/next natural run are separate gates.
+
 ## Proactive mobile assistant — FH-PROACTIVE-001..005 (#256)
 
 Accepted implementation, Testing. The reviewed audit direction supersedes the legacy Today projection and claims-only default entry; preserve every existing domain route and financial/manual authority.
