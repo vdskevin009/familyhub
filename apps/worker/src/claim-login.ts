@@ -8,10 +8,17 @@ import { continueDesjardinsSignIn } from "./desjardins-signin.js";
 import { desjardinsHistoryReady } from "./desjardins-navigation.js";
 import { desjardinsRadioField } from "./desjardins-claim-form.js";
 import { desjardinsAuthCookies } from "./desjardins-collector.js";
+import { desjardinsSessionExpired } from "./desjardins-history-reader.js";
+import { reopenExpiredDesjardinsSession } from "./desjardins-session-expiry.js";
 
 /** Uses the same guarded DPAPI login as collection, under the caller's portal lock. */
-export async function loginForClaim(page: Page, insurer: "blue-cross" | "desjardins", recovery?: LoginRecoveryRequest): Promise<LoginReason | undefined> {
+export async function loginForClaim(page: Page, insurer: "blue-cross" | "desjardins", recovery?: LoginRecoveryRequest, attempt: typeof tryPortalLogin = tryPortalLogin): Promise<LoginReason | undefined> {
+  let expiryEntryAttempted = false;
   const ready = async () => {
+    if (insurer === "desjardins") await reopenExpiredDesjardinsSession(page, () => {
+      if (expiryEntryAttempted) return false;
+      expiryEntryAttempted = true; return true;
+    });
     if ((await authenticatedClaimPages(page, insurer)).length === 1) return true;
     if (insurer === "desjardins") {
       const continuation = await continueDesjardinsSignIn(page);
@@ -19,7 +26,7 @@ export async function loginForClaim(page: Page, insurer: "blue-cross" | "desjard
     }
     return (await authenticatedClaimPages(page, insurer)).length === 1;
   };
-  const reason = await tryPortalLogin(page, insurer === "blue-cross" ? "bluecross" : "desjardins", ready, undefined, recovery);
+  const reason = await attempt(page, insurer === "blue-cross" ? "bluecross" : "desjardins", ready, undefined, recovery);
   if (!reason && insurer === "desjardins") {
     const pages = await authenticatedClaimPages(page, insurer);
     if (pages.length === 1) await preserveDesjardinsClaimSession(pages[0]);
@@ -34,6 +41,7 @@ export async function authenticatedClaimPages(page: Page, insurer: "blue-cross" 
     let url: URL;
     try { url = new URL(candidate.url()); } catch { continue; }
     if (url.username || url.password || url.origin !== (insurer === "blue-cross" ? "https://service.pac.bluecross.ca" : "https://www.agea-gbim.dsf-dfs.com")) continue;
+    if (insurer === "desjardins" && await desjardinsSessionExpired(candidate)) continue;
     if (await candidate.locator('input[type="password"]').first().isVisible().catch(() => false)) continue;
     if (insurer === "desjardins" && (await candidate.locator('input[type="password"]').filter({ visible: true }).count()
       || classifyLoginScreen(await candidate.locator("body").innerText().catch(() => ""))

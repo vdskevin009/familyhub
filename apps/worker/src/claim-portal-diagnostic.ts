@@ -1,6 +1,8 @@
 import type { Page } from "playwright";
 import { isDesjardinsProfileSelection } from "./desjardins-profile-selection.js";
 import { isDesjardinsDossierSelection } from "./desjardins-dossier-selection.js";
+import { desjardinsSessionExpired } from "./desjardins-history-reader.js";
+import { restartableDesjardinsExpiry } from "./desjardins-session-expiry.js";
 
 /** Paired, read-only inspection of the existing owned preparation context.
  * No cookies, tokens, query strings, password values, hidden fields or raw HTML.
@@ -9,6 +11,9 @@ export async function claimPortalDiagnostic(page: Page) {
   const tabs = [];
   for (const candidate of page.context().pages().filter(p => !p.isClosed()).slice(0, 8)) {
     const url = new URL(candidate.url());
+    if (await desjardinsSessionExpired(candidate)) {
+      tabs.push({ kind: "session-expired", restartAvailable: await restartableDesjardinsExpiry(candidate) }); continue;
+    }
     const profile = isDesjardinsProfileSelection(candidate.url());
     const dossier = isDesjardinsDossierSelection(candidate.url());
     const portal = !url.username && !url.password && url.origin === "https://www.agea-gbim.dsf-dfs.com";
