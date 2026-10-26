@@ -39,7 +39,7 @@ try {
  }
  const ambiguous=await openClaimBrowser({expenseId:'synthetic',insurer:'desjardins',portalUrl:claimPortals.desjardins,preparationUrl:claimPreparationPortals.desjardins,blocked:false,reviewableWarnings:[],fields:{},attachments:[]},false,false,launch,true,authenticate);session=ambiguous.sessionId;
  for(let tab=0;tab<2;tab++){const extra=await lastContext.newPage();await extra.goto(origin+'/AGEA-GBIM/Reclamation/TypeReclamation_TypeOfClaim.aspx');}
- const stopped=await inspectClaimStep(session);assert.equal(stopped.status,'navigate');assert.match(stopped.answerWarning,/Several Desjardins/);assert.deepEqual(stopped.fields,[]);
+ const stopped=await inspectClaimStep(session);assert.equal(stopped.status,'inspect-required');assert.match(stopped.answerWarning,/Several Desjardins/);assert.deepEqual(stopped.fields,[]);
  await closeClaimBrowser(session);session=undefined;
  console.log(JSON.stringify({passed:3,coverage:'fresh owned context starts at authenticated history, avoids authentication bootstrap, preserves attempt timestamp on repeat',insurerContact:false}));
 }finally{if(session)await closeClaimBrowser(session);await rm(dir,{recursive:true,force:true});}

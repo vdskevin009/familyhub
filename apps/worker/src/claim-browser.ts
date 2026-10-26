@@ -30,7 +30,7 @@ import { advanceBlueCrossDetails, advanceBlueCrossExpenses, readBlueCrossExpense
 import { isBlueCrossClaimCausePage, openBlueCrossClaimCause, blueCrossClaimCauseAnswer } from "./bluecross-claim-cause.js";
 import { desjardinsDetailsPath, desjardinsDetailText, desjardinsDetailSuggestion, desjardinsDetailRadios, desjardinsDetailRadioSuggestion } from "./desjardins-claim-details.js";
 import { confirmedGovernmentReimbursement } from "./claim-coordination-answers.js";
-import {desjardinsSummaryPath,openDesjardinsSummaryDetails} from "./desjardins-claim-summary.js";
+import {desjardinsSummaryPath,openDesjardinsSummaryDetails,readDesjardinsExpenseSummary,advanceDesjardinsSummary} from "./desjardins-claim-summary.js";
 import { isBlueCrossClaimKindPage, openBlueCrossHealthcareClaim } from "./bluecross-claim-kind.js";
 import { blueCrossReceiptFile, blueCrossReceiptMatches, openBlueCrossReceiptUpload, blueCrossReceiptAlreadyListed, blueCrossReceiptUploadEvidence, blueCrossReceiptUploadAvailable } from "./bluecross-claim-upload.js";
 
@@ -42,6 +42,7 @@ type Session = { id: string; browser: Browser; page: Page; dossier: ClaimPrepara
   sourceDossier?: ClaimPreparation;
   desjardinsNextAttempts?: Set<string>;
   desjardinsSummaryExpanded?: boolean;
+  desjardinsExpenseReadback?: NonNullable<Awaited<ReturnType<typeof readDesjardinsExpenseSummary>>>;
   receiptIdentity?: ReceiptPractitioner | null;
   fields: Map<string, Target>; attemptedAttachments: Set<string>; busy: boolean; preparing?: boolean; closing?: boolean; revision: string; inspectedUrl: string; approved?: ApprovedSnapshot;
   authenticate?: typeof loginForClaim; autonomous?: boolean; loginRefreshAttempted?: boolean; authPersistenceAttempted?: boolean; authReason?: LoginReason; release?: () => Promise<void>; claimEntryAttempted?: boolean; claimKindAttempted?: boolean; claimCauseAttempted?: boolean; detailsNextAttempted?: boolean; detailsReadBackVerified?: boolean; detailsNextVerified?: boolean; summaryNextAttempted?: boolean; receiptRetryUsed?: boolean; authorizedRetryHash?: string; uploadEntryAttempted?: boolean };
@@ -151,7 +152,7 @@ async function inspect(s: Session) {
   const candidates = s.page.context().pages().filter(p => !p.isClosed() && allowed(p.url(), s.dossier.insurer));
   if (s.dossier.insurer === "desjardins") {
     const claims = candidates.filter(p => /^\/AGEA-GBIM\/Reclamation\/(?:[A-Za-z_]+\/)*[A-Za-z_]+\.aspx$/.test(new URL(p.url()).pathname));
-    if (claims.length > 1) { s.fields.clear(); s.revision = ""; return { status: "navigate", fields: [], revision: "", submitAllowed: false, answerWarning: "Several Desjardins claim tabs are open. No tab was selected for preparation." }; }
+    if (claims.length > 1) { s.fields.clear(); s.revision = ""; return { status: "inspect-required", fields: [], revision: "", submitAllowed: false, answerWarning: "Several Desjardins claim tabs are open. No tab was selected for preparation." }; }
     if (claims.length === 1) s.page = claims[0];
     else if (candidates.length === 1) s.page = candidates[0];
   } else if (candidates.length) s.page = candidates[candidates.length - 1];
@@ -711,6 +712,13 @@ async function prepareStep(id: unknown,
     verification = s.approved ? await verifySnapshot(s) : undefined;
     for (let pass = 0; pass < 32 && ["fields", "review", "navigate"].includes(step.status); pass++) {
       assertFresh();
+      if(s.dossier.insurer==="desjardins"&&new URL(s.page.url()).pathname===desjardinsSummaryPath&&s.detailsReadBackVerified&&!s.summaryNextAttempted){
+        const government=await confirmedGovernmentReimbursement(s.dossier),cause=await blueCrossClaimCauseAnswer();
+        const summary=await readDesjardinsExpenseSummary(s.page,s.dossier,government.value==="no"&&cause.value==="unrelated",!!s.receiptIdentity);
+        if(summary?.matches&&await advanceDesjardinsSummary(s.page,true,()=>{s.summaryNextAttempted=true;s.desjardinsExpenseReadback=summary;})){
+          step=await inspectClaimStep(id);verification=s.approved?await verifySnapshot(s):undefined;continue;
+        }
+      }
       if (s.dossier.insurer === "desjardins" && !s.claimKindAttempted
         && await advanceDesjardinsIntroduction(s.page, s.dossier, () => { s.claimKindAttempted = true; })) {
         step = await inspectClaimStep(id); continue;
