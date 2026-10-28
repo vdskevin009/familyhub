@@ -197,7 +197,13 @@ export class NotificationLibrary {
           state.decisions ??= {};
           const group = event.groupId ?? event.id, evidenceVersion = event.evidenceVersion ?? event.id;
           if (!event.active && state.decisions[group] && state.decisions[group].evidenceVersion !== evidenceVersion || state.events.some(other => other.active && other.groupId === group && other.evidenceVersion !== evidenceVersion)) throw new NotificationConflict("Les preuves ont changé. Ouvrez le rappel actuel avant de décider.");
-          if (body.action === "restore") { delete state.decisions[group]; event.pushState = "handled"; }
+          if (body.action === "restore") {
+            delete state.decisions[group]; event.pushState = "handled";
+            // Explicitly surface one current policy baseline in-app. Never replay it through Push,
+            // change another category's baseline or promote an expired historical decision.
+            if (event.kind === "policy" && event.active && event.actionable === true
+              && event.expiresAt && Date.parse(event.expiresAt) > now.getTime()) event.baseline = false;
+          }
           else {
             if (!state.decisions[group] && Object.keys(state.decisions).length >= 5000) throw new Error("La limite de décisions est atteinte. Les décisions existantes sont conservées.");
             if (body.action === "snooze" && (!timestamp(body.snoozedUntil) || Date.parse(body.snoozedUntil as string) <= now.getTime() || Date.parse(body.snoozedUntil as string) > now.getTime() + 90 * 86_400_000)) throw new Error("Choisissez un report futur, dans les 90 prochains jours.");
