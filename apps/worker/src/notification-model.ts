@@ -3,11 +3,16 @@ import type { FinanceState } from "./finance-model.js";
 import { classifiedRows, recurringObservations, summarizeSpending } from "./finance-model.js";
 import type { SavingsContract } from "./savings-model.js";
 import type { invoiceSnapshot } from "./invoices.js";
+import type { PolicyRateRead } from "./policy-rate.js";
+import type { MortgageState } from "./mortgage-model.js";
+import type { GroceryLibrary } from "./grocery-model.js";
+import type { GroceryPlan } from "./grocery-planning.js";
+import { householdCandidates, type ClaimDeadline } from "./household-alerts.js";
 
-export const notificationKinds = ["collection", "reimbursement", "unmatched", "price", "deadline", "weekly", "mortgage"] as const;
+export const notificationKinds = ["collection", "reimbursement", "unmatched", "price", "deadline", "weekly", "mortgage", "policy", "grocery", "claim-deadline"] as const;
 export type NotificationKind = typeof notificationKinds[number];
-export type NotificationTarget = { view: "reimbursements" | "savings" | "finances" | "mortgage"; recordId?: string; queue?: "unmatched"; tab?: "investments"; accountId?: string; from?: string; to?: string; currency?: string; sources?: boolean };
-export type Candidate = { baselineGroup?: "insurance-policy"; groupKey?: string; evidenceKey?: string; actionable?: boolean; pushEligible?: boolean; expiresAt?: string; priority?: number; key: string; source: "invoices" | "collections" | "contracts" | "finance" | "mortgage"; kind: NotificationKind; title: string; detail: string; target: NotificationTarget; sourceDate?: string };
+export type NotificationTarget = { view: "reimbursements" | "savings" | "finances" | "mortgage" | "groceries"; recordId?: string; queue?: "unmatched"; tab?: "investments" | "tickets"; accountId?: string; from?: string; to?: string; currency?: string; sources?: boolean };
+export type Candidate = { baselineGroup?: "insurance-policy"; groupKey?: string; evidenceKey?: string; actionable?: boolean; pushEligible?: boolean; expiresAt?: string; priority?: number; key: string; source: "invoices" | "collections" | "contracts" | "finance" | "mortgage" | "policy" | "groceries" | "claim-deadlines"; kind: NotificationKind; title: string; detail: string; target: NotificationTarget; sourceDate?: string; links?: { label: string; url: string }[] };
 export type NotificationDecision = { evidenceVersion: string; state: "snoozed" | "resolved" | "dismissed"; at: string; snoozedUntil?: string };
 export type NotificationEvent = Omit<Candidate, "key" | "source" | "baselineGroup" | "groupKey" | "evidenceKey" | "pushEligible"> & { id: string; groupId?: string; evidenceVersion?: string; createdAt: string; baseline: boolean; readAt?: string; active: boolean; decision?: NotificationDecision; pushState?: "pending" | "handled" | "expired" };
 export const notificationDeliveryPolicy = { timeZone: "America/Vancouver", fromHour: 8, untilHour: 21, maximumPerDay: 1, actionOnly: true } as const;
@@ -19,7 +24,7 @@ export function notificationNeedsAttention(event: NotificationEvent, now = Date.
   return event.active && !event.baseline && event.actionable !== false && notificationActionState(event, now) === "open";
 }
 export type CollectionEvidence = { id: string; label: string; state: string; lastAttempt?: string; lastSuccess?: string; authReason?: string; error?: string };
-export type NotificationEvidence = { invoices?: Awaited<ReturnType<typeof invoiceSnapshot>>; collections?: CollectionEvidence[]; contracts?: SavingsContract[]; finance?: FinanceState; mortgage?: MortgageDailyReport[] };
+export type NotificationEvidence = { invoices?: Awaited<ReturnType<typeof invoiceSnapshot>>; collections?: CollectionEvidence[]; contracts?: SavingsContract[]; finance?: FinanceState; mortgage?: MortgageDailyReport[]; policy?: PolicyRateRead; mortgageState?: MortgageState; groceries?: { library: GroceryLibrary; plan: GroceryPlan }; claimDeadlines?: ClaimDeadline[] };
 export type NotificationPreferences = Record<NotificationKind, boolean>;
 export const defaultNotificationPreferences = (): NotificationPreferences => Object.fromEntries(notificationKinds.map(k => [k, true])) as NotificationPreferences;
 const day = 86_400_000;
@@ -119,5 +124,6 @@ export function notificationCandidates(evidence: NotificationEvidence, now = new
       }
     }
   }
-  return { candidates, ready };
+  const household = householdCandidates(evidence, today, now);
+  return { candidates: [...candidates, ...household.candidates], ready: [...ready, ...household.ready], monitoring: household.monitoring };
 }
