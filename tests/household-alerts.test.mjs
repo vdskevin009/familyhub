@@ -7,7 +7,7 @@ import { PolicyRateMonitor, parsePolicyAnnouncement, policyRateUrl } from "../ap
 import { householdCandidates, groceryDropAssessment } from "../apps/worker/dist/household-alerts.js";
 import { readClaimDeadlines } from "../apps/worker/dist/claim-deadlines.js";
 import { NotificationLibrary } from "../apps/worker/dist/notification-library.js";
-import { notificationCandidates } from "../apps/worker/dist/notification-model.js";
+import { notificationCandidates, notificationNeedsAttention } from "../apps/worker/dist/notification-model.js";
 import { emptyPlan } from "../apps/worker/dist/grocery-planning.js";
 import { emptyMortgage } from "../apps/worker/dist/mortgage-model.js";
 import { now as oldNow, pushFixture, contractEvidence, financeEvidence } from "./notification-fixture.mjs";
@@ -78,6 +78,31 @@ test("new categories migrate without replay; policy dedup survives restart, pref
   lib = create(); s = await lib.scan({ policy: next }, [], new Date(nextNow.getTime() + 1000)); assert.equal(sends, 1); assert.equal(s.events.length, 2);
   const oldPreferences = Object.fromEntries(Object.entries(s.preferences).filter(([k]) => !["policy", "grocery", "claim-deadline"].includes(k)));
   s = await lib.mutate({ action: "preferences", expectedRevision: s.revision, preferences: oldPreferences }); assert.equal(s.preferences.policy, true);
+}));
+
+test("explicit restore surfaces only the current policy baseline in-app without Push or duplication", () => sandbox(async dir => {
+  const path = join(dir, "history.json"), fixture = pushFixture(); let sends = 0;
+  const create = () => new NotificationLibrary(path, async () => fixture.config, async () => { sends++; return "accepted"; });
+  let lib = create(), s = await lib.read();
+  s = await lib.mutate({ action: "enroll", expectedRevision: s.revision, subscription: fixture.subscription, label: "Synthetic device", permission: "granted", publicKey: fixture.config.publicKey });
+  const evidence = { policy: policy(), contracts: [{ ...contractEvidence(), renewal: "2026-11-02" }] };
+  s = await lib.scan(evidence, [], now); const event = s.events.find(e => e.kind === "policy"), other = s.events.find(e => e.kind === "deadline");
+  assert.equal(event.baseline, true); assert.equal(notificationNeedsAttention(event), false);
+  const originalEvidence = { title: event.title, detail: event.detail, links: event.links, sourceDate: event.sourceDate, evidenceVersion: event.evidenceVersion };
+  s = await lib.mutate({ action: "restore", id: event.id, expectedRevision: s.revision }, now);
+  let restored = s.events.find(e => e.id === event.id);
+  assert.equal(notificationNeedsAttention(restored), true); assert.equal(restored.pushState, "handled");
+  assert.deepEqual({ title: restored.title, detail: restored.detail, links: restored.links, sourceDate: restored.sourceDate, evidenceVersion: restored.evidenceVersion }, originalEvidence);
+  assert.equal(s.events.find(e => e.id === other.id).baseline, true); assert.equal(sends, 0);
+  lib = create(); s = await lib.scan(evidence, [], new Date(now.getTime() + 1000));
+  s = await lib.mutate({ action: "restore", id: event.id, expectedRevision: s.revision }, now);
+  assert.equal(s.events.filter(e => e.id === event.id).length, 1); assert.equal(notificationNeedsAttention(s.events.find(e => e.id === event.id)), true); assert.equal(sends, 0);
+  s = await lib.mutate({ action: "restore", id: other.id, expectedRevision: s.revision }, now);
+  assert.equal(s.events.find(e => e.id === other.id).baseline, true);
+  const expiredPath = join(dir, "expired.json"), expiredLib = new NotificationLibrary(expiredPath, async () => null, async () => { throw Error("No transport expected"); });
+  let expired = await expiredLib.scan({ policy: policy() }, [], now);
+  expired = await expiredLib.mutate({ action: "restore", id: expired.events[0].id, expectedRevision: expired.revision }, new Date("2026-11-20T18:00:00Z"));
+  assert.equal(expired.events[0].baseline, true);
 }));
 
 test("existing contract/GIC deadline rules and source limits remain; monitoring explains missing evidence", () => {

@@ -186,7 +186,7 @@ test("authenticated real-worker API: origin, pairing, no-store, upload/review/so
   assert.deepEqual((await (await request("/groceries")).json()).records, []);
   assert.ok(health.capabilities.includes("grocery-weekly-v1")); assert.ok(health.capabilities.includes("grocery-fulfillment-v1"));
   assert.ok(health.capabilities.includes("grocery-comparison-evidence-v1")); assert.ok(health.capabilities.includes("grocery-source-estimates-v1"));
-  assert.ok(health.capabilities.includes("grocery-items-300-v1")); assert.equal(health.version, "2.28.0");
+  assert.ok(health.capabilities.includes("grocery-items-300-v1")); assert.equal(health.version, "2.28.1");
   const plan = (await (await request("/groceries/planning")).json()); assert.equal(plan.schema, 1);
   plan.area = "Synthetic city";
   plan.items = [{ id: "synthetic-month", name: "Synthetic monthly packs", quantity: 3, size: null, unit: null, preference: "Format unknown", substitutions: false, active: false, origin: "", cadence: "month", every: 1, bucket: "household", measure: "pack", provisional: true, basketQuantity: null }];
