@@ -1,5 +1,19 @@
 # FamilyHub - Canonical Requirements
 
+## Household event alerts — FH-NOTIF-003..007 (#265)
+
+Accepted implementation; Testing. External event → personal impact → useful action, reusing the existing scanner, Web Push identity, subscriptions, preferences and generic private payload. No new credentials, permissions, schedule, financial submission, provider contact or fiscal-alert scope. Source: `docs/HOUSEHOLD-EVENTS.md`.
+
+| ID | Durable behavior | Status |
+|---|---|---|
+| FH-NOTIF-003 | Read dated official Bank of Canada target/change evidence hourly through the existing worker scan; stable announcement identity, arithmetic/date checks, first-source silent baseline and permanent dedup. Show effective date, source and personal fixed/variable/unknown impact without repricing quotes or equating policy to lender prime. | Testing |
+| FH-NOTIF-004 | Preserve documented insurance/telecom renewal, commitment/promotion and GIC maturity milestones with exact source navigation, preferences, freshness and conflict guards. Missing dates remain explicit, never inferred from durations. | Testing |
+| FH-NOTIF-005 | Alert only on materially cheaper, current, reviewed local exact-product references for repeated reviewed paid purchases; comparable units/currency, whole-pack cost, 15% and two-currency-unit thresholds, source/validity and costs excluded from net savings remain explicit. | Testing |
+| FH-NOTIF-006 | Detect claim deadlines only from explicit reviewed private rules linked to a source document and correct open submittable dossier/next insurer. No invented deadline from service dates; missing rule/proof stays visible and no claim is submitted. | Testing |
+| FH-NOTIF-007 | Show monitoring coverage and missing evidence, distinguish unavailable connection from absent Push configuration/devices, preserve existing choices/history and older-client preference compatibility. Provider acceptance and physical handset receipt remain distinct. | Testing |
+
+Code: `policy-rate`, `household-alerts`, notification model/library and Notifications view. Tests use fictional household data. Current official-source observations, exact CI, publication, installed activation and physical receipt are separate acceptance evidence recorded in Issue #265; none is established by this status alone. Unavailable claim deadline sources and incomplete paid-grocery evidence cannot produce events.
+
 ## Proactive Mortgage decision assistant — FH-MORTGAGE-003..007 (#236)
 
 Testing. The accepted daily decision flow extends FH-MORTGAGE-001/002; their immutable observations, October 20 reference, original quotes and contacts remain authoritative. This supersedes the earlier absence of daily analysis while reusing its existing source automation.

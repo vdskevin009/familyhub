@@ -15,6 +15,8 @@ import { NotificationLibrary, NotificationConflict } from "./notification-librar
 import { OpportunityActions, OpportunityActionsConflict } from "./opportunity-actions.js";
 import { PushConfiguration, sendPush } from "./notification-push.js";
 import type { NotificationEvidence } from "./notification-model.js";
+import { PolicyRateMonitor } from "./policy-rate.js";
+import { readClaimDeadlines } from "./claim-deadlines.js";
 
 import { GroceryStore, GroceryConflict } from "./grocery-store.js";
 import { GroceryCollection } from "./grocery-collection.js";
@@ -57,7 +59,7 @@ type ResearchWatch = {
 };
 type PersistedState = { watches: ResearchWatch[] };
 
-const version = "2.27.9";
+const version = "2.28.0";
 let claimOperationBusy = false;
 const host = process.env.FAMILYHUB_WORKER_HOST?.trim() || "127.0.0.1";
 const port = Number(process.env.FAMILYHUB_WORKER_PORT || "4713");
@@ -82,6 +84,7 @@ const financeLibrary = new FinanceLibrary(join(stateDir, "finances"));
 const pushConfiguration = new PushConfiguration(stateDir);
 const opportunityActions = new OpportunityActions(join(stateDir, "opportunities", "actions.json"));
 const notifications = new NotificationLibrary(join(stateDir, "notifications", "history.json"), () => pushConfiguration.read(), sendPush, () => opportunityActions.read());
+const policyRate = new PolicyRateMonitor(join(stateDir, "notifications", "policy-rate.json"));
 let notificationScan: Promise<unknown> | null = null;
 function scanNotifications() {
   if (notificationScan) return notificationScan;
@@ -95,6 +98,14 @@ function scanNotifications() {
     else errors.push("factures et remboursements");
     if (finance.status === "fulfilled") evidence.finance = finance.value; else errors.push("finances");
     if (contracts.status === "fulfilled") evidence.contracts = contracts.value.records.map(r => r.contract); else errors.push("contrats");
+    const [policy, groceries, deadlines, mortgageContext] = await Promise.allSettled([
+      policyRate.read(), Promise.all([groceryStore.list(), groceryPlanning.read()]),
+      readClaimDeadlines(join(stateDir, "notifications", "claim-deadlines.json")), mortgageStore.read()
+    ]);
+    if (policy.status === "fulfilled") evidence.policy = policy.value; else errors.push("taux directeur officiel");
+    if (groceries.status === "fulfilled") evidence.groceries = { library: groceries.value[0], plan: groceries.value[1] }; else errors.push("preuves de courses");
+    if (deadlines.status === "fulfilled") evidence.claimDeadlines = deadlines.value; else errors.push("délais de réclamation");
+    if (mortgageContext.status === "fulfilled") evidence.mortgageState = mortgageContext.value;
     evidence.collections = [{ ...getBlueCrossStatus(), id: "bluecross", label: "Blue Cross" }, { ...getDesjardinsStatus(), id: "desjardins", label: "Desjardins" }];
     if (invoices.status === "fulfilled" && !invoices.value.setupRequired) evidence.collections.push({ id: "gmail", label: "Factures", state: invoices.value.busy ? "syncing" : invoices.value.error ? "error" : "idle", lastSuccess: invoices.value.lastSuccess, lastAttempt: invoices.value.lastAttempt });
     return notifications.scan(evidence, errors);
@@ -584,7 +595,7 @@ const server = createServer(async (request, response) => {
       }
     }
     if (request.method === "GET" && parts.length === 1 && parts[0] === "health") {
-      json(response, 200, { status: "ok", codex: "sdk-ready", version, capabilities: ["opportunity-actions-v1", "notification-lifecycle-v1", "insurance-reference-v1", "mortgage-evidence-v1", "mortgage-contacts-v1", "mortgage-assistant-v1", "grocery-collection-v1", "grocery-source-type-v1", "grocery-fulfillment-v1", "grocery-comparison-evidence-v1", "grocery-source-estimates-v1", "grocery-receipts-v1", "grocery-planning-v1", "grocery-weekly-v1", groceryExpandedListCapability] }, origin);
+      json(response, 200, { status: "ok", codex: "sdk-ready", version, capabilities: ["household-events-v1", "opportunity-actions-v1", "notification-lifecycle-v1", "insurance-reference-v1", "mortgage-evidence-v1", "mortgage-contacts-v1", "mortgage-assistant-v1", "grocery-collection-v1", "grocery-source-type-v1", "grocery-fulfillment-v1", "grocery-comparison-evidence-v1", "grocery-source-estimates-v1", "grocery-receipts-v1", "grocery-planning-v1", "grocery-weekly-v1", groceryExpandedListCapability] }, origin);
       return;
     }
 
