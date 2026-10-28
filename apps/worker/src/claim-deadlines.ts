@@ -12,4 +12,3 @@ export async function readClaimDeadlines(path: string): Promise<ClaimDeadline[]>
     return data.records;
   } catch (e) { if ((e as NodeJS.ErrnoException).code === "ENOENT") return []; throw e; }
 }
-
