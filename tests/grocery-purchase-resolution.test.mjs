@@ -60,6 +60,17 @@ test("stale public formats, household assumptions, conflicting formats and chang
   await add(store, makeCandidate(source)); await confirm(store, "candidate-source"); await add(store, makeCandidate(second, { size: 500, formatLabel: "500 g" })); await confirm(store, "candidate-second");
   const s = await store.reconcile(now); assert.equal(s.candidates.filter(c => c.recordId === next.id).length, 2); assert.equal(s.candidates.filter(c => c.recordId === next.id).some(c => s.decisions[c.id]), false);
 }));
+
+test("withdrawing a source confirmation invalidates automatic reuse but preserves an explicit new-purchase decision", () => sandbox(async dir => {
+  const source = makeRecord("source"), next = makeRecord("next", "12345678_EA"), manual = makeRecord("manual", "12345678_EA"), library = { records: [source,next,manual] };
+  const store = new GroceryPurchaseResolutionStore(dir, async () => library, async () => emptyPlan());
+  await add(store, makeCandidate(source)); await confirm(store,"candidate-source"); let state = await store.reconcile(now);
+  const reused = state.candidates.find(c => c.recordId === next.id), reviewed = state.candidates.find(c => c.recordId === manual.id);
+  await confirm(store,reviewed.id);
+  state = await store.read(); await store.mutate({ action:"unconfirm", id:"candidate-source", expectedRevision:state.revision },now);
+  state = await store.reconcile(now); assert.equal(state.decisions[reused.id].state,"unconfirmed"); assert.equal(state.decisions[reviewed.id].state,"confirmed");
+  assert.ok(state.candidates.some(c => c.id === reused.id)); assert.equal((await store.reconcile(now)).revision,state.revision);
+}));
 test("explicit product references survive validation; legacy evidence keys stay stable and SKU changes invalidate bindings", () => {
   const old = makeRecord("source"), line = old.receipt.items[0], key = purchaseLineKey(line);
   assert.equal(JSON.parse(key).length, 8);

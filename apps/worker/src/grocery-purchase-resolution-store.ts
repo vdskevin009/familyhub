@@ -56,6 +56,12 @@ export class GroceryPurchaseResolutionStore {
     const run = this.queue.then(async () => {
       const state = await this.read(), library = await this.records(); let changed = false;
       const rules = state.candidates.filter(c => !c.reusedFrom && state.decisions[c.id]?.state === "confirmed" && library.records.some(r => r.id === c.recordId && !purchaseCandidateReason(c, r, now.getTime())));
+      for (const c of state.candidates) {
+        const d = state.decisions[c.id];
+        if (c.reusedFrom && d?.state === "confirmed" && d.evidence?.source.startsWith("Réutilisation automatique :") && !rules.some(rule => rule.id === c.reusedFrom)) {
+          state.decisions[c.id] = { state: "unconfirmed", at: now.toISOString(), evidence: { at: now.toISOString(), source: "Réutilisation suspendue : la confirmation ou la ligne source a changé. Preuve candidate conservée ; nouvelle validation nécessaire." } }; changed = true;
+        }
+      }
       for (const record of library.records.filter(r => r.status === "saved" && !r.duplicateOf && r.extraction === "complete")) {
         for (const [lineIndex, line] of record.receipt.items.entries()) {
           if (!line.productReference || line.productReference.provider !== "pcexpress") continue;
