@@ -77,22 +77,27 @@ function summaryMoney(text: string, label: string, required = false): number | n
   if (matches.length > 1 || labels.length > 1 || labels.length !== matches.length || required && matches.length !== 1) fail("invalid-summary");
   return matches.length ? cents(matches[0][1]) : null;
 }
-type ProductEvidence = { name: string; quantity: number; estimatedUnitPrice: number; printedLineEstimate: number };
+type ProductEvidence = { name: string; quantity: number; estimatedUnitPrice: number; printedLineEstimate: number; productId?: string };
 function productEvidence(html: string): ProductEvidence[] {
   const start = "<!-- PRODUCT DETAILS STARTS -->", end = "<!-- PRODUCT DETAILS ENDS -->";
   if (html.split(start).length !== 2 || html.split(end).length !== 2 || html.indexOf(end) < html.indexOf(start)) fail("unsupported-product-layout");
   const section = withoutNonContent(html.slice(html.indexOf(start) + start.length, html.indexOf(end)));
   for (const tag of ["table", "tr", "td"]) if ([...section.matchAll(new RegExp(`<${tag}\\b`, "gi"))].length !== [...section.matchAll(new RegExp(`</${tag}\\s*>`, "gi"))].length) fail("incomplete-product-table");
   // Only leaf rows/cells: the email contains outer layout tables and conditional Outlook wrappers.
-  const rows = [...section.matchAll(/<tr\b[^>]*>((?:(?!<tr\b)[\s\S])*?)<\/tr\s*>/gi)].map(row =>
+  const rawRows = [...section.matchAll(/<tr\b[^>]*>((?:(?!<tr\b)[\s\S])*?)<\/tr\s*>/gi)];
+  const rows = rawRows.map(row =>
     [...row[1].matchAll(/<td\b[^>]*>((?:(?!<td\b)[\s\S])*?)<\/td\s*>/gi)].map(cell => cleanSpace(textContent(cell[1]))));
   if (rows.length < 2 || rows.length > 201 || JSON.stringify(rows[0]) !== JSON.stringify(["Nom du produit", "Qté", "Prix unitaire", "Prix total"])) fail("unsupported-product-layout");
-  return rows.slice(1).map(row => {
+  return rows.slice(1).map((row, index) => {
     if (row.length !== 4 || !row[0] || row[0].length > 200 || /[<>]|&[a-z#\d]+;/i.test(row[0]) || !/^[1-9]\d{0,5}$/.test(row[1])) fail("invalid-product-row");
     const unit = cents(row[2]), total = cents(row[3]);
     if (unit <= 0) fail("missing-unit-estimate");
     if (total > 0 && total !== unit * Number(row[1])) fail("inconsistent-line-estimate");
-    return { name: row[0], quantity: Number(row[1]), estimatedUnitPrice: unit / 100, printedLineEstimate: total / 100 };
+    const cell = [...rawRows[index + 1][1].matchAll(/<td\b[^>]*>((?:(?!<td\b)[\s\S])*?)<\/td\s*>/gi)][0]?.[1] ?? "";
+    const ids = [...new Set([...cell.matchAll(/\bhref\s*=\s*["']([^"']+)["']/gi)].flatMap(m => {
+      try { const u = new URL(decodeEntities(m[1])); const id = /\/p\/(\d{6,14}_(?:EA|KG))\/?$/.exec(u.pathname)?.[1]; return u.protocol === "https:" && !u.username && !u.password && ["www.realcanadiansuperstore.ca", "realcanadiansuperstore.ca", "www.loblaws.ca", "loblaws.ca", "www.pcexpress.ca", "pcexpress.ca"].includes(u.hostname) && id ? [id] : []; } catch { return []; }
+    }))];
+    return { name: row[0], quantity: Number(row[1]), estimatedUnitPrice: unit / 100, printedLineEstimate: total / 100, ...(ids.length === 1 ? { productId: ids[0] } : {}) };
   });
 }
 function structuredSource(message: Omit<PcExpressMessage, "source" | "receipt">, subject: string, details: Record<string, unknown>): StoredGrocerySource {
@@ -146,7 +151,7 @@ export function parsePcExpressMail(raw: RawMail, accountId: string): PcExpressMe
   if (extra !== null) warnings.push(`Frais supplémentaires estimés : ${(extra / 100).toFixed(2)} CAD ; ne sont pas assimilés à des frais de livraison.`);
   const receipt = validateReceipt({ sourceType: "confirmation", store: "PC Express", date: localDate, currency: "CAD", reference: ids[0], total: estimatedTotal / 100,
     delivery: null, service: service === null ? null : service / 100, tip: null, tax: gst === null && pst === null ? null : ((gst ?? 0) + (pst ?? 0)) / 100, discount: null,
-    items: products.map(p => ({ name: p.name, product: p.name, amount: null, quantity: p.quantity, size: null, unit: null, uncertain: true,
+    items: products.map(p => ({ name: p.name, product: p.name, amount: null, quantity: p.quantity, size: null, unit: null, uncertain: true, ...(p.productId ? { productReference: { provider: "pcexpress", id: p.productId } } : {}),
       evidence: `Gmail ${raw.id} : ${p.name} ; quantité ${p.quantity} ; prix unitaire estimé ${p.estimatedUnitPrice.toFixed(2)} CAD ; total de ligne imprimé ${p.printedLineEstimate.toFixed(2)} CAD, non retenu comme montant payé.` })), warnings });
   return { ...message, receipt, source: structuredSource(message, subjects[0], { currency: "CAD", currencyBasis: "PC Express Canada source; dollar-denominated amounts.",
     sourceDate: localDate, dateBasis: "Gmail internalDate converted to America/Vancouver", estimatedTotal: estimatedTotal / 100, estimatedSubtotal: subtotal / 100,

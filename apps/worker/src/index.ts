@@ -23,6 +23,7 @@ import { GroceryCollection } from "./grocery-collection.js";
 import { GroceryError } from "./grocery-model.js";
 import { extractGrocery } from "./grocery-extraction.js";
 import { GroceryPlanningStore } from "./grocery-planning-store.js";
+import { GroceryPurchaseResolutionStore } from "./grocery-purchase-resolution-store.js";
 import { groceryExpandedListCapability, groceryPlanningMaxBytes } from "./grocery-planning.js";
 import { GroceryResearch } from "./grocery-research.js";
 import { importConnectorMessage, claimPreparation, confirmOwnerAdjudication } from "./invoices.js";
@@ -59,7 +60,7 @@ type ResearchWatch = {
 };
 type PersistedState = { watches: ResearchWatch[] };
 
-const version = "2.28.1";
+const version = "2.28.2";
 let claimOperationBusy = false;
 const host = process.env.FAMILYHUB_WORKER_HOST?.trim() || "127.0.0.1";
 const port = Number(process.env.FAMILYHUB_WORKER_PORT || "4713");
@@ -108,6 +109,7 @@ function scanNotifications() {
     if (mortgageContext.status === "fulfilled") evidence.mortgageState = mortgageContext.value;
     evidence.collections = [{ ...getBlueCrossStatus(), id: "bluecross", label: "Blue Cross" }, { ...getDesjardinsStatus(), id: "desjardins", label: "Desjardins" }];
     if (invoices.status === "fulfilled" && !invoices.value.setupRequired) evidence.collections.push({ id: "gmail", label: "Factures", state: invoices.value.busy ? "syncing" : invoices.value.error ? "error" : "idle", lastSuccess: invoices.value.lastSuccess, lastAttempt: invoices.value.lastAttempt });
+    try { await groceryPurchaseResolution.reconcile(); } catch { console.error("Purchase resolution enrichment unavailable; existing evidence preserved."); }
     return notifications.scan(evidence, errors);
   })().catch(() => { console.error("Notification scan unavailable; existing records and deduplication preserved."); }).finally(() => { notificationScan = null; });
   return notificationScan;
@@ -116,6 +118,7 @@ function scanNotifications() {
 const groceryStore = new GroceryStore(join(stateDir, "groceries"), extractGrocery);
 const groceryCollection = new GroceryCollection(join(stateDir, "groceries"), groceryStore);
 const groceryPlanning = new GroceryPlanningStore(join(stateDir, "groceries"), () => groceryStore.list());
+const groceryPurchaseResolution = new GroceryPurchaseResolutionStore(join(stateDir, "groceries"), () => groceryStore.list(), () => groceryPlanning.read());
 const groceryResearch = new GroceryResearch(join(stateDir, "groceries"));
 const researchDirectory = join(savingsDirectory, "public-research");
 const savingsResearch = new SavingsResearch(join(savingsDirectory, "jobs"), codexSavingsRunner(codex, researchDirectory));
@@ -311,6 +314,10 @@ const server = createServer(async (request, response) => {
       if (request.method === "POST") { json(response, 200, await notifications.mutate(await readJson(request, 12_000)), origin); return; }
     }
     if (parts[0] === "groceries") {
+      if (parts.length === 2 && parts[1] === "purchase-resolution") {
+        if (request.method === "GET") { json(response, 200, await groceryPurchaseResolution.read(), origin); return; }
+        if (request.method === "POST") { let result = await groceryPurchaseResolution.mutate(await readJson(request, 240_000)); try { result = await groceryPurchaseResolution.reconcile(); } catch { console.error("Purchase resolution enrichment unavailable; saved decision preserved."); } json(response, 200, result, origin); return; }
+      }
       if (parts.length === 2 && parts[1] === "collection-status" && request.method === "GET") {
         json(response, 200, await groceryCollection.status(), origin); return;
       }
@@ -595,7 +602,7 @@ const server = createServer(async (request, response) => {
       }
     }
     if (request.method === "GET" && parts.length === 1 && parts[0] === "health") {
-      json(response, 200, { status: "ok", codex: "sdk-ready", version, capabilities: ["household-events-v1", "opportunity-actions-v1", "notification-lifecycle-v1", "insurance-reference-v1", "mortgage-evidence-v1", "mortgage-contacts-v1", "mortgage-assistant-v1", "grocery-collection-v1", "grocery-source-type-v1", "grocery-fulfillment-v1", "grocery-comparison-evidence-v1", "grocery-source-estimates-v1", "grocery-receipts-v1", "grocery-planning-v1", "grocery-weekly-v1", groceryExpandedListCapability] }, origin);
+      json(response, 200, { status: "ok", codex: "sdk-ready", version, capabilities: ["grocery-purchase-resolution-v1", "household-events-v1", "opportunity-actions-v1", "notification-lifecycle-v1", "insurance-reference-v1", "mortgage-evidence-v1", "mortgage-contacts-v1", "mortgage-assistant-v1", "grocery-collection-v1", "grocery-source-type-v1", "grocery-fulfillment-v1", "grocery-comparison-evidence-v1", "grocery-source-estimates-v1", "grocery-receipts-v1", "grocery-planning-v1", "grocery-weekly-v1", groceryExpandedListCapability] }, origin);
       return;
     }
 

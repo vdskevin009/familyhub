@@ -24,6 +24,10 @@ export async function importGroceries(config: WorkerConfig, sources: UploadSourc
   return groceryRequest<{ record: GroceryRecord; duplicate: boolean }>(config, "/groceries/import", { sources });
 }
 export async function reviewGroceries(config: WorkerConfig, record: GroceryRecord, receipt: GroceryReceipt, save: boolean, confirmed: boolean, distinctPurchase: boolean) {
+  if (receipt.items.some(line => line.productReference)) {
+    const health = await groceryRequest<{ capabilities?: string[] }>(config, "/health");
+    if (!health.capabilities?.includes("grocery-purchase-resolution-v1")) throw new Error("Mettez à jour le worker PC pour conserver les références produit. Aucun ticket modifié.");
+  }
   if (receipt.fulfillment !== undefined) {
     const health = await groceryRequest<{ capabilities?: string[] }>(config, "/health");
     if (!health.capabilities?.includes("grocery-fulfillment-v1")) throw new Error("Mettez à jour le worker PC pour conserver la preuve de livraison. Aucun achat n'a été modifié.");

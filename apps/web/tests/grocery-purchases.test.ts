@@ -7,6 +7,26 @@ import { reviewGroceries } from "../src/grocery-api";
 import { purchaseLineKey, purchasePriceKey, validatePurchaseEvidence, purchaseEvidenceReason, validateSourceEstimates, estimatedSourceLine, type PurchaseComparisonEvidence } from "../../worker/src/grocery-purchase-evidence";
 import { purchaseSourceSummary } from "../src/grocery-purchases";
 import { groceryRequest } from "../src/grocery-api";
+import { emptyPurchaseResolution, type PurchaseCandidate } from "../../worker/src/grocery-purchase-resolution";
+import { purchaseLineBlockers } from "../src/grocery-purchases";
+
+test("per-purchase format confirmation enables only eligible partial products and undo restores unknown coverage", () => {
+  const f = purchaseFixture(), line = f.record.receipt.items[0];
+  Object.assign(line, { size: null, unit: null, amount: null, uncertain: true });
+  Object.assign(f.plan.prices[0], { product: line.product, substitution: false });
+  f.plan.items[0].substitutions = false;
+  f.record.receipt.items.push({ ...blankItem(), name: "Synthetic second unknown", product: "Synthetic second unknown" });
+  const c: PurchaseCandidate = { id: "format", recordId: f.record.id, lineIndex: 0, lineKey: purchaseLineKey(line), product: line.product, brand: "Synthetic", productId: "12345678_EA", itemId: "eggs", size: 12, unit: "each", formatLabel: "12 pieces", formatBasis: "public-source", sourceUrl: "https://example.com/source", observedAt: "2026-10-20T12:00:00.000Z", note: "Synthetic evidence" };
+  const state = { ...emptyPurchaseResolution(), candidates: [c] }, original = JSON.stringify(f);
+  const run = () => purchaseComparison(f.plan, f.record, "2026-10-21", state).find(s => s.retailer.id === "store")!;
+  assert.equal(run().covered, 0); assert.ok(purchaseLineBlockers(f.plan, f.record, 0, state, "2026-10-21").includes("Format d'achat inconnu"));
+  state.decisions[c.id] = { state: "confirmed", at: "2026-10-21T12:00:00.000Z" };
+  const result = run(); assert.equal(result.covered, 1); assert.equal(result.count, 2); assert.equal(result.complete, false); assert.ok(Math.abs(result.normalized! - 4.8) < .0001); assert.equal(result.outlay, 6); assert.equal(result.sourceEstimate, null);
+  assert.equal(JSON.stringify(f), original); assert.equal(result.lines[0].line.uncertain, true); assert.equal(result.lines[0].formatEvidence?.id, c.id);
+  f.plan.prices[0].evidence.date = "2026-09-01"; assert.equal(run().covered, 0); assert.ok(purchaseLineBlockers(f.plan, f.record, 0, state, "2026-10-21").some(r => /périmé/.test(r)));
+  f.plan.prices[0].evidence.date = "2026-10-21"; f.plan.prices[0].localityConfirmed = false; assert.equal(run().covered, 0); assert.ok(purchaseLineBlockers(f.plan, f.record, 0, state, "2026-10-21").some(r => /non local/.test(r)));
+  f.plan.prices[0].localityConfirmed = true; state.decisions[c.id].state = "unconfirmed"; assert.equal(run().covered, 0);
+});
 
 export function derivedComparisonFixture() {
   const f = purchaseFixture(), line = f.record.receipt.items[0], p = f.plan.prices[0];

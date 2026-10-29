@@ -2,6 +2,8 @@
 
 ## Proactive mobile home
 
+Achats explains incomplete comparisons and opens each blocked line. Dated product/format candidates can be inspected, explicitly confirmed for that purchase and reversed without rewriting the receipt. Exact source references can reuse fresh confirmed formats through the existing scanner; unknown identity and stale prices remain unresolved. See [purchase resolution rules and acceptance](docs/requirements/FH-GROCERY-012.md).
+
 Household event alerts reuse the existing notification scanner: official Bank of Canada changes, documented renewals/GIC maturities, conservatively evidenced grocery price drops and explicitly documented claim deadlines. Missing evidence stays visible. An explicit restore can surface one current Bank of Canada baseline in the action list without sending Push or replaying other history. See [rules, source provenance and activation gates](docs/HOUSEHOLD-EVENTS.md).
 
 Today now uses authoritative paired domain snapshots and exact action links. Five primary destinations retain the existing tools under Plus. Missing/stale evidence stays explicit; potential savings, recoverable balances and confirmed outcomes are distinct. Private snooze/read/treated decisions do not alter any financial record or submit a claim. Existing scheduled research reuses current comparisons according to urgency, and notifications distinguish read from resolved with bounded automatic delivery. See [behavior and acceptance](docs/PROACTIVE-ASSISTANT.md). Public build identity is available at `release.json`.

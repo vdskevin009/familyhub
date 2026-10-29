@@ -5,11 +5,13 @@ import { emptyPlan, modeLabels, type GroceryPlan } from "../../../worker/src/gro
 import type { WorkerConfig } from "../types";
 import { groceryRequest } from "../grocery-api";
 import { groceryCache } from "../grocery-cache";
-import { purchaseAmountLabel, purchaseDate, purchaseStatus, purchaseStoreComparisons, purchaseSourceSummary, recentPcExpressPurchases } from "../grocery-purchases";
+import { purchaseAmountLabel, purchaseDate, purchaseStatus, purchaseStoreComparisons, purchaseLineBlockers, purchaseSourceSummary, recentPcExpressPurchases } from "../grocery-purchases";
+import { validatePurchaseResolution, type PurchaseResolution } from "../../../worker/src/grocery-purchase-resolution";
 import { estimatedSourceLine } from "../../../worker/src/grocery-purchase-evidence";
 import { packagePrice } from "../grocery-price-display";
 import { grocerySourceLink } from "../grocery-source-link";
 import { Sheet } from "../ui/primitives";
+import GroceryPurchaseResolution from "./GroceryPurchaseResolution";
 
 const money = (n: number | null, currency: string | null) => n === null || !currency ? "Montant inconnu" : packagePrice(n, currency);
 const dateLabel = (date: string | null) => date ? new Intl.DateTimeFormat("fr-CA", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(date + "T12:00:00Z")) : "Date inconnue";
@@ -17,9 +19,14 @@ const sourceFormat = (line: GroceryItem) => `${line.quantity ?? "?"} × ${line.s
 export default function GroceryPurchases({ config, records, onReview }: { config: WorkerConfig; records: GroceryRecord[]; onReview: (r: GroceryRecord) => void }) {
   const [plan, setPlan] = useState<GroceryPlan>(emptyPlan), [selected, setSelected] = useState<string | null>(null), [status, setStatus] = useState("Lecture des prix.");
   const opener = useRef<HTMLButtonElement | null>(null);
+  const [resolution, setResolution] = useState<PurchaseResolution>(), [resolutionStatus, setResolutionStatus] = useState("");
+  const [resolutionAvailable, setResolutionAvailable] = useState(false), [resolutionBusy, setResolutionBusy] = useState(false), [resolutionMessage, setResolutionMessage] = useState("");
+  const [refresh, setRefresh] = useState(0), decisionLock = useRef(false);
   const scope = config.Endpoint.trim().replace(/\/$/, "") || "unpaired";
+  const context = scope + "\n" + config.ApiKey, currentContext = useRef(context); currentContext.current = context;
+  useEffect(() => { setPlan(emptyPlan()); setSelected(null); setResolution(undefined); setResolutionMessage(""); }, [scope, config.ApiKey]);
   useEffect(() => {
-    let active = true; setPlan(emptyPlan()); setSelected(null); setStatus("Lecture des prix.");
+    let active = true; setStatus("Lecture des prix.");
     void (async () => {
       try {
         const cached = await groceryCache<GroceryPlan>(scope + ":purchase-comparison");
@@ -33,14 +40,41 @@ export default function GroceryPurchases({ config, records, onReview }: { config
       } catch { if (active) setStatus("Cache de comparaison indisponible. Relisez le PC."); }
     })();
     return () => { active = false; };
-  }, [scope, config.ApiKey, records]);
+  }, [scope, config.ApiKey, records, refresh]);
+  useEffect(() => {
+    let active = true; setResolutionAvailable(false); setResolutionStatus("Lecture des candidats et confirmations.");
+    void (async () => {
+      try { const saved = await groceryCache<unknown>(scope + ":purchase-resolution"); if (saved && active) setResolution(validatePurchaseResolution(saved)); } catch { /* A failed cache never prevents a fresh PC read. */ }
+      if (!config.Endpoint || !config.ApiKey) { if (active) setResolutionStatus("Appairez le PC pour lire et confirmer les candidats."); return; }
+      try {
+        const health = await groceryRequest<{ capabilities?: string[] }>(config, "/health");
+        if (!active) return;
+        if (!health.capabilities?.includes("grocery-purchase-resolution-v1")) { setResolutionStatus("Mettez à jour le worker PC pour confirmer un format sans modifier le ticket."); return; }
+        const next = validatePurchaseResolution(await groceryRequest(config, "/groceries/purchase-resolution"));
+        if (!active) return; setResolution(next); setResolutionAvailable(true); setResolutionStatus("");
+        try { await groceryCache(scope + ":purchase-resolution", next); } catch { if (active) setResolutionStatus("Confirmations lues sur le PC ; cache indisponible sur cet appareil."); }
+      } catch { if (active) setResolutionStatus("Candidats et confirmations non vérifiables. Reconnectez le PC puis actualisez le comparatif ; aucune confirmation n'est présumée absente."); }
+    })();
+    return () => { active = false; };
+  }, [scope, config.ApiKey, records, refresh]);
+  async function decide(id: string, action: "confirm" | "unconfirm") {
+    if (!resolution || !resolutionAvailable || decisionLock.current) return;
+    const requestContext = context; decisionLock.current = true; setResolutionBusy(true); setResolutionMessage("");
+    try {
+      const next = validatePurchaseResolution(await groceryRequest(config, "/groceries/purchase-resolution", { action, id, expectedRevision: resolution.revision, ...(action === "confirm" ? { confirmed: true } : {}) }));
+      if (currentContext.current !== requestContext) return;
+      setResolution(next); setResolutionMessage(action === "confirm" ? "Produit et format confirmés pour cette ligne. Ticket inchangé ; seuls les prix admissibles sont calculés." : "Confirmation retirée. Le ticket et la preuve candidate restent conservés.");
+      try { await groceryCache(scope + ":purchase-resolution", next); } catch { if (currentContext.current === requestContext) setResolutionMessage("Décision enregistrée sur le PC ; cache indisponible sur cet appareil."); }
+    } catch (e) { if (currentContext.current === requestContext) { setResolutionAvailable(false); setResolutionMessage((e as Error).message + " Actualisez le comparatif avant de réessayer."); } }
+    finally { decisionLock.current = false; setResolutionBusy(false); }
+  }
   const active = records.filter(r => !r.duplicateOf).sort((a, b) => (purchaseDate(b) || b.createdAt).localeCompare(purchaseDate(a) || a.createdAt));
   const recent = recentPcExpressPurchases(active), recentIds = new Set(recent.map(r => r.id)), archived = active.filter(r => !recentIds.has(r.id));
-  const record = active.find(r => r.id === selected), comparisons = record ? purchaseStoreComparisons(plan, record) : [];
+  const record = active.find(r => r.id === selected), comparisons = record ? purchaseStoreComparisons(plan, record, undefined, resolution) : [];
   const sourceSummary = record ? purchaseSourceSummary(plan, record) : null;
   function close() { setSelected(null); requestAnimationFrame(() => { if (opener.current?.isConnected) opener.current.focus(); }); }
   function totals(r: GroceryRecord) {
-    return purchaseStoreComparisons(plan, r).map(store => <div className="grocery-purchase-store" key={store.name}>
+    return purchaseStoreComparisons(plan, r, undefined, resolution).map(store => <div className="grocery-purchase-store" key={store.name}>
       <div className="grocery-purchase-store-heading"><span>{store.name}</span>{store.complete ? <strong>{money(store.normalized, r.receipt.currency)}</strong> : <span className="grocery-purchase-unavailable">Comparatif incomplet</span>}</div>
       {!store.complete && <small>{store.covered}/{store.count} articles{store.normalized !== null ? ` · sous-total partiel ${money(store.normalized, r.receipt.currency)}` : " · prix ou correspondances à compléter"}</small>}
       {store.comparisonOnly && <small>Prix actuels observés le {store.observationDates.join(", ")} · équivalents de même format, identité SKU et marque non garanties.</small>}
@@ -54,23 +88,32 @@ export default function GroceryPurchases({ config, records, onReview }: { config
         <div className="grocery-purchase-amount"><span>{purchaseAmountLabel(r)}</span><strong>{money(r.receipt.total, r.receipt.currency)}</strong></div>
       </button>
       <div className="grocery-purchase-totals" aria-label={`Comparatif de l'achat chez ${r.receipt.store}`}><p>Le même panier ailleurs</p>{totals(r)}<small>Produits seuls, mêmes quantités · hors taxes et frais.</small></div>
-      <button className="grocery-purchase-more" onClick={event => { opener.current = event.currentTarget; setSelected(r.id); }} aria-label={`Voir les produits de l'achat du ${purchaseDate(r) || "date inconnue"}`}>Voir les produits et comparaisons<ChevronRight size={15} aria-hidden="true" /></button>
+      <button className="grocery-purchase-more" onClick={event => { opener.current = event.currentTarget; setSelected(r.id); }} aria-label={`Voir les produits de l'achat du ${purchaseDate(r) || "date inconnue"}`}>Comprendre et compléter le comparatif<ChevronRight size={15} aria-hidden="true" /></button>
     </article>)}</div>;
   }
   return <section className="view-stack grocery-purchases" aria-label="Achats et comparaisons">
     <p className="grocery-purchase-intro">PC Express · achats des 30 derniers jours</p>
     {status && <p role="status">{status}</p>}
+    {resolutionStatus && <p role="status">{resolutionStatus}</p>}
+    <button type="button" className="button secondary" disabled={!config.Endpoint || !config.ApiKey || resolutionBusy} onClick={() => { setResolutionMessage(""); setRefresh(n => n + 1); }}>Actualiser le comparatif</button>
     {!recent.length && <p className="grocery-empty">Aucun achat PC Express terminé et vérifié dans les 30 derniers jours. Les commandes sans preuve de livraison et les autres tickets restent dans les archives. Relisez le PC ou ajoutez les sources dans Sources et outils.</p>}
     {cards(recent)}
     <details className="grocery-purchase-archives"><summary>Archives et autres tickets <span>{archived.length}</span></summary>{archived.length ? cards(archived, true) : <p>Aucun autre ticket conservé.</p>}</details>
     <Sheet open={Boolean(record)} onClose={close} title={record ? `Achat du ${dateLabel(purchaseDate(record))}` : "Achat"} description={record?.receipt.store || "Articles et prix concurrents datés"} className="grocery-purchase-sheet" resetScrollOnOpen wide footer={<button className="button secondary" onClick={close}>Retour aux achats</button>}>
       {record && <div className="grocery-purchase-detail">
+        {resolutionMessage && <p className="grocery-resolution-message" role="status">{resolutionMessage}</p>}
+        {resolutionStatus && <p role="status">{resolutionStatus}</p>}
+        {!resolutionAvailable && <button type="button" className="button secondary" disabled={resolutionBusy} onClick={() => { setResolutionMessage(""); setRefresh(n => n + 1); }}>Actualiser le comparatif</button>}
         <div className="grocery-purchase-summary"><span>{purchaseAmountLabel(record)}</span><strong>{money(record.receipt.total, record.receipt.currency)}</strong></div>
+        <div className="grocery-purchase-totals" aria-label="Couverture actuelle du comparatif">{totals(record)}</div>
         {sourceSummary?.subtotal !== null && sourceSummary?.subtotal !== undefined && <p className="grocery-source-estimate-summary">Somme des articles estimés : {money(sourceSummary.subtotal, record.receipt.currency)} · {sourceSummary.covered}/{sourceSummary.count} lignes. {sourceSummary.difference !== null && Math.abs(sourceSummary.difference) > .005 && <>Écart de {money(sourceSummary.difference, record.receipt.currency)} avec le total source : taxes, frais ou ajustements à rapprocher. Total source conservé.</>}</p>}
         <h3>Comparaison par produit</h3><p className="grocery-purchase-detail-note">Mêmes quantités · prix concurrents hors taxes et frais. Le format réel de chaque magasin reste affiché.</p>
-        {record.receipt.items.map((line, index) => { const derived = comparisons.map(c => c.lines[index].comparisonEvidence).find(Boolean), sourceQuote = estimatedSourceLine(plan.sourceEstimates, record, index); return <article className="grocery-purchase-line" key={index}>
+        {record.receipt.items.map((line, index) => { const derived = comparisons.map(c => c.lines[index].comparisonEvidence).find(Boolean), format = comparisons.map(c => c.lines[index].formatEvidence).find(Boolean), sourceQuote = estimatedSourceLine(plan.sourceEstimates, record, index), blockers = purchaseLineBlockers(plan, record, index, resolution); return <article className="grocery-purchase-line" key={index}>
           <div className="grocery-purchase-product-heading"><h4>{line.product || line.name || `Ligne ${index + 1}`}</h4><p>Quantité de la source : {sourceFormat(line)}{line.uncertain ? " · à vérifier" : ""}</p></div>
           {derived && <p>Comparaison seulement : {derived.quantity} x {derived.formatLabel} · format dérivé, source brute conservée.</p>}
+          {format && <p>Format dérivé confirmé : {format.formatLabel}. {format.formatBasis === "household-assumption" ? "Calcul fondé sur le renseignement du foyer, non sur un poids officiel." : "Confirmation propre à cet achat."} Source brute conservée.</p>}
+          {blockers.length > 0 && <ul className="grocery-resolution-blockers" aria-label="Informations à compléter">{blockers.map(reason => <li key={reason}>{reason}</li>)}</ul>}
+          <GroceryPurchaseResolution record={record} index={index} state={resolution} available={resolutionAvailable} busy={resolutionBusy} error={resolutionAvailable ? "" : resolutionMessage} canRefresh={!!config.Endpoint && !!config.ApiKey} onRefresh={() => { setResolutionMessage(""); setRefresh(n => n + 1); }} onDecision={decide} onReview={() => { setSelected(null); requestAnimationFrame(() => { opener.current?.focus(); onReview(record); }); }} />
           <div className="grocery-purchase-match grocery-source-price"><div><strong>{record.receipt.store || "Achat d'origine"}</strong><small>{sourceQuote ? `Quantité ${sourceQuote.quantity} × prix unitaire estimé ${money(sourceQuote.unitPrice, sourceQuote.currency)}` : derived ? "Prix source estimé · paiement inconnu" : `${sourceFormat(line)} · prix historique`}</small></div><strong>{money(sourceQuote?.amount ?? derived?.sourceEstimate ?? line.amount, record.receipt.currency)}{(sourceQuote || derived) && <small>estimé · paiement inconnu</small>}</strong></div>
           {comparisons.map(store => {
             const match = store.lines[index], p = match.price, item = p && plan.items.find(i => i.id === p.itemId);

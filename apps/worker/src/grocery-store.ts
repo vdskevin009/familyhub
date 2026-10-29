@@ -141,6 +141,8 @@ export class GroceryStore {
       if (r.duplicateOf) throw new GroceryConflict("Ce ticket est rattaché à un achat existant.");
       if ((value.save === true || r.status === "saved") && (value.confirmed !== true || !receipt.items.length || receipt.items.some(i => !i.name))) throw new GroceryError("Ajoutez les produits et confirmez la revue des sources et des incertitudes.");
       if ((value.save === true || r.status === "saved") && possibleDuplicates({ ...r, receipt }, state.records).length && value.distinctPurchase !== true) throw new GroceryConflict("Même magasin, date, devise et total qu'un achat enregistré. Ouvrez-le ou confirmez qu'il s'agit d'un achat distinct.");
+      // Older clients may omit the additive ID while editing the same source line.
+      for (const [index, line] of receipt.items.entries()) { const old = r.receipt.items[index]; if (!line.productReference && old?.productReference && line.name === old.name && line.product === old.product && line.evidence === old.evidence) line.productReference = { ...old.productReference }; }
       r.receipt = receipt; r.revision = randomUUID();
       if (value.save === true) r.status = "saved";
       if ((r.status === "saved" && r.reviewedAt === null) || value.save === true) r.reviewedAt = new Date().toISOString();
