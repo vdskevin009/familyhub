@@ -79,3 +79,16 @@ test("explicit product references survive validation; legacy evidence keys stay 
   assert.equal(purchaseLineKey(line), purchaseLineKey({ ...line, productReference: { id: "12345678_EA", provider: "pcexpress" } }));
   assert.throws(() => validateReceipt({ ...old.receipt, items: [{ ...line, productReference: { provider: "other", id: "12345678_EA" } }] }));
 });
+
+test("a newer catalogue proof cannot silently reconfirm a purchase after withdrawal", () => sandbox(async dir => {
+  const source = makeRecord("source"), later = makeRecord("later"), next = makeRecord("next", "12345678_EA");
+  const store = new GroceryPurchaseResolutionStore(dir, async () => ({ records: [source,later,next] }), async () => emptyPlan());
+  await add(store,makeCandidate(source)); await confirm(store,"candidate-source"); let state=await store.reconcile(now);
+  const old=state.candidates.find(c=>c.recordId===next.id);
+  await store.mutate({ action:"unconfirm", id:old.id, expectedRevision:state.revision },now);
+  await add(store,makeCandidate(later,{ observedAt:"2026-10-29T11:00:00.000Z" })); await confirm(store,"candidate-later");
+  state=await store.reconcile(now); const rows=state.candidates.filter(c=>c.recordId===next.id);
+  assert.equal(rows.length,2); assert.equal(rows.some(c=>state.decisions[c.id]?.state==="confirmed"),false);
+  assert.equal((await store.reconcile(now)).revision,state.revision);
+  await confirm(store,rows.find(c=>c.id!==old.id).id); assert.equal((await store.read()).decisions[rows.find(c=>c.id!==old.id).id].state,"confirmed");
+}));

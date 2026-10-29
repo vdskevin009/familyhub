@@ -66,6 +66,7 @@ export class GroceryPurchaseResolutionStore {
         for (const [lineIndex, line] of record.receipt.items.entries()) {
           if (!line.productReference || line.productReference.provider !== "pcexpress") continue;
           if (state.candidates.some(c => c.recordId === record.id && c.lineIndex === lineIndex && c.lineKey === purchaseLineKey(line) && state.decisions[c.id]?.state === "confirmed")) continue;
+          const withdrawn = state.candidates.some(c => c.recordId === record.id && c.lineIndex === lineIndex && c.lineKey === purchaseLineKey(line) && state.decisions[c.id]?.state === "unconfirmed");
           const matches = rules.filter(c => c.productId === line.productReference!.id);
           const formats = new Set(matches.map(c => JSON.stringify([c.size, c.unit, c.formatBasis])));
           // Keep the most recent public proof per physical format; conflicting formats need a choice.
@@ -76,7 +77,7 @@ export class GroceryPurchaseResolutionStore {
             const c = { ...rule, id, recordId: record.id, lineIndex, lineKey: purchaseLineKey(line), reusedFrom: rule.id, note: ("Même référence produit explicite dans la source. Preuve réutilisée sans redater : " + rule.note).slice(0,1000) };
             state.candidates.push(c); changed = true;
             const age = now.getTime() - Date.parse(rule.observedAt);
-            if (formats.size === 1 && c.formatBasis === "public-source" && c.size !== null && c.unit !== null && age >= 0 && age <= 7 * 86400000 && !purchaseCandidateReason(c, record, now.getTime())) state.decisions[id] = { state: "confirmed", at: now.toISOString(), evidence: { at: now.toISOString(), source: "Réutilisation automatique : même référence PC Express explicite ; format public confirmé précédemment, preuve de sept jours au maximum. Aucun prix ni montant payé repris." } };
+            if (!withdrawn && formats.size === 1 && c.formatBasis === "public-source" && c.size !== null && c.unit !== null && age >= 0 && age <= 7 * 86400000 && !purchaseCandidateReason(c, record, now.getTime())) state.decisions[id] = { state: "confirmed", at: now.toISOString(), evidence: { at: now.toISOString(), source: "Réutilisation automatique : même référence PC Express explicite ; format public confirmé précédemment, preuve de sept jours au maximum. Aucun prix ni montant payé repris." } };
           }
         }
       }
