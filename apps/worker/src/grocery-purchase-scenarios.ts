@@ -10,7 +10,7 @@ export const scenarioStore = (name: string) => /^walmart\b/i.test(name) ? "Walma
 export function scenarioFamily(value: string): string {
   const s = clean(value);
   const rows: [string, RegExp][] = [
-    ["mini-cucumber", /mini\s*cucumb|mini.?concombr/], ["english-cucumber", /english cucumber|concombre anglais/],
+    ["mini-cucumber", /mini\s*cucumb|mini.?concombr/], ["english-cucumber", /english cucumber|cucumber english|concombre anglais/],
     ["tofu-extra-firm", /tofu.*(?:extra.?firm|extra.?ferme)|(?:extra.?firm|extra.?ferme).*tofu/], ["honey-nut-cheerios", /(?:honey nut.*cheerio|cheerio.*honey nut)/],
     ["protein-tortilla", /(?:protein.*(?:tortilla|wrap)|(?:tortilla|wrap).*protein)/],
     ["chicken-breast", /(?:boneless.*skinless.*(?:breast|poitrine)|poitrine.*(?:sans peau|desossee))/],
@@ -23,7 +23,9 @@ export function scenarioFamily(value: string): string {
     ["english-muffin", /english muffin/], ["salmon", /salmon|saumon/], ["spinach-baby", /baby spinach|epinard.*bebe/]
   ];
   if (/cooked|roasted|seasoned|cajun|breaded|rotisserie|nugget|chocolate|dried/i.test(s) && /chicken|strawberr/.test(s)) return "";
-  return rows.find(([, r]) => r.test(s))?.[0] ?? "";
+  const family = rows.find(([, r]) => r.test(s))?.[0] ?? "";
+  if (family === "strawberries" && /snack|puff|yogurt|yoghurt|juice|jam|jelly|flavou?r|cereal|candy|syrup|bar\b/.test(s)) return "";
+  return family;
 }
 function compatible(a: string, b: string) {
   const x = clean(a), y = clean(b), family = scenarioFamily(x);
@@ -113,8 +115,12 @@ export function derivePurchaseScenarios(records: GroceryRecord[], plan: GroceryP
           let targetSize=target.size,targetUnit=target.unit;
           const a=normalizedSize(targetSize,targetUnit),b=normalizedSize(ref.size,ref.unit);
           if (a.unit!==b.unit) {
-            if (family!=="mini-cucumber" || targetUnit!=="each" || b.unit!=="kg" || price.weighed) continue;
-            targetSize=ref.size;targetUnit=ref.unit; assumptions.push(`Équivalence de paquet estimée : ${target.size} mini-concombres supposés correspondre à un sachet de ${ref.size} ${ref.unit}, soit environ ${Number((normalizedSize(ref.size,ref.unit).size*1000/target.size).toFixed(1))} g par mini. Poids réel inconnu.`);
+            if (targetUnit === "each" && targetSize === 1 && line.uncertain && line.unit === null && !price.weighed && (b.unit === "kg" || b.unit === "l")) {
+              targetSize=ref.size;targetUnit=ref.unit;assumptions.push(`Format physique inconnu : l'unité de vente source est supposée correspondre à un paquet de référence de ${ref.size} ${ref.unit}. Hypothèse de paquet uniquement, pas une conversion universelle nombre/poids/volume. Le format réellement acheté reste inconnu.`);
+            } else {
+              if (family!=="mini-cucumber" || targetUnit!=="each" || b.unit!=="kg" || price.weighed) continue;
+              targetSize=ref.size;targetUnit=ref.unit; assumptions.push(`Équivalence de paquet estimée : ${target.size} mini-concombres supposés correspondre à un sachet de ${ref.size} ${ref.unit}, soit environ ${Number((normalizedSize(ref.size,ref.unit).size*1000/target.size).toFixed(1))} g par mini. Poids réel inconnu.`);
+            }
           }
           const x=normalizedSize(quantity*targetSize,targetUnit), y=normalizedSize(ref.size,ref.unit); if(x.unit!==y.unit)continue;
           const ratio=x.size/y.size,normalized=ratio*ref.price;
