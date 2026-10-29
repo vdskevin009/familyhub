@@ -7,9 +7,39 @@ import { purchaseLineKey, purchasePriceKey } from "../../worker/src/grocery-purc
 import { derivePurchaseScenarios } from "../../worker/src/grocery-purchase-scenarios";
 import { purchaseScenarioStores } from "../src/grocery-purchase-scenarios";
 import { purchaseStoreComparisons } from "../src/grocery-purchases";
+import { purchaseRetailerName } from "../../worker/src/grocery-purchase-retailers";
+import { validateReferenceLeads } from "../../worker/src/grocery-purchase-scenario-model";
 const today="2026-10-29";
 const record=(product:string,extra={})=>({id:"fictional-purchase",revision:"r",status:"saved",extraction:"complete",reviewedAt:null,createdAt:"2026-10-28T12:00:00.000Z",duplicateOf:null,sources:[],receipt:{...emptyReceipt(),sourceType:"confirmation",store:"PC Express fictional",date:today,currency:"CAD",items:[{...blankItem(),name:product,product,quantity:1,evidence:"Fictional source",...extra}]}} as GroceryRecord);
 function planFor(product:string,size=400,unit:"g"|"kg"|"l"|"each"="g",price=4):GroceryPlan{return{...emptyPlan(),items:[{id:"item",name:product,quantity:null,size:null,unit:null,preference:"",substitutions:false,active:false,origin:"fictional"}],retailers:[{id:"wm",name:"Walmart",mode:"pickup",locality:"Fictional branch",areaConfirmed:true,enabled:true,membershipStatus:"none",membershipWeekly:0,delivery:null,service:null,servicePercent:null,feesTaxPercent:null,minimum:null,freeDeliveryAbove:null,otherFeesReviewed:false,evidence:{title:"Fictional source",url:"https://example.com/branch",date:today,until:null}}],prices:[{id:"price",itemId:"item",retailerId:"wm",product,price,size,unit,weighed:false,taxPercent:null,currency:"CAD",available:"yes",substitution:false,approved:true,kind:"public",mode:"pickup",locality:"Fictional branch",localityConfirmed:true,matchNote:"Fictional exact product reviewed",evidence:{title:"Fictional source",url:"https://example.com/price",date:today,until:null}}]};}
+
+test("four retailer aliases are canonicalized; leads cannot create a calculated or verified price",()=>{
+ assert.equal(purchaseRetailerName("Freshstreet Market pickup"),"Fresh St. Market");assert.equal(purchaseRetailerName("Save on Food"),"Save-On-Foods");assert.equal(purchaseRetailerName("Unrelated shop"),"");
+ const r=record("Honey Nut Cheerios"),p=planFor("Honey Nut Cheerios",430,"g",5),state=emptyPurchaseResolution();
+ state.referenceLeads=validateReferenceLeads([{id:"lead",store:"Costco",family:"honey-nut-cheerios",product:"Fictional bulk cereal",sourceUrl:"https://example.com/unverified",date:today,note:"Search index only; no current primary price",reason:"Unverified price, outside coverage",indicativePrice:10,currency:"CAD"}]);
+ const stores=purchaseScenarioStores(p,r,today,state);assert.equal(stores.length,4);assert.equal(stores.find(s=>s.name==="Costco")!.covered,0);assert.equal(stores.find(s=>s.name==="Costco")!.normalized,null);assert.equal(purchaseStoreComparisons(p,r,today).length,2);
+});
+
+test("a common count-to-mass hypothesis compares the same six minis across retailers and rounds full bulk packs",()=>{
+ const r=record("Mini Cucumbers",{size:6,unit:"each"}),p=planFor("Mini Cucumbers reference 1 lb",453.59237,"g",3),state=emptyPurchaseResolution();
+ for(const[id,name,size,price]of[["co","Costco",907.18474,4],["so","Save on Foods",454,5]] as const){p.retailers.push({...p.retailers[0],id,name,areaConfirmed:false,locality:"Nonlocal fictional"});p.prices.push({...p.prices[0],id,retailerId:id,product:name+" Mini Cucumbers",size,price,approved:false,substitution:true,locality:"Nonlocal fictional",localityConfirmed:false});}
+ state.scenarioHints=[{id:"six",purpose:"count-equivalent",product:"Mini Cucumbers",productId:"11111111_EA",priceId:"price",priceKey:purchasePriceKey(p.prices[0]),size:453.59237,unit:"g",sourceCount:6,packagePrice:null,sourceUrl:"https://example.com/reference",observedAt:"2026-10-28T00:00:00.000Z",note:"Fictional explicit hypothesis: six minis share one pound, original mass unknown"}];
+ const stores=purchaseScenarioStores(p,r,today,state),bulk=stores.find(s=>s.name==="Costco")!;assert.equal(bulk.normalized,2);assert.equal(bulk.outlay,4);assert.equal(bulk.nonlocal,true);assert.equal(bulk.lines[0].scenario!.size,453.59237);assert.equal(stores[0].normalized,3);
+ r.receipt.items[0].quantity=2;assert.equal(purchaseScenarioStores(p,r,today,state).find(s=>s.name==="Costco")!.outlay,4);
+ r.receipt.items[0].productReference={provider:"pcexpress",id:"22222222_EA"};assert.equal(purchaseScenarioStores(p,r,today,state).find(s=>s.name==="Costco")!.covered,0);
+});
+
+test("a source-bound inferred retailer format converts the price pack, never the original receipt; stale proof invalidates it",()=>{
+ const r=record("Protein Tortillas",{size:342,unit:"g"}),p=planFor("Other Protein Tortillas 6 pack",6,"each",7),state=emptyPurchaseResolution();p.retailers[0].name="Fresh St. Market";p.prices[0].approved=false;p.prices[0].substitution=true;
+ state.scenarioHints=[{id:"upc",purpose:"reference-format",product:p.prices[0].product,productId:"111111111111",priceId:"price",priceKey:purchasePriceKey(p.prices[0]),size:330,unit:"g",packagePrice:null,sourceUrl:"https://example.com/corroborated-upc",observedAt:"2026-10-28T00:00:00.000Z",note:"Inferred mass from a matching UPC on a second official source, not mass shown on this page"}];
+ const s=purchaseScenarioStores(p,r,today,state).find(s=>s.name==="Fresh St. Market")!;assert.equal(s.estimated,1);assert.equal(s.normalized,7.25);assert.equal(s.outlay,14);assert.equal(r.receipt.items[0].size,342);assert.match(s.lines[0].scenario!.assumptions.join(" "),/inféré/);
+ p.prices[0].price=8;assert.equal(purchaseScenarioStores(p,r,today,state).find(s=>s.name==="Fresh St. Market")!.covered,0);
+});
+
+test("whole-bean espresso references are coffee beans; ground espresso is not silently substituted",()=>{
+ const r=record("Fictional Whole Bean Coffee",{size:1,unit:"kg"}),p=planFor("Other Whole Bean Espresso Dark Blend",300,"g",18);p.retailers[0].name="Save-On-Foods";
+ assert.equal(purchaseScenarioStores(p,r,today).find(s=>s.name==="Save-On-Foods")!.estimated,1);p.prices[0].product="Other Ground Espresso Dark Blend";assert.equal(purchaseScenarioStores(p,r,today).find(s=>s.name==="Save-On-Foods")!.covered,0);
+});
 
 test("a historical selling-unit proof can estimate one sourced physical pack while known physical units remain binding",()=>{
  const r=record("Fictional Strawberries"),p=planFor("Other Strawberries",454,"g",5);

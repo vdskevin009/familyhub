@@ -47,8 +47,8 @@ try {
     await context.addInitScript(endpoint=>localStorage.setItem("familyhub.worker.v1",JSON.stringify({Endpoint:endpoint,ApiKey:"synthetic"})),"http://127.0.0.1:"+api.address().port);
     const page=await context.newPage(); page.setDefaultTimeout(12000); page.on("pageerror",e=>errors.push(e.message));
     await page.goto("http://127.0.0.1:"+site.address().port+"/familyhub/?view=groceries&tab=tickets");
-    const card=page.locator(".grocery-purchase-card"); await card.getByText(/0\/5 comparés/).first().waitFor();
-    await card.getByRole("button",{name:/Voir les produits/}).click();
+    const card=page.locator(".grocery-purchase-card"); await card.getByText(/0\/5 · dont 0 estimé/).first().waitFor();
+    await card.getByRole("button",{name:/Plus d[’']infos/}).click();
     const dialog=page.getByRole("dialog",{name:/^Achat du/}), line=dialog.locator(".grocery-purchase-line").first();
     await dialog.waitFor(); await line.getByText("Format d'achat inconnu",{exact:true}).waitFor();
     await line.getByText("Compléter cette ligne",{exact:true}).click();
@@ -72,7 +72,7 @@ try {
     await line.getByRole("button",{name:"Réessayer la lecture des confirmations",exact:true}).click(); await checkbox.waitFor({state:"visible"}); await page.waitForFunction(()=>!document.querySelector(".grocery-resolution fieldset")?.disabled);
     const ambiguous=dialog.locator(".grocery-purchase-line").nth(3); await ambiguous.getByText("Compléter cette ligne",{exact:true}).click(); await ambiguous.getByText(/Format insuffisant pour comparer/).waitFor(); assert.equal(await ambiguous.getByRole("button",{name:"Confirmer ce produit et ce format",exact:true}).count(),0);
     if(width===390) {
-      unavailable=true; await page.reload(); await card.waitFor(); await card.getByRole("button",{name:/Voir les produits/}).click(); await dialog.getByText(/Candidats et confirmations non vérifiables/).waitFor(); unavailable=false;
+      unavailable=true; await page.reload(); await card.waitFor(); await card.getByRole("button",{name:/Plus d[’']infos/}).click(); await dialog.getByText(/Candidats et confirmations non vérifiables/).waitFor(); unavailable=false;
       oldWorker=true; await page.reload(); await page.getByText(/Mettez à jour le worker PC pour confirmer/).first().waitFor(); oldWorker=false;
       empty=true; await page.reload(); await page.getByText(/Aucun achat PC Express terminé/).waitFor(); empty=false;
     }

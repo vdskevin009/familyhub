@@ -14,6 +14,18 @@ async function sandbox(run) { const dir = await mkdtemp(join(tmpdir(), "familyhu
 async function add(store, candidate) { const s = await store.read(); return store.mutate({ action: "add-candidates", candidates: [candidate], expectedRevision: s.revision }, now); }
 async function confirm(store, id, extra = {}) { const s = await store.read(); return store.mutate({ action: "confirm", id, expectedRevision: s.revision, confirmed: true, ...extra }, now); }
 
+test("unverified retailer leads persist independently, deduplicate and never create prices or purchase decisions", () => sandbox(async dir => {
+  const record=makeRecord("source"),library={records:[record]},plan=emptyPlan(),original=JSON.stringify({library,plan}),store=new GroceryPurchaseResolutionStore(dir,async()=>library,async()=>plan);
+  const lead={id:"unverified",store:"Costco",family:"protein-tortilla",product:"Fictional wraps",sourceUrl:"https://example.com/lead",date:"2026-10-29",note:"Fictional index; package mass unknown",reason:"Unresolved source, outside totals",indicativePrice:12,currency:"CAD"};
+  let state=await store.read();await assert.rejects(store.mutate({action:"add-reference-leads",leads:[lead],expectedRevision:state.revision},now),/revues/);
+  state=await store.mutate({action:"add-reference-leads",leads:[lead],reviewedSources:true,expectedRevision:state.revision},now);
+  state=await store.mutate({action:"add-reference-leads",leads:[lead],reviewedSources:true,expectedRevision:state.revision},now);assert.equal(state.referenceLeads.length,1);
+  await assert.rejects(store.mutate({action:"add-reference-leads",leads:[{...lead,indicativePrice:1}],reviewedSources:true,expectedRevision:state.revision},now),/remplac/);
+  await assert.rejects(store.mutate({action:"add-reference-leads",leads:[{...lead,id:"future",date:"2030-01-01"}],reviewedSources:true,expectedRevision:state.revision},now),/future/);
+  state=await store.reconcile(now);assert.deepEqual(state.decisions,{});assert.deepEqual(state.candidates,[]);assert.equal(state.scenarios?.length??0,0);assert.equal(JSON.stringify({library,plan}),original);
+  assert.equal((await new GroceryPurchaseResolutionStore(dir,async()=>library,async()=>plan).read()).referenceLeads.length,1);
+}));
+
 test("historical and future estimated enrichment is persistent, idempotent and non-destructive", () => sandbox(async dir => {
   const source=makeRecord("historical"), library={records:[source]}, plan=emptyPlan();
   source.receipt.items[0].name=source.receipt.items[0].product="Fictional Tofu Extra Firm";

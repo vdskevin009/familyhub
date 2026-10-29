@@ -3,9 +3,10 @@ import { normalizedSize, publicSourceUrl, type GroceryPlan, type GroceryPrice } 
 import { purchaseLineKey, purchasePriceKey } from "./grocery-purchase-evidence.js";
 import { confirmedPurchaseFormat, purchaseCandidateReason, type PurchaseResolution } from "./grocery-purchase-resolution.js";
 import type { PurchaseScenario, PurchaseScenarioHint } from "./grocery-purchase-scenario-model.js";
+import { purchaseRetailerName, purchaseScenarioRetailers } from "./grocery-purchase-retailers.js";
 
 const clean = (s: string) => s.normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[’']/g, " ");
-export const scenarioStore = (name: string) => /^walmart\b/i.test(name) ? "Walmart" : /^costco\b/i.test(name) ? "Costco" : "";
+export const scenarioStore = purchaseRetailerName;
 /** Bounded product families, not a generic fuzzy matcher. No cross-category cheapest substitution. */
 export function scenarioFamily(value: string): string {
   const s = clean(value);
@@ -19,7 +20,7 @@ export function scenarioFamily(value: string): string {
     ["frozen-four-berry", /(?:4|four)[- ]?berr.*(?:blend|mix)|frozen 4-berry/],
     ["baby-mum-mum", /(?:baby\s*)?mum[- ]mum/], ["gerber-crunchies", /(?:gerber|lil).*crunchies/],
     ["strawberries", /strawberr|fraises?/], ["pasta-wheat", /spaghetti|orzo pasta|pasta orzo|pates.*(?:spaghetti|orzo)/],
-    ["coffee-beans", /(?:coffee|cafe).*(?:whole bean|en grains)|(?:whole bean|en grains).*(?:coffee|cafe)|lavazza.*(?:grains|rossa)/],
+    ["coffee-beans", /(?:coffee|cafe).*(?:whole bean|en grains)|(?:whole bean|en grains).*(?:coffee|cafe|espresso)|lavazza.*(?:grains|rossa)/],
     ["english-muffin", /english muffin/], ["salmon", /salmon|saumon/], ["spinach-baby", /baby spinach|epinard.*bebe/]
   ];
   if (/cooked|roasted|seasoned|cajun|breaded|rotisserie|nugget|chocolate|dried/i.test(s) && /chicken|strawberr/.test(s)) return "";
@@ -43,6 +44,11 @@ type Format = { size: number; unit: GroceryUnit; note: string; source: { title: 
 function reference(p: GroceryPrice, hints: PurchaseScenarioHint[]) {
   let size = p.size, unit = p.unit, price = p.price, packSize: number | null = p.weighed ? null : p.size, packPrice: number | null = p.weighed ? null : p.price, packEstimated = false;
   const notes: string[] = [], note = p.matchNote ?? "";
+  const format = hints.find(h => h.purpose === "reference-format" && h.priceId === p.id && h.priceKey === purchasePriceKey(p));
+  if (format) {
+    size = format.size; unit = format.unit; packSize = size; packPrice = p.price; packEstimated = true;
+    notes.push("Format de référence inféré, non confirmé directement par cette fiche : " + format.note);
+  }
   const hint = hints.find(h => h.purpose === "reference-pack" && h.priceId === p.id && h.priceKey === purchasePriceKey(p));
   if (hint) {
     const a = normalizedSize(hint.size, hint.unit), b = normalizedSize(p.size, p.unit);
@@ -84,7 +90,7 @@ function inferredFormat(record: GroceryRecord, index: number, plan: GroceryPlan,
   return weighted?.r ? { size: weighted.r.packSize!, unit: weighted.r.unit, note: "Format d'achat inconnu : hypothèse d'une barquette au poids moyen estimé de la référence.", source: { title: weighted.p.evidence.title, url: weighted.p.evidence.url, date: weighted.p.evidence.date } } : null;
 }
 /** Pure scenario projection; never consumed by shopping recommendations or certain-savings alerts. */
-export function derivePurchaseScenarios(records: GroceryRecord[], plan: GroceryPlan, state: PurchaseResolution | undefined, today: string, maximum = 500, referenceRecords = records): PurchaseScenario[] {
+export function derivePurchaseScenarios(records: GroceryRecord[], plan: GroceryPlan, state: PurchaseResolution | undefined, today: string, maximum = 1000, referenceRecords = records): PurchaseScenario[] {
   const now = Math.min(Date.now(), Date.parse(today + "T23:59:59.999Z")), result: PurchaseScenario[] = [];
   for (const record of records.filter(r => !r.duplicateOf && r.status === "saved").slice().sort((a,b)=>(b.receipt.fulfillment?.date||b.receipt.date||b.createdAt).localeCompare(a.receipt.fulfillment?.date||a.receipt.date||a.createdAt))) {
     for (const [lineIndex,line] of record.receipt.items.entries()) {
@@ -98,9 +104,12 @@ export function derivePurchaseScenarios(records: GroceryRecord[], plan: GroceryP
         return p.kind==="receipt" && !p.evidence.title.includes(record.id) && referenceRecords.some(s=>s.id!==record.id && p.evidence.title.includes(s.id) && s.receipt.items.some(l=>normalizeProduct(l.product||l.name)===normalizeProduct(p.product) && l.amount!==null && Math.abs(l.amount-p.price)<.001));
       });
       const target = inferredFormat(record,lineIndex,plan,state,refs,now,referenceRecords); if (!target) continue;
-      for (const store of ["Walmart","Costco"]) {
+      const countBasis = (state?.scenarioHints ?? []).find(h => h.purpose === "count-equivalent" && h.sourceCount === target.size && Date.parse(h.observedAt) <= now && (line.productReference ? h.productId === line.productReference.id : normalizeProduct(h.product) === normalizeProduct(title)) && plan.prices.some(p => p.id === h.priceId && purchasePriceKey(p) === h.priceKey));
+      const targetForPacks = normalizedSize(countBasis?.size ?? target.size, countBasis?.unit ?? target.unit);
+      const packDistance = (p: GroceryPrice) => { const r=reference(p,state?.scenarioHints??[]); if(!r)return Infinity;const n=normalizedSize(r.packSize??r.size,r.unit);return n.unit===targetForPacks.unit?Math.abs(Math.log(n.size/targetForPacks.size)):Infinity; };
+      for (const store of purchaseScenarioRetailers) {
         const pool = refs.filter(p=>scenarioStore(plan.retailers.find(r=>r.id===p.retailerId)!.name)===store)
-          .sort((a,b)=>b.evidence.date.localeCompare(a.evidence.date) || Number(!!b.localityConfirmed)-Number(!!a.localityConfirmed) || Number(normalizeProduct(b.product)===normalizeProduct(title))-Number(normalizeProduct(a.product)===normalizeProduct(title)) || a.id.localeCompare(b.id));
+          .sort((a,b)=>b.evidence.date.localeCompare(a.evidence.date) || Number(!!b.localityConfirmed)-Number(!!a.localityConfirmed) || Number(normalizeProduct(b.product)===normalizeProduct(title))-Number(normalizeProduct(a.product)===normalizeProduct(title)) || packDistance(a)-packDistance(b) || a.id.localeCompare(b.id));
         for (const price of pool) {
           const ref=reference(price,state?.scenarioHints??[]); if (!ref) continue;
           if (price.kind === "receipt") {
@@ -115,10 +124,12 @@ export function derivePurchaseScenarios(records: GroceryRecord[], plan: GroceryP
           let targetSize=target.size,targetUnit=target.unit;
           const a=normalizedSize(targetSize,targetUnit),b=normalizedSize(ref.size,ref.unit);
           if (a.unit!==b.unit) {
-            if (targetUnit === "each" && targetSize === 1 && line.uncertain && line.unit === null && !price.weighed && (b.unit === "kg" || b.unit === "l")) {
+            if (family === "mini-cucumber" && targetUnit === "each" && b.unit === "kg" && countBasis) {
+              targetSize=countBasis.size;targetUnit=countBasis.unit;assumptions.push(`Hypothèse de quantité commune : ${countBasis.sourceCount} mini-concombres = ${countBasis.size} ${countBasis.unit} dans ce scénario, masse réelle inconnue. ${countBasis.note}`);
+            } else if (targetUnit === "each" && targetSize === 1 && line.uncertain && line.unit === null && !price.weighed && (b.unit === "kg" || b.unit === "l")) {
               targetSize=ref.size;targetUnit=ref.unit;assumptions.push(`Format physique inconnu : l'unité de vente source est supposée correspondre à un paquet de référence de ${ref.size} ${ref.unit}. Hypothèse de paquet uniquement, pas une conversion universelle nombre/poids/volume. Le format réellement acheté reste inconnu.`);
             } else {
-              if (family!=="mini-cucumber" || targetUnit!=="each" || b.unit!=="kg" || price.weighed) continue;
+              if (family!=="mini-cucumber" || store!=="Walmart" || targetUnit!=="each" || b.unit!=="kg" || price.weighed) continue;
               targetSize=ref.size;targetUnit=ref.unit; assumptions.push(`Équivalence de paquet estimée : ${target.size} mini-concombres supposés correspondre à un sachet de ${ref.size} ${ref.unit}, soit environ ${Number((normalizedSize(ref.size,ref.unit).size*1000/target.size).toFixed(1))} g par mini. Poids réel inconnu.`);
             }
           }
@@ -133,10 +144,10 @@ export function derivePurchaseScenarios(records: GroceryRecord[], plan: GroceryP
           if(store==="Costco"&&retailer.membershipStatus!=="existing")limits.push("Adhésion et conditions Costco à vérifier.");
           if(/promo|loyal|coupon|remise|BASE.*avant/i.test(price.matchNote??""))limits.push("Conditions promotionnelles historiques ou de base à vérifier ; aucune remise supplémentaire appliquée.");
           const relation=normalizeProduct(price.product)===normalizeProduct(title)?"estimated-match":"estimated-substitution";
-          if(relation==="estimated-substitution")assumptions.push(`Substitution estimée : ${price.product}. Même famille ${family} et contraintes explicites conservées ; marque, variante et qualités nutritionnelles non identiques.`);
+          if(relation==="estimated-substitution")assumptions.push(`Substitution estimée : ${price.product}. Type et contraintes explicites conservés ; marque, variante et valeurs nutritionnelles peuvent différer.`);
           const sourceReceipt=price.kind==="receipt"?referenceRecords.find(r=>price.evidence.title.includes(r.id))?.id??null:null;
           const sourceUnit=normalizedSize(targetSize,targetUnit),formula=`${quantity} × ${Number(sourceUnit.size.toFixed(6))} ${sourceUnit.unit} ÷ (${Number(y.size.toFixed(6))} ${y.unit}) × ${Number(ref.price.toFixed(6))} ${price.currency} = ${normalized.toFixed(2)} ${price.currency} au prorata.`;
-          const formatSources=[...(target.source?[target.source]:[]),...((state?.scenarioHints??[]).filter(h=>h.purpose==="reference-pack"&&h.priceId===price.id&&h.priceKey===purchasePriceKey(price)).map(h=>({title:h.note,url:h.sourceUrl,date:h.observedAt})))].map(s=>({...s,title:s.title.slice(0,500)}));
+          const formatSources=[...(target.source?[target.source]:[]),...(countBasis?[{title:countBasis.note,url:countBasis.sourceUrl,date:countBasis.observedAt}]:[]),...((state?.scenarioHints??[]).filter(h=>["reference-pack","reference-format"].includes(h.purpose)&&h.priceId===price.id&&h.priceKey===purchasePriceKey(price)).map(h=>({title:h.note,url:h.sourceUrl,date:h.observedAt})))].map(s=>({...s,title:s.title.slice(0,500)}));
           result.push({recordId:record.id,lineIndex,lineKey:purchaseLineKey(line),priceId:price.id,priceKey:purchasePriceKey(price),family,relation,quantity,size:targetSize,unit:targetUnit,referenceSize:ref.size,referenceUnit:ref.unit,referencePrice:ref.price,packSize:ref.packSize,packPrice:ref.packPrice,packEstimated:ref.packEstimated,normalized,outlay,packs,ratio,assumptions,limits,formula,ageDays,formatSources,sourceReceiptId:sourceReceipt}); break;
         }
       }

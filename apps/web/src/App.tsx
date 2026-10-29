@@ -69,6 +69,9 @@ export default function App() {
   }, [view, pageName, routeKey]);
   useEffect(() => {
     const onBack = () => {
+      // Purchase info owns a same-URL history entry; its Back closes the modal only.
+      const purchase = document.querySelector<HTMLElement>(".grocery-purchases[data-purchase-dialog-url]");
+      if (purchase?.dataset.purchaseDialogUrl === location.href && purchase.querySelector("dialog[open]")) return;
       scrollPositions.current[viewRef.current] = window.scrollY;
       setView(viewFromQuery());
       setRouteKey(location.search);
