@@ -381,3 +381,9 @@ body:has(.grocery-card-workspace) { background: #f1f3f6; }
 .grocery-resolution-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; margin-top: 8px; }
 .grocery-resolution-actions a, .grocery-resolution-actions .text-action, .grocery-resolution-candidate a { display: inline-flex; align-items: center; min-height: 44px; }
 .grocery-resolution-message { padding: 12px; border: 1px solid var(--line); border-radius: 8px; }
+
+/* Dated estimate evidence must remain readable on a narrow phone. */
+.grocery-scenario-evidence { min-width: 0; overflow-wrap: anywhere; }
+.grocery-scenario-evidence ul { padding-inline-start: 1.25rem; }
+.grocery-scenario-evidence li + li { margin-block-start: .45rem; }
+.grocery-scenario-formula { padding: .65rem; border: 1px solid var(--line); border-radius: .5rem; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }

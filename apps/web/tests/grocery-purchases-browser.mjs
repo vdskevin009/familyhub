@@ -34,7 +34,7 @@ try {
     await dialog.getByText("Calculé", { exact: true }).waitFor(); await dialog.getByText("15 œufs",{exact:true}).waitFor();
     const details = dialog.getByText("Formats, calcul et sources", { exact: true }); await details.focus(); await page.keyboard.press("Enter");
     await dialog.getByText(/6,00 CAD × 12\/15 = 4,80 CAD/).waitFor(); await dialog.getByText(/1 paquet\(s\) entier\(s\)/).waitFor();
-    assert.ok(await dialog.getByText(/Aucun prix local sourcé/).count());
+    assert.ok(await dialog.getByText(/Type ou produit équivalent non identifié/).count());
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth || [...document.querySelectorAll("dialog[open] .sheet-content")].some(el => el.scrollWidth > el.clientWidth + 1)), false);
     await page.screenshot({ path: join(directory, `detail-${width}.png`) });
     await page.keyboard.press("Escape"); await dialog.waitFor({ state: "hidden" }); await page.waitForFunction(el => document.activeElement === el, await open.elementHandle()); assert.equal(await open.evaluate(el => document.activeElement === el), true);

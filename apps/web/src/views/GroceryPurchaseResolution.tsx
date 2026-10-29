@@ -13,7 +13,7 @@ export default function GroceryPurchaseResolution({ record, index, state, busy, 
   const candidates = purchaseCandidatesForLine(state, record, index), confirmed = confirmedPurchaseFormat(state, record, index);
   return <details ref={details} className="grocery-resolution" open={open} onToggle={event => { setOpen(event.currentTarget.open); if (!event.currentTarget.open) setChecked(null); }}>
     <summary>Compléter cette ligne</summary>
-    <p>La confirmation concerne uniquement le produit et le format de cette ligne d'achat. Le ticket, ses montants et les autorisations de substitution restent inchangés.</p>
+    <p>Confirmer améliore le niveau vérifié ; les scénarios estimés restent consultables sans cette validation. La confirmation concerne uniquement le produit et le format de cette ligne. Le ticket et les autorisations de substitution restent inchangés.</p>
     {!candidates.length && <p>{state ? "Aucun candidat documenté pour cette ligne. Consultez les sources du ticket pour retrouver le produit et son format." : "Les candidats ne sont pas vérifiables. Reconnectez le PC puis actualisez le comparatif."}</p>}
     {candidates.map(c => { const reason = purchaseCandidateReason(c, record), decision = state?.decisions[c.id], link = grocerySourceLink(c.sourceUrl), active = decision?.state === "confirmed"; return <section tabIndex={-1} className="grocery-resolution-candidate" key={c.id}>
       <h5>{c.brand ? c.brand + " — " : ""}{c.product}</h5>

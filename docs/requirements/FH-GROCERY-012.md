@@ -1,6 +1,6 @@
 # FH-GROCERY-012 — Resolve incomplete purchase comparisons
 
-Status: Testing. Related: #155, FH-GROCERY-010/011. Worker 2.28.2 and capability `grocery-purchase-resolution-v1` are required for confirmation writes. Publication, installed activation, private evidence ingestion and phone acceptance are separate gates.
+Status: Testing. Related: #155, FH-GROCERY-010/011. Worker 2.28.2 and capability `grocery-purchase-resolution-v1` are required for confirmation writes. Publication, installed activation, private evidence ingestion and phone acceptance are separate gates. FH-GROCERY-013 supersedes the exact-only display restriction by adding a separately labeled estimated scenario; these confirmation and source-preservation rules remain in force.
 
 Achats must explain missing coverage and let the user resolve a line from the comparison: unknown purchase format, candidate identity, absent/expired/nonlocal price and unreviewed equivalence remain distinct. Coverage is computed from eligible rows only. Partial product subtotals and whole-pack outlay remain separate; no historical source total is compared with a competitor subtotal to claim net savings.
 

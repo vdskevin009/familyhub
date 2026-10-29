@@ -1,0 +1,15 @@
+# FH-GROCERY-013 — Verified and estimated purchase comparisons
+
+Status: Testing. Related: #155, FH-GROCERY-010/012. This explicit product decision supersedes the earlier prohibition on inferred quantities and unconfirmed substitutions **for the separately labeled estimated scenario only**. Verified current-local comparison, shopping permissions and financial alerts keep their existing guards.
+
+Achats shows coverage as “5/5 comparés, dont 3 estimés” when defensible sources cover all five rows. Verified and estimated counts remain distinct. A missing price or usable quantity basis remains unavailable with its specific reason; completeness is never manufactured. Estimated results are scenarios rather than current purchasable local offers or certain savings.
+
+Estimates may use a source-bound candidate, a previously confirmed format as a labeled hypothesis, an explicit product format, or a clearly stated one-reference-pack hypothesis when the original size/count is missing. Household mass assumptions keep their provenance and identity scope. A specific household-assumed SKU mass cannot be propagated to differently identified or merely similarly named historical purchases. Unit normalization never silently equates weight, volume and count. Any pack-to-weight scenario spells out its assumed conversion.
+
+Every row identifies the dated price and retailer/location, target quantity/format, assumptions, equivalent product differences, unit cost, prorata formula and whole-package outlay. Bulk rounding groups the same reference before rounding; variable-weight package outlay is labeled estimated. Original confirmations still mean estimated source amounts and unknown final payment. Taxes, deposits, travel and order fees remain excluded, never represented as a net saving.
+
+Equivalent substitutions must share a coherent product family and preserve explicit dietary constraints. Different brands, flavours or allowed variants remain estimated rather than exact identity. Old/nonlocal prices and unknown membership/availability are admitted only as conspicuously limited scenarios with age and conditions; they do not become current local offers. Source receipt prices must link to a real different receipt; an original row cannot compare against its own price.
+
+Derived scenario evidence is separate from receipts, candidates and explicit confirmation decisions. The existing scanner enriches both historical records and future imports, deduplicates unchanged inputs and retains original dates. A withdrawn confirmation blocks automatic estimated reuse for the unchanged line. No cart mutation, purchase, new credential, permission, schedule or uncertain-savings notification is introduced.
+
+Acceptance: exact/estimated/missing; source quantity and pack hypotheses; kg/L/count separation; fractional normalization and whole-pack rounding; stale/nonlocal/conditional source labels; dietary/quality conflicts; withdrawal; historical/future import and repeated reconciliation; mobile inspection; real coverage before/after and served-release verification.
