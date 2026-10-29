@@ -2,7 +2,8 @@
 export class GroceryError extends Error {}
 export type GroceryUnit = "g" | "kg" | "ml" | "l" | "each";
 export type GroceryItem = { name: string; product: string; amount: number | null; quantity: number | null;
-  size: number | null; unit: GroceryUnit | null; evidence: string; uncertain: boolean };
+  size: number | null; unit: GroceryUnit | null; evidence: string; uncertain: boolean;
+  productReference?: { provider: "pcexpress"; id: string } };
 export type GroceryReceipt = { sourceType?: "unknown" | "confirmation" | "final-receipt"; fulfillment?: { date: string; evidence: string }; store: string; date: string | null; currency: string | null; reference: string;
   total: number | null; delivery: number | null; service: number | null; tip: number | null; tax: number | null;
   discount: number | null; items: GroceryItem[]; warnings: string[] };
@@ -38,7 +39,9 @@ export function validateReceipt(value: unknown): GroceryReceipt {
   if (r.currency !== null && (typeof r.currency !== "string" || !/^[A-Z]{3}$/.test(r.currency))) throw new GroceryError("Devise invalide.");
   if (!Array.isArray(r.items) || r.items.length > 200 || !Array.isArray(r.warnings) || r.warnings.length > 30) throw new GroceryError("Lignes du ticket invalides.");
   const items = r.items.map(v => { const i = obj(v); if (typeof i.uncertain !== "boolean" || i.unit !== null && !["g", "kg", "ml", "l", "each"].includes(String(i.unit))) throw new GroceryError("Unité ou incertitude invalide.");
-    return { name: text(i.name), product: text(i.product), amount: money(i.amount), quantity: positive(i.quantity), size: positive(i.size), unit: i.unit as GroceryUnit | null, evidence: text(i.evidence, 1000), uncertain: i.uncertain }; });
+    let productReference: GroceryItem["productReference"];
+    if (i.productReference !== undefined) { const ref = obj(i.productReference); if (ref.provider !== "pcexpress" || typeof ref.id !== "string" || !/^\d{6,14}_(?:EA|KG)$/.test(ref.id)) throw new GroceryError("Référence produit source invalide."); productReference = { provider: "pcexpress", id: ref.id }; }
+    return { name: text(i.name), product: text(i.product), amount: money(i.amount), quantity: positive(i.quantity), size: positive(i.size), unit: i.unit as GroceryUnit | null, evidence: text(i.evidence, 1000), uncertain: i.uncertain, ...(productReference ? { productReference } : {}) }; });
   return { ...(r.sourceType === undefined ? {} : { sourceType: r.sourceType as GroceryReceipt["sourceType"] }), ...(fulfillment ? { fulfillment } : {}), store: text(r.store), date: date as string | null, currency: r.currency as string | null, reference: text(r.reference),
     total: money(r.total), delivery: money(r.delivery), service: money(r.service), tip: money(r.tip), tax: money(r.tax), discount: money(r.discount), items, warnings: r.warnings.map(v => text(v, 1000)) };
 }

@@ -44,6 +44,17 @@ test("delivery is separate evidence, with Pacific receipt date and no inferred f
   assert.throws(() => pcExpressLocalDate("2026-02-30T00:00:00.000Z"), PcExpressMailError);
 });
 
+test("only explicit first-party product links preserve a SKU; ambiguous links or matching names never invent one", () => {
+  const source = confirm();
+  const linked = source.replace("Synthetic oats &amp; grain", '<a href="https://www.realcanadiansuperstore.ca/en/synthetic/p/12345678_EA">Synthetic oats &amp; grain</a>');
+  assert.ok(linked !== source);
+  assert.deepEqual(parse(raw(linked)).receipt.items[0].productReference, { provider: "pcexpress", id: "12345678_EA" });
+  assert.equal(parse(raw()).receipt.items[0].productReference, undefined);
+  assert.equal(parse(raw(linked.replace("www.realcanadiansuperstore.ca", "untrusted.example"))).receipt.items[0].productReference, undefined);
+  const ambiguous = linked.replace("</a>", '</a><a href="https://www.realcanadiansuperstore.ca/en/other/p/87654321_EA"></a>');
+  assert.equal(parse(raw(ambiguous)).receipt.items[0].productReference, undefined);
+});
+
 test("sender and observed subject gates ignore unrelated, picked, en route, forwarded and English mail", () => {
   for (const subject of ["Your order has been picked!", "Votre commande est en route! 🙌", "Fwd: " + confirmationSubject, "Your delivery order is confirmed"]) assert.equal(parse(raw(confirm(), subject)), null);
   const mail = raw(); mail.payload.headers[0].value = "PC Express <noreply@t.pcexpress.ca.attacker.invalid>"; assert.equal(parse(mail), null);

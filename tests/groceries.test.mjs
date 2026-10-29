@@ -19,6 +19,16 @@ async function removeFixtureDirectory(directory, prefix) {
 async function fixture(t, extractor = async () => receipt) { const directory = await mkdtemp(join(tmpdir(), "fh-grocery-test-")); t.after(() => removeFixtureDirectory(directory, "fh-grocery-test-")); return { directory, store: new GroceryStore(join(directory, "groceries"), extractor) }; }
 const saved = (r, store, data = receipt, options = {}) => store.review(r.id, { receipt: data, expectedRevision: r.revision, save: true, confirmed: true, ...options });
 
+test("legacy review preserves an explicit product reference only for the same source line", async t => {
+  const { store } = await fixture(t);
+  const draft = (await store.import({ sources: [source("synthetic explicit reference")] })).record;
+  const original = await saved(draft, store, { ...receipt, items: [{ ...item, productReference: { provider: "pcexpress", id: "12345678_EA" } }] });
+  const reviewed = await saved(original, store, receipt);
+  assert.deepEqual(reviewed.receipt.items[0].productReference, { provider: "pcexpress", id: "12345678_EA" });
+  const changed = await saved(reviewed, store, { ...receipt, items: [{ ...item, name: "Another source line", product: "Another product", evidence: "Different source" }] });
+  assert.equal(changed.receipt.items[0].productReference, undefined);
+});
+
 test("source classification survives save/restart; original confirmations do not count as paid spending", async t => {
   const { store, directory } = await fixture(t);
   const draft = (await store.import({ sources: [source("Synthetic original confirmation")] })).record;
@@ -186,7 +196,11 @@ test("authenticated real-worker API: origin, pairing, no-store, upload/review/so
   assert.deepEqual((await (await request("/groceries")).json()).records, []);
   assert.ok(health.capabilities.includes("grocery-weekly-v1")); assert.ok(health.capabilities.includes("grocery-fulfillment-v1"));
   assert.ok(health.capabilities.includes("grocery-comparison-evidence-v1")); assert.ok(health.capabilities.includes("grocery-source-estimates-v1"));
-  assert.ok(health.capabilities.includes("grocery-items-300-v1")); assert.equal(health.version, "2.28.1");
+  assert.ok(health.capabilities.includes("grocery-items-300-v1")); assert.equal(health.version, "2.28.2");
+  assert.ok(health.capabilities.includes("grocery-purchase-resolution-v1"));
+  assert.equal((await request("/groceries/purchase-resolution", undefined, { "x-familyhub-key": "wrong" })).status, 401);
+  assert.equal((await request("/groceries/purchase-resolution", { action: "confirm" }, { "x-familyhub-key": "wrong" })).status, 401);
+  assert.equal((await (await request("/groceries/purchase-resolution")).json()).revision, "empty");
   const plan = (await (await request("/groceries/planning")).json()); assert.equal(plan.schema, 1);
   plan.area = "Synthetic city";
   plan.items = [{ id: "synthetic-month", name: "Synthetic monthly packs", quantity: 3, size: null, unit: null, preference: "Format unknown", substitutions: false, active: false, origin: "", cadence: "month", every: 1, bucket: "household", measure: "pack", provisional: true, basketQuantity: null }];

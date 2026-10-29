@@ -1,5 +1,9 @@
 # FamilyHub architecture
 
+## Purchase comparison resolution (FH-GROCERY-012)
+
+Authenticated `GET/POST /groceries/purchase-resolution` owns a separate atomic, revision-checked sidecar with immutable candidates and reversible confirmation decisions. React projects confirmed physical formats into comparison calculations while retaining original receipt data and existing price/quantity/locality guards. The existing scanner reconciles exact explicit source product references; it never guesses an identity from a name or price, refreshes old evidence dates or makes a retailer request. Source references are additive, and legacy line keys remain stable when absent. See `requirements/FH-GROCERY-012.md`.
+
 Desjardins preparation uses the existing guarded session, a bounded original-PDF identity parser and explicit adapters for observed intermediate pages through final review. Confirmed beneficiary aliases retain all full-name tokens; paid patient-share amounts remain distinct from the imported primary adjudication's gross. French date masks, decimal-comma controls, source duration and explicit owner coordination defaults remain separate from inferred facts. Every continuation requires fresh read-back and a session reservation; extra controls, unknown pages and ambiguous tabs stop. This narrowly supersedes older blanket manual-Next descriptions below; no generic navigation, consent or submission endpoint exists. The final reader compares the actual beneficiary/provider and expanded expense, observes Confirmer without invoking it, and reports when that screen offers no receipt upload. Live pre-confirmation acceptance passed; release and phone gates are tracked separately in #258.
 
 ## PC Express purchase collection (local candidate)

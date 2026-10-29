@@ -32,7 +32,7 @@ export function estimatedSourceLine(entries: SourceEstimateEvidence[] | undefine
   if (candidates.length !== 1) return null;
   const e = candidates[0]; return { ...e, amount: Math.round(e.quantity * e.unitPrice * 100) / 100 };
 }
-export const purchaseLineKey = (line: GroceryItem) => JSON.stringify([line.name, line.product, line.amount, line.quantity, line.size, line.unit, line.evidence, line.uncertain]);
+export const purchaseLineKey = (line: GroceryItem) => JSON.stringify([line.name, line.product, line.amount, line.quantity, line.size, line.unit, line.evidence, line.uncertain, ...(line.productReference ? [[line.productReference.provider, line.productReference.id]] : [])]);
 export const purchasePriceKey = (p: GroceryPrice) => JSON.stringify([p.id, p.itemId, p.retailerId, p.product, p.price, p.size, p.unit, p.weighed, p.currency, p.available, p.kind, p.evidence, p.mode, p.locality, p.localityConfirmed, p.substitution, p.approved, p.matchNote]);
 const physical = (size: number, unit: GroceryUnit) => ({ amount: size * (unit === "g" || unit === "ml" ? .001 : 1), unit: unit === "g" ? "kg" : unit === "ml" ? "l" : unit });
 const sameFormat = (a: { size: number; unit: GroceryUnit }, b: { size: number; unit: GroceryUnit }) => {
