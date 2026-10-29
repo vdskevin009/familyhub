@@ -196,7 +196,7 @@ test("authenticated real-worker API: origin, pairing, no-store, upload/review/so
   assert.deepEqual((await (await request("/groceries")).json()).records, []);
   assert.ok(health.capabilities.includes("grocery-weekly-v1")); assert.ok(health.capabilities.includes("grocery-fulfillment-v1"));
   assert.ok(health.capabilities.includes("grocery-comparison-evidence-v1")); assert.ok(health.capabilities.includes("grocery-source-estimates-v1"));
-  assert.ok(health.capabilities.includes("grocery-items-300-v1")); assert.equal(health.version, "2.29.1");
+  assert.ok(health.capabilities.includes("grocery-items-300-v1")); assert.equal(health.version, "2.30.0");
   assert.ok(health.capabilities.includes("grocery-purchase-resolution-v1"));
   assert.equal((await request("/groceries/purchase-resolution", undefined, { "x-familyhub-key": "wrong" })).status, 401);
   assert.equal((await request("/groceries/purchase-resolution", { action: "confirm" }, { "x-familyhub-key": "wrong" })).status, 401);

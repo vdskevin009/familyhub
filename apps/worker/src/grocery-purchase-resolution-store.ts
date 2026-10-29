@@ -7,7 +7,7 @@ import { GroceryConflict } from "./grocery-store.js";
 import type { GroceryPlan } from "./grocery-planning.js";
 import { purchaseLineKey, purchasePriceKey } from "./grocery-purchase-evidence.js";
 import { emptyPurchaseResolution, purchaseCandidateReason, validatePurchaseCandidate, validatePurchaseResolution, type PurchaseResolution } from "./grocery-purchase-resolution.js";
-import { validateScenarioHints } from "./grocery-purchase-scenario-model.js";
+import { validateScenarioHints, validateReferenceLeads } from "./grocery-purchase-scenario-model.js";
 import { derivePurchaseScenarios } from "./grocery-purchase-scenarios.js";
 
 /** Separate derived evidence: never writes a receipt, a shopping plan, a price or a notification. */
@@ -40,9 +40,17 @@ export class GroceryPurchaseResolutionStore {
         state.scenarioHints ??= [];
         for (const hint of hints) {
           if (Date.parse(hint.observedAt) > now.getTime()) throw new GroceryError("Date de référence future.");
-          if (hint.purpose === "reference-pack" && !plan.prices.some(p => p.id === hint.priceId && purchasePriceKey(p) === hint.priceKey)) throw new GroceryError("Prix de référence absent ou modifié.");
+          if (hint.purpose !== "source-format" && !plan.prices.some(p => p.id === hint.priceId && purchasePriceKey(p) === hint.priceKey)) throw new GroceryError("Prix de référence absent ou modifié.");
           const old = state.scenarioHints.find(h => h.id === hint.id);
           if (old) { if (JSON.stringify(old) !== JSON.stringify(hint)) throw new GroceryConflict("Une référence estimative conservée ne peut pas être remplacée."); } else state.scenarioHints.push(hint);
+        }
+      } else if (body.action === "add-reference-leads") {
+        if (Object.keys(body).some(k => !["action", "expectedRevision", "leads", "reviewedSources"].includes(k)) || body.reviewedSources !== true || !Array.isArray(body.leads) || !body.leads.length || body.leads.length > 20) throw new GroceryError("Pistes sourcées revues requises.");
+        const leads = validateReferenceLeads(body.leads); state.referenceLeads ??= [];
+        for (const lead of leads) {
+          if (lead.date > now.toISOString().slice(0,10)) throw new GroceryError("Date de piste future.");
+          const old = state.referenceLeads.find(x => x.id === lead.id);
+          if (old) { if (JSON.stringify(old) !== JSON.stringify(lead)) throw new GroceryConflict("Une piste conservée ne peut pas être remplacée."); } else state.referenceLeads.push(lead);
         }
       } else if (body.action === "confirm" || body.action === "unconfirm") {
         if (Object.keys(body).some(k => !["action", "expectedRevision", "id", "confirmed", "confirmationEvidence"].includes(k)) || typeof body.id !== "string") throw new GroceryError("Décision de comparaison invalide.");

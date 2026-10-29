@@ -3,12 +3,13 @@ import type { GroceryPlan } from "../../worker/src/grocery-planning";
 import type { PurchaseResolution } from "../../worker/src/grocery-purchase-resolution";
 import type { PurchaseScenario } from "../../worker/src/grocery-purchase-scenario-model";
 import { derivePurchaseScenarios, scenarioStore, scenarioUnavailableReason } from "../../worker/src/grocery-purchase-scenarios";
+import { purchaseScenarioRetailers } from "../../worker/src/grocery-purchase-retailers";
 import { purchaseLocalDate, purchaseStoreComparisons, type PurchaseLineComparison } from "./grocery-purchases";
 
 export type ScenarioLineComparison = PurchaseLineComparison & { confidence: "verified" | "estimated" | "missing"; scenario?: PurchaseScenario };
 /** Achats-only view. The verified comparator used by other modules is deliberately unchanged. */
 export function purchaseScenarioStores(plan: GroceryPlan, record: GroceryRecord, today = purchaseLocalDate(), resolution?: PurchaseResolution, records = [record]) {
-  const strict=purchaseStoreComparisons(plan,record,today,resolution),scenarios=derivePurchaseScenarios([record],plan,resolution,today,500,records);
+  const strict=purchaseStoreComparisons(plan,record,today,resolution,purchaseScenarioRetailers),scenarios=derivePurchaseScenarios([record],plan,resolution,today,1000,records);
   return strict.map(store=>{
     const lines:ScenarioLineComparison[]=store.lines.map((line,index)=>{
       if(line.normalized!==null)return {...line,confidence:line.comparisonEvidence||line.formatEvidence?.formatBasis==="household-assumption"?"estimated":"verified"};
@@ -26,7 +27,9 @@ export function purchaseScenarioStores(plan: GroceryPlan, record: GroceryRecord,
     }
     const outlayKnown=covered.length>0&&[...groups.values()].every(g=>g.size!==null&&g.price!==null);
     const outlay=outlayKnown?[...groups.values()].reduce((n,g)=>n+(g.weighed?g.amount/g.size!:Math.ceil(g.amount/g.size!-1e-10))*g.price!,0):null;
-    return {...store,lines,covered:covered.length,count:lines.length,verified,estimated,complete:lines.length>0&&covered.length===lines.length,normalized:covered.length?Math.round(covered.reduce((n,l)=>n+l.normalized!,0)*100)/100:null,outlay:outlay===null?null:Math.round(outlay*100)/100,packEstimated:covered.some(l=>l.scenario?.packEstimated),sourceEstimate:estimated?null:store.sourceEstimate,
+    const contexts=[...new Set(covered.map(l=>JSON.stringify([l.price!.retailerId,l.price!.locality,l.price!.mode])))];
+    const nonlocal=covered.some(l=>!l.price!.localityConfirmed||!plan.retailers.find(r=>r.id===l.price!.retailerId)?.areaConfirmed||l.price!.locality!==plan.retailers.find(r=>r.id===l.price!.retailerId)?.locality);
+    return {...store,lines,covered:covered.length,count:lines.length,verified,estimated,complete:lines.length>0&&covered.length===lines.length,normalized:covered.length?Math.round(covered.reduce((n,l)=>n+l.normalized!,0)*100)/100:null,outlay:outlay===null?null:Math.round(outlay*100)/100,packEstimated:covered.some(l=>l.scenario?.packEstimated),sourceEstimate:estimated?null:store.sourceEstimate,nonlocal,multiContext:contexts.length>1,
       historical:covered.some(l=>l.scenario&&l.scenario.ageDays>7),limited:covered.some(l=>(l.scenario?.limits.length??0)>0)};
   });
 }

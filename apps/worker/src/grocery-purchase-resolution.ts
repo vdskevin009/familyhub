@@ -1,7 +1,7 @@
 import { GroceryError, type GroceryRecord, type GroceryUnit } from "./grocery-model.js";
 import { purchaseLineKey } from "./grocery-purchase-evidence.js";
 import { normalizedSize, publicSourceUrl } from "./grocery-planning.js";
-import { validatePurchaseScenarios, validateScenarioHints, type PurchaseScenario, type PurchaseScenarioHint } from "./grocery-purchase-scenario-model.js";
+import { validatePurchaseScenarios, validateScenarioHints, validateReferenceLeads, type PurchaseScenario, type PurchaseScenarioHint, type PurchaseReferenceLead } from "./grocery-purchase-scenario-model.js";
 
 /** Public catalogue evidence is a proposal, never evidence of the historical purchase. */
 export type PurchaseCandidate = {
@@ -17,6 +17,7 @@ export type PurchaseResolution = {
   decisions: Record<string, { state: "confirmed" | "unconfirmed"; at: string; evidence?: { at: string; source: string } }>;
   scenarioHints?: PurchaseScenarioHint[];
   scenarios?: PurchaseScenario[];
+  referenceLeads?: PurchaseReferenceLead[];
 };
 export const emptyPurchaseResolution = (): PurchaseResolution => ({ schema: 1, revision: "empty", candidates: [], decisions: {} });
 const stamp = (v: unknown): v is string => typeof v === "string" && v.length <= 40 && Number.isFinite(Date.parse(v)) && new Date(v).toISOString() === v;
@@ -40,7 +41,7 @@ export function validatePurchaseResolution(value: unknown): PurchaseResolution {
   if (new Set(candidates.map(c => c.id)).size !== candidates.length) throw new GroceryError("Candidat dupliqué.");
   for (const [id, d] of Object.entries(v.decisions)) if (!candidates.some(c => c.id === id) || !d || !["confirmed", "unconfirmed"].includes(d.state) || !stamp(d.at)
     || d.evidence !== undefined && (!stamp(d.evidence.at) || typeof d.evidence.source !== "string" || !d.evidence.source.trim() || d.evidence.source.length > 1000)) throw new GroceryError("Décision de comparaison invalide.");
-  return { schema: 1, revision: v.revision, candidates, decisions: { ...v.decisions }, ...(v.scenarioHints === undefined ? {} : { scenarioHints: validateScenarioHints(v.scenarioHints) }), ...(v.scenarios === undefined ? {} : { scenarios: validatePurchaseScenarios(v.scenarios) }) };
+  return { schema: 1, revision: v.revision, candidates, decisions: { ...v.decisions }, ...(v.scenarioHints === undefined ? {} : { scenarioHints: validateScenarioHints(v.scenarioHints) }), ...(v.scenarios === undefined ? {} : { scenarios: validatePurchaseScenarios(v.scenarios) }), ...(v.referenceLeads === undefined ? {} : { referenceLeads: validateReferenceLeads(v.referenceLeads) }) };
 }
 export function purchaseCandidateReason(candidate: PurchaseCandidate, record: GroceryRecord, now = Date.now()) {
   const line = record.receipt.items[candidate.lineIndex];

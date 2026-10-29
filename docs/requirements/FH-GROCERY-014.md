@@ -1,0 +1,11 @@
+# FH-GROCERY-014 - Compact purchase cards and evidenced retailer coverage
+
+Status: Testing. Related: #155, FH-GROCERY-013. The later explicit decision supersedes the verbose purchase-card presentation only; source preservation and verified/estimated calculation guards remain.
+
+Purchase cards show the source store/date/amount qualification, a compact comparison at equivalent quantity, retailer amount, covered/total lines, estimated count and incomplete state. A short visible label identifies prorata equivalent cost and excludes fees/taxes. Whole-package outlay must never be presented as the same amount. Long source, age, locality, hypothesis, product substitution and calculation explanations belong in a native accessible modal opened by “Plus d’infos”. Preserve focus containment, Escape, a visible return/close action, browser Back, scroll containment and focus restoration. Inspect narrow/zoom, loading, empty and error/cache states; opening and closing never mutate business data.
+
+Include Walmart, Costco, Fresh St. Market and Save-On-Foods in historical purchases and future-import enrichment. Canonicalize retailer aliases without mixing stores or silently combining local branches. Retain observed date, channel, locality, membership and variable-weight limits. Nonlocal/historical references remain estimates. Candidate-only prices or incomplete formats are visible as leads, excluded from calculated coverage. A search index alone cannot establish a verified current price. Do not bypass retailer login/membership or invent a price to reach full coverage.
+
+When the source quantity is uncertain, an explicit reviewed quantity hypothesis may be reused across retailers only on the same common physical/count basis with provenance. Do not reinterpret the target quantity independently to match each retailer’s package. Distinguish prorata quantity cost from the cost of whole packages; preserve the original source format and all withdrawals. Report real coverage per purchase/store before and after ingestion and verify the served commit separately from compilation.
+
+Implementation references: `GroceryPurchases`, `grocery-purchase-scenarios`, purchase-resolution sidecar and existing 15-minute scanner. No new secret, permission, cart operation, purchase, Push or scheduler.

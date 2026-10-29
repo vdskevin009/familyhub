@@ -1,5 +1,9 @@
 # FamilyHub - Canonical Requirements
 
+## Compact purchase comparison and four retailers - FH-GROCERY-014 (#155)
+
+Testing. Show only qualified amount, coverage/estimated count and incomplete state directly on cards, with “Plus d’infos” opening the accessible detail modal. Extend evidenced comparisons to Fresh St. Market and Save-On-Foods alongside Walmart/Costco for historical purchases and future imports. Retain provenance, quantity assumptions, unit/pack distinctions and source/locality limits; unpriced leads never inflate coverage. See `docs/requirements/FH-GROCERY-014.md`. This supersedes verbose card presentation while preserving FH-GROCERY-013 calculation and evidence rules.
+
 ## Estimated purchase scenarios - FH-GROCERY-013 (#155)
 
 Testing. Explicitly authorized estimates complement verified current-local comparisons for existing purchases and future imports. Show coverage and estimated count, sourced prices, quantities/format hypotheses, normalization formulas, whole-pack outlay and source age/locality. Preserve receipts, withdrawals and dietary constraints; missing evidence remains unavailable and estimated scenarios never feed certain-savings alerts. This supersedes the earlier no-inference/no-unconfirmed-substitution rule only for the labeled scenario. See `docs/requirements/FH-GROCERY-013.md`.

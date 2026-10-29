@@ -1,6 +1,7 @@
 import { normalizeProduct, receiptSourceType, type GroceryItem, type GroceryRecord } from "../../worker/src/grocery-model";
 import { normalizedSize, type GroceryPlan, type GroceryPrice, type GroceryRetailer } from "../../worker/src/grocery-planning";
 import { datedPrice, storeName } from "./grocery-comparison";
+import { purchaseRetailerName } from "../../worker/src/grocery-purchase-retailers";
 import { grocerySourceLink } from "./grocery-source-link";
 import { targetProductConflict } from "./grocery-target-observations";
 import { estimatedSourceLine, purchaseEvidenceReason, type PurchaseComparisonEvidence } from "../../worker/src/grocery-purchase-evidence";
@@ -102,10 +103,10 @@ export function purchaseComparison(plan: GroceryPlan, record: GroceryRecord, now
   });
 }
 /** Choose one evidenced locality/mode per retailer; never assemble a basket across branches. */
-export function purchaseStoreComparisons(plan: GroceryPlan, record: GroceryRecord, now?: string, resolution?: PurchaseResolution) {
+export function purchaseStoreComparisons(plan: GroceryPlan, record: GroceryRecord, now?: string, resolution?: PurchaseResolution, stores: readonly string[] = ["Walmart", "Costco"]) {
   const comparisons = purchaseComparison(plan, record, now, resolution);
-  return ["Walmart", "Costco"].map(name => {
-    const candidates = comparisons.filter(c => storeName(c.retailer.name) === name);
+  return stores.map(name => {
+    const candidates = comparisons.filter(c => (purchaseRetailerName(c.retailer.name) || storeName(c.retailer.name)) === name);
     const chosen = candidates.sort((a, b) => b.covered - a.covered || Number(/catalogue par défaut/i.test(a.retailer.name)) - Number(/catalogue par défaut/i.test(b.retailer.name)) || a.retailer.id.localeCompare(b.retailer.id))[0];
     return { ...chosen, name };
   });

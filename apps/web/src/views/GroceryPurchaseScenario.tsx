@@ -10,6 +10,7 @@ export default function GroceryPurchaseScenario({scenario,price,store,onSourceRe
     <h5>{store}</h5><p><strong>{scenario.relation==="estimated-substitution"?"Substitution estimée":"Comparaison estimée"}</strong> — référence pour un scénario, pas une offre ni une économie certaine.</p>
     <p>{price.product} · {money(scenario.referencePrice,price.currency)} / {scenario.referenceSize} {scenario.referenceUnit}. Prix observé le {price.evidence.date} ({scenario.ageDays} jour(s)), {price.locality||"localité non vérifiée"}.</p>
     <p>Tarif normalisé : {Number(unitRate.toFixed(4)).toLocaleString("fr-CA",{maximumFractionDigits:4})} {price.currency}/{base.unit === "each" ? "unité" : base.unit}.</p>
+    {price.matchNote && <p>{price.matchNote}</p>}
     <ul>{scenario.assumptions.map((s,i)=><li key={i}>{s}</li>)}</ul>
     <p className="grocery-scenario-formula">{scenario.formula}</p>
     <p>{scenario.packs===null||scenario.outlay===null?"Coût des paquets entiers indisponible : poids/conditionnement réel manquant.":`${scenario.packs} paquet(s) entier(s) ${scenario.packEstimated?price.weighed?"dans l'exemple au poids moyen estimé":"dans l'exemple de format/quantité estimés":"nécessaires dans ce scénario"} × ${money(scenario.packPrice!,price.currency)} = ${money(scenario.outlay,price.currency)}.`} {scenario.packEstimated&&price.weighed&&"Le nombre réel de barquettes et le montant final dépendent de leurs poids exacts."}</p>
