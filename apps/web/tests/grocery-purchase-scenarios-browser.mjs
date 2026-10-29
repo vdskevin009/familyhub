@@ -34,7 +34,7 @@ try {
   await cards.first().getByRole('button',{name:/Ouvrir/}).click();const dialog=page.getByRole('dialog');await dialog.waitFor();
   const lines=dialog.locator('.grocery-purchase-line');assert.equal(await lines.count(),5);
   await lines.nth(2).getByText('Formats, calcul et sources',{exact:true}).click();
-  const detail=lines.nth(2).locator('.grocery-scenario-evidence');assert.match(await detail.innerText(),/75.7 g par mini/);assert.match(await detail.innerText(),/au prorata/);assert.match(await detail.innerText(),/paquet\(s\) entier/);assert.equal(await detail.getByRole('link',{name:'Examiner le prix source'}).getAttribute('href'),'https://example.com/price-2');
+  assert.doesNotMatch(await lines.nth(2).innerText(),/Walmart : prix concurrent absent/);const detail=lines.nth(2).locator('.grocery-scenario-evidence');assert.match(await detail.innerText(),/75.7 g par mini/);assert.match(await detail.innerText(),/au prorata/);assert.match(await detail.innerText(),/paquet\(s\) entier/);assert.equal(await detail.getByRole('link',{name:'Examiner le prix source'}).getAttribute('href'),'https://example.com/price-2');
   await lines.nth(3).getByText('Formats, calcul et sources',{exact:true}).click();assert.match(await lines.nth(3).innerText(),/poids\/conditionnement réel manquant/);
   await lines.nth(4).getByText('Formats, calcul et sources',{exact:true}).click();assert.match(await lines.nth(4).innerText(),/17 jours/);assert.match(await lines.nth(4).innerText(),/Indisponible selon la source/);assert.match(await lines.nth(4).innerText(),/non locale/);
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth||[...document.querySelectorAll('dialog[open] .sheet-content')].some(e=>e.scrollWidth>e.clientWidth+1)),false);

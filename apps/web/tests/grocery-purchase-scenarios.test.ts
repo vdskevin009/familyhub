@@ -10,6 +10,18 @@ import { purchaseStoreComparisons } from "../src/grocery-purchases";
 const today="2026-10-29";
 const record=(product:string,extra={})=>({id:"fictional-purchase",revision:"r",status:"saved",extraction:"complete",reviewedAt:null,createdAt:"2026-10-28T12:00:00.000Z",duplicateOf:null,sources:[],receipt:{...emptyReceipt(),sourceType:"confirmation",store:"PC Express fictional",date:today,currency:"CAD",items:[{...blankItem(),name:product,product,quantity:1,evidence:"Fictional source",...extra}]}} as GroceryRecord);
 function planFor(product:string,size=400,unit:"g"|"kg"|"l"|"each"="g",price=4):GroceryPlan{return{...emptyPlan(),items:[{id:"item",name:product,quantity:null,size:null,unit:null,preference:"",substitutions:false,active:false,origin:"fictional"}],retailers:[{id:"wm",name:"Walmart",mode:"pickup",locality:"Fictional branch",areaConfirmed:true,enabled:true,membershipStatus:"none",membershipWeekly:0,delivery:null,service:null,servicePercent:null,feesTaxPercent:null,minimum:null,freeDeliveryAbove:null,otherFeesReviewed:false,evidence:{title:"Fictional source",url:"https://example.com/branch",date:today,until:null}}],prices:[{id:"price",itemId:"item",retailerId:"wm",product,price,size,unit,weighed:false,taxPercent:null,currency:"CAD",available:"yes",substitution:false,approved:true,kind:"public",mode:"pickup",locality:"Fictional branch",localityConfirmed:true,matchNote:"Fictional exact product reviewed",evidence:{title:"Fictional source",url:"https://example.com/price",date:today,until:null}}]};}
+
+test("a historical selling-unit proof can estimate one sourced physical pack while known physical units remain binding",()=>{
+ const r=record("Fictional Strawberries"),p=planFor("Other Strawberries",454,"g",5);
+ p.purchaseComparisons=[{id:"old-unit",recordId:r.id,lineIndex:0,lineKey:purchaseLineKey(r.receipt.items[0]),priceId:"previous",priceKey:"previous",purpose:"comparison-only",relation:"equivalent-same-format",quantity:1,size:1,unit:"each",formatLabel:"Selling unit, physical size unknown",referenceFormatLabel:"Selling unit",sourceEstimate:null,sourceEstimateEvidence:"Unknown",provenance:"Fictional older selling-unit reference",reviewedAt:"2026-10-28T00:00:00.000Z"}];
+ const before=JSON.stringify(r),s=purchaseScenarioStores(p,r,today)[0];assert.equal(s.estimated,1);assert.equal(s.normalized,5);assert.match(s.lines[0].scenario!.assumptions.join(" "),/unité de vente source.*paquet de référence/);assert.equal(JSON.stringify(r),before);
+ r.receipt.items[0].size=1;r.receipt.items[0].unit="l";assert.equal(purchaseScenarioStores(p,r,today)[0].covered,0);
+});
+
+test("fruit-flavoured baby snacks are not fresh fruit and reversed English-cucumber naming reuses the source",()=>{
+ const snack=record("Strawberry Banana Puffies Baby Snack",{size:50,unit:"g"}),p=planFor("Fresh Strawberries",454,"g",5);assert.equal(purchaseScenarioStores(p,snack,today)[0].covered,0);
+ const cucumber=record("English Cucumber"),c=planFor("Cucumber English Sold in Single Wrap",1,"each",1.25);assert.equal(purchaseScenarioStores(c,cucumber,today)[0].estimated,1);
+});
 test("verified comparison remains separate; prorata and whole packages are different",()=>{
  const r=record("Fictional Free Range Eggs",{quantity:1,size:12,unit:"each",uncertain:false}),p=planFor(r.receipt.items[0].product,15,"each",6),before=JSON.stringify({r,p});
  const s=purchaseScenarioStores(p,r,today)[0];assert.equal(s.verified,1);assert.equal(s.estimated,0);assert.equal(s.normalized,4.8);assert.equal(s.outlay,6);assert.equal(JSON.stringify({r,p}),before);
