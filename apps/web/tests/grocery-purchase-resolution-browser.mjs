@@ -47,7 +47,7 @@ try {
     await context.addInitScript(endpoint=>localStorage.setItem("familyhub.worker.v1",JSON.stringify({Endpoint:endpoint,ApiKey:"synthetic"})),"http://127.0.0.1:"+api.address().port);
     const page=await context.newPage(); page.setDefaultTimeout(12000); page.on("pageerror",e=>errors.push(e.message));
     await page.goto("http://127.0.0.1:"+site.address().port+"/familyhub/?view=groceries&tab=tickets");
-    const card=page.locator(".grocery-purchase-card"); await card.getByText(/0\/5 articles/).first().waitFor();
+    const card=page.locator(".grocery-purchase-card"); await card.getByText(/0\/5 comparés/).first().waitFor();
     await card.getByRole("button",{name:/Voir les produits/}).click();
     const dialog=page.getByRole("dialog",{name:/^Achat du/}), line=dialog.locator(".grocery-purchase-line").first();
     await dialog.waitFor(); await line.getByText("Format d'achat inconnu",{exact:true}).waitFor();
@@ -60,11 +60,11 @@ try {
     await line.getByRole("button",{name:"Annuler",exact:true}).click(); assert.equal(posts,before); assert.equal((await store.read()).decisions["candidate-0"]?.state==="confirmed",false);
     await line.getByText("Compléter cette ligne",{exact:true}).click(); assert.equal(await checkbox.isChecked?.()??await checkbox.evaluate(e=>e.checked),false);
     await checkbox.check(); await button.click(); await dialog.getByText(/Produit et format confirmés pour cette ligne/).waitFor();
-    await dialog.locator(".grocery-purchase-detail > .grocery-purchase-totals").getByText(/1\/5 articles.*sous-total partiel 6,00 CAD/).waitFor();
+    await dialog.locator(".grocery-purchase-detail > .grocery-purchase-totals").getByText(/1\/5 comparés/).waitFor();
     assert.equal(posts,before+1); assert.match(await line.innerText(),/Format dérivé confirmé/); assert.equal(JSON.stringify({record,plan}),original);
     assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth||[...document.querySelectorAll("dialog[open] .sheet-content")].some(e=>e.scrollWidth>e.clientWidth+1)),false);
     await page.screenshot({path:join(output,"confirmed-"+width+".png"),animations:"disabled"});
-    await line.getByRole("button",{name:"Retirer cette confirmation",exact:true}).click(); await dialog.getByText(/Confirmation retirée/).waitFor();
+    await line.getByRole("button",{name:"Retirer cette confirmation",exact:true}).click(); await dialog.getByRole("status").filter({hasText:/Confirmation retirée/}).waitFor();
     assert.equal((await store.read()).decisions["candidate-0"].state,"unconfirmed"); assert.equal(posts,before+2);
     failingPost=true; await checkbox.check(); await button.click(); await line.getByText(/Synthetic revision conflict/).waitFor();
     assert.equal((await store.read()).decisions["candidate-0"].state,"unconfirmed"); failingPost=false;

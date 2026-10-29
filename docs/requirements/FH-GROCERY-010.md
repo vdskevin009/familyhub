@@ -25,3 +25,5 @@ Additive optional receipt `sourceType`: unknown, confirmation, final-receipt. Le
 Public-source feasibility checked 2026-10-21: [Costco Same-day help](https://www.costco.ca/f/-/sameday-grocery-help/) separates delivery markups from warehouse prices; [Fresh St. Market delivery/pickup](https://www.freshstmarket.com/grocery-delivery-and-pickup) and [FAQ](https://www.freshstmarket.com/faq) describe online prices and variable pickup service fees. These pages do not establish a priced local basket. Existing reviewed generic-product public research is the supported path; no proprietary API access, checkout, personal-data submission, store contact or cart mutation.
 
 Live household acceptance is pending. No final fulfilled receipt or complete dated competitor basket was established in this task; no real confirmation, receipt lines or prices are committed as fixtures. Synthetic checks and screenshots do not prove a live paid amount.
+
+The later explicit FH-GROCERY-013 decision supersedes exact-only coverage for separately labeled estimated purchase scenarios. Verified local offers and savings alerts retain the original strict rules.

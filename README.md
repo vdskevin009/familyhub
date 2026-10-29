@@ -204,3 +204,5 @@ Daily insurer previews (FH-REIMB-041): on Windows, run `scripts/Install-InsurerP
 
 
 Mortgage decision analysis reuses the existing daily source automation and the authoritative paired worker. It adds private source-dated reports, same-maturity net comparisons, explicit variable scenarios, material alerts and mobile charts while preserving the frozen baseline and all original evidence. See [Mortgage assistant](docs/MORTGAGE-ASSISTANT.md).
+
+Purchase comparisons (FH-GROCERY-013) separate verified current-local prices from explicit estimated scenarios. Achats shows verified/estimated coverage, dated assumptions, prorata cost and whole-package outlay. Missing independent prices remain unavailable. Estimates never authorize substitutions or feed certain-savings alerts.

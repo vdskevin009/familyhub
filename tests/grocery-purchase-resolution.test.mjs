@@ -5,14 +5,33 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { GroceryPurchaseResolutionStore } from "../apps/worker/dist/grocery-purchase-resolution-store.js";
 import { blankItem, emptyReceipt, validateReceipt } from "../apps/worker/dist/grocery-model.js";
-import { emptyPlan } from "../apps/worker/dist/grocery-planning.js";
-import { purchaseLineKey } from "../apps/worker/dist/grocery-purchase-evidence.js";
+import { emptyPlan, emptyEvidence } from "../apps/worker/dist/grocery-planning.js";
+import { purchaseLineKey, purchasePriceKey } from "../apps/worker/dist/grocery-purchase-evidence.js";
 const now = new Date("2026-10-29T12:00:00.000Z");
 const makeRecord = (id, reference) => ({ id, revision: "r", status: "saved", extraction: "complete", reviewedAt: null, createdAt: now.toISOString(), duplicateOf: null, sources: [], receipt: { ...emptyReceipt(), sourceType: "confirmation", store: "PC Express synthetic", currency: "CAD", date: "2026-10-28", items: [{ ...blankItem(), name: "Synthetic grain", product: "Synthetic grain", quantity: 2, evidence: "Synthetic original line", ...(reference ? { productReference: { provider: "pcexpress", id: reference } } : {}) }] } });
 const makeCandidate = (record, extra = {}) => ({ id: "candidate-" + record.id, recordId: record.id, lineIndex: 0, lineKey: purchaseLineKey(record.receipt.items[0]), product: "Synthetic grain", brand: "Synthetic brand", productId: "12345678_EA", itemId: null, size: 400, unit: "g", formatLabel: "400 g", formatBasis: "public-source", sourceUrl: "https://example.com/source", observedAt: "2026-10-28T12:00:00.000Z", note: "Synthetic current catalogue evidence; historical match not inferred", ...extra });
 async function sandbox(run) { const dir = await mkdtemp(join(tmpdir(), "familyhub-purchase-resolution-")); try { await run(dir); } finally { await rm(dir, { recursive: true, force: true }); } }
 async function add(store, candidate) { const s = await store.read(); return store.mutate({ action: "add-candidates", candidates: [candidate], expectedRevision: s.revision }, now); }
 async function confirm(store, id, extra = {}) { const s = await store.read(); return store.mutate({ action: "confirm", id, expectedRevision: s.revision, confirmed: true, ...extra }, now); }
+
+test("historical and future estimated enrichment is persistent, idempotent and non-destructive", () => sandbox(async dir => {
+  const source=makeRecord("historical"), library={records:[source]}, plan=emptyPlan();
+  source.receipt.items[0].name=source.receipt.items[0].product="Fictional Tofu Extra Firm";
+  plan.retailers=[{id:"wm",name:"Walmart",mode:"pickup",locality:"Fictional branch",areaConfirmed:true,membershipStatus:"none",otherFeesReviewed:false,delivery:null,service:null,servicePercent:null,feesTaxPercent:null,minimum:null,freeDeliveryAbove:null,evidence:emptyEvidence()}];
+  plan.prices=[{id:"p",itemId:"i",retailerId:"wm",product:"Other Tofu Extra Firm",price:3.5,size:350,unit:"g",weighed:false,taxPercent:null,currency:"CAD",available:"yes",approved:false,substitution:true,kind:"public",mode:"pickup",locality:"Fictional branch",localityConfirmed:true,evidence:{title:"Fictional public source",url:"https://example.com/tofu",date:"2026-10-28",until:null}}];
+  const store=new GroceryPurchaseResolutionStore(dir,async()=>library,async()=>plan), original=JSON.stringify({source,plan});
+  let state=await store.reconcile(now); assert.equal(state.scenarios.length,1); assert.equal(state.scenarios[0].quantity,2); assert.deepEqual(state.candidates,[]); assert.deepEqual(state.decisions,{});
+  assert.equal((await store.reconcile(now)).revision,state.revision);
+  const future=structuredClone(source); future.id="future"; library.records.push(future);
+  state=await store.reconcile(now); assert.equal(state.scenarios.length,2); assert.equal((await store.reconcile(now)).revision,state.revision);
+  const hint={id:"pack",purpose:"reference-pack",product:plan.prices[0].product,productId:"",priceId:"p",priceKey:purchasePriceKey(plan.prices[0]),size:350,unit:"g",packagePrice:3.5,sourceUrl:"https://example.com/tofu",observedAt:"2026-10-28T00:00:00.000Z",note:"Fictional reviewed package source"};
+  await assert.rejects(store.mutate({action:"add-scenario-hints",hints:[hint],expectedRevision:state.revision},now),/revues/);
+  state=await store.mutate({action:"add-scenario-hints",hints:[hint],reviewedSources:true,expectedRevision:state.revision},now);
+  state=await store.mutate({action:"add-scenario-hints",hints:[hint],reviewedSources:true,expectedRevision:state.revision},now); assert.equal(state.scenarioHints.length,1);
+  await assert.rejects(store.mutate({action:"add-scenario-hints",hints:[{...hint,packagePrice:2}],reviewedSources:true,expectedRevision:state.revision},now),/remplac/);
+  assert.equal(JSON.stringify({source,plan}),original);
+  const reread=await new GroceryPurchaseResolutionStore(dir,async()=>library,async()=>plan).read(); assert.equal(reread.scenarios.length,2); assert.equal(reread.scenarioHints.length,1);
+}));
 
 test("candidate inspection is silent; explicit confirmation and undo preserve raw purchases and prices", () => sandbox(async dir => {
   const record = makeRecord("source"), library = { records: [record] }, plan = emptyPlan(), before = JSON.stringify({ library, plan });

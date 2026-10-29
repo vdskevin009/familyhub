@@ -1,6 +1,10 @@
 # FamilyHub - Canonical Requirements
 
-## Actionable purchase comparison — FH-GROCERY-012 (#155)
+## Estimated purchase scenarios - FH-GROCERY-013 (#155)
+
+Testing. Explicitly authorized estimates complement verified current-local comparisons for existing purchases and future imports. Show coverage and estimated count, sourced prices, quantities/format hypotheses, normalization formulas, whole-pack outlay and source age/locality. Preserve receipts, withdrawals and dietary constraints; missing evidence remains unavailable and estimated scenarios never feed certain-savings alerts. This supersedes the earlier no-inference/no-unconfirmed-substitution rule only for the labeled scenario. See `docs/requirements/FH-GROCERY-013.md`.
+
+## Actionable purchase comparison - FH-GROCERY-012 (#155)
 
 Testing. Incomplete Achats comparisons must expose the blocked lines and distinguish unknown source format, candidate identity, missing/expired/nonlocal price and unreviewed equivalence. Dated candidates can be inspected, explicitly confirmed per purchase and reversed without changing receipts, paid status, prices or substitution permissions. Confirmed formats only project eligible comparison rows; coverage and partial subtotals remain honest. Household assumptions keep separate provenance. Existing/future purchases reuse confirmed formats only for a real explicit matching source reference, with freshness, contradiction, ambiguity and deduplication guards; names/prices/cart similarity never establish historical identity. Uses the existing local scanner and pairing, with no new secret, permission or scheduler. See `docs/requirements/FH-GROCERY-012.md` and `grocery-purchase-resolution[-store]`, `GroceryPurchaseResolution`, `grocery-purchases`. Phone and market-data acceptance remain distinct from source implementation.
 

@@ -5,8 +5,10 @@ import { atomicJson } from "./private-store.js";
 import { GroceryError, type GroceryRecord } from "./grocery-model.js";
 import { GroceryConflict } from "./grocery-store.js";
 import type { GroceryPlan } from "./grocery-planning.js";
-import { purchaseLineKey } from "./grocery-purchase-evidence.js";
+import { purchaseLineKey, purchasePriceKey } from "./grocery-purchase-evidence.js";
 import { emptyPurchaseResolution, purchaseCandidateReason, validatePurchaseCandidate, validatePurchaseResolution, type PurchaseResolution } from "./grocery-purchase-resolution.js";
+import { validateScenarioHints } from "./grocery-purchase-scenario-model.js";
+import { derivePurchaseScenarios } from "./grocery-purchase-scenarios.js";
 
 /** Separate derived evidence: never writes a receipt, a shopping plan, a price or a notification. */
 export class GroceryPurchaseResolutionStore {
@@ -32,6 +34,16 @@ export class GroceryPurchaseResolutionStore {
           if (c.itemId && !plan.items.some(i => i.id === c.itemId)) throw new GroceryError("Article du catalogue absent.");
           state.candidates.push(c);
         }
+      } else if (body.action === "add-scenario-hints") {
+        if (Object.keys(body).some(k => !["action", "expectedRevision", "hints", "reviewedSources"].includes(k)) || body.reviewedSources !== true || !Array.isArray(body.hints) || !body.hints.length || body.hints.length > 20) throw new GroceryError("Sources estimatives revues requises.");
+        const hints = validateScenarioHints(body.hints), plan = await this.plan();
+        state.scenarioHints ??= [];
+        for (const hint of hints) {
+          if (Date.parse(hint.observedAt) > now.getTime()) throw new GroceryError("Date de référence future.");
+          if (hint.purpose === "reference-pack" && !plan.prices.some(p => p.id === hint.priceId && purchasePriceKey(p) === hint.priceKey)) throw new GroceryError("Prix de référence absent ou modifié.");
+          const old = state.scenarioHints.find(h => h.id === hint.id);
+          if (old) { if (JSON.stringify(old) !== JSON.stringify(hint)) throw new GroceryConflict("Une référence estimative conservée ne peut pas être remplacée."); } else state.scenarioHints.push(hint);
+        }
       } else if (body.action === "confirm" || body.action === "unconfirm") {
         if (Object.keys(body).some(k => !["action", "expectedRevision", "id", "confirmed", "confirmationEvidence"].includes(k)) || typeof body.id !== "string") throw new GroceryError("Décision de comparaison invalide.");
         const c = state.candidates.find(x => x.id === body.id);
@@ -47,7 +59,7 @@ export class GroceryPurchaseResolutionStore {
         if (evidence !== undefined && (!evidence || typeof evidence.at !== "string" || !Number.isFinite(Date.parse(evidence.at)) || new Date(evidence.at).toISOString() !== evidence.at || Date.parse(evidence.at) > now.getTime() || typeof evidence.source !== "string" || !evidence.source.trim() || evidence.source.length > 1000)) throw new GroceryError("Provenance de la confirmation invalide.");
         state.decisions[c.id] = { state: body.action === "confirm" ? "confirmed" : "unconfirmed", at: now.toISOString(), ...(body.action === "confirm" ? { evidence: evidence ? { at: evidence.at as string, source: evidence.source as string } : { at: now.toISOString(), source: "Confirmation explicite dans FamilyHub" } } : {}) };
       } else throw new GroceryError("Action de comparaison inconnue.");
-      const validated = validatePurchaseResolution(state); validated.revision = randomUUID(); await atomicJson(this.path, validated); return validated;
+      const validated = validatePurchaseResolution(state); validated.revision = randomUUID(); if (Buffer.byteLength(JSON.stringify(validated)) > 6_000_000) throw new GroceryError("Limite de preuves atteinte ; données conservées."); await atomicJson(this.path, validated); return validated;
     });
     this.queue = run.catch(() => {}); return run;
   }
@@ -81,8 +93,13 @@ export class GroceryPurchaseResolutionStore {
           }
         }
       }
+      const plan = await this.plan(), today = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Vancouver", year: "numeric", month: "2-digit", day: "2-digit" }).format(now);
+      const scenarios = derivePurchaseScenarios(library.records, plan, state, today);
+      if (JSON.stringify(scenarios) !== JSON.stringify(state.scenarios ?? [])) { state.scenarios = scenarios; changed = true; }
+      // Keep the existing bounded private file readable even at the worst schema limits.
+      while (state.scenarios?.length && Buffer.byteLength(JSON.stringify(state)) > 5_900_000) { state.scenarios.pop(); changed = true; }
       if (!changed) return state;
-      const next = validatePurchaseResolution(state); next.revision = randomUUID(); await atomicJson(this.path, next); return next;
+      const next = validatePurchaseResolution(state); next.revision = randomUUID(); if (Buffer.byteLength(JSON.stringify(next)) > 6_000_000) throw new GroceryError("Limite de preuves atteinte ; données conservées."); await atomicJson(this.path, next); return next;
     });
     this.queue = run.catch(() => {}); return run;
   }
