@@ -1,4 +1,14 @@
-import type { BlueCrossSyncResult, BlueCrossSyncStatus } from "./worker";
+import type { BlueCrossSyncResult, BlueCrossSyncStatus, InvoiceSnapshot } from "./worker";
+
+const reviewRecords = (count: number) => `${count} insurer record${count === 1 ? " needs" : "s need"} review`;
+
+/** Explain account failures without exposing account addresses or treating saved history as empty. */
+export function invoiceCollectionNotice(snapshot: Pick<InvoiceSnapshot, "progress" | "error" | "lastSuccess">): string | null {
+  const authorizationFailures = Object.values(snapshot.progress ?? {}).filter(account =>
+    /authorization expired or was rejected|invalid_grant|reconnect this account/i.test(account.error ?? ""));
+  if (authorizationFailures.length) return `Gmail sign-in required on the PC for ${authorizationFailures.length} account${authorizationFailures.length === 1 ? "" : "s"}. Recent invoices have not been collected. Reconnect Gmail on the PC, then resume collection. Saved invoices and insurer payments remain available.${snapshot.lastSuccess ? ` Last complete invoice collection: ${snapshot.lastSuccess}.` : ""}`;
+  return snapshot.error || null;
+}
 
 export function insurerSyncMessage(status: BlueCrossSyncStatus | null, result: BlueCrossSyncResult | null, running: boolean): string {
   if (status?.retry?.state === "waiting") return `Collection interrupted. Retrying after a short pause (${status.retry.attempt + 1}/${status.retry.maximum}). Saved claims remain available.`;
@@ -21,6 +31,7 @@ export function insurerSyncMessage(status: BlueCrossSyncStatus | null, result: B
   if (current?.status === "success") {
     const counts = `${current.new ?? 0} new · ${current.changed ?? 0} changed · ${current.unchanged ?? 0} unchanged`;
     if (current.autoImported != null) {
+      if (current.complete && current.ambiguous && !current.errors) return `Automatic import paused: collection complete; ${reviewRecords(current.ambiguous)}. ${current.autoImported} new payments saved. Existing saved payments remain available.`;
       if (!current.complete || current.ambiguous || current.errors) return `Automatic import paused: collection is incomplete or ambiguous. ${current.autoImported} new payments saved; review the insurer history.`;
       const pending = (current.pendingNew ?? 0) + (current.pendingChanged ?? 0);
       return pending
@@ -53,11 +64,13 @@ export function insurerCoverageNotice(status: BlueCrossSyncStatus | null, now = 
   if (!status) return "Collection status unavailable. Saved claims may be missing recent payments.";
   if (status.state === "syncing") return insurerSyncMessage(status, null, true);
   if (status.state === "login-required") return "Sign-in required. Recent payments may be missing; reconnect on PC.";
-  if (status.state === "error" || status.latestResult && (!status.latestResult.complete || status.latestResult.errors || status.latestResult.ambiguous))
+  const completeWithReview = !!status.latestResult?.complete && !!status.latestResult.ambiguous && !status.latestResult.errors;
+  if (status.state === "error" && !completeWithReview || status.latestResult && (!status.latestResult.complete || status.latestResult.errors))
     return status.retry?.state === "exhausted" ? `Collection stopped after ${status.retry.maximum} attempts. Recent payments may be missing; review Sources and retry.` : "Collection incomplete. Recent payments may be missing; review Sources.";
   if (!status.lastSuccess || !Number.isFinite(Date.parse(status.lastSuccess))) return "No complete insurer collection recorded. Saved claims may be incomplete.";
   if (now - Date.parse(status.lastSuccess) > 36 * 60 * 60_000) return "Insurer collection is out of date. Recent payments may be missing; update Sources.";
+  if (completeWithReview) return `Collection complete; ${reviewRecords(status.latestResult!.ambiguous!)} before matching. Previously saved payments remain available.`;
   if (status.latestResult && !status.latestResult.applied && ((status.latestResult.pendingNew ?? status.latestResult.new ?? 0) + (status.latestResult.pendingChanged ?? status.latestResult.changed ?? 0)))
-    return "Collected payments still need review and Apply before they appear in Claims.";
+    return "Collected insurer records still need review and Apply. Previously saved payments remain available.";
   return null;
 }

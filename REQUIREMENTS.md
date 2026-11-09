@@ -684,7 +684,11 @@ Implementation: apps/worker/src/mortgage-model.ts and mortgage-store.ts; authent
 
 FH-MORTGAGE-001 privacy refinement: principal, user-reported current rate and remaining amortization are private immutable worker assumption records; no household defaults ship in public source. Missing assumptions remain unavailable. POST /mortgage/assumptions reuses existing pairing/origin protection and ID/content deduplication. See docs/ACHATS-MORTGAGE-RELEASE.md.
 
-## Shared Desjardins sign-in — FH-REIMB-040 / Issue #159
+### Local coverage-clarity follow-up — FH-REIMB-045 / Issue #159
+
+Testing locally, not published or deployed: a complete insurer read with ambiguous records must say that matching needs review, rather than claiming the source collection is incomplete. Pending insurer records do not imply positive payments or erase previously saved payments. Claims exposes direct links to the existing insurer libraries and distinguishes outstanding Open balances from payment history and workflow-filtered totals. Gmail authorization failures show the required PC reconnection and the last complete invoice collection without exposing account addresses. Read-only source diagnostics do not reconnect accounts, import records, change workflow decisions or submit claims. Source: `apps/web/src/insurer-sync.ts`, `views/ReimbursementsView.tsx`; synthetic unit/browser validation and release gates are recorded in `docs/CLAIMS-COVERAGE-REPAIR.md`.
+
+## Shared Desjardins sign-in - FH-REIMB-040 / Issue #159
 
 Status: Testing. Collector and claim preparation use the same guarded profile and
 unique-active-dossier continuation. Preparation recognizes only the exact history

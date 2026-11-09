@@ -13,7 +13,7 @@ import { manualMatchExpenseId, manualMatchUnavailableReason } from "../reconcili
 import ClaimCard from "./ClaimCard";
 import PrepareClaim from "./PrepareClaim";
 import { FilterButton, FilterChips, Notice, PageHeader, SearchField, Sheet, SkeletonList, useSessionValue, type ActiveFilter } from "../ui/primitives";
-import { applicableInsurerPreview, insurerSyncMessage, insurerCollectionNeedsRefresh, insurerCoverageNotice } from "../insurer-sync";
+import { applicableInsurerPreview, insurerSyncMessage, insurerCollectionNeedsRefresh, insurerCoverageNotice, invoiceCollectionNotice } from "../insurer-sync";
 import { useMutations } from "../ui/use-mutations";
 import { fetchPortalReconnect, reconnectPortal, type PortalReconnect } from "../worker";
 import { requireSaved } from "../ui/mutation-queue";
@@ -54,6 +54,7 @@ export default function ReimbursementsView({ hub }: Props) {
   const [preparingExpense, setPreparingExpense] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [invoiceNotice, setInvoiceNotice] = useState<string | null>(null);
   const [lastSuccess, setLastSuccess] = useState("");
   const [savingId, setSavingId] = useState("");
   const [savedMessage, setSavedMessage] = useState("");
@@ -112,7 +113,7 @@ export default function ReimbursementsView({ hub }: Props) {
         InvoiceCoverage: snapshot.coverage
       }));
       setLastSuccess(snapshot.lastSuccess || new Date().toISOString());
-      if (snapshot.error) setError(snapshot.error);
+      setInvoiceNotice(invoiceCollectionNotice(snapshot));
     } catch (err) {
       if (epoch !== refreshEpoch.current) return;
       if (quiet) throw err;
@@ -489,6 +490,7 @@ export default function ReimbursementsView({ hub }: Props) {
       </div>
     </Sheet>
 
+    {invoiceNotice && <Notice error>{invoiceNotice}</Notice>}
     {error && <Notice error onDismiss={() => setError("")}>{error}</Notice>}
     {workerVersion && !manualActionsAvailable && <div className="banner error" role="status"><AlertTriangle size={17} />PC worker {workerVersion} is outdated for manual reimbursement matching. Update/restart the FamilyHub worker to {manualReconciliationWorkerVersion} or later, then refresh this page.</div>}
     {savedMessage && <Notice onDismiss={() => setSavedMessage("")}>{savedMessage}</Notice>}
@@ -521,6 +523,7 @@ export default function ReimbursementsView({ hub }: Props) {
       })}
     </section>
 
+    <p className="privacy-note">Potential to recover is the outstanding balance, not payment history. Saved insurer records: <a href="?view=desjardins">Desjardins history</a> · <a href="?view=blue-cross">Blue Cross history</a>. Completed claims are in Closed or All.</p>
     <details className="reimbursement-totals">
       <summary>
         <span><small>Potential to recover</small><strong>{scopeSummaries.get(personScope)!.knownAmounts || !scopeSummaries.get(personScope)!.open ? money(scopeSummaries.get(personScope)!.potentiallyRecoverable) : "—"}{scopeSummaries.get(personScope)!.unknownAmounts > 0 ? " + ?" : ""}</strong></span>
@@ -528,6 +531,7 @@ export default function ReimbursementsView({ hub }: Props) {
       </summary>
       <section className="reimbursement-summary" aria-label={`${scopeLabel} reimbursement summary`}>
         <p className="privacy-note">Known CAD balances across all open claims in this family scope, including claims with a date to confirm. Search and detail filters do not change this total. Eligibility is not guaranteed. Ambiguous payment links are excluded until resolved.{scopeSummaries.get(personScope)!.unknownAmounts > 0 ? ` ${scopeSummaries.get(personScope)!.unknownAmounts} amounts still need confirmation.` : ""}</p>
+        <p className="privacy-note">The figures below cover the {workflowLabel.toLowerCase()} workflow for {scopeLabel}; they are not totals for the entire insurer history.</p>
         <article className="summary-primary"><small>Total expenses</small><strong>{money(finance.totalPaid)}</strong><span>{scopeLabel}</span></article>
         <article><small>Desjardins</small><strong>{money(finance.desjardins)}</strong><span>reimbursed</span></article>
         <article><small>Blue Cross</small><strong>{money(finance.blueCross)}</strong><span>reimbursed</span></article>
