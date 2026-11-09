@@ -37,7 +37,8 @@ try {
    const reply=body=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(body),headers:{'Access-Control-Allow-Origin':'*'}});
    if(req.method()==='OPTIONS')return reply({});
    if(path==='/health')return reply({status:'ok',version:'2.26.19'});
-   if(path==='/invoices')return reply(await api.invoiceSnapshot());
+   if(path==='/invoices')return reply({...await api.invoiceSnapshot(), error:'Some accounts are incomplete.', lastSuccess:'2026-08-01T12:00:00Z', progress:{'synthetic@example.test':{error:'Gmail authorization expired or was rejected. Reconnect this account on the PC.'}}});
+   if(path==='/bluecross/status')return reply({state:'idle',lastSuccess:new Date().toISOString(),latestResult:{status:'success',applied:false,complete:true,autoImported:0,ambiguous:1,errors:0,pendingNew:0,pendingChanged:0}});
    if(req.method()==='POST'){
     const body=req.postDataJSON();posts.push({path,body});
     assert.equal(path,'/invoices/workflow/status');
@@ -46,6 +47,14 @@ try {
    return reply({state:'idle',accounts:[]});
   });
   await page.goto(base);
+  await page.getByText(/Gmail sign-in required on the PC/).waitFor();
+  await page.getByText(/Collection complete; 1 insurer record needs review before matching/).waitFor();
+  assert.equal(await page.getByText(/Collection incomplete\. Recent payments may be missing/).count(),0);
+  assert.equal(await page.getByRole('link',{name:'Desjardins history',exact:true}).getAttribute('href'),'?view=desjardins');
+  assert.equal(await page.getByRole('link',{name:'Blue Cross history',exact:true}).getAttribute('href'),'?view=blue-cross');
+  await page.getByText(/Potential to recover is the outstanding balance, not payment history/).waitFor();
+  assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
+  await page.screenshot({path:join(output,`claims-coverage-${width}.png`),fullPage:true});
   await page.getByRole('button',{name:/^Closed 2$/}).first().click();
   await page.getByRole('heading',{name:'Scaling, Two units',exact:true}).waitFor();
   await page.getByRole('heading',{name:'Root Planing, Two units',exact:true}).waitFor();
