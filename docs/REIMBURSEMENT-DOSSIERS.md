@@ -1,6 +1,6 @@
 # Reimbursement dossiers and actionable home priorities
 
-Tracks #250 and #256; FH-CLAIM-008 and FH-PROACTIVE-006. Prepared changes must remain undeployed until separately authorized.
+Tracks #250 and #256 (FH-CLAIM-009 and FH-PROACTIVE-006). Deployment requires separate authorization.
 
 ## Behavior
 
