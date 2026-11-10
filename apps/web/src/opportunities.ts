@@ -7,6 +7,9 @@ import { receiptSourceType, type GroceryLibrary } from "../../worker/src/grocery
 import type { MortgageState } from "../../worker/src/mortgage-model";
 import type { SharedLibrary } from "../../worker/src/savings-sharing-model";
 import { baselineKey, compareOffer, missingInformation, type SavingsContract } from "../../worker/src/savings-model";
+import { prepareClaim } from "../../worker/src/claim-preparation";
+import type { Invoice } from "../../worker/src/invoice-model";
+import type { ReconciliationCase as WorkerReconciliationCase } from "../../worker/src/reconciliation";
 
 export type SourceId = "claims" | "contracts" | "research" | "finances" | "groceries" | "purchases" | "mortgage";
 export type SourceHealth = { id: SourceId; label: string; status: "loading" | "ready" | "error" | "unpaired"; checkedAt: string | null; sourceDate: string | null; error: string | null };
@@ -22,7 +25,7 @@ export type Opportunity = {
   title: string; description: string; actionLabel: string; target: { view: AppView; recordId?: string; tab?: string; jobId?: string; offerIndex?: number };
   benefit: { kind: "recoverable" | "potential" | "time" | "unknown"; amount: number | null; currency: "CAD"; period: "once" | "month" | "year" | "first-year" | null; label: string };
   confidence: "verified" | "conditional" | "unknown"; sourceDate: string | null; freshness: "fresh" | "stale" | "unknown";
-  dueDate: string | null; effort: "low" | "medium"; status: "ready" | "needs-information" | "unavailable"; priority: number; evidence: string[];
+  dueDate: string | null; effort: "low" | "medium"; status: "ready" | "needs-information" | "waiting" | "unavailable"; priority: number; evidence: string[];
   decision?: OpportunityDecision["state"]; snoozedUntil?: string; context?: OpportunityContext;
 };
 type Draft = Omit<Opportunity, "id" | "evidenceVersion"> & { key: string; version: unknown };
@@ -87,6 +90,20 @@ async function digestText(value: string) {
 }
 const digest = (value: unknown) => digestText(JSON.stringify(value));
 
+/** Fresh imminent deadlines, useful actions now, then passive follow-up. */
+export function rankOpportunities(a: Opportunity, b: Opportunity, now: string) {
+  const tier = (o: Opportunity) => {
+    const days = o.dueDate && dateOnly(o.dueDate) ? (Date.parse(o.dueDate) - Date.parse(dateOnly(now)!)) / dayMs : null;
+    if (o.freshness === "fresh" && o.status !== "waiting" && o.status !== "unavailable" && days !== null && days >= 0 && days <= 7) return 0;
+    if (o.status === "ready" && o.freshness === "fresh") return 1;
+    if (o.status === "needs-information" && o.freshness === "fresh") return 2;
+    if (o.status === "needs-information") return 3;
+    if (o.status === "waiting") return 4;
+    return 5;
+  };
+  return tier(a) - tier(b) || b.priority - a.priority || (a.dueDate ?? "9999").localeCompare(b.dueDate ?? "9999") || a.id.localeCompare(b.id);
+}
+
 /** Private, read-only projections. No card starts a collector or changes financial authority. */
 export async function buildOpportunityFeed(input: OpportunityInputs, now = new Date().toISOString(), reviews: SavingsState["Reviews"] = []) {
   const drafts: Draft[] = [], today = dateOnly(now)!;
@@ -100,8 +117,15 @@ export async function buildOpportunityFeed(input: OpportunityInputs, now = new D
     for (const item of cases.filter(c => reimbursementWorkflowStatus(c) === "open")) {
       const own = reimbursementWorkflowSummary([item], "all");
       const amount = fresh === "fresh" && own.knownAmounts > 0 ? own.potentiallyRecoverable : null;
-      const prepare = ["submit-primary", "submit-secondary"].includes(item.Action) && !item.HasUnresolvedReimbursementEvidence && !item.PreviouslyFound && !item.OriginalInvoiceMissing && !item.Unreconciled;
-      add({ ...base("claims", input.claims, 7), key: "claim:" + item.Id, version: [item.Action, item.NextInsurer, item.OriginalAmount, item.ReimbursedAmount, item.PotentialRemaining, item.HasUnresolvedReimbursementEvidence, item.PreviouslyFound, item.OriginalInvoiceMissing, item.DocumentIds, item.MatchAssignments, fresh],
+      const targetInsurer = item.NextInsurer === "Blue Cross" ? "blue-cross" : item.NextInsurer === "Desjardins" ? "desjardins" : null;
+      const original = input.claims.data.items.find(doc => item.DocumentIds.includes(doc.Id) && doc.Category === 0 && doc.DocumentRole === "expense");
+      let dossier: ReturnType<typeof prepareClaim> | undefined;
+      // Same read-only source projection as the PC preview. Web types accept
+      // legacy snapshots; incomplete legacy shapes abstain instead of launching.
+      try { if (original && targetInsurer) dossier = prepareClaim(original.Id, targetInsurer, input.claims.data.items as Invoice[], input.claims.data.reconciliations as WorkerReconciliationCase[]); } catch { /* Incomplete source snapshot: ask for evidence. */ }
+      const prepare = ["submit-primary", "submit-secondary"].includes(item.Action) && !item.HasUnresolvedReimbursementEvidence && !item.PreviouslyFound && !item.OriginalInvoiceMissing && !item.Unreconciled && dossier?.readiness.status === "source-ready";
+      const preparationEvidence = dossier ? [dossier.fields, dossier.attachments, dossier.coordination, dossier.originalAmountEvidence, dossier.duplicate.status, dossier.blocked] : "original-source-unavailable";
+      add({ ...base("claims", input.claims, 7), key: "claim:" + item.Id, version: [item.Action, item.NextInsurer, item.OriginalAmount, item.ReimbursedAmount, item.PotentialRemaining, item.HasUnresolvedReimbursementEvidence, item.PreviouslyFound, item.OriginalInvoiceMissing, item.DocumentIds, item.MatchAssignments, fresh, "dossier-source-readiness", preparationEvidence],
         title: prepare ? "Préparer la prochaine demande" : "Clarifier ce remboursement", description: `${item.Provider || "Dossier de soins"}${item.Member !== "unknown" ? ` · ${item.Member}` : ""}${item.NextInsurer ? ` · ${item.NextInsurer}` : ""}`,
         actionLabel: prepare ? "Ouvrir le dossier" : "Vérifier les preuves", target: { view: "reimbursements", recordId: item.Id },
         benefit: { kind: "recoverable", amount, currency: "CAD", period: "once", label: amount === null ? "Montant à vérifier" : "Reste potentiellement récupérable" }, status: prepare && fresh === "fresh" ? "ready" : "needs-information",
@@ -179,11 +203,15 @@ export async function buildOpportunityFeed(input: OpportunityInputs, now = new D
       const sourceDate = latestDate(ref?.sources.map(s => s.date) ?? [c.billing?.asOf]);
       if (insurance && (days === null || days <= 90 || awaiting.length || quotes.length)) {
         const expired = due !== null && due < today;
-        add({ ...base("insurance", input.contracts), key: "insurance:" + c.id, version: [due, activePolicies.map(p => [p.id, p.effectiveTo, p.facts]).sort(), policy?.id, policy?.comparison, awaiting.map(r => r.id).sort(), quotes.map(r => [r.id, r.quotedAnnualPremium, r.comparison, r.validUntil]), expired], sourceDate,
+        // A request already awaiting a reply is not a new task. A verified
+        // deadline within a week returns it to attention without another contact.
+        const imminent = policyVerified && days !== null && days >= 0 && days <= 7;
+        const waiting = awaiting.length > 0 && !quotes.length && due !== null && days !== null && days > 7;
+        add({ ...base("insurance", input.contracts), key: "insurance:" + c.id, version: [due, activePolicies.map(p => [p.id, p.effectiveTo, p.facts]).sort(), policy?.id, policy?.comparison, awaiting.map(r => r.id).sort(), quotes.map(r => [r.id, r.quotedAnnualPremium, r.comparison, r.validUntil]), expired, ...(imminent ? ["deadline-within-7-days"] : [])], sourceDate,
           freshness: expired ? "stale" : policyVerified && activePolicies.length === 1 ? "fresh" : "unknown", dueDate: due,
           ...(due ? { context: { kind: "insurance-renewal" as const, recordId: c.id, dueDate: due } } : {}),
-          title: expired ? "Vérifier le renouvellement" : due ? "Préparer le renouvellement" : "Compléter l’échéance d’assurance", description: `${c.provider || c.name}${awaiting.length ? ` · ${awaiting.length} devis en attente` : quotes.length ? ` · ${quotes.length} devis reçu(s)` : " · garanties à comparer"}`,
-          actionLabel: quotes.length ? "Comparer les garanties" : "Ouvrir le dossier", target: { view: "savings", recordId: c.id }, benefit: unknownBenefit(),
+          title: expired ? "Vérifier le renouvellement" : waiting ? "Devis en attente" : imminent && awaiting.length ? "Vérifier l’échéance proche" : due ? "Préparer le renouvellement" : "Compléter l’échéance d’assurance", description: `${c.provider || c.name}${awaiting.length ? ` · ${awaiting.length} devis en attente` : quotes.length ? ` · ${quotes.length} devis reçu(s)` : " · garanties à comparer"}`,
+          actionLabel: quotes.length ? "Comparer les garanties" : waiting ? "Voir le suivi" : "Ouvrir le dossier", target: { view: "savings", recordId: c.id }, benefit: unknownBenefit(), status: waiting ? "waiting" : "needs-information",
           priority: days !== null && days >= 0 && days <= 30 ? 94 : days !== null && days >= 0 && days <= 60 ? 86 : 60,
           evidence: ["Demande de devis et offre reçue sont distinctes.", "Comparer garanties, franchises, taxes et frais avant de chiffrer.", ...(activePolicies.length > 1 ? ["Plusieurs polices actives : échéance à rapprocher avant de prioriser."] : []), ...(policy && !policyVerified ? ["Preuve de date de police non vérifiée ou contradictoire."] : []), ...(coverageConflict ? ["Garanties contradictoires : échéance conservée, équivalence et gain à vérifier."] : []), ...(policy?.limitations ?? []), "Aucun contact ni changement de contrat automatique."] });
       } else if (!insurance && c.category !== "mortgage") {
@@ -227,6 +255,6 @@ export async function buildOpportunityFeed(input: OpportunityInputs, now = new D
   const failed = Object.values(input).filter(s => s.status === "error" || s.status === "unpaired");
   if (failed.length) add({ domain: "system", key: "sources-unavailable", version: failed.map(s => [s.id, s.status]).sort(), title: failed.every(s => s.status === "unpaired") ? "Connecter le PC du foyer" : "Sources à actualiser", description: failed.map(s => s.label).join(" · "), actionLabel: "Vérifier la connexion", target: { view: "more" }, benefit: unknownBenefit("Situation partiellement connue"), confidence: "unknown", sourceDate: null, freshness: "unknown", dueDate: null, effort: "low", status: "unavailable", priority: Object.values(input).some(s => s.status === "ready" && s.data !== null) ? 25 : 96, evidence: ["Une source indisponible ne signifie pas qu’il n’y a rien à faire.", "Les données privées restent sur le PC ; aucune nouvelle collecte n’est lancée."] });
   const opportunities = await Promise.all(drafts.map(async ({ key, version, ...card }): Promise<Opportunity> => ({ ...card, id: card.domain + ":" + await digest(key), evidenceVersion: "v1:" + await digest(version) })));
-  opportunities.sort((a, b) => b.priority - a.priority || (a.dueDate ?? "9999").localeCompare(b.dueDate ?? "9999") || a.id.localeCompare(b.id));
+  opportunities.sort((a, b) => rankOpportunities(a, b, now));
   return { opportunities, recoverable };
 }

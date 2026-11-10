@@ -10,6 +10,8 @@ import { OpportunityActions } from "../../worker/dist/opportunity-actions.js";
 import { emptyMortgage } from "../../worker/dist/mortgage-model.js";
 import { emptyPlan } from "../../worker/dist/grocery-planning.js";
 import { newContract } from "../../worker/dist/savings-model.js";
+import { prepareClaim } from "../../worker/dist/claim-preparation.js";
+import { addPreparableClaim } from "./fixtures/preparable-claim.mjs";
 
 const root = resolve("apps/web/dist"), output = resolve("artifacts/proactive");
 const temporary = await mkdtemp(join(tmpdir(), "familyhub-proactive-test-"));
@@ -30,22 +32,27 @@ let browser, diagnostic;
 const allErrors = [], external = [], mutations = [], metrics = [];
 
 async function noOverflow(page, label) {
-  const size = await page.evaluate(() => ({ actual: innerWidth, scroll: document.documentElement.scrollWidth }));
-  assert.ok(size.scroll <= size.actual + 1, label + " horizontal overflow: " + JSON.stringify(size));
+  const size = await page.evaluate(() => ({ actual: innerWidth, client: document.documentElement.clientWidth, scroll: document.documentElement.scrollWidth }));
+  assert.ok(size.scroll <= size.client + 1, label + " horizontal overflow: " + JSON.stringify(size));
 }
 async function waitReady(page) {
   await page.getByRole("heading", { name: "Aujourd’hui", exact: true }).waitFor();
   await page.locator(".today-source-status").filter({ hasText: "7 sources accessibles" }).waitFor();
   await page.waitForFunction(() => document.querySelectorAll(".today-priorities .opportunity-card").length >= 3);
 }
-async function setup(width, paired = true) {
+async function setup(width, paired = true, scenario = "") {
   const context = await browser.newContext({ viewport: { width, height: 900 }, reducedMotion: "reduce", serviceWorkers: "block" });
   const snapshot = structuredClone(household.snapshot); snapshot.lastSuccess = new Date().toISOString();
-  const actions = new OpportunityActions(join(temporary, String(width) + (paired ? "-paired" : "-unpaired") + ".json"));
-  const contract = { ...newContract("home-insurance", "synthetic-home"), name: "Synthetic home policy", provider: "Synthetic insurer", renewal: new Date(Date.now() + 30 * 86_400_000).toISOString().slice(0, 10), updatedAt: new Date().toISOString() };
+  snapshot.items[0].Healthcare = { ...snapshot.items[0].Healthcare, ServiceType: "Physiotherapy - 30 Min Follow Up Visit (30 minutes)" };
+  snapshot.reconciliations[0].ServiceType = snapshot.items[0].Healthcare.ServiceType;
+  addPreparableClaim(snapshot);
+  const actions = new OpportunityActions(join(temporary, String(width) + (paired ? "-paired" : "-unpaired") + scenario + ".json"));
+  const today = new Date().toISOString().slice(0, 10);
+  const contract = { ...newContract("home-insurance", "synthetic-home"), name: "Synthetic home policy", provider: "Synthetic insurer", renewal: new Date(Date.now() + 3 * 86_400_000).toISOString().slice(0, 10), updatedAt: new Date().toISOString() };
+  contract.insuranceReference = { schema: 1, updatedAt: today, sources: [{ id: "synthetic-policy-source", kind: "document", reference: "synthetic-only", title: "Synthetic policy", date: today, scope: "original", verification: "locally-read" }], records: [{ id: "synthetic-policy", kind: "policy", title: "Synthetic policy", provider: "Synthetic", status: "documented", effectiveFrom: "2020-01-01", effectiveTo: contract.renewal, requestedOn: null, receivedOn: null, validUntil: null, quotedAnnualPremium: null, comparison: "partial", assumptions: [], differences: [], limitations: [], sourceIds: ["synthetic-policy-source"], facts: [], supersedes: null }] };
   const contracts = { schema: 1, records: [{ contract, revision: "synthetic-contract-revision" }], documents: [] };
   const plan = { ...emptyPlan(), revision: "synthetic-plan", items: [{ id: "synthetic-oats", name: "Synthetic oats", quantity: 1, size: 1, unit: "kg", preference: "", substitutions: false, active: true, origin: "synthetic" }] };
-  const state = { failed: false, rejectNext: false, snapshot, lifecycleRequests: [], actionReadGate: null, blockFinancesChunk: false, blockedChunks: 0 };
+  const state = { failed: false, rejectNext: false, snapshot, lifecycleRequests: [], previews: [], previewFailed: false, legacyPreview: false, previewGate: null, actionReadGate: null, blockFinancesChunk: false, blockedChunks: 0 };
   await context.addInitScript(({ paired, endpoint, stale }) => {
     if (sessionStorage.getItem("synthetic-proactive-initialized")) return;
     sessionStorage.setItem("synthetic-proactive-initialized", "1");
@@ -61,9 +68,16 @@ async function setup(width, paired = true) {
     if (url.origin !== apiOrigin) { external.push(url.origin); return route.abort(); }
     const reply = (body, status = 200) => route.fulfill({ status, contentType: "application/json", headers: { "Access-Control-Allow-Origin": new URL(base).origin, "Access-Control-Allow-Headers": "content-type,x-familyhub-key" }, body: JSON.stringify(body) });
     if (request.method() === "OPTIONS") return reply({});
-    if (request.method() !== "GET") {
+    if (request.method() !== "GET" && !(url.pathname === "/claim-preparation/preview" && request.method() === "POST")) {
       mutations.push(url.pathname);
       assert.equal(url.pathname, "/opportunity-actions", "Only explicit opportunity lifecycle writes are allowed");
+    }
+    if (url.pathname === "/claim-preparation/preview" && request.method() === "POST") {
+      const body = request.postDataJSON(); state.previews.push(body);
+      if (state.previewGate) await state.previewGate;
+      if (state.previewFailed) return reply({ error: "SYNTHETIC_PRIVATE_ERROR_MUST_NOT_LEAK" }, 503);
+      try { const p = prepareClaim(body.expenseId, body.insurer, state.snapshot.items, state.snapshot.reconciliations); if (state.legacyPreview) { delete p.readiness; delete p.originalAmountEvidence; } return reply(p); }
+      catch { return reply({ error: "Synthetic preview unavailable" }, 400); }
     }
     if (url.pathname === "/opportunity-actions") {
       if (request.method() === "GET") {
@@ -120,9 +134,15 @@ try {
     const claimId = new URL(claimHref, base).searchParams.get("record");
     assert.ok(state.snapshot.reconciliations.some(record => record.Id === claimId), "The exact target is an authoritative case");
     await claimCard.getByRole("link").click();
-    await page.getByRole("heading", { name: "Claims", exact: true }).waitFor();
+    await page.getByRole("heading", { name: "Remboursement", exact: true }).waitFor();
     assert.equal(new URL(page.url()).searchParams.get("record"), claimId);
-    await page.getByText("Dossier ouvert depuis un lien direct.", { exact: false }).waitFor();
+    await page.getByText("Filtres conservés", { exact: true }).waitFor();
+    await page.getByRole("heading", { name: "Pièces et prochaine action", exact: true }).waitFor();
+    await page.locator(".claim-dossier-facts").waitFor();
+    assert.equal(await page.locator(".claim-scope-summary:visible, .workspace-controls:visible").count(), 0, "Direct dossier does not show another person's totals or filters");
+    assert.ok(state.previews.length > 0, "Dossier uses the existing read-only preview");
+    await noOverflow(page, "Dossier " + width);
+    await page.screenshot({ path: join(output, "dossier-" + width + ".png"), fullPage: true });
     await page.goBack(); await waitReady(page);
 
     // Persisted lifecycle survives a full page reload; failed writes never disappear optimistically.
@@ -235,6 +255,60 @@ try {
     await page.goto(base); await waitReady(page);
     await page.screenshot({ path: join(output, "today-" + width + ".png"), fullPage: true });
     metrics.push({ width, defaultToday: true, fiveTabs: true, overflow: false, persistence: true, deepLinks: true });
+    await context.close();
+  }
+  // Waiting work, selected-person context and read-only preview errors are independent of preparation.
+  {
+    const { page, context, state, contract } = await setup(384, true, "-dossier-follow-up");
+    contract.renewal = new Date(Date.now() + 56 * 86_400_000).toISOString().slice(0, 10);
+    contract.insuranceReference.records[0].effectiveTo = contract.renewal;
+    contract.insuranceReference.records.push({ ...contract.insuranceReference.records[0], id: "synthetic-request", kind: "quote-request", status: "awaiting_quote", effectiveFrom: null, effectiveTo: null, requestedOn: new Date().toISOString().slice(0, 10) });
+    const ledgerBefore = JSON.stringify(state.snapshot);
+    await page.goto(base); await waitReady(page);
+    const first = page.locator(".today-priorities .opportunity-card").first();
+    assert.equal(new URL(await first.getByRole("link").getAttribute("href"), base).searchParams.get("view"), "reimbursements");
+    await page.getByRole("heading", { name: "En cours pour vous", exact: true }).waitFor();
+    assert.equal(await page.locator(".today-follow-up").count(), 1);
+    const positions = await page.evaluate(() => ({ action: document.querySelector(".today-priorities").getBoundingClientRect().top, totals: document.querySelector(".today-benefits").getBoundingClientRect().top }));
+    assert.ok(positions.action < positions.totals, "The first useful action appears before aggregate money");
+    const nav = page.locator(".bottom-nav:visible, .app-rail nav:visible");
+    await nav.getByRole("button", { name: "Remboursements", exact: true }).click();
+    await page.getByRole("heading", { name: "Claims", exact: true }).waitFor();
+    await page.getByRole("button", { name: /^Jasmine/ }).click();
+    await page.locator(".workflow-tabs").getByRole("button", { name: /^Closed/ }).click();
+    await nav.getByRole("button", { name: "Aujourd’hui", exact: true }).click(); await waitReady(page);
+    await page.locator(".today-priorities .opportunity-card").filter({ has: page.locator('a[href*="view=reimbursements"]') }).first().getByRole("link").click();
+    await page.locator(".claim-dossier-facts").waitFor();
+    assert.equal(await page.locator(".reimbursement-family-scopes:visible").count(), 0);
+    await page.getByRole("button", { name: "Revenir à la liste", exact: true }).click();
+    assert.equal(new URL(page.url()).searchParams.get("record"), null);
+    assert.equal(await page.getByRole("button", { name: /^Jasmine/ }).getAttribute("aria-pressed"), "true");
+    assert.equal(await page.locator(".workflow-tabs").getByRole("button", { name: /^Closed/ }).getAttribute("aria-pressed"), "true");
+    state.previewFailed = true;
+    await page.goto(base + "?view=reimbursements&record=" + encodeURIComponent(state.snapshot.reconciliations[0].Id));
+    await page.getByText("Le PC n’a pas pu relire ce dossier.", { exact: false }).waitFor();
+    assert.equal(await page.locator(".claim-dossier-facts").count(), 0);
+    assert.equal(await page.getByText("SYNTHETIC_PRIVATE_ERROR_MUST_NOT_LEAK", { exact: false }).count(), 0);
+    state.previewFailed = false;
+    state.legacyPreview = true;
+    await page.getByRole("button", { name: "Relire les preuves", exact: true }).click();
+    await page.locator(".claim-dossier-facts").waitFor();
+    await page.locator(".claim-dossier-checks summary").click();
+    await page.getByText(/Base du brut non qualifiée dans cet aperçu/).waitFor();
+    assert.equal(JSON.stringify(state.snapshot), ledgerBefore, "Readiness does not alter financial/manual source records");
+    await noOverflow(page, "Dossier safe retry and saved scope");
+    let releasePreview;
+    state.previewGate = new Promise(done => { releasePreview = done; });
+    const callsBefore = state.previews.length;
+    try {
+      await page.goto(base + "?view=reimbursements&record=" + encodeURIComponent(state.snapshot.reconciliations[0].Id));
+      await page.getByRole("heading", { name: "Pièces et prochaine action", exact: true }).waitFor();
+      for (let i = 0; i < 100 && state.previews.length <= callsBefore; i++) await new Promise(done => setTimeout(done, 20));
+      assert.ok(state.previews.length > callsBefore);
+      await page.locator(".bottom-nav:visible, .app-rail nav:visible").getByRole("button", { name: "Aujourd’hui", exact: true }).click();
+      await waitReady(page);
+    } finally { releasePreview(); state.previewGate = null; }
+    assert.equal(await page.locator(".claim-dossier").count(), 0, "A delayed preview cannot restore a dossier after leaving it");
     await context.close();
   }
   // A missing lazy section leaves the navigation usable; retry reloads the same route without clearing saved data.

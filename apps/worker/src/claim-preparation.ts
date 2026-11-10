@@ -2,6 +2,7 @@ import type { Invoice } from "./invoice-model.js";
 import type { ReconciliationCase } from "./reconciliation.js";
 import type { Insurer } from "./healthcare-evidence.js";
 import { healthcareEvidence } from "./healthcare-evidence.js";
+import { claimDossierReadiness } from "./claim-readiness.js";
 
 export const claimPortals = {
   "blue-cross": "https://service.pac.bluecross.ca/member/",
@@ -85,13 +86,18 @@ export function prepareClaim(expenseId: string, insurer: Insurer, invoices: Invo
   // Existing PWA versions already render preparation conflicts. Keep the
   // prerequisite visible there until the enhanced panel is deployed.
   const preparationConflicts = conflicts;
-  return { expenseId, insurer, portalUrl: claimPortals[insurer], preparationUrl: claimPreparationPortals[insurer], coordination, fields, missing, conflicts: preparationConflicts, attachments,
-    otherInsurer, currency: entry?.Currency || expense.Currency || null, reviewableWarnings,
+  const originalEvidence = entry?.Evidence?.OriginalAmount;
+  const originalAmountEvidence = originalEvidence && originalEvidence.value === amount
+    ? { source: originalEvidence.source, confidence: originalEvidence.confidence }
+    : { source: "unknown", confidence: "unknown" as const };
+  const preparation = { expenseId, insurer, portalUrl: claimPortals[insurer], preparationUrl: claimPreparationPortals[insurer], coordination, fields, missing, conflicts: preparationConflicts, attachments,
+    otherInsurer, currency: entry?.Currency || expense.Currency || null, reviewableWarnings, originalAmountEvidence,
     duplicate: { status: duplicateStatus, checkedAt: new Date().toISOString(), scope: "Saved local invoice and insurer records only; current portal history has not been verified.",
       records: [...recorded, ...possible].map(x => ({ id: x.Id, reference: x.PortalClaimId || x.Healthcare?.ClaimReference || null, service: x.ClaimedService || x.Healthcare?.ServiceType || null, status: x.PortalClaimStatus || "recorded" })) },
     blocked: duplicateStatus !== "not-verified" || blockingConflicts.length > 0 || expense.IgnoredAt != null || entry?.WorkflowStatus === "ignore",
     sourceEmails: sources.filter(x => ids.has(x.Id)).map(x => ({ account: x.AccountEmail, messageId: x.SourceMessageId })),
     submitAllowed: false as const };
+  return { ...preparation, readiness: claimDossierReadiness(preparation) };
 }
 export type ClaimPreparation = ReturnType<typeof prepareClaim>;
 
