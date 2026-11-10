@@ -67,7 +67,21 @@ try {
       } catch (e) { return reply({ error: e.message }, 400); }
     });
     const page = await context.newPage(); diagnosticPage = page; page.setDefaultTimeout(12000); page.on("pageerror", e => errors.push(e.message));
-    const open = async (query = "view=notifications") => { await page.goto(base + "?" + query); await page.getByRole("heading", { name: query.includes("view=notifications") ? "Notifications" : query.includes("view=finances") ? "Finances" : query.includes("view=savings") ? "Dépenses récurrentes" : "Claims", exact: true }).waitFor(); if (query.includes("view=notifications") && !new URLSearchParams(query).has("notice")) await page.getByRole("button", { name: "Historique", exact: true }).click(); };
+    const open = async (query = "view=notifications") => {
+      const params = new URLSearchParams(query);
+      const view = params.get("view");
+      const titles = {
+        notifications: "Notifications",
+        finances: "Finances",
+        savings: "Dépenses récurrentes",
+        reimbursements: params.has("record") ? "Remboursement" : "Claims",
+      };
+      await page.goto(base + "?" + query);
+      await page.getByRole("heading", { name: titles[view], exact: true }).waitFor();
+      if (view === "notifications" && !params.has("notice")) {
+        await page.getByRole("button", { name: "Historique", exact: true }).click();
+      }
+    };
     const noOverflow = async () => { const overflow = await page.evaluate(() => [...document.querySelectorAll("body *")].filter(e => e.getBoundingClientRect().width && (e.getBoundingClientRect().right > innerWidth + 1 || e.getBoundingClientRect().left < -1)).slice(0, 12).map(e => ({ tag: e.tagName, class: e.className, width: e.getBoundingClientRect().width, text: e.textContent.slice(0,100) }))); if (overflow.length) { console.log(JSON.stringify(overflow)); await page.screenshot({ path: join(output, `overflow-${width}.png`), fullPage: true }); } assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), true); };
     await open(); await page.locator(".notification-card").first().waitFor(); assert.equal((await page.evaluate(() => window.__notificationCalls)).length, 0);
     const policyCard = page.locator(".notification-card").filter({ hasText: "La Banque du Canada a modifié son taux directeur" });
@@ -105,7 +119,10 @@ try {
     await open("view=finances&record=subscription2"); await page.getByRole("dialog", { name: /Vérifier l.opération/ }).waitFor(); await page.keyboard.press("Escape"); assert.equal(await page.locator(".finance-tabs button").count(), 3); await page.getByRole("button", { name: "Tendances", exact: true }).waitFor();
     await open("view=finances&from=2026-10-05&to=2026-10-11&currency=USD"); await openFinanceFilters(page); await page.getByLabel("Du", { exact: true }).waitFor(); assert.equal(await page.getByLabel("Du", { exact: true }).inputValue(), "2026-10-05"); assert.equal(await page.getByLabel("Au", { exact: true }).inputValue(), "2026-10-11"); assert.equal(await page.getByLabel("Devise", { exact: true }).inputValue(), "USD"); await noOverflow();
     await page.evaluate(() => { sessionStorage.setItem("familyhub.ui.claims.query", JSON.stringify("Saved unrelated query")); sessionStorage.setItem("familyhub.ui.claims.person", JSON.stringify("Jasmine")); });
-    await open("view=reimbursements&record=claim-synthetic"); await page.getByText("Dossier ouvert depuis un lien direct.", { exact: false }).waitFor(); await page.locator(".expense-card").filter({ hasText: "Synthetic clinic" }).waitFor();
+    await open("view=reimbursements&record=claim-synthetic");
+    await page.getByRole("button", { name: "Revenir à la liste", exact: true }).waitFor();
+    await page.locator(".expense-card").filter({ hasText: "Synthetic clinic" }).waitFor();
+    assert.equal(await page.locator(".expense-card").count(), 1);
     assert.equal(await page.evaluate(() => sessionStorage.getItem("familyhub.ui.claims.query")), JSON.stringify("Saved unrelated query"));
     await open("view=reimbursements&record=unmatched-synthetic&queue=unmatched"); await page.getByText("Synthetic unmatched", { exact: true }).first().waitFor(); await noOverflow();
     await open(); await page.locator(".notification-card").first().waitFor(); await noOverflow(); await page.screenshot({ path: join(output, `history-${width}.png`), fullPage: true });
