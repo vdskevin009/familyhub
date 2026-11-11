@@ -35,7 +35,8 @@ Windows firewall port 4713 closed to inbound network access. Do not add
 public ngrok hostname; they must still pass worker authentication to read
 private records. Never share the ngrok authtoken or pairing key via chat,
 GitHub, a screenshot, or a support ticket. A secret key in localStorage is
-defense in depth, not a substitute for a private route. Do not use the free
+defense in depth, not a substitute for a private route. Ngrok terminates TLS:
+its operator remains a trusted intermediary even with these worker controls. Do not use the free
 endpoint if this risk is unacceptable for the family's sensitive claims data.
 
 ## Setup on the existing Windows worker PC
@@ -71,7 +72,12 @@ new worker or generate a new pairing key).
    ```
    Verify that the ngrok forwarding hostname is the account's **assigned
    dev domain**, that it points to `http://127.0.0.1:4713`, and that the
-   worker remains localhost-bound. The assigned URL does not change on restart.
+   worker remains localhost-bound. The launcher refuses to start if the worker
+   is not already listening on loopback (127.0.0.1 or ::1). It also checks
+   whether the installed ngrok agent supports turning off *local request
+   inspection*, and refuses to expose the port when that cannot be confirmed.
+   Do not remove this fail-closed guard to make an incompatible CLI work.
+   The assigned URL does not change on restart.
    If the agent was launched as a Windows task, read its local (PC-only)
    status from:
    ```powershell
@@ -79,7 +85,10 @@ new worker or generate a new pairing key).
      Select-Object name, public_url
    ```
    Do not display private API responses or tokens. If there is no active
-   ngrok URL, inspect the agent on this PC.
+   ngrok URL, inspect the agent on this PC. In the ngrok dashboard, ensure
+   **Traffic Inspector → Full Capture is OFF**; enabling it could store
+   private request/response headers and contents. Local ngrok inspection
+   and cloud Full Capture are separate controls.
 
 4. In the **updated** FamilyHub PWA on the phone, open
    **Plus → Réglages et outils → Local AI**. Enter the assigned HTTPS ngrok
@@ -112,13 +121,37 @@ uncertain writes. The worker now includes the opt-out header in its
 introduced. This code needs deployment to GitHub Pages **and** updating the
 existing installed worker before physical-phone acceptance.
 
+## Additional worker protections in this change
+
+- All application routes continue to require the existing pairing key
+  (currently generated from 32 random bytes) and exact browser origin.
+- Invalid credentials are limited to 96 attempts per minute per observed
+  source. Authenticated calls are capped at 300/min and browser preflights
+  at 180/min. Invalid attempts cannot themselves lock out a legitimate
+  paired key. Rate limits are in memory and reset when the worker restarts.
+  The last proxy-appended client IP is used only when the actual peer is
+  loopback, avoiding earlier attacker-supplied forwarding hops. This is
+  abuse mitigation, **not** protection against a stolen pairing key.
+- Error and data responses carry no-store, nosniff, no-referrer, deny-frame
+  and restrictive CSP headers. The worker does not log keys, health
+  records, caller IP addresses or failed request bodies for this feature.
+- No user data, login details or worker key is transferred to GitHub,
+  changed on disk or automatically uploaded. A newly required re-pair is
+  not introduced.
+- Cross-origin browser restrictions are not a firewall: a caller using
+  non-browser tooling can forge Origin. The secret key remains essential.
+
 ## Acceptance after installation
 
 - The local `127.0.0.1:4713` worker is authenticated using the unchanged key.
 - Phone **Test connection** succeeds using the stable domain and continues to
   succeed after stopping/restarting **only** ngrok.
-- A request without the pairing key is refused with 401, and a disallowed
-  browser Origin is refused (avoid publishing test keys or private responses).
+- A request without the pairing key is refused with 401, a disallowed
+  browser Origin is refused and a burst of invalid keys gets 429. A
+  correctly paired phone must still work after that burst. Avoid
+  publishing test keys or private responses.
+- Check security response headers and ensure ngrok local inspection and
+  dashboard Full Capture are disabled before using real claims.
 - No raw claim, attachment or insurer source is published by the static PWA.
 - Preview Desjardins and Blue Cross independently. A connected worker does
   not prove a complete portal read; **never auto-Apply** an incomplete or
