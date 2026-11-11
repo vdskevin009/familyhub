@@ -65,11 +65,30 @@ new worker or generate a new pairing key).
    ngrok config add-authtoken YOUR_LOCAL_TOKEN
    ngrok config check
    ```
+   On modern ngrok v3 agents, open the **existing** local YAML via
+   `ngrok config edit` and add `inspect_db_size: -1` directly under
+   the existing `agent:` block. Do **not** create a second config with
+   a copied token, post its contents, or overwrite the existing authtoken.
+   ```yaml
+   # Add under the existing agent block (keep all other existing settings):
+   agent:
+     inspect_db_size: -1
+   ```
+   Confirm the resulting file using `ngrok config check`, and note its
+   **local path**. Version 3 documents `agent.inspect_db_size: -1` as
+   disabling the HTTP request inspection database. The launcher checks
+   this exact setting and validates the ngrok config before exposing
+   any port.
 
 3. First run the tunnel *in the foreground*:
    ```powershell
-   .\scripts\Run-StableTunnel.ps1
+   .\scripts\Run-StableTunnel.ps1 -NgrokConfig "C:\\path\\to\\existing\\ngrok.yml"
    ```
+   Replace the example config path with the **actual existing file** reported
+   by ngrok. On older agents that still advertise `--inspect=false` in
+   `ngrok http --help`, the launcher can also operate without
+   `-NgrokConfig`. Unsupported configurations fail closed, without
+   opening a public endpoint.
    Verify that the ngrok forwarding hostname is the account's **assigned
    dev domain**, that it points to `http://127.0.0.1:4713`, and that the
    worker remains localhost-bound. The launcher refuses to start if the worker
@@ -99,7 +118,7 @@ new worker or generate a new pairing key).
 5. After the manual test, optionally arrange for ngrok to start at Windows
    logon, using an explicit acknowledgement:
    ```powershell
-   .\scripts\Install-StableTunnel.ps1 -AcknowledgePublicEndpoint
+   .\scripts\Install-StableTunnel.ps1 -AcknowledgePublicEndpoint -NgrokConfig "C:\\path\\to\\existing\\ngrok.yml"
    Start-ScheduledTask -TaskName 'FamilyHub Stable HTTPS Tunnel'
    Get-ScheduledTaskInfo -TaskName 'FamilyHub Stable HTTPS Tunnel'
    ```
