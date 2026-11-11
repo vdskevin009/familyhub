@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { WorkerConfig, SavingsState } from "./types";
+import { workerRequestHeaders } from "./worker-transport";
 import { fetchInvoices, fetchFinances, fetchSharedSavings, fetchSharedResearch } from "./worker";
 import { fetchMortgage } from "./mortgage-api";
 import { groceryRequest, loadGroceries } from "./grocery-api";
@@ -42,7 +43,7 @@ export async function collectOpportunitySources(loaders: OpportunityLoaders, pub
 export type OpportunityAction = "seen" | "snooze" | "dismiss" | "resolve" | "restore";
 async function actionRequest(config: WorkerConfig, body?: object): Promise<OpportunityActionsSnapshot> {
   const response = await fetch(config.Endpoint.trim().replace(/\/$/, "") + "/opportunity-actions", {
-    method: body ? "POST" : "GET", headers: { "Content-Type": "application/json", "x-familyhub-key": config.ApiKey.trim() },
+    method: body ? "POST" : "GET", headers: workerRequestHeaders(config),
     ...(body ? { body: JSON.stringify(body) } : {}), cache: "no-store", redirect: "error", signal: AbortSignal.timeout(30_000)
   });
   if (!response.ok) throw new Error(response.status === 409 ? "La liste a changé sur un autre appareil. Actualisez avant de réessayer." : response.status === 404 ? "Le suivi des actions nécessite la mise à jour du PC." : "Le suivi n’a pas été enregistré. Actualisez avant de réessayer.");

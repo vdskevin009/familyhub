@@ -17,6 +17,7 @@ import { PushConfiguration, sendPush } from "./notification-push.js";
 import type { NotificationEvidence } from "./notification-model.js";
 import { PolicyRateMonitor } from "./policy-rate.js";
 import { readClaimDeadlines } from "./claim-deadlines.js";
+import { addWorkerSecurityHeaders, WorkerRequestThrottle } from "./request-security.js";
 
 import { GroceryStore, GroceryConflict } from "./grocery-store.js";
 import { GroceryCollection } from "./grocery-collection.js";
@@ -150,7 +151,7 @@ async function saveState(): Promise<void> {
 function json(response: ServerResponse, status: number, body: unknown, origin?: string): void {
   if (origin && allowedOrigins.has(origin)) response.setHeader("Access-Control-Allow-Origin", origin);
   response.setHeader("Vary", "Origin");
-  response.setHeader("Access-Control-Allow-Headers", "content-type,x-familyhub-key");
+  response.setHeader("Access-Control-Allow-Headers", "content-type,x-familyhub-key,ngrok-skip-browser-warning");
   response.setHeader("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
   response.setHeader("Cache-Control", "no-store");
   response.setHeader("Content-Type", "application/json; charset=utf-8");
@@ -263,23 +264,48 @@ function pathParts(urlValue: string | undefined): string[] {
   return url.pathname.split("/").filter(Boolean);
 }
 
+const requestThrottle = new WorkerRequestThrottle();
 const server = createServer(async (request, response) => {
+  addWorkerSecurityHeaders(response);
   const origin = typeof request.headers.origin === "string" ? request.headers.origin : undefined;
   if (request.method === "OPTIONS") {
+    if (!requestThrottle.allowed("preflight", request)) {
+      response.setHeader("Retry-After", "60");
+      json(response, 429, { error: "Too many requests. Retry later." });
+      return;
+    }
+    if (origin && !allowedOrigins.has(origin)) {
+      json(response, 403, { error: "Origin is not allowed." });
+      return;
+    }
     if (origin && allowedOrigins.has(origin)) response.setHeader("Access-Control-Allow-Origin", origin);
-    response.setHeader("Access-Control-Allow-Headers", "content-type,x-familyhub-key");
+    response.setHeader("Access-Control-Allow-Headers", "content-type,x-familyhub-key,ngrok-skip-browser-warning");
     response.setHeader("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
+    response.setHeader("Access-Control-Max-Age", "600");
     response.statusCode = 204;
     response.end();
     return;
   }
 
   if (origin && !allowedOrigins.has(origin)) {
-    json(response, 403, { error: "Origin is not allowed." });
+    if (!requestThrottle.allowed("invalid-auth", request)) {
+      response.setHeader("Retry-After", "60");
+      json(response, 429, { error: "Too many rejected requests. Retry later." });
+    } else json(response, 403, { error: "Origin is not allowed." });
     return;
   }
   if (!isAuthorized(request)) {
+    if (!requestThrottle.allowed("invalid-auth", request)) {
+      response.setHeader("Retry-After", "60");
+      json(response, 429, { error: "Too many invalid authentication attempts. Retry later." }, origin);
+      return;
+    }
     json(response, 401, { error: "Invalid FamilyHub pairing key." }, origin);
+    return;
+  }
+  if (!requestThrottle.allowed("authorized", request)) {
+    response.setHeader("Retry-After", "60");
+    json(response, 429, { error: "Too many requests. Retry later." }, origin);
     return;
   }
 
