@@ -1,5 +1,6 @@
 param(
   [ValidateRange(1,65535)][int]$Port = 4713,
+  [string]$NgrokConfig = '',
   [switch]$AcknowledgePublicEndpoint
 )
 $ErrorActionPreference = 'Stop'
@@ -17,6 +18,14 @@ foreach ($value in @($ngrok, $runner)) {
 if ($LASTEXITCODE -ne 0) { throw 'ngrok agent configuration is invalid; configure the free account on this PC first.' }
 $windowsPowerShell = Join-Path $env:SystemRoot 'System32/WindowsPowerShell/v1.0/powershell.exe'
 $arguments = '-NoProfile -NonInteractive -ExecutionPolicy Bypass -File "' + $runner + '" -Port ' + $Port
+if ($NgrokConfig) {
+  $resolvedNgrokConfig = [IO.Path]::GetFullPath($NgrokConfig)
+  if (-not (Test-Path -LiteralPath $resolvedNgrokConfig -PathType Leaf)) {
+    throw 'The specified ngrok config does not exist.'
+  }
+  if ($resolvedNgrokConfig.Contains('"')) { throw 'Config path cannot contain quotes.' }
+  $arguments += ' -NgrokConfig "' + $resolvedNgrokConfig + '"'
+}
 $action = New-ScheduledTaskAction -Execute $windowsPowerShell -Argument $arguments
 $identity = [Security.Principal.WindowsIdentity]::GetCurrent().Name
 $trigger = New-ScheduledTaskTrigger -AtLogOn -User $identity
