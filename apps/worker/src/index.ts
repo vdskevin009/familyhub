@@ -150,7 +150,7 @@ async function saveState(): Promise<void> {
 function json(response: ServerResponse, status: number, body: unknown, origin?: string): void {
   if (origin && allowedOrigins.has(origin)) response.setHeader("Access-Control-Allow-Origin", origin);
   response.setHeader("Vary", "Origin");
-  response.setHeader("Access-Control-Allow-Headers", "content-type,x-familyhub-key");
+  response.setHeader("Access-Control-Allow-Headers", "content-type,x-familyhub-key,ngrok-skip-browser-warning");
   response.setHeader("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
   response.setHeader("Cache-Control", "no-store");
   response.setHeader("Content-Type", "application/json; charset=utf-8");
@@ -267,7 +267,7 @@ const server = createServer(async (request, response) => {
   const origin = typeof request.headers.origin === "string" ? request.headers.origin : undefined;
   if (request.method === "OPTIONS") {
     if (origin && allowedOrigins.has(origin)) response.setHeader("Access-Control-Allow-Origin", origin);
-    response.setHeader("Access-Control-Allow-Headers", "content-type,x-familyhub-key");
+    response.setHeader("Access-Control-Allow-Headers", "content-type,x-familyhub-key,ngrok-skip-browser-warning");
     response.setHeader("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
     response.statusCode = 204;
     response.end();
