@@ -11,6 +11,7 @@ import type {
 } from "../types";
 import { downloadJson, readJsonFile, uid } from "../storage";
 import { runResearchWatch, syncResearchWatch, testWorker } from "../worker";
+import { isNgrokFreeEndpoint } from "../worker-transport";
 import { exportContractDocuments, restoreContractDocuments, type DocumentBackup } from "../contract-documents";
 
 type Props = { hub: HubState; installAvailable?: boolean; installed?: boolean; onInstall?: () => void };
@@ -241,7 +242,11 @@ export default function MoreView({ hub, installAvailable = false, installed = fa
           {workerMessage && <div className="inline-status success"><Check size={15} />{workerMessage}</div>}
           <div className="security-note">
             <ShieldCheck size={18} />
-            <div><strong>Keep the worker private.</strong><span>It binds to localhost by default. For phone access, use a private HTTPS route you control; the pairing key is an extra guard, not a replacement for network security.</span></div>
+            <div>
+              {isNgrokFreeEndpoint(endpoint)
+                ? <><strong>Public ngrok endpoint</strong><span>The stable free URL is internet-accessible. Keep the existing pairing key secret and the worker bound to localhost. ngrok can handle traffic and has free-plan limits; do not treat this route as a private VPN.</span></>
+                : <><strong>Keep the worker private.</strong><span>It binds to localhost by default. For phone access, use a private HTTPS route you control; the pairing key is an extra guard, not a replacement for network security.</span></>}
+            </div>
           </div>
         </div>
 
