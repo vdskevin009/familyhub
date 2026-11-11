@@ -148,8 +148,10 @@ existing installed worker before physical-phone acceptance.
   source. Authenticated calls are capped at 300/min and browser preflights
   at 180/min. Invalid attempts cannot themselves lock out a legitimate
   paired key. Rate limits are in memory and reset when the worker restarts.
-  The last proxy-appended client IP is used only when the actual peer is
-  loopback, avoiding earlier attacker-supplied forwarding hops. This is
+  Source identification uses only the actual TCP peer; HTTP forwarding
+  headers are deliberately ignored because clients can spoof them. Since
+  ngrok connects through loopback, its clients share one invalid-key
+  bucket; legitimate correctly keyed requests have a separate bucket. This is
   abuse mitigation, **not** protection against a stolen pairing key.
 - Error and data responses carry no-store, nosniff, no-referrer, deny-frame
   and restrictive CSP headers. The worker does not log keys, health
