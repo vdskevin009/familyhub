@@ -1,11 +1,95 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, writeFile, rm } from "node:fs/promises";
+import { mkdtemp, writeFile, readFile, readdir, mkdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawn } from "node:child_process";
 import { createServer } from "node:net";
 import { once } from "node:events";
+
+async function reservedSocket() {
+  const server = createServer();
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  return server;
+}
+
+function worker(directory, port, extra = {}) {
+  const child = spawn(process.execPath, ["apps/worker/dist/index.js"], {
+    env: { ...process.env, FAMILYHUB_WORKER_PORT: String(port), FAMILYHUB_WORKER_DATA: directory,
+      FAMILYHUB_WORKER_HOST: "127.0.0.1", ...extra }, stdio: ["ignore", "pipe", "pipe"]
+  });
+  let log = "";
+  child.stdout.on("data", data => { log += data; });
+  child.stderr.on("data", data => { log += data; });
+  const done = once(child, "exit");
+  const timeout = setTimeout(() => child.kill(), 15000);
+  done.finally(() => clearTimeout(timeout));
+  return { child, done, log: () => log };
+}
+
+test("an occupied socket rejects startup before generating or changing private files", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "familyhub-occupied-"));
+  const server = await reservedSocket();
+  const sentinel = '{"watches":[],"privateMarker":"synthetic-do-not-change"}';
+  await writeFile(join(directory, "state.json"), sentinel);
+  const process = worker(directory, server.address().port);
+  try {
+    const [code] = await process.done;
+    assert.notEqual(code, 0);
+    assert.deepEqual(await readdir(directory), ["state.json"]);
+    assert.equal(await readFile(join(directory, "state.json"), "utf8"), sentinel);
+    assert.equal(process.log().includes("synthetic-do-not-change"), false);
+  } finally {
+    server.close();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+for (const failure of ["empty-key", "unreadable-key", "malformed-state", "invalid-state-shape"]) {
+  test(`startup preserves existing files and refuses ${failure}`, async () => {
+    const directory = await mkdtemp(join(tmpdir(), "familyhub-startup-"));
+    const socket = await reservedSocket(); const port = socket.address().port;
+    await new Promise(resolve => socket.close(resolve));
+    const key = failure === "empty-key" ? "" : "synthetic-existing-secret";
+    const saved = failure === "malformed-state" ? "{broken-private-state" : failure === "invalid-state-shape" ? '{"watches":null}' : '{"watches":[]}';
+    if (failure === "unreadable-key") {
+      await mkdir(join(directory, "pairing-key.txt"));
+      await writeFile(join(directory, "pairing-key.txt", "sentinel"), "preserve");
+    } else await writeFile(join(directory, "pairing-key.txt"), key);
+    await writeFile(join(directory, "state.json"), saved);
+    const process = worker(directory, port);
+    try {
+      const [code] = await process.done;
+      assert.notEqual(code, 0);
+      assert.equal(await readFile(join(directory, "state.json"), "utf8"), saved);
+      if (failure === "unreadable-key") assert.equal(await readFile(join(directory, "pairing-key.txt", "sentinel"), "utf8"), "preserve");
+      else assert.equal(await readFile(join(directory, "pairing-key.txt"), "utf8"), key);
+      assert.equal(process.log().includes("synthetic-existing-secret"), false);
+      assert.equal(process.log().includes("broken-private-state"), false);
+      const probe = createServer(); probe.listen(port, "127.0.0.1");
+      await once(probe, "listening"); probe.close();
+    } finally { await rm(directory, { recursive: true, force: true }); }
+  });
+}
+
+test("failed automatic watches never log private queries or raw provider errors", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "familyhub-log-"));
+  const socket = await reservedSocket(); const port = socket.address().port;
+  await new Promise(resolve => socket.close(resolve));
+  await writeFile(join(directory, "pairing-key.txt"), "synthetic-existing-secret");
+  await writeFile(join(directory, "state.json"), JSON.stringify({ watches: [{ Id: "test", Auto: true,
+    Query: "synthetic-private-medical-query", CadenceHours: 24 }] }));
+  const process = worker(directory, port, { FAMILYHUB_CODEX_PATH: join(directory, "synthetic-secret-missing-executable") });
+  try {
+    for (let i = 0; i < 100 && !process.log().includes("Automatic watch failed;"); i++) await new Promise(resolve => setTimeout(resolve, 100));
+    assert.match(process.log(), /Automatic watch failed;/);
+    assert.doesNotMatch(process.log(), /synthetic-private-medical-query|synthetic-secret-missing-executable|synthetic-existing-secret/);
+  } finally {
+    process.child.kill(); await process.done;
+    await rm(directory, { recursive: true, force: true });
+  }
+});
 
 test("the running worker rejects repeated invalid keys, retains valid pairing and denies foreign origins", async () => {
   const directory = await mkdtemp(join(tmpdir(), "familyhub-security-"));
