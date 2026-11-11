@@ -288,7 +288,10 @@ const server = createServer(async (request, response) => {
   }
 
   if (origin && !allowedOrigins.has(origin)) {
-    json(response, 403, { error: "Origin is not allowed." });
+    if (!requestThrottle.allowed("invalid-auth", request)) {
+      response.setHeader("Retry-After", "60");
+      json(response, 429, { error: "Too many rejected requests. Retry later." });
+    } else json(response, 403, { error: "Origin is not allowed." });
     return;
   }
   if (!isAuthorized(request)) {
