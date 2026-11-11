@@ -6,9 +6,9 @@ import { WorkerRequestThrottle, workerRequestSource, addWorkerSecurityHeaders } 
 const request = (remoteAddress: string, forwarded?: string): IncomingMessage =>
   ({ socket: { remoteAddress }, headers: forwarded ? { "x-forwarded-for": forwarded } : {} }) as unknown as IncomingMessage;
 
-test("the last valid forwarded IP is used only through a loopback proxy", () => {
-  assert.equal(workerRequestSource(request("127.0.0.1", "1.2.3.4, 5.6.7.8")), "5.6.7.8");
-  assert.equal(workerRequestSource(request("::ffff:127.0.0.1", "1.2.3.4, 5.6.7.8")), "5.6.7.8");
+test("forwarded client headers cannot spoof a rate-limit identity", () => {
+  assert.equal(workerRequestSource(request("127.0.0.1", "1.2.3.4, 5.6.7.8")), "127.0.0.1");
+  assert.equal(workerRequestSource(request("::ffff:127.0.0.1", "1.2.3.4, 5.6.7.8")), "::ffff:127.0.0.1");
   assert.equal(workerRequestSource(request("192.0.2.9", "1.2.3.4, 5.6.7.8")), "192.0.2.9");
   assert.equal(workerRequestSource(request("127.0.0.1", "a forged value")), "127.0.0.1");
 });
@@ -17,7 +17,7 @@ test("invalid key attempts are throttled per caller but valid calls stay usable"
   let now = 100;
   const limiter = new WorkerRequestThrottle(() => now);
   const attacker = request("127.0.0.1", "203.0.113.1");
-  const owner = request("127.0.0.1", "203.0.113.2");
+  const owner = request("192.0.2.2");
   for (let i = 0; i < 96; i++) assert.equal(limiter.allowed("invalid-auth", attacker), true);
   assert.equal(limiter.allowed("invalid-auth", attacker), false);
   assert.equal(limiter.allowed("invalid-auth", owner), true);
