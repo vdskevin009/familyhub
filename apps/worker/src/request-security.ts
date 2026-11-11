@@ -15,7 +15,7 @@ export class WorkerRequestThrottle {
     preflight: new Map()
   };
   private readonly thresholds: Record<Kind, number> = {
-    "invalid-auth": 12,
+    "invalid-auth": 96,
     authorized: 300,
     preflight: 180
   };
