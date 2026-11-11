@@ -21,7 +21,7 @@
     "test:opportunities": "node --import tsx --test tests/opportunities.test.ts tests/opportunity-priority.test.ts",
     "test:claims:readiness": "node --test tests/claim-readiness.test.mjs",
     "test:proactive:browser": "node apps/web/tests/proactive-browser.mjs",
-    "test:pwa": "node --test tests/pwa-install.test.mjs tests/theme.test.mjs && tsx --tsconfig apps/web/tsconfig.json --test apps/web/tests/product.test.ts && node --import tsx --test tests/worker-transport.test.ts",
+    "test:pwa": "node --test tests/pwa-install.test.mjs tests/theme.test.mjs && tsx --tsconfig apps/web/tsconfig.json --test apps/web/tests/product.test.ts && node --import tsx --test tests/worker-transport.test.ts tests/request-security.test.ts",
     "test:savings": "node --import tsx --test tests/savings.test.ts tests/savings-sharing.test.ts tests/savings-daily.test.ts tests/comparison-leads.test.ts tests/insurance-reference.test.ts",
     "test:savings:browser": "node apps/web/tests/savings-browser.mjs && node apps/web/tests/savings-sharing-browser.mjs && node apps/web/tests/insurance-reference-browser.mjs",
     "test:finances": "npm run build:worker && node --test tests/finances.test.mjs tests/worker-finances.test.mjs tests/finance-changes.test.mjs && tsx --test tests/finance-trends.test.ts tests/finance-edits.test.ts",
