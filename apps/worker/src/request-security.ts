@@ -1,4 +1,3 @@
-import { isIP } from "node:net";
 import type { IncomingMessage, ServerResponse } from "node:http";
 
 type Kind = "invalid-auth" | "authorized" | "preflight";
@@ -37,20 +36,14 @@ export class WorkerRequestThrottle {
   }
 }
 
-/** The last X-Forwarded-For hop is injected by ngrok, while earlier hops may
- * be client controlled. Never trust forwarded headers from a non-loopback peer.
- * Cloudflare and local CLI calls continue to work without a forwarding header.
+/** Use the actual TCP peer only. A forwarded header can be spoofed by
+ * arbitrary HTTP clients, so it cannot be trusted as an abuse-control key.
+ * ngrok connects to this worker on loopback, deliberately sharing the limit
+ * across that tunnel. Invalid credentials and authorized calls use separate
+ * buckets so invalid-key traffic does not block legitimate pairing.
  */
 export function workerRequestSource(request: IncomingMessage): string {
-  const peer = request.socket.remoteAddress || "unknown";
-  if (peer === "127.0.0.1" || peer === "::1" || peer === "::ffff:127.0.0.1") {
-    const forwarded = request.headers["x-forwarded-for"];
-    if (typeof forwarded === "string") {
-      const last = forwarded.split(",").at(-1)?.trim();
-      if (last && isIP(last)) return last;
-    }
-  }
-  return peer;
+  return request.socket.remoteAddress || "unknown";
 }
 
 export function addWorkerSecurityHeaders(response: ServerResponse): void {
