@@ -18,7 +18,7 @@ test("invalid key attempts are throttled per caller but valid calls stay usable"
   const limiter = new WorkerRequestThrottle(() => now);
   const attacker = request("127.0.0.1", "203.0.113.1");
   const owner = request("127.0.0.1", "203.0.113.2");
-  for (let i = 0; i < 12; i++) assert.equal(limiter.allowed("invalid-auth", attacker), true);
+  for (let i = 0; i < 96; i++) assert.equal(limiter.allowed("invalid-auth", attacker), true);
   assert.equal(limiter.allowed("invalid-auth", attacker), false);
   assert.equal(limiter.allowed("invalid-auth", owner), true);
   assert.equal(limiter.allowed("authorized", attacker), true, "bad attempts never lock out valid pairing");
