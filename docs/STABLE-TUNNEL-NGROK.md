@@ -164,6 +164,19 @@ existing installed worker before physical-phone acceptance.
 
 ## Acceptance after installation
 
+### Existing worker supervision
+
+`scripts/Run-WorkerSupervisor.ps1 -DataDirectory <existing-private-directory>
+-NodePath <existing-node-executable>` is a Windows logon-task runner for the
+already installed worker, version 2.30.1 or newer. It requires the existing
+pairing key, exact production Pages origin and loopback listener. A per-port
+mutex and process identity checks prevent duplicate supervisors. It restarts
+only a missing worker and never kills an unhealthy active process, invokes a
+collector or applies an import. Configure the task for the existing interactive
+Windows user, IgnoreNew, unlimited execution time and failure restart. Keep
+existing daily collection tasks unchanged. Test process recovery separately;
+a manual task start does not prove a Windows reboot or phone acceptance.
+
 - The local `127.0.0.1:4713` worker is authenticated using the unchanged key.
 - Phone **Test connection** succeeds using the stable domain and continues to
   succeed after stopping/restarting **only** ngrok.

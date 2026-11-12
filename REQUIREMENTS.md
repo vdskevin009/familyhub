@@ -1,5 +1,9 @@
 # FamilyHub - Canonical Requirements
 
+## Fail-closed worker startup — FH-CONNECT-001 / issue #110
+
+Testing. Worker 2.30.1 acquires its listening socket before initializing private stores; competing starts fail without touching data. Requests remain unavailable until initialization completes. Existing unreadable or empty pairing keys and malformed worker state must stop startup, never silently reset. Background-watch failures log a fixed diagnostic without query or raw error contents. Synthetic startup, security and preservation checks, CI, installed activation, Windows logon/recovery and real phone acceptance remain separate gates.
+
 ## Compact purchase comparison and four retailers - FH-GROCERY-014 (#155)
 
 Testing. Show only qualified amount, coverage/estimated count and incomplete state directly on cards, with “Plus d’infos” opening the accessible detail modal. Extend evidenced comparisons to Fresh St. Market and Save-On-Foods alongside Walmart/Costco for historical purchases and future imports. Retain provenance, quantity assumptions, unit/pack distinctions and source/locality limits; unpriced leads never inflate coverage. See `docs/requirements/FH-GROCERY-014.md`. This supersedes verbose card presentation while preserving FH-GROCERY-013 calculation and evidence rules.

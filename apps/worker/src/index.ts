@@ -61,7 +61,7 @@ type ResearchWatch = {
 };
 type PersistedState = { watches: ResearchWatch[] };
 
-const version = "2.30.0";
+const version = "2.30.1";
 let claimOperationBusy = false;
 const host = process.env.FAMILYHUB_WORKER_HOST?.trim() || "127.0.0.1";
 const port = Number(process.env.FAMILYHUB_WORKER_PORT || "4713");
@@ -131,14 +131,18 @@ async function ensureState(): Promise<void> {
   await mkdir(stateDir, { recursive: true });
   try {
     pairingKey = (await readFile(keyPath, "utf8")).trim();
-  } catch {
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw new Error("Existing pairing key is unreadable; startup stopped without replacing it.");
     pairingKey = randomBytes(32).toString("base64url");
-    await writeFile(keyPath, pairingKey + "\n", { encoding: "utf8", mode: 0o600 });
+    await writeFile(keyPath, pairingKey + "\n", { encoding: "utf8", mode: 0o600, flag: "wx" });
   }
+  if (!pairingKey) throw new Error("Existing pairing key is empty; startup stopped without replacing it.");
   try {
     const parsed = JSON.parse(await readFile(statePath, "utf8")) as Partial<PersistedState>;
-    persisted = { watches: Array.isArray(parsed.watches) ? parsed.watches : [] };
-  } catch {
+    if (!parsed || !Array.isArray(parsed.watches)) throw new Error("Invalid saved state.");
+    persisted = { watches: parsed.watches };
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw new Error("Existing worker state is unreadable; startup stopped without replacing it.");
     await saveState();
   }
 }
@@ -247,8 +251,8 @@ async function runDueWatches(): Promise<void> {
       const last = watch.LastRunAt ? Date.parse(watch.LastRunAt) : 0;
       if (!last || now - last >= cadenceMs) {
         try { await executeWatch(watch); }
-        catch (error) {
-          console.error("Automatic watch failed:", watch.Query, error);
+        catch {
+          console.error("Automatic watch failed; private request and error details omitted.");
           watch.LastRunAt = new Date().toISOString();
           await saveState();
         }
@@ -265,8 +269,13 @@ function pathParts(urlValue: string | undefined): string[] {
 }
 
 const requestThrottle = new WorkerRequestThrottle();
+let initialized = false;
 const server = createServer(async (request, response) => {
   addWorkerSecurityHeaders(response);
+  if (!initialized) {
+    json(response, 503, { error: "Worker initialization is not complete." });
+    return;
+  }
   const origin = typeof request.headers.origin === "string" ? request.headers.origin : undefined;
   if (request.method === "OPTIONS") {
     if (!requestThrottle.allowed("preflight", request)) {
@@ -700,22 +709,33 @@ const server = createServer(async (request, response) => {
   }
 });
 
-await ensureState();
-await mkdir(researchDirectory, { recursive: true });
-await savingsResearch.initialize();
-await initializeInvoices();
-await initializeBlueCrossStatus();
-await initializeDesjardinsStatus();
-server.listen(port, host, () => {
-  console.log("");
-  console.log("FamilyHub local worker");
-  console.log("----------------------");
-  console.log("Listening: http://" + host + ":" + port);
-  console.log("Pairing key stored locally at " + keyPath);
-  console.log("Allowed origins: " + [...allowedOrigins].join(", "));
-  console.log("");
-  console.log("Keep this terminal private. The key is stored at " + keyPath);
+// Acquire the socket before any private-state initialization. A competing start
+// must fail without generating a key or rewriting a ledger. Readiness stays shut
+// until initialization succeeds; failures close the socket and retain old files.
+await new Promise<void>((resolve, reject) => {
+  server.once("error", reject);
+  server.listen(port, host, resolve);
 });
+try {
+  await ensureState();
+  await mkdir(researchDirectory, { recursive: true });
+  await savingsResearch.initialize();
+  await initializeInvoices();
+  await initializeBlueCrossStatus();
+  await initializeDesjardinsStatus();
+} catch {
+  server.close();
+  throw new Error("Worker startup stopped; inspect private-state integrity locally before retrying.");
+}
+initialized = true;
+console.log("");
+console.log("FamilyHub local worker");
+console.log("----------------------");
+console.log("Listening: http://" + host + ":" + port);
+console.log("Pairing key stored locally at " + keyPath);
+console.log("Allowed origins: " + [...allowedOrigins].join(", "));
+console.log("");
+console.log("Keep this terminal private. The key is stored at " + keyPath);
 setInterval(() => void runDueWatches(), 15 * 60_000);
 void runDueWatches();
 setInterval(() => void scanNotifications(), 15 * 60_000);
