@@ -16,7 +16,7 @@ const link = '<a href="#" onclick="event.preventDefault();window.historyClicks++
 const notice = '<div class="message-modal" style="position:fixed;inset:0;background:white;z-index:100"><h2>Go digital to avoid mail delays</h2><div class="message-modal__close-button"><button data-test="close-message-btn" onclick="window.noticeClicks++;this.closest(\'.message-modal\').remove()">Close</button></div></div>';
 let passed = 0;
 try {
-  for (const scenario of ['plain', 'notice', 'popup', 'icon-label', 'login-path-home', 'hidden-copy', 'ambiguous', 'ambiguous-notice', 'unknown-modal', 'challenge', 'password', 'password-update', 'email-update', 'security-questions', 'foreign', 'lookalike', 'credentials-url', 'wrong-label', 'uncertain-click', 'notice-and-challenge']) {
+  for (const scenario of ['plain', 'notice', 'notice-aria-hidden', 'popup', 'icon-label', 'login-path-home', 'hidden-copy', 'ambiguous', 'ambiguous-notice', 'unknown-modal', 'challenge', 'password', 'password-update', 'email-update', 'security-questions', 'foreign', 'lookalike', 'credentials-url', 'wrong-label', 'uncertain-click', 'notice-and-challenge']) {
     const context = await browser.newContext({ serviceWorkers: 'block' });
     try {
       let historyLoads = 0;
@@ -29,8 +29,12 @@ try {
         if (scenario === 'ambiguous' || scenario === 'ambiguous-notice') entry += entry;
         if (scenario === 'hidden-copy') entry = '<div hidden>'+entry+'</div>'+entry;
         if (scenario === 'wrong-label') entry = entry.replace('View more claims', 'Submit claims history');
-        const overlay = ['notice','ambiguous-notice','notice-and-challenge'].includes(scenario) ? notice
+        let overlay = ['notice','notice-aria-hidden','ambiguous-notice','notice-and-challenge'].includes(scenario) ? notice
           : scenario === 'unknown-modal' ? notice.replace('Go digital to avoid mail delays','Accept updated terms') : '';
+        if (scenario === 'notice-aria-hidden') {
+          entry='<div id="background" aria-hidden="true">'+entry+'</div>';
+          overlay=overlay.replace('window.noticeClicks++;','window.noticeClicks++;document.getElementById(\'background\').removeAttribute(\'aria-hidden\');');
+        }
         const password = scenario === 'password' ? '<input type="password">' : '';
         const challenge = ['challenge','notice-and-challenge'].includes(scenario) ? '<p>Enter your verification code</p>' : '';
         return route.fulfill({contentType:'text/html; charset=utf-8', body:`<script>window.historyClicks=0;window.noticeClicks=0;window.sensitiveActions=0</script>${entry}${overlay}${password}${challenge}<button onclick="window.sensitiveActions++">Submit claim</button><button onclick="window.sensitiveActions++">Update password</button>`});
@@ -42,7 +46,7 @@ try {
       const host = scenario === 'foreign' ? 'https://unexpected.test' : scenario === 'lookalike' ? origin+'.unexpected.test' : scenario === 'credentials-url' ? 'https://synthetic@service.pac.bluecross.ca' : origin;
       await page.goto(host+path);
       const navigate = createBlueCrossHistoryNavigation();
-      const expected = ['plain','notice','popup','icon-label','login-path-home','hidden-copy','uncertain-click'].includes(scenario);
+      const expected = ['plain','notice','notice-aria-hidden','popup','icon-label','login-path-home','hidden-copy','uncertain-click'].includes(scenario);
       assert.equal(await navigate(page), expected, scenario);
       if (expected && scenario !== 'uncertain-click') {
         // Wait for the synthetic navigation, then apply the real history verifier.
@@ -63,6 +67,11 @@ try {
       }
       assert.equal(await navigate(page),false,'Never repeat uncertain or completed navigation: '+scenario);
       if (scenario==='uncertain-click') assert.equal(await page.evaluate(()=>window.historyClicks),1);
+      const diag=navigate.diagnostic();
+      assert.deepEqual(Object.keys(diag).sort(),['stage','visibleHistoryControls','knownNoticeVisible','welcomeVisible','visibleModal','attempted'].sort());
+      assert.equal(JSON.stringify(diag).includes('https://'),false);
+      if(scenario==='unknown-modal')assert.equal(diag.stage,'history-control-obstructed');
+      if(scenario==='uncertain-click')assert.equal(diag.attempted,true);
       passed++;
     } finally { await context.close(); }
   }

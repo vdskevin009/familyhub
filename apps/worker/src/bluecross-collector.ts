@@ -119,7 +119,7 @@ async function collectBlueCrossPortalLocked(interactive = false, recovery?: Logi
     const recoverHistoryTab = async () => {
       const observed = await findPortalHistoryPage(context, page, "bluecross");
       if (observed.page && observed.page !== page) historyTabSwitches++;
-      const details = { ...observed.diagnostic, pageCategory: blueCrossPageCategory(page.url()), tabSwitches: historyTabSwitches };
+      const details = { ...observed.diagnostic, pageCategory: blueCrossPageCategory(page.url()), navigation: openHistory.diagnostic(), tabSwitches: historyTabSwitches };
       const diagnostic = JSON.stringify(details);
       if (diagnostic !== previousHistoryDiagnostic) {
         previousHistoryDiagnostic = diagnostic;
@@ -145,7 +145,12 @@ async function collectBlueCrossPortalLocked(interactive = false, recovery?: Logi
       const deadline = Date.now() + 600_000;
       while (!await ready() && Date.now() < deadline) await page.waitForTimeout(2000).catch(() => new Promise(resolve => setTimeout(resolve, 2000)));
     }
-    if (!await ready()) return { status: "login-required", authReason: authReason || "human-required" };
+    if (!await ready()) {
+      await atomicJson(join(blueCrossPrivateDirectory, "history-navigation-failure.json"), {
+        version: 1, observedAt: new Date().toISOString(), pageCategory: blueCrossPageCategory(page.url()), navigation: openHistory.diagnostic()
+      }).catch(() => {});
+      return { status: "login-required", authReason: authReason || "human-required" };
+    }
     await authenticatedPortal("bluecross");
     let warning = "";
     if (process.platform === "win32") {
