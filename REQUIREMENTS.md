@@ -293,6 +293,31 @@ Package/category release verified: [PR #168](https://github.com/vdskevin009/fami
 
 ## Optional secure insurer login — FH-REIMB-040
 
+**Blue Cross history navigation follow-up — Issue #159 / PR #277; installed and
+live verified, broader acceptance remains in testing.** Implementation reference:
+`741ffb25c8421e6e01bce1367e8f0ddb6524baa1`. Its PR CI passed, including retained
+.NET checks. The existing Windows worker completed a real history collection and
+a separate read-only repeat without another password attempt; protected ledger,
+credentials and pairing files remained byte-identical. The live navigation
+handled the known welcome modal and reached the exact history grid. Physical
+phone acceptance, MFA and the next natural schedule remain separate gates.
+The collector
+requires one exact visible history link/button on the trusted member home, ignores
+hidden responsive copies and refuses ambiguous controls. It may close only the
+previously observed non-binding "Go digital to avoid mail delays" notice or the
+publicly verified welcome modal with its exact "Go to Member Profile" marker,
+using the unique close button. Agreement wording or form fields prevent closing
+the welcome modal. Unknown overlays, account updates, password
+fields, security questions and challenges remain untouched. A history click is
+reserved before execution and is never replayed after an uncertain outcome. When
+it demonstrably returns to the exact visible login form, one subsequent guarded
+credential submission may start a new history-navigation attempt. This does not
+authorize a credential retry or clear its stop. Authentication still requires the exact history route and
+one visible grid. Private diagnostics use fixed page categories, never raw URLs,
+queries or page content; later blocked checks preserve original failure evidence.
+Credential guards, cooldown, session and financial policies are unchanged. A
+synthetic reproduction or passing CI is not proof of restored live history access.
+
 **Implemented; real authentication acceptance pending. Issue #36; [PR #127](https://github.com/vdskevin009/familyhub/pull/127) merged at `a8a7286d602390bbda4ca74574811618866a8962`, worker 2.16.0.** PR CI `36942469024` and [main build/test/Pages deployment `36946152089`](https://github.com/vdskevin009/familyhub/actions/runs/36946152089) passed. Real credential setup, expired-session login, MFA recovery and paired-phone acceptance remain separate pending gates. When an existing trusted session expires, either existing collector may make one bounded ordinary login with optional local Windows CurrentUser DPAPI credentials. The operator configures, replaces or deletes credentials using masked local prompts, never chat, browser/PWA storage or an HTTP credential endpoint. Password submission is restricted to the observed exact HTTPS login origins and forms. The attempt is persistently latched before submission; rejection, timeout, interrupted login, unexpected pages or a human challenge stop automatic retry. A successful login clears the latch but retains a 30-minute cooldown. Reconnect allows manual verification and resumes collection only after authenticated history is visible. Serialize each private profile across processes and local configuration, retain last valid collections and lastSuccess on failure, and expose only sanitized recovery states. Preserve all financial data and decisions, explicit apply, existing worker/tunnel and no-schedule boundaries. Local synthetic tests, real login/expiration, MFA, installed worker, phone and scheduling are separate gates. This supersedes only the no-stored-credentials clause of FH-REIMB-039 and the manual-only authentication scope of FH-REIMB-032/033.
 
 The 2.16.1 follow-up for Issue #36, [PR #128](https://github.com/vdskevin009/familyhub/pull/128) merged at `4f6e3dffbf8f5b38612de382348ff4dfd86e97c6` with green [main build/test/deploy `36950739084`](https://github.com/vdskevin009/familyhub/actions/runs/36950739084), corrects the Blue Cross submit selector to match the observed accessible name `Login` regardless of case, while retaining a complete-name match, the approved origin/form checks and one-attempt protection. The anonymous form and label are verified separately from real expired-session authentication; the latter remains an acceptance gate.
