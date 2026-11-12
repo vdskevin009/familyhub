@@ -293,7 +293,15 @@ Package/category release verified: [PR #168](https://github.com/vdskevin009/fami
 
 ## Optional secure insurer login — FH-REIMB-040
 
-**Blue Cross history navigation follow-up — Issue #159; in testing.** The collector
+**Blue Cross history navigation follow-up — Issue #159 / PR #277; installed and
+live verified, broader acceptance remains in testing.** Implementation reference:
+`741ffb25c8421e6e01bce1367e8f0ddb6524baa1`. Its PR CI passed, including retained
+.NET checks. The existing Windows worker completed a real history collection and
+a separate read-only repeat without another password attempt; protected ledger,
+credentials and pairing files remained byte-identical. The live navigation
+handled the known welcome modal and reached the exact history grid. Physical
+phone acceptance, MFA and the next natural schedule remain separate gates.
+The collector
 requires one exact visible history link/button on the trusted member home, ignores
 hidden responsive copies and refuses ambiguous controls. It may close only the
 previously observed non-binding "Go digital to avoid mail delays" notice or the
