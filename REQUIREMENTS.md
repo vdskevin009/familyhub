@@ -296,11 +296,15 @@ Package/category release verified: [PR #168](https://github.com/vdskevin009/fami
 **Blue Cross history navigation follow-up — Issue #159; in testing.** The collector
 requires one exact visible history link/button on the trusted member home, ignores
 hidden responsive copies and refuses ambiguous controls. It may close only the
-previously observed non-binding "Go digital to avoid mail delays" notice using
-its uniquely identified close button. Unknown overlays, account updates, password
+previously observed non-binding "Go digital to avoid mail delays" notice or the
+publicly verified welcome modal with its exact "Go to Member Profile" marker,
+using the unique close button. Agreement wording or form fields prevent closing
+the welcome modal. Unknown overlays, account updates, password
 fields, security questions and challenges remain untouched. A history click is
-reserved before execution and is never replayed after an uncertain outcome in
-that browser context. Authentication still requires the exact history route and
+reserved before execution and is never replayed after an uncertain outcome. When
+it demonstrably returns to the exact visible login form, one subsequent guarded
+credential submission may start a new history-navigation attempt. This does not
+authorize a credential retry or clear its stop. Authentication still requires the exact history route and
 one visible grid. Private diagnostics use fixed page categories, never raw URLs,
 queries or page content; later blocked checks preserve original failure evidence.
 Credential guards, cooldown, session and financial policies are unchanged. A

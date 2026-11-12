@@ -113,7 +113,7 @@ async function collectBlueCrossPortalLocked(interactive = false, recovery?: Logi
     let page = context.pages()[0] ?? await context.newPage();
     await page.goto(memberUrl, { waitUntil: "domcontentloaded", timeout: 45_000 });
     let claims = page.locator("table[id*='grdClaimsGrid']");
-    const openHistory = createBlueCrossHistoryNavigation();
+    const openHistory = createBlueCrossHistoryNavigation(interactive);
     let previousHistoryDiagnostic = "";
     let historyTabSwitches = 0;
     const recoverHistoryTab = async () => {
@@ -140,7 +140,7 @@ async function collectBlueCrossPortalLocked(interactive = false, recovery?: Logi
       return recoverHistoryTab();
     };
     // Give an existing trusted session time to restore before touching credentials.
-    const authReason = await tryPortalLogin(page, "bluecross", ready, undefined, recovery, () => page);
+    const authReason = await tryPortalLogin(page, "bluecross", ready, undefined, recovery, () => page, () => openHistory.afterCredentialSubmission(page));
     if (interactive && !await ready()) {
       const deadline = Date.now() + 600_000;
       while (!await ready() && Date.now() < deadline) await page.waitForTimeout(2000).catch(() => new Promise(resolve => setTimeout(resolve, 2000)));

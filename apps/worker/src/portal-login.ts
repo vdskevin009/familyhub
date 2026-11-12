@@ -157,7 +157,7 @@ const defaults: LoginDependencies = {
   reserveRecovery: reserveLoginRecovery
 };
 /** One attempt only; latch before ANY credential fill. Ordinary retries never rearm a stop. Caller owns profile lock. */
-export async function tryPortalLogin(page: Page, insurer: Insurer, ready: () => Promise<boolean>, deps: LoginDependencies = defaults, recovery?: LoginRecoveryRequest, currentPage?: () => Page): Promise<LoginReason | undefined> {
+export async function tryPortalLogin(page: Page, insurer: Insurer, ready: () => Promise<boolean>, deps: LoginDependencies = defaults, recovery?: LoginRecoveryRequest, currentPage?: () => Page, onLoginSubmitted?: () => void): Promise<LoginReason | undefined> {
   const isReady = async () => {
     const result = await ready();
     if (currentPage) page = currentPage();
@@ -244,6 +244,7 @@ export async function tryPortalLogin(page: Page, insurer: Insurer, ready: () => 
     // Missing instrumentation never proves absence of transmission.
     if (!boundaryStarted) throw new Error("Login boundary was not recorded.");
     credentials = undefined;
+    onLoginSubmitted?.();
     phase = "awaiting-history";
     const deadline = deps.now() + 30_000;
     while (deps.now() < deadline) {
