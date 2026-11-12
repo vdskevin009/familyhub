@@ -117,6 +117,19 @@ test("PWA insurer-only claims cannot fabricate manual Open or Closed workflow op
   assert.doesNotMatch(html, /value="open"/); assert.doesNotMatch(html, /value="closed"/);
 });
 
+test("PWA claim cards show a known zero and a dash for the other insurer despite legacy zero totals", () => {
+  const item = { ...fixture.state.Reconciliations[0],
+    PrimaryInsurer: "Desjardins", SecondaryInsurer: "Blue Cross",
+    PrimaryReimbursedAmount: 0, SecondaryReimbursedAmount: 0,
+    DesjardinsReimbursedAmount: 0, BlueCrossReimbursedAmount: null };
+  const html = card(item);
+  assert.match(html, /<small>Desjardins<\/small><strong>\$0\.00<\/strong>/);
+  assert.match(html, /<small>Blue Cross<\/small><strong>—<\/strong>/);
+  const reversed = card({ ...item, DesjardinsReimbursedAmount: null, BlueCrossReimbursedAmount: 0 });
+  assert.match(reversed, /<small>Desjardins<\/small><strong>—<\/strong>/);
+  assert.match(reversed, /<small>Blue Cross<\/small><strong>\$0\.00<\/strong>/);
+});
+
 test("PWA selection checkboxes are opt-in and pending status is explicit", () => {
   const html = card(fixture.state.Reconciliations[0], { selecting: true, pending: { key: "a", label: "Closed", phase: "saving" } });
   assert.match(html, /type="checkbox"/); assert.match(html, /Saving…/); assert.match(html, /disabled=""/);

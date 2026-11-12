@@ -86,7 +86,7 @@ for (const [name, alter] of [
   ['incomplete history', x => { x.complete = false; x.warnings = ['Synthetic incomplete page']; }],
   ['duplicate identity', x => { x.rows.push({ ...x.rows[0] }); }],
   ['unknown payment', x => { x.rows[0].paid = null; x.rows[0].needsReview = true; }],
-  ['zero payment', x => { x.rows[0].paid = 0; }],
+  ['negative payment', x => { x.rows[0].paid = -1; }],
   ['unknown member', x => { x.rows[0].member = 'unknown'; }],
   ['review-marked row', x => { x.rows[0].needsReview = true; }]
 ]) test(name+' cannot silently enter the saved payment ledger', async () => {
@@ -112,9 +112,35 @@ test('Desjardins authentication failure neither applies old snapshots nor change
   const result = await invoices.syncDesjardinsPortal(false, false, async () => ({ status: 'login-required', authReason: 'human-required' }), true);
   assert.equal(result.status, 'login-required'); assert.equal(await readFile(ledger, 'utf8'), before);
 });
+for (const insurer of ['desjardins', 'blue-cross']) test(`${insurer} records an explicit zero once without inventing a response from the other insurer`, async () => {
+  const before = JSON.parse(await seed([expense]));
+  const current = insurer === 'desjardins' ? dj() : bc();
+  current.rows[0].paid = 0;
+  const sync = insurer === 'desjardins' ? invoices.syncDesjardinsPortal : invoices.syncBlueCrossPortal;
+  const result = await sync(false, false, collector(current), true);
+  assert.deepEqual([result.autoImported, result.pendingNew, result.pendingChanged, result.applied], [1, 0, 0, true]);
+  const after = JSON.parse(await readFile(ledger, 'utf8'));
+  assert.equal(after.items.length, before.items.length + 1);
+  for (const old of before.items) assert.deepEqual(after.items.find(x => x.Id === old.Id), old);
+  const saved = after.items.find(x => x.Insurer === insurer);
+  assert.equal(saved.ReimbursedAmount, 0);
+  assert.equal(saved.PortalClaimStatus, undefined);
+  const claim = (await invoices.invoiceSnapshot()).reconciliations.find(x => x.ExpenseDocumentId === expense.Id);
+  assert.equal(claim.DesjardinsReimbursedAmount, insurer === 'desjardins' ? 0 : null);
+  assert.equal(claim.BlueCrossReimbursedAmount, insurer === 'blue-cross' ? 0 : null);
+  assert.equal(claim.WorkflowStatus, 'open');
+  const stable = await readFile(ledger, 'utf8');
+  assert.equal((await sync(false, false, collector(current), true)).autoImported, 0);
+  assert.equal(await readFile(ledger, 'utf8'), stable);
+});
+
 test('invalid source/payment/date facts cannot qualify for automatic recording', () => {
   const valid = invoices.planBlueCrossUpsert([], bc()).items[0];
   const current = bc();
+  for (const patch of [{ ReimbursedAmount: null }, { ReimbursedAmount: undefined }, { ReimbursedAmount: '' },
+    { ReimbursedAmount: '0' }, { ReimbursedAmount: -1 }, { ReimbursedAmount: 0, PortalClaimStatus: 'pended' }]) {
+    assert.equal(intake.validatedNewInsurerPayments([], current, { ambiguous: 0, duplicates: 0, items: [{ ...valid, ...patch }] }).length, 0);
+  }
   for (const patch of [{ ReimbursedAmount: NaN }, { ReimbursedAmount: Infinity }, { ReimbursedAmount: 101 }, { BilledAmount: null }, { ServiceDate: '2026-02-31' }, { ClaimedService: '' }, { StructuredSource: 'gmail' }, { DocumentRole: 'expense' }, { ManualOverride: { Version: 1, Reasons: ['manual'] } }]) {
     assert.equal(intake.validatedNewInsurerPayments([], current, { ambiguous: 0, duplicates: 0, items: [{ ...valid, ...patch }] }).length, 0);
   }

@@ -31,13 +31,13 @@ export function insurerSyncMessage(status: BlueCrossSyncStatus | null, result: B
   if (current?.status === "success") {
     const counts = `${current.new ?? 0} new · ${current.changed ?? 0} changed · ${current.unchanged ?? 0} unchanged`;
     if (current.autoImported != null) {
-      if (current.complete && current.ambiguous && !current.errors) return `Automatic import paused: collection complete; ${reviewRecords(current.ambiguous)}. ${current.autoImported} new payments saved. Existing saved payments remain available.`;
-      if (!current.complete || current.ambiguous || current.errors) return `Automatic import paused: collection is incomplete or ambiguous. ${current.autoImported} new payments saved; review the insurer history.`;
+      if (current.complete && current.ambiguous && !current.errors) return `Automatic import paused: collection complete; ${reviewRecords(current.ambiguous)}. ${current.autoImported} new insurer records saved. Existing saved payments remain available.`;
+      if (!current.complete || current.ambiguous || current.errors) return `Automatic import paused: collection is incomplete or ambiguous. ${current.autoImported} new insurer records saved; review the insurer history.`;
       const pending = (current.pendingNew ?? 0) + (current.pendingChanged ?? 0);
       return pending
-        ? `Saved ${current.autoImported} new payments automatically. ${pending} insurer records still need review; Apply saves only after review.`
+        ? `Saved ${current.autoImported} new insurer records automatically. ${pending} insurer records still need review; Apply saves only after review.`
         : current.autoImported
-          ? `Saved ${current.autoImported} new payments automatically in FamilyHub. Claims are refreshed.`
+          ? `Saved ${current.autoImported} new insurer records automatically in FamilyHub. Claims are refreshed.`
           : `Up to date: ${current.unchanged ?? 0} insurer records already saved.`;
     }
     if (current.applied) return `Saved in FamilyHub: ${counts}. View DJ/BC and Claims → All or Closed.`;

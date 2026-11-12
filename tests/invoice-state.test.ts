@@ -314,6 +314,27 @@ test("Nathan unknown insurer order shows Desjardins and Blue Cross amounts witho
 });
 
 
+test("named insurer amounts preserve explicit unknowns instead of legacy calculation zeroes", () => {
+  const expense = invoice("synthetic-zero-response", "2026-01-15");
+  const item = reconciliation(expense, {
+    PrimaryInsurer: "Desjardins", PrimaryReimbursedAmount: 0,
+    SecondaryInsurer: "Blue Cross", SecondaryReimbursedAmount: 0,
+    DesjardinsReimbursedAmount: 0, BlueCrossReimbursedAmount: null
+  });
+  assert.equal(namedInsurerReimbursementAmount(item, "Desjardins"), 0);
+  assert.equal(namedInsurerReimbursementAmount(item, "Blue Cross"), null);
+  const reversed = { ...item, DesjardinsReimbursedAmount: null, BlueCrossReimbursedAmount: 0 };
+  assert.equal(namedInsurerReimbursementAmount(reversed, "Desjardins"), null);
+  assert.equal(namedInsurerReimbursementAmount(reversed, "Blue Cross"), 0);
+  const unknown = { ...item, DesjardinsReimbursedAmount: null, BlueCrossReimbursedAmount: null };
+  assert.equal(namedInsurerReimbursementAmount(unknown, "Desjardins"), null);
+  assert.equal(namedInsurerReimbursementAmount(unknown, "Blue Cross"), null);
+  const legacy = { ...item };
+  delete legacy.DesjardinsReimbursedAmount;
+  delete legacy.BlueCrossReimbursedAmount;
+  assert.equal(namedInsurerReimbursementAmount({ ...legacy, PrimaryReimbursedAmount: 25 }, "Desjardins"), 25);
+});
+
 test("already assigned insurer rows are excluded from stale Unmatched projections", () => {
   const expense = invoice("expense-feb-19", "2026-02-19");
   const insurer = invoice("desjardins-feb-19", "2026-02-19", {
