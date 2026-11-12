@@ -137,6 +137,24 @@ test('private diagnostic retains phase but excludes credentials, raw URLs and br
   const encoded=JSON.stringify(records);for(const value of ['synthetic-password','synthetic-user','synthetic-secret-token','https://'])assert.equal(encoded.includes(value),false);
   assert.equal(await auth.tryPortalLogin(f.page,'desjardins',f.ready,f.deps),'login-incomplete');assert.equal(records.at(-1).phase,'retry-blocked');
 });
+
+test('Blue Cross post-login categories explain stops without leaking URLs or authorizing retries', async () => {
+  for (const [path,category] of [['update-email','email-update'],['update-password','password-update'],['challenge-questions','security-questions'],['','member-home'],['unknown-private-path','other-portal-page']]) {
+    const stored={version:1,insurer:'bluecross',policy:'synthetic-policy',certificate:'synthetic-certificate',password:'synthetic-password',role:'member'};
+    const f=fixture({stored});const records=[];let attempts=0;
+    f.page.url=()=> 'https://service.pac.bluecross.ca/member/login/';
+    f.deps.diagnose=async(_,value)=>records.push(value);
+    f.deps.submit=async(_page,_insurer,_credentials,_phase,beforeTransmission)=>{
+      await beforeTransmission();attempts++;f.page.url=()=> 'https://service.pac.bluecross.ca/member/'+path+'?token=synthetic-secret';
+    };
+    assert.equal(await auth.tryPortalLogin(f.page,'bluecross',f.ready,f.deps),'login-incomplete');
+    assert.equal(records.at(-1).pageCategory,category);assert.equal(f.state().blocked,true);
+    assert.equal(await auth.tryPortalLogin(f.page,'bluecross',f.ready,f.deps),'login-incomplete');
+    assert.equal(attempts,1);assert.equal(records.at(-1).phase,'retry-blocked');
+    const encoded=JSON.stringify(records);
+    for(const secret of ['synthetic-secret','synthetic-password','synthetic-policy','synthetic-certificate','unknown-private-path','https://']) assert.equal(encoded.includes(secret),false);
+  }
+});
 test('unknown ready timeout is distinguished from an observed human challenge without granting a retry', async () => {
   const f=fixture();const records=[];f.deps.diagnose=async(_,value)=>records.push(value);
   assert.equal(await auth.tryPortalLogin(f.page,'desjardins',f.ready,f.deps),'login-incomplete');assert.equal(f.count(),1);

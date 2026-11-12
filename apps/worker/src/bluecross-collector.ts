@@ -1,4 +1,6 @@
 import type { LoginRecoveryRequest } from "./portal-login-recovery.js";
+import { createBlueCrossHistoryNavigation } from "./bluecross-history-navigation.js";
+import { blueCrossPageCategory } from "./bluecross-page-category.js";
 import { findPortalHistoryPage, isInsurerPortalPage } from "./portal-history-page.js";
 import { acquirePortalLock, authenticatedPortal, tryPortalLogin, type LoginReason } from "./portal-login.js";
 import { mkdir, open } from "node:fs/promises";
@@ -111,20 +113,13 @@ async function collectBlueCrossPortalLocked(interactive = false, recovery?: Logi
     let page = context.pages()[0] ?? await context.newPage();
     await page.goto(memberUrl, { waitUntil: "domcontentloaded", timeout: 45_000 });
     let claims = page.locator("table[id*='grdClaimsGrid']");
-    const openHistory = async () => {
-      if (!isInsurerPortalPage(page, 'bluecross')) return false;
-      const link = page.getByRole("link", { name: /view more claims|claims history/i }).first();
-      const button = page.getByRole("button", { name: /view more claims|claims history/i }).first();
-      if (await link.isVisible().catch(() => false)) { await link.click(); return true; }
-      if (await button.isVisible().catch(() => false)) { await button.click(); return true; }
-      return false;
-    };
+    const openHistory = createBlueCrossHistoryNavigation();
     let previousHistoryDiagnostic = "";
     let historyTabSwitches = 0;
     const recoverHistoryTab = async () => {
       const observed = await findPortalHistoryPage(context, page, "bluecross");
       if (observed.page && observed.page !== page) historyTabSwitches++;
-      const details = { ...observed.diagnostic, tabSwitches: historyTabSwitches };
+      const details = { ...observed.diagnostic, pageCategory: blueCrossPageCategory(page.url()), tabSwitches: historyTabSwitches };
       const diagnostic = JSON.stringify(details);
       if (diagnostic !== previousHistoryDiagnostic) {
         previousHistoryDiagnostic = diagnostic;
@@ -141,11 +136,11 @@ async function collectBlueCrossPortalLocked(interactive = false, recovery?: Logi
       if (await recoverHistoryTab()) return true;
       if (page.isClosed()) return false;
       if (!isInsurerPortalPage(page, 'bluecross')) return false;
-      if (!await claims.isVisible().catch(() => false)) await openHistory().catch(() => {});
+      if (!await claims.isVisible().catch(() => false)) await openHistory(page).catch(() => {});
       return recoverHistoryTab();
     };
     // Give an existing trusted session time to restore before touching credentials.
-    const authReason = await tryPortalLogin(page, "bluecross", ready, undefined, recovery);
+    const authReason = await tryPortalLogin(page, "bluecross", ready, undefined, recovery, () => page);
     if (interactive && !await ready()) {
       const deadline = Date.now() + 600_000;
       while (!await ready() && Date.now() < deadline) await page.waitForTimeout(2000).catch(() => new Promise(resolve => setTimeout(resolve, 2000)));
