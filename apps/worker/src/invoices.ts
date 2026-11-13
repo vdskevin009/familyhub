@@ -1,3 +1,4 @@
+import type { MailAttachmentSource } from "./mail-attachment-cache.js";
 import { legacyMailSource, type MailSource, type MailAccount } from "./mail-source.js";
 import { invoiceHistoryStart, invoiceHistoryVersion, healthReceiptRepairVersion, invoiceWindow, historyWindow, incrementalRequest, repairRequest, historyRequest, needsInvoiceUpgrade, upgradeCandidates, retryCandidates, planInvoiceMail, type InvoiceProgress, type InvoiceMailPlan } from "./mail-collection-plan.js";
 import { validatedNewInsurerPayments } from "./insurer-payment-intake.js";
@@ -24,6 +25,15 @@ import { prepareClaim } from "./claim-preparation.js";
 import { calendarDate } from "./healthcare-evidence.js";
 import { multipleServiceDates, withConfirmedServiceDates, type ServiceDateConfirmations } from "./service-date-confirmation.js";
 import { latestOwnerAdjudications, withOwnerAdjudications, ownerAdjudicationApplies, type OwnerAdjudication } from "./owner-adjudication.js";
+
+export type InvoiceMailAccess = {
+  accounts(): Promise<Array<{ email: string; label: string; sourceMode?: "legacy" | "plugin" }>>;
+  status(): { busy: boolean; sourceMode: "legacy" | "plugin"; error?: string; lastAttempt?: string };
+  attachment(source: MailAttachmentSource): Promise<Buffer | undefined>;
+};
+let invoiceMailAccess: InvoiceMailAccess | undefined;
+/** Startup composition only; never exposed as an HTTP or classifier option. */
+export function configureInvoiceMailAccess(access: InvoiceMailAccess): void { invoiceMailAccess = access; }
 
 type Window = { after: number; before: number; page?: string };
 /** A learned category is a preference, never a replacement for freshly extracted facts. */
@@ -539,7 +549,8 @@ export async function initializeInvoices(readOnly = false): Promise<void> {
 }
 export async function invoiceSnapshot() {
   let accounts: { email: string; label: string }[] = [];
-  try { accounts = (await credentials()).accounts.map(({ email, label }) => ({ email, label })); } catch { /* Visible setup-required status. */ }
+  try { accounts = invoiceMailAccess ? await invoiceMailAccess.accounts() : (await credentials()).accounts.map(({ email, label }) => ({ email, label })); } catch { /* Visible setup-required status. */ }
+  const mailStatus = invoiceMailAccess?.status();
   const activeItems = activeReconciliationItems();
   const effectiveItems = activeItems.map(item => item.IgnoredAt ? { ...item, Status: 4, NeedsReview: false } : item);
   const displayItems = withConfirmedServiceDates(state.items, state.confirmedServiceDates).map(item => item.IgnoredAt ? { ...item, Status: 4, NeedsReview: false } : item);
@@ -552,7 +563,7 @@ export async function invoiceSnapshot() {
   const signatures = new Map(reviewTargets(effectiveItems, reconciliation).map(target => [target.key, target.signature]));
   const reviews = state.reviews.filter(item => signatures.get(item.key) === item.signature);
   return { items: displayItems, reconciliations: reconciliation.cases.map(decorateWorkflowCase), ignoredExpenses: ignoredExpenses.map(decorateWorkflowCase), unmatchedReimbursements: reconciliation.unmatched, ignoredUnmatchedReimbursements, diagnostics: reconciliation.diagnostics,
-    coverage: { since: "2025-06-01", complete: accounts.length > 0 && accounts.every(account => {
+    coverage: { since: "2025-06-01", complete: !mailStatus?.error && accounts.length > 0 && accounts.every(account => {
       const progress = state.accounts[account.email.toLowerCase()];
       return progress?.invoiceHistoryVersion === invoiceHistoryVersion && !progress.invoiceHistoryWindow && !progress.window && !progress.error;
     }) },
@@ -561,8 +572,11 @@ export async function invoiceSnapshot() {
     importantMail: effectiveItems.filter(item => item.AttentionLevel && item.AttentionLevel !== "none" && item.Status !== 4)
       .sort((a, b) => attentionRank[b.AttentionLevel] - attentionRank[a.AttentionLevel] || Date.parse(b.ReceivedAt) - Date.parse(a.ReceivedAt)),
     learning: { decisions: state.decisions.filter(item => !item.undoneAt).length, undoable: state.decisions.filter(item => !item.undoneAt).slice(-10).reverse() },
-    busy, accounts, progress: state.accounts, lastAttempt: state.lastAttempt, lastSuccess: state.lastSuccess,
-    error: state.error, setupRequired: !accounts.length };
+    busy: busy || !!mailStatus?.busy, sourceMode: mailStatus?.sourceMode || "legacy", accounts, progress: state.accounts,
+    lastAttempt: mailStatus?.lastAttempt || state.lastAttempt, lastSuccess: state.lastSuccess,
+    error: mailStatus?.error || state.error, setupRequired: !accounts.length,
+    continuationReady: !mailStatus?.error && accounts.length > 0 && accounts.every(account => !state.accounts[account.email.toLowerCase()]?.error)
+      && accounts.some(account => { const p = state.accounts[account.email.toLowerCase()]; return p && (p.window || p.invoiceHistoryWindow || p.healthReceiptRepairVersion !== healthReceiptRepairVersion || p.invoiceHistoryVersion !== invoiceHistoryVersion); }) };
 }
 
 const attentionRank: Record<Invoice["AttentionLevel"], number> = { critical: 3, action: 2, important: 1, none: 0 };
@@ -583,20 +597,25 @@ function mergeBlueCross(items: Invoice[]): number {
 
 /** Authenticated, explicit re-import for long copied portal emails missed by an earlier collector. */
 export async function importBlueCrossMessages(email: unknown, messageIds: unknown, apply: unknown = false,
-  overrides: Partial<Pick<CollectionDependencies, "credentials" | "accessToken" | "gmail">> = {}) {
+  overrides: Partial<Pick<CollectionDependencies, "credentials" | "accessToken" | "gmail" | "source">> = {}) {
   if (typeof email !== "string" || !Array.isArray(messageIds) || messageIds.length < 1 || messageIds.length > 10
     || messageIds.some(id => typeof id !== "string" || !/^[a-f0-9]{8,40}$/i.test(id)) || typeof apply !== "boolean") throw new Error("Provide a connected account, 1–10 Gmail message IDs, and a boolean apply flag.");
   if (busy) throw new Error("Invoice collection is already running.");
   busy = true;
   try {
     const dependencies = { credentials, accessToken, gmail, ...overrides };
-    const account = (await dependencies.credentials()).accounts.find(account => account.email.toLowerCase() === email.toLowerCase());
+    const source = dependencies.source || legacyMailSource(dependencies);
+    const account = (await source.accounts()).find(account => account.email.toLowerCase() === email.toLowerCase());
     if (!account) throw new Error("This Gmail account is not connected on the PC.");
-    const token = await dependencies.accessToken(account);
+    if (dependencies.source) {
+      if (!source.preflight) throw new Error("Prepared source preflight is required.");
+      await source.preflight(account, [...new Set(messageIds as string[])].map(id => `messages/${encodeURIComponent(id)}?format=full`));
+    }
+    const session = await source.open(account);
     const imported: Invoice[] = [];
     const reports = [];
     for (const id of [...new Set(messageIds as string[])]) {
-      const mail = normalizeMail(await dependencies.gmail<RawMail>(token, `messages/${encodeURIComponent(id)}?format=full`));
+      const mail = normalizeMail(await session.read<RawMail>( `messages/${encodeURIComponent(id)}?format=full`));
       if (!mail.blueCrossExport) throw new Error("Message does not contain a supported Blue Cross claims table. Nothing was imported.");
       imported.push(...blueCrossInvoices(mail, account.email.toLowerCase(), account.label));
       reports.push({ messageId: id, rows: mail.blueCrossExport.rows.length, pagePaid: mail.blueCrossExport.pagePaid,
@@ -1209,6 +1228,10 @@ export async function invoiceAttachment(id: string, attachmentId: string, overri
   if (!item || !attachment) throw new Error("Attachment not found.");
   if (attachment.LocalSha256) return { bytes: await readConnectorFile(attachment.LocalSha256), name: attachment.FileName };
   if (attachment.Size > 20_000_000) throw new Error("This attachment exceeds 20 MB. Open the source email instead.");
+  if (invoiceMailAccess) {
+    const bytes = await invoiceMailAccess.attachment({ account: item.AccountEmail, messageId: item.SourceMessageId, attachmentId: attachment.Id, filename: attachment.FileName, mimeType: attachment.MimeType, size: attachment.Size });
+    if (bytes !== undefined) return { bytes, name: attachment.FileName };
+  }
   const account = (await dependencies.credentials()).accounts.find(x => x.email.toLowerCase() === item.AccountEmail);
   if (!account) throw new Error("Reconnect the source Gmail account on the PC.");
   const token = await dependencies.accessToken(account);

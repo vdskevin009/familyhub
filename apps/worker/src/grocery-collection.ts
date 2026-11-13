@@ -114,12 +114,12 @@ export class GroceryCollection {
     const state = await this.read();
     return planGroceryMail(state.accounts[email.toLowerCase()] || initialAccount(), email.toLowerCase(), at, this.dependencies.pageSize);
   }
-  async collect(): Promise<GroceryCollectionStatus> {
+  async collect(prepared: Pick<Partial<Dependencies>, "source" | "plans"> = {}): Promise<GroceryCollectionStatus> {
     if (this.busy) throw new Error("Grocery collection already running.");
     this.busy = true;
     try {
       this.runtimeError = undefined; this.runtimeAttempt = this.dependencies.now().toISOString();
-      const state = await this.read(), deps = this.dependencies;
+      const state = await this.read(), deps = { ...this.dependencies, ...prepared };
       const initialState = JSON.stringify(state);
       const source = deps.source || legacyMailSource(deps, () => deps.now().getTime());
       let accounts: MailAccount[];

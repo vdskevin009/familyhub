@@ -1,3 +1,4 @@
+import { rememberMailSources, mailSourcePolicyWarning } from "./mail-source-policy";
 import { AgentReview, CleanupSuggestion, ReconciliationCase, ReimbursementItem, ReimbursementWorkflowStatus, ResearchWatch, UnmatchedReimbursement, WorkerConfig, WorkerTask, WorkerTaskType } from "./types";
 import { workerRequestHeaders } from "./worker-transport";
 import type { PublicBaseline, SavingsJob } from "./savings";
@@ -185,7 +186,7 @@ export function syncDesjardins(config: WorkerConfig, apply: boolean): Promise<De
 }
 
 export type InvoiceSnapshot = {
-  items: ReimbursementItem[]; busy: boolean; setupRequired: boolean;
+  items: ReimbursementItem[]; busy: boolean; setupRequired: boolean; sourceMode?: "plugin" | "legacy"; sourcePolicyWarning?: string;
   reconciliations: ReconciliationCase[]; cleanupSuggestions: CleanupSuggestion[];
   importantMail: ReimbursementItem[];
   unmatchedReimbursements: UnmatchedReimbursement[];
@@ -195,12 +196,15 @@ export type InvoiceSnapshot = {
   coverage?: { since: string; complete: boolean };
   diagnostics?: { totalExpenses: number; fullyReimbursed: number; waitingPrimary: number; waitingSecondary: number; patientBalance: number; needsAttention: number; unmatchedInsurerRecords: number; duplicateCandidates: number; missingServiceDates: number; unknownMembers: number; patientAsProvider: number; amountsReconstructed: number; insurerPaymentsOverBilled: number; contradictoryEvidence: number; averageMatchConfidence: number };
   learning: { decisions: number; undoable: Array<{ id: string; itemId: string; type: string; at: string }> };
-  accounts: { email: string; label: string }[];
+  accounts: { email: string; label: string; sourceMode?: "plugin" | "legacy" }[];
   progress: Record<string, { error?: string; window?: unknown; lastSuccess?: string }>;
   lastAttempt?: string; lastSuccess?: string; error?: string;
 };
 export async function fetchInvoices(config: WorkerConfig): Promise<InvoiceSnapshot> {
   const raw = await request<Partial<InvoiceSnapshot>>(config, "/invoices");
+  const accounts = Array.isArray(raw.accounts) ? raw.accounts.map(account => ({ ...account,
+    sourceMode: account.sourceMode ?? (raw.sourceMode === "plugin" || raw.sourceMode === "legacy" ? raw.sourceMode : undefined) })) : [];
+  try { rememberMailSources(accounts); } catch { /* The routing guard latches closed; paired data stays readable. */ }
   const learning = raw.learning && typeof raw.learning === "object"
     ? {
         decisions: Number(raw.learning.decisions || 0),
@@ -212,6 +216,8 @@ export async function fetchInvoices(config: WorkerConfig): Promise<InvoiceSnapsh
     items: Array.isArray(raw.items) ? raw.items : [],
     busy: Boolean(raw.busy),
     setupRequired: Boolean(raw.setupRequired),
+    sourcePolicyWarning: mailSourcePolicyWarning(),
+    sourceMode: raw.sourceMode === "plugin" || raw.sourceMode === "legacy" ? raw.sourceMode : undefined,
     reconciliations: Array.isArray(raw.reconciliations) ? raw.reconciliations : [],
     cleanupSuggestions: Array.isArray(raw.cleanupSuggestions) ? raw.cleanupSuggestions : [],
     importantMail: Array.isArray(raw.importantMail) ? raw.importantMail : [],
@@ -222,7 +228,7 @@ export async function fetchInvoices(config: WorkerConfig): Promise<InvoiceSnapsh
     coverage: raw.coverage,
     diagnostics: raw.diagnostics,
     learning,
-    accounts: Array.isArray(raw.accounts) ? raw.accounts : [],
+    accounts,
     progress: raw.progress && typeof raw.progress === "object" ? raw.progress : {},
     lastAttempt: raw.lastAttempt,
     lastSuccess: raw.lastSuccess,
@@ -268,7 +274,7 @@ export function undoInvoiceDecision(config: WorkerConfig, decisionId: string): P
   return request(config, "/invoices/decisions/undo", { method: "POST", body: JSON.stringify({ decisionId }) });
 }
 type AttachmentSource = Pick<ReimbursementItem, "Id" | "Attachments">;
-async function workerAttachmentBlob(config: WorkerConfig, item: AttachmentSource, index: number): Promise<{ blob: Blob; fileName: string }> {
+export async function workerAttachmentBlob(config: WorkerConfig, item: AttachmentSource, index: number): Promise<{ blob: Blob; fileName: string }> {
   const attachment = item.Attachments[index];
   if (!attachment) throw new Error("Attachment not found.");
   const response = await fetch(endpoint(config, `/invoices/${encodeURIComponent(item.Id)}/attachments/${encodeURIComponent(attachment.Id)}`), {

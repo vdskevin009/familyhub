@@ -2,7 +2,7 @@
 
 ## Gmail plugin migration foundation
 
-A local batch adapter, immutable query plans and typed internal source injection preserve full plugin MIME for reuse of existing collectors, with a standalone original-byte cache. It does not switch Gmail collection or schedules. See [scope and remaining gates](docs/GMAIL-PLUGIN-MIGRATION.md).
+An opt-in local plugin runtime preserves full MIME and original attachments while reusing existing collectors, manual triggers and the daily lifecycle. Source-policy validation, account-bound retrieval and paired attachment/Drive paths are implemented locally; no production policy or schedule is activated. See [scope and remaining gates](docs/GMAIL-PLUGIN-MIGRATION.md).
 
 
 ## Proactive mobile home
@@ -172,7 +172,7 @@ Each household account is connected independently. Tokens are short-lived and re
 
 The scheduled PC scan is the authoritative mailbox-analysis path when a worker is paired. It starts with a bounded Gmail query, then applies a second deterministic filter. Marketing headers, Gmail promotion labels, bulk precedence and common newsletter/sales language lower confidence or remove the candidate. A generic mention of “benefits” or “insurance” is not enough on its own to classify an email as a claim. Browser scanning remains only as an unpaired fallback for older setups.
 
-Detected amounts and document types are heuristics. Review them before filing a claim or treating them as financial records. Full message bodies and attachment bytes are not persisted by the app.
+Detected amounts and document types are heuristics. Review them before filing a claim or treating them as financial records. Full message bodies remain transient. In the opt-in plugin source, original attachment bytes and minimal source identities are cached privately on the worker for reliable later download; this source is not activated by the code change.
 
 ## Money data
 

@@ -92,3 +92,28 @@ test("review conflicts or old worker capability cannot look like completed impor
     assert.equal(result.groceries, "incomplete-or-unknown"); assert.equal(starts, capable ? 1 : 0);
   }
 });
+
+test("invoice continuation uses explicit current-worker readiness, never a hardcoded repair version", async () => {
+  let reads = 0, starts = 0;
+  const result = await runDailyCollections(async (path, method = "GET") => {
+    if (path === "/invoices/collect") { starts++; return {}; }
+    if (path === "/invoices") {
+      reads++;
+      if (reads === 1) return {};
+      if (reads === 2) return { error: "Partial", continuationReady: true, progress: { account: { healthReceiptRepairVersion: 4 } } };
+      return {};
+    }
+    return { setupRequired: true };
+  }, tick);
+  assert.equal(result.invoices, "complete"); assert.equal(starts, 2);
+});
+
+test("retrieval failure cannot be retried merely because old progress has a partial window", async () => {
+  let starts = 0;
+  const result = await runDailyCollections(async (path, method = "GET") => {
+    if (path === "/invoices/collect") { starts++; return {}; }
+    if (path === "/invoices") return starts ? { error: "Retrieval failed", continuationReady: false, progress: { account: { window: {} } } } : {};
+    return {};
+  }, tick);
+  assert.equal(result.invoices, "incomplete-or-unknown"); assert.equal(starts, 1);
+});

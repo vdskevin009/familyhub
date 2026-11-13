@@ -1,3 +1,4 @@
+import { assertBrowserMailAllowed, mailBuildMode } from "./mail-source-policy";
 import { ReimbursementCategory, ReimbursementItem, ReimbursementStatus, ScanStats } from "./types";
 import { uid } from "./storage";
 
@@ -363,8 +364,14 @@ function analyze(message: EmailCandidate, accountLabel: string, accountEmail: st
     }
   };
 }
-async function connect(slot: string, clientId = DEFAULT_CLIENT_ID): Promise<{ slot: string; email: string; name: string; canArchive: boolean }> {
+/** Shared with synthetic tests; invalid build configuration fails before Google SDK/auth. */
+export function googleConnectionScopes(driveOnly: boolean, mode: unknown = import.meta.env?.VITE_MAIL_RETRIEVAL_MODE): string {
+  const pluginOnly = mailBuildMode(mode) === "plugin-only";
+  return ["openid", "email", "profile", ...(!driveOnly && !pluginOnly ? [GMAIL_SCOPE] : []), DRIVE_SCOPE].join(" ");
+}
+async function connect(slot: string, clientId = DEFAULT_CLIENT_ID, driveOnly = false): Promise<{ slot: string; email: string; name: string; canArchive: boolean }> {
   if (!clientId.endsWith(".apps.googleusercontent.com")) throw new Error("FamilyHub's Google OAuth client ID is invalid.");
+  const requestedScopes = googleConnectionScopes(driveOnly);
   await ensureGoogleIdentity();
   const win = window as GoogleWindow;
   const oauth2 = win.google?.accounts?.oauth2;
@@ -373,7 +380,7 @@ async function connect(slot: string, clientId = DEFAULT_CLIENT_ID): Promise<{ sl
   const response = await new Promise<TokenResponse>((resolve, reject) => {
     const client = oauth2.initTokenClient({
       client_id: clientId,
-      scope: `openid email profile ${GMAIL_SCOPE} ${DRIVE_SCOPE}`,
+      scope: requestedScopes,
       callback: result => result.error ? reject(new Error(result.error_description || result.error)) : resolve(result),
       error_callback: error => reject(new Error(error?.message || "Google sign-in was cancelled."))
     });
@@ -382,7 +389,7 @@ async function connect(slot: string, clientId = DEFAULT_CLIENT_ID): Promise<{ sl
 
   if (!response.access_token) throw new Error("Google did not return an access token.");
   const scopes = new Set((response.scope || "").split(/\s+/).filter(Boolean));
-  if (!scopes.has(GMAIL_SCOPE)) throw new Error("Gmail read-only permission was not granted.");
+  if (requestedScopes.split(" ").includes(GMAIL_SCOPE) && !scopes.has(GMAIL_SCOPE)) throw new Error("Gmail read-only permission was not granted.");
 
   const profile = await apiJson<{ email?: string; name?: string }>("https://www.googleapis.com/oauth2/v3/userinfo", response.access_token);
   const account: GoogleAccount = {
@@ -400,6 +407,8 @@ async function connect(slot: string, clientId = DEFAULT_CLIENT_ID): Promise<{ sl
 
 async function scan(slot: string, months: number): Promise<{ email: string; items: ReimbursementItem[]; stats: ScanStats }> {
   const account = requireAccount(slot);
+  assertBrowserMailAllowed(account.email);
+  if (!account.scopes.has(GMAIL_SCOPE)) throw new Error("Reconnect this account for browser mail access; its current connection is for Drive only.");
   const lookback = Math.min(24, Math.max(1, Number(months || 12)));
   const terms = '{receipt invoice facture reçu recu reimbursement remboursement claim physio physiotherapy chiropractor dental pharmacy prescription massage statement "payment confirmation" "proof of payment" "amount due" "balance due" "policy renewal" "renewal notice" "tax assessment" warranty "registration renewal" "booking confirmation" "reservation confirmation"}';
   const q = `newer_than:${lookback}m ${terms} -category:promotions -category:social -category:forums -in:sent -in:drafts -from:notifications@github.com`;
@@ -437,8 +446,11 @@ async function scan(slot: string, months: number): Promise<{ email: string; item
   return { email: account.email, items, stats };
 }
 
-async function attachmentBytes(slot: string, messageId: string, attachmentId: string): Promise<Uint8Array> {
+async function attachmentBytes(slot: string, messageId: string, attachmentId: string, expectedAccount?: string): Promise<Uint8Array> {
   const account = requireAccount(slot);
+  if (expectedAccount && account.email.toLowerCase() !== expectedAccount.toLowerCase()) throw new Error("Connected Google account does not match the original mailbox.");
+  assertBrowserMailAllowed(account.email);
+  if (!account.scopes.has(GMAIL_SCOPE)) throw new Error("Reconnect this account for browser mail access; its current connection is for Drive only.");
   const data = await apiJson<{ data?: string }>(
     `https://gmail.googleapis.com/gmail/v1/users/me/messages/${encodeURIComponent(messageId)}/attachments/${encodeURIComponent(attachmentId)}`,
     account.token
@@ -446,8 +458,8 @@ async function attachmentBytes(slot: string, messageId: string, attachmentId: st
   return decodeBase64Url(data.data || "");
 }
 
-async function downloadAttachment(slot: string, messageId: string, attachmentId: string, fileName: string, mimeType: string): Promise<void> {
-  const bytes = await attachmentBytes(slot, messageId, attachmentId);
+async function downloadAttachment(slot: string, messageId: string, attachmentId: string, fileName: string, mimeType: string, expectedAccount?: string): Promise<void> {
+  const bytes = await attachmentBytes(slot, messageId, attachmentId, expectedAccount);
   const blob = new Blob([blobPart(bytes)], { type: mimeType || "application/octet-stream" });
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
@@ -531,18 +543,22 @@ async function uploadFile(account: GoogleAccount, bytes: Uint8Array, fileName: s
   return result.id;
 }
 
-async function archiveFirstAttachment(item: ReimbursementItem, rootName = "FamilyHub"): Promise<{ fileId: string; path: string }> {
+async function archiveFirstAttachment(item: ReimbursementItem, rootName = "FamilyHub", loadOriginal?: () => Promise<Uint8Array>): Promise<{ fileId: string; path: string }> {
   const account = requireAccount(item.AccountLabel);
   if (!account.scopes.has(DRIVE_SCOPE)) throw new Error("Google Drive permission was not granted. Reconnect the account and approve Drive access.");
   const attachment = item.Attachments[0];
   if (!attachment) throw new Error("This email has no attachment to archive.");
 
+  if (account.email.toLowerCase() !== item.AccountEmail.toLowerCase()) throw new Error("Connected Google account does not match the original mailbox.");
+  if (item.WorkerManaged && !loadOriginal) throw new Error("Reconnect the paired PC to retrieve this original attachment.");
+  // Obtain the exact original before creating any Drive folders. Worker failures never use Gmail fallback.
+  const bytes = item.WorkerManaged ? await loadOriginal!() : await attachmentBytes(item.AccountLabel, item.SourceMessageId, attachment.Id, item.AccountEmail);
+  if (bytes.byteLength !== attachment.Size || bytes.byteLength > 20_000_000) throw new Error("Original attachment size does not match its source.");
   const segments = archiveSegments(item, rootName.trim() || "FamilyHub");
   let parentId: string | undefined;
   for (const segment of segments) parentId = await ensureFolder(account, segment, parentId);
   if (!parentId) throw new Error("Could not create the Drive archive folder.");
 
-  const bytes = await attachmentBytes(item.AccountLabel, item.SourceMessageId, attachment.Id);
   const fileId = await uploadFile(account, bytes, attachment.FileName || "document", attachment.MimeType, parentId, item);
   return { fileId, path: segments.join("/") + "/" + attachment.FileName };
 }

@@ -1,3 +1,4 @@
+import { MailCollectionRuntime } from "./mail-collection-runtime.js";
 import { automaticInsurerPaymentsEnabled, automaticInsurerCollectionRequested } from "./insurer-payment-intake.js";
 import { hasPortalCredentials } from "./portal-login.js";
 import { createServer, IncomingMessage, ServerResponse } from "node:http";
@@ -35,7 +36,7 @@ import { confirmedGovernmentReimbursement, confirmGovernmentReimbursement } from
 import { blueCrossClaimCauseAnswer, confirmBlueCrossClaimCause } from "./bluecross-claim-cause.js";
 import { confirmedInvoicePractitioner, confirmInvoicePractitioner } from "./claim-practitioner-answers.js";
 import { confirmedInvoiceIllness, confirmInvoiceIllness } from "./claim-invoice-answers.js";
-import { initializeInvoices, initializeBlueCrossStatus, getBlueCrossStatus, syncBlueCrossPortal, initializeDesjardinsStatus, getDesjardinsStatus, syncDesjardinsPortal, backfillDesjardinsPayments, invoiceSnapshot, collectInvoices, correctInvoice, updateInvoiceStatus, undoInvoiceDecision, invoiceAttachment, importBlueCrossMessages, setDocumentsIgnored, setExpenseIgnored, setManualMatch, setMatchDecision, setReimbursementWorkflowStatus, setUnmatchedIgnored } from "./invoices.js";
+import { initializeInvoices, initializeBlueCrossStatus, getBlueCrossStatus, syncBlueCrossPortal, initializeDesjardinsStatus, getDesjardinsStatus, syncDesjardinsPortal, backfillDesjardinsPayments, invoiceSnapshot, configureInvoiceMailAccess, correctInvoice, updateInvoiceStatus, undoInvoiceDecision, invoiceAttachment, setDocumentsIgnored, setExpenseIgnored, setManualMatch, setMatchDecision, setReimbursementWorkflowStatus, setUnmatchedIgnored } from "./invoices.js";
 
 type WorkerTaskType = "general" | "meal-plan" | "research" | "financial-review" | "admin-classify";
 type WorkerTask = {
@@ -118,6 +119,10 @@ function scanNotifications() {
 
 const groceryStore = new GroceryStore(join(stateDir, "groceries"), extractGrocery);
 const groceryCollection = new GroceryCollection(join(stateDir, "groceries"), groceryStore);
+const mailRuntime = new MailCollectionRuntime({ directory: stateDir, grocery: groceryCollection });
+configureInvoiceMailAccess({ accounts: () => mailRuntime.accounts(), status: () => mailRuntime.status(), attachment: source => mailRuntime.attachment(source) });
+const collectInvoices = () => mailRuntime.collectInvoices();
+const importBlueCrossMessages = (email: unknown, messageIds: unknown, apply: unknown) => mailRuntime.importBlueCross(email, messageIds, apply);
 const groceryPlanning = new GroceryPlanningStore(join(stateDir, "groceries"), () => groceryStore.list());
 const groceryPurchaseResolution = new GroceryPurchaseResolutionStore(join(stateDir, "groceries"), () => groceryStore.list(), () => groceryPlanning.read());
 const groceryResearch = new GroceryResearch(join(stateDir, "groceries"));
@@ -345,14 +350,14 @@ const server = createServer(async (request, response) => {
         if (request.method === "POST") { let result = await groceryPurchaseResolution.mutate(await readJson(request, 240_000)); try { result = await groceryPurchaseResolution.reconcile(); } catch { console.error("Purchase resolution enrichment unavailable; saved decision preserved."); } json(response, 200, result, origin); return; }
       }
       if (parts.length === 2 && parts[1] === "collection-status" && request.method === "GET") {
-        json(response, 200, await groceryCollection.status(), origin); return;
+        json(response, 200, await mailRuntime.groceryStatus(), origin); return;
       }
       if (parts.length === 2 && parts[1] === "collect" && request.method === "POST") {
         if (groceryCollection.isBusy() || (await invoiceSnapshot()).busy || claimOperationBusy
           || [getBlueCrossStatus(), getDesjardinsStatus()].some(status => status.state === "syncing")) {
           json(response, 409, { error: "A collection is already running. Read its status before retrying." }, origin); return;
         }
-        void groceryCollection.collect().catch(() => { /* Sanitized failure is retained in the collection status. */ });
+        void mailRuntime.collectGroceries().catch(() => { /* Sanitized failure is retained in the collection status. */ });
         json(response, 202, { status: "running" }, origin); return;
       }
       if (parts.length === 2 && parts[1] === "research" && request.method === "POST") { json(response, 200, await groceryResearch.run(await readJson(request)), origin); return; }
@@ -600,8 +605,8 @@ const server = createServer(async (request, response) => {
       }
       if (request.method === "POST" && parts.length === 2 && parts[1] === "collect") {
         const snapshot = await invoiceSnapshot();
-        if (snapshot.setupRequired) { json(response, 409, { error: "Connect Gmail on the PC before collecting." }, origin); return; }
-        if (snapshot.busy || groceryCollection.isBusy()) { json(response, 409, { error: "Collection already running." }, origin); return; }
+        if (snapshot.setupRequired) { json(response, 409, { error: "Configure a valid mailbox source on the PC before collecting." }, origin); return; }
+        if (snapshot.busy || groceryCollection.isBusy() || claimOperationBusy || [getBlueCrossStatus(), getDesjardinsStatus()].some(status => status.state === "syncing")) { json(response, 409, { error: "Collection already running." }, origin); return; }
         void collectInvoices().catch(() => { /* Error is available through the authenticated status endpoint. */ });
         json(response, 202, { status: "running" }, origin); return;
       }

@@ -2,7 +2,7 @@
 
 ## Gmail plugin migration - FH-MAIL-008
 
-In progress. Replace the requested account's Gmail retrieval through the connected plugin while preserving invoices, Important Mail, emailed Blue Cross tables, groceries, original attachments, history/coverage, source identities, deduplication and manual decisions. The local batch transport, MIME converter, immutable plans and typed collector source injection are foundation only, with synthetic stale-plan/manual-authority/cursor tests. A generic immutable attachment cache is standalone. No production selection, route, schedule or credential flow changes. Full orchestration, attachment persistence, source parity, browser fallback and cutover remain pending. See [scope, limits and acceptance gates](docs/GMAIL-PLUGIN-MIGRATION.md).
+In progress. Replace the requested account's Gmail retrieval through the connected plugin while preserving invoices, Important Mail, emailed Blue Cross tables, groceries, original attachments, history/coverage, source identities, deduplication and manual decisions. A local opt-in runtime now connects account-bound plugin retrieval, immutable plans, existing collector/manual routes and original-byte cache/downloads. Source selection fails closed after activation; default legacy remains only for unselected installations. Synthetic lifecycle/security/browser tests cover stale state, cancellation and no-fallback behavior. No production policy, credential, schedule or deployment has changed. Full orchestration, attachment persistence, source parity, browser fallback and cutover remain pending. See [scope, limits and acceptance gates](docs/GMAIL-PLUGIN-MIGRATION.md).
 
 
 ## Compact purchase comparison and four retailers - FH-GROCERY-014 (#155)

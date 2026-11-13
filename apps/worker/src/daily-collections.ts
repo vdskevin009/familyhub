@@ -1,5 +1,5 @@
 type InvoiceProgress = { error?: string; window?: unknown; invoiceHistoryWindow?: unknown; healthReceiptRepairVersion?: number };
-export type DailyResponse = { error?: string; busy?: boolean; setupRequired?: boolean; capabilities?: string[];
+export type DailyResponse = { continuationReady?: boolean; error?: string; busy?: boolean; setupRequired?: boolean; capabilities?: string[];
   progress?: Record<string, InvoiceProgress>; incomplete?: boolean; lastSuccess?: string; lastAttempt?: string;
   accounts?: Array<{ active?: boolean; error?: string; window?: unknown }> };
 export type DailyCall = (path: string, method?: "GET" | "POST") => Promise<DailyResponse>;
@@ -22,8 +22,8 @@ export async function runDailyCollections(call: DailyCall,
       if (!state.busy) {
         if (state.error) {
           const progress = Object.values(state.progress || {});
-          if (progress.length && progress.every(item => !item.error)
-            && progress.some(item => item.window || item.invoiceHistoryWindow || item.healthReceiptRepairVersion !== 1)) {
+          if (state.continuationReady === true || state.continuationReady === undefined && progress.length && progress.every(item => !item.error)
+            && progress.some(item => item.window || item.invoiceHistoryWindow)) {
             await call("/invoices/collect", "POST"); continue;
           }
           throw new Error("incomplete");
