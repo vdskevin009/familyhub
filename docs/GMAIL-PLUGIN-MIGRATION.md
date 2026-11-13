@@ -59,3 +59,15 @@ The standalone `mail-attachment-cache.ts` supplies immutable exact-source manife
 No production route exposes these internal dependencies or plans. Default source selection, setup-status, Blue Cross manual email intake, on-demand downloads, unpaired browser fallback, schedules and installed worker remain unchanged. The orchestrator, safe private transport, attachment-cache integration, complete parity comparison and cutover/rollback still need implementation and validation. This development baseline must include current upstream security before any release; local foundation checks are not deployment authorization.
 
 Phase-2 pre-merge validation: worker build passed; 96 tests across batch/planner/invoice/grocery suites passed. After final race/plan refinements, 25 planner/source/cache tests passed, including stale no-write rejection, asynchronous manual-edit race, original account isolation, missing-source failure, frozen delayed execution, existing manual correction preservation and same-transport cursor resume. Combined post-merge results remain separate.
+
+### Combined upstream validation
+
+Local source commit `6eeefb5` was merged with verified upstream `050a57dbcca09f083958bc9b8d261bf3060f3fd8` in local merge `ade97b0`. The sole conflict was the invoice test command: both upstream `worker-security` and all migration tests were retained. Upstream request-security, worker entrypoint and security tests are unchanged by this branch. No publication/deployment occurred.
+
+- Passed combined worker TypeScript build, web typecheck and Vite production build (1,805 modules).
+- Full merged invoice/security JavaScript stage: **310 passed / 311**, with the sole failure in pre-existing `portal-login.test.mjs` Windows local setup. Its PowerShell test script was blocked because scripts are disabled by the machine execution policy. No policy bypass or security setting change was attempted. This is not a full aggregate pass.
+- Independently passed the subsequent invoice TypeScript stage: **57/57**.
+- Independently passed all grocery script suites: **96/96**.
+- Added a final synthetic grocery asynchronous-preflight race test; planner/source suite **8/8** passed.
+- `git diff --check` passed. Verified upstream ancestry and no branch delta in request-security/index/worker-security.
+- Retained .NET and browser/live cutover acceptance remain unrun. Generic cache still has no intake/download caller, and no production retrieval coordinator/source selection is enabled.

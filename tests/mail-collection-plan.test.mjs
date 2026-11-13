@@ -70,3 +70,13 @@ test('grocery bounded pages resume plugin cursors and preserve through on runtim
  const path=join(d,'collection-status.json'),saved=JSON.parse(await readFile(path,'utf8'));saved.accounts[account.email].window.page='foreign';delete saved.accounts[account.email].transport;await writeFile(path,JSON.stringify(saved));
  const foreign=await new GroceryCollection(d,store,base).plan(account.email,at+400),before=await readFile(path,'utf8');await assert.rejects(new GroceryCollection(d,store,{...base,source:source(foreign,[{messageIds:[],nextPageToken:'foreign'},{pageToken:'foreign',messageIds:[]}]),plans:[foreign]}).collect());assert.equal(await readFile(path,'utf8'),before);
 });
+
+test('grocery state changed during asynchronous source preflight is not overwritten',async t=>{
+ const d=await directory(t),base={credentials:forbidden,accessToken:forbidden,gmail:forbidden,now:()=>new Date(at*1000)};
+ const first=await new GroceryCollection(d,store,base).plan(account.email,at);
+ await new GroceryCollection(d,store,{...base,source:source(first),plans:[first]}).collect();
+ const plan=await new GroceryCollection(d,store,base).plan(account.email,at+300),good=source(plan),path=join(d,'collection-status.json');let concurrent;
+ const changed={...good,preflight:async(account,paths)=>{await good.preflight(account,paths);const saved=JSON.parse(await readFile(path,'utf8'));saved.accounts[account.email].through++;concurrent=JSON.stringify(saved);await writeFile(path,concurrent);}};
+ await assert.rejects(new GroceryCollection(d,store,{...base,source:changed,plans:[plan]}).collect());
+ assert.equal(await readFile(path,'utf8'),concurrent);
+});
