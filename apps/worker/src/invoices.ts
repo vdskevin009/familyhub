@@ -597,7 +597,7 @@ function mergeBlueCross(items: Invoice[]): number {
 
 /** Authenticated, explicit re-import for long copied portal emails missed by an earlier collector. */
 export async function importBlueCrossMessages(email: unknown, messageIds: unknown, apply: unknown = false,
-  overrides: Partial<Pick<CollectionDependencies, "credentials" | "accessToken" | "gmail" | "source">> = {}) {
+  overrides: Partial<Pick<CollectionDependencies, "credentials" | "accessToken" | "gmail" | "source">> & { signal?: AbortSignal; beforeApply?: () => Promise<void> } = {}) {
   if (typeof email !== "string" || !Array.isArray(messageIds) || messageIds.length < 1 || messageIds.length > 10
     || messageIds.some(id => typeof id !== "string" || !/^[a-f0-9]{8,40}$/i.test(id)) || typeof apply !== "boolean") throw new Error("Provide a connected account, 1–10 Gmail message IDs, and a boolean apply flag.");
   if (busy) throw new Error("Invoice collection is already running.");
@@ -614,8 +614,10 @@ export async function importBlueCrossMessages(email: unknown, messageIds: unknow
     const session = await source.open(account);
     const imported: Invoice[] = [];
     const reports = [];
+    overrides.signal?.throwIfAborted();
     for (const id of [...new Set(messageIds as string[])]) {
       const mail = normalizeMail(await session.read<RawMail>( `messages/${encodeURIComponent(id)}?format=full`));
+      overrides.signal?.throwIfAborted();
       if (!mail.blueCrossExport) throw new Error("Message does not contain a supported Blue Cross claims table. Nothing was imported.");
       imported.push(...blueCrossInvoices(mail, account.email.toLowerCase(), account.label));
       reports.push({ messageId: id, rows: mail.blueCrossExport.rows.length, pagePaid: mail.blueCrossExport.pagePaid,
@@ -627,6 +629,7 @@ export async function importBlueCrossMessages(email: unknown, messageIds: unknow
     const added = [...unique, ...recovered].filter(item => !state.items.some(current => current.Id === item.Id)).length;
     let backup: string | undefined;
     if (apply) await edit(async () => {
+      overrides.signal?.throwIfAborted(); await overrides.beforeApply?.(); overrides.signal?.throwIfAborted();
       backup = `invoices.pre-bluecross-${Date.now()}-${randomUUID()}.json`;
       await atomicJson(join(dataDirectory, backup), state);
       mergeBlueCross(unique);

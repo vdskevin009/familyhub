@@ -49,6 +49,18 @@ test('paired plugin routes expose configured source and exact cached originals w
   const cachedBroken=await call(path,{headers});assert.equal(cachedBroken.status,200);assert.deepEqual(Buffer.from(await cachedBroken.arrayBuffer()),bytes);
   const brokenPrepare=await call(path+'/prepare',{method:'POST',headers:{...headers,'Content-Type':'application/json'},body:JSON.stringify({requestId:'request_2'})});assert.ok([200,202].includes(brokenPrepare.status));
   for(let i=0;i<30;i++){status=await(await call(path+'/preparations/request_2',{headers})).json();if(status.status!=='pending')break;await new Promise(r=>setTimeout(r,10));}assert.equal(status.status,'ready');
+  assert.ok((await(await call('/health',{headers})).json()).capabilities.includes('bluecross-import-jobs-v1'));
+  const bc='/invoices/import-bluecross',intent={email,messageIds:['abcdef123456'],apply:false};
+  assert.equal((await call(bc,{method:'POST',body:JSON.stringify(intent)})).status,401);
+  assert.equal((await call(bc,{method:'POST',headers:{...headers,Origin:'https://evil.example'},body:JSON.stringify(intent)})).status,403);
+  const needsId=await call(bc,{method:'POST',headers,body:JSON.stringify(intent)});assert.equal(needsId.status,428);assert.equal((await needsId.json()).preparationRequired,true);
+  await assert.rejects(readFile(join(directory,'bluecross-import-jobs.json')));
+  const accepted=await call(bc,{method:'POST',headers,body:JSON.stringify({...intent,requestId:'bluecross_1'})});assert.equal(accepted.status,202);
+  assert.equal((await call(bc+'/jobs/bluecross_1')).status,401);assert.equal((await call(bc+'/jobs/bluecross_1/cancel',{method:'POST'})).status,401);
+  let importStatus;for(let i=0;i<30;i++){importStatus=await(await call(bc+'/jobs/bluecross_1',{headers})).json();if(importStatus.status!=='running')break;await new Promise(r=>setTimeout(r,10));}assert.equal(importStatus.status,'failed');
+  assert.equal((await(await call(bc,{method:'POST',headers,body:JSON.stringify({...intent,requestId:'bluecross_1'})})).json()).status,'failed');
+  assert.equal((await call(bc,{method:'POST',headers,body:JSON.stringify({...intent,apply:true,requestId:'bluecross_1'})})).status,400);
+  assert.equal(await readFile(join(directory,'invoices.json'),'utf8'),ledgerBeforeFailure);
   assert.doesNotMatch(logs,/link_synthetic|SYNTHETIC original/);
  }finally{child.kill();await ended;await rm(directory,{recursive:true,force:true});}
 });

@@ -1,3 +1,4 @@
+import { BlueCrossImportJobs } from "./bluecross-import-jobs.js";
 import { AttachmentPreparations, OriginalPreparationRequiredError } from "./attachment-preparation.js";
 import { MailCollectionRuntime } from "./mail-collection-runtime.js";
 import { automaticInsurerPaymentsEnabled, automaticInsurerCollectionRequested } from "./insurer-payment-intake.js";
@@ -127,7 +128,7 @@ const originalPreparations = new AttachmentPreparations({
   load: (id, attachmentId, signal) => invoiceAttachment(id, attachmentId, { signal })
 });
 const collectInvoices = () => mailRuntime.collectInvoices();
-const importBlueCrossMessages = (email: unknown, messageIds: unknown, apply: unknown) => mailRuntime.importBlueCross(email, messageIds, apply);
+const blueCrossImportJobs = new BlueCrossImportJobs({ directory: stateDir, run: (intent, options) => mailRuntime.importBlueCross(intent.email, intent.messageIds, intent.apply, options) });
 const groceryPlanning = new GroceryPlanningStore(join(stateDir, "groceries"), () => groceryStore.list());
 const groceryPurchaseResolution = new GroceryPurchaseResolutionStore(join(stateDir, "groceries"), () => groceryStore.list(), () => groceryPlanning.read());
 const groceryResearch = new GroceryResearch(join(stateDir, "groceries"));
@@ -602,8 +603,14 @@ const server = createServer(async (request, response) => {
         json(response, 200, { saved: true }, origin); return;
       }
       if (request.method === "POST" && parts.length === 2 && parts[1] === "import-bluecross") {
-        const body = await readJson<{ email?: unknown; messageIds?: unknown; apply?: unknown }>(request);
-        json(response, 200, await importBlueCrossMessages(body.email, body.messageIds, body.apply ?? false), origin); return;
+        const body = await readJson<{ requestId?: unknown; email?: unknown; messageIds?: unknown; apply?: unknown }>(request);
+        if (typeof body.requestId !== "string") { json(response, 428, { preparationRequired: true, capability: "bluecross-import-jobs-v1", error: "Provide a unique requestId and explicit apply flag, then poll this request. No import was started." }, origin); return; }
+        const job = await blueCrossImportJobs.start(body.requestId, { email: body.email as string, messageIds: body.messageIds as string[], apply: body.apply as boolean });
+        json(response, job.status === "running" || job.status === "applying" ? 202 : 200, job, origin); return;
+      }
+      if (parts[1] === "import-bluecross" && parts[2] === "jobs") {
+        if (request.method === "GET" && parts.length === 4) { json(response, 200, await blueCrossImportJobs.status(parts[3]), origin); return; }
+        if (request.method === "POST" && parts.length === 5 && parts[4] === "cancel") { json(response, 200, await blueCrossImportJobs.cancel(parts[3]), origin); return; }
       }
       if (request.method === "GET" && parts.length === 1) {
         json(response, 200, await invoiceSnapshot(), origin); return;
@@ -651,7 +658,7 @@ const server = createServer(async (request, response) => {
       }
     }
     if (request.method === "GET" && parts.length === 1 && parts[0] === "health") {
-      json(response, 200, { status: "ok", codex: "sdk-ready", version, capabilities: ["attachment-preparation-v1", "grocery-purchase-four-retailers-v1", "grocery-purchase-estimates-v1", "grocery-purchase-resolution-v1", "household-events-v1", "opportunity-actions-v1", "notification-lifecycle-v1", "insurance-reference-v1", "mortgage-evidence-v1", "mortgage-contacts-v1", "mortgage-assistant-v1", "grocery-collection-v1", "grocery-source-type-v1", "grocery-fulfillment-v1", "grocery-comparison-evidence-v1", "grocery-source-estimates-v1", "grocery-receipts-v1", "grocery-planning-v1", "grocery-weekly-v1", groceryExpandedListCapability] }, origin);
+      json(response, 200, { status: "ok", codex: "sdk-ready", version, capabilities: ["bluecross-import-jobs-v1", "attachment-preparation-v1", "grocery-purchase-four-retailers-v1", "grocery-purchase-estimates-v1", "grocery-purchase-resolution-v1", "household-events-v1", "opportunity-actions-v1", "notification-lifecycle-v1", "insurance-reference-v1", "mortgage-evidence-v1", "mortgage-contacts-v1", "mortgage-assistant-v1", "grocery-collection-v1", "grocery-source-type-v1", "grocery-fulfillment-v1", "grocery-comparison-evidence-v1", "grocery-source-estimates-v1", "grocery-receipts-v1", "grocery-planning-v1", "grocery-weekly-v1", groceryExpandedListCapability] }, origin);
       return;
     }
 

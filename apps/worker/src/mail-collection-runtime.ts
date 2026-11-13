@@ -160,15 +160,16 @@ export class MailCollectionRuntime {
     return { ...current, busy: !!this.active || current.busy, lastAttempt: attempt?.lastAttempt || current.lastAttempt,
       ...(attempt?.error || this.policyError ? { incomplete: true, error: "gmail-unavailable" as const } : {}) };
   }
-  async importBlueCross(email: unknown, messageIds: unknown, apply: unknown) {
+  async importBlueCross(email: unknown, messageIds: unknown, apply: unknown, options: { signal?: AbortSignal; onApplying?: () => Promise<void> } = {}) {
     if (typeof email !== "string" || !Array.isArray(messageIds) || !messageIds.length || messageIds.length > 10 || messageIds.some(id => typeof id !== "string" || !/^[a-f0-9]{8,40}$/i.test(id)) || typeof apply !== "boolean") throw new Error("Provide an exact account and bounded source message IDs.");
     return this.run("bluecross", async (signal, applying) => {
       const policy = await this.policy();
-      if (policy.mode === "legacy") { applying(); return (this.deps.importBlueCross || importBlueCrossMessages)(email, messageIds, apply); }
+      const beforeApply = async () => { await this.unchanged(policy, signal); await options.onApplying?.(); signal.throwIfAborted(); applying(); };
+      if (policy.mode === "legacy") return (this.deps.importBlueCross || importBlueCrossMessages)(email, messageIds, apply, { signal, beforeApply });
       const account = policy.accounts.find(a => a.email === email.toLowerCase()); if (!account) throw new Error("Source account is not configured for the Gmail plugin.");
-      const batch = await this.batch(account, [], messageIds, signal); await this.unchanged(policy, signal); await this.cacheBatch(batch, signal); await this.unchanged(policy, signal); applying();
-      return (this.deps.importBlueCross || importBlueCrossMessages)(email, messageIds, apply, { source: preparedPluginMailSource([{ account, batch }]) });
-    });
+      const batch = await this.batch(account, [], messageIds, signal); await this.unchanged(policy, signal); await this.cacheBatch(batch, signal); await this.unchanged(policy, signal);
+      return (this.deps.importBlueCross || importBlueCrossMessages)(email, messageIds, apply, { source: preparedPluginMailSource([{ account, batch }]), signal, beforeApply });
+    }, options.signal);
   }
   async attachment(expected: MailAttachmentSource, options: { signal?: AbortSignal; cacheOnly?: boolean } = {}): Promise<Buffer | undefined> {
     options.signal?.throwIfAborted(); await this.ready;
