@@ -2,6 +2,7 @@ import { access, mkdir, readFile, unlink, rmdir, writeFile } from "node:fs/promi
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import type { Page } from "playwright";
+import { blueCrossPageCategory } from "./bluecross-page-category.js";
 import { atomicJson, dataDirectory, loadPrivate } from "./private-store.js";
 import { eligibleLoginRecovery, parseLoginRecoveryRequest, reserveLoginRecovery, type LoginRecoveryRequest } from "./portal-login-recovery.js";
 
@@ -92,7 +93,7 @@ export function classifyLoginScreen(text: string): LoginReason | undefined {
 // UI values are never returned or logged. The exact HTTPS origins and observed form types
 // are checked before every fill and the single submit. No password-reset or MFA action exists.
 export type LoginPhase = "checking-form" | "transmission-starting" | "filling-username" | "filling-password" | "submitting" | "awaiting-history" | "authenticated" | "retry-blocked";
-export type LoginDiagnostic = { version: 1; originalFailure?: LoginFailure; originalFailureUnavailable?: boolean; observedAt: string; phase: LoginPhase; errorKind?: "timeout" | "form-changed" | "browser-error"; reason?: LoginReason; location: "login-form" | "insurer-portal" | "other"; passwordVisible: boolean; challengeVisible: boolean; landingHost: string; browserError: boolean };
+export type LoginDiagnostic = { version: 1; pageCategory?: string; originalFailure?: LoginFailure; originalFailureUnavailable?: boolean; observedAt: string; phase: LoginPhase; errorKind?: "timeout" | "form-changed" | "browser-error"; reason?: LoginReason; location: "login-form" | "insurer-portal" | "other"; passwordVisible: boolean; challengeVisible: boolean; landingHost: string; browserError: boolean };
 
 /** An explicit proof from a read-only preflight, never inferred from missing logs. */
 class PortalLoginPreflightError extends Error {
@@ -156,7 +157,7 @@ const defaults: LoginDependencies = {
   reserveRecovery: reserveLoginRecovery
 };
 /** One attempt only; latch before ANY credential fill. Ordinary retries never rearm a stop. Caller owns profile lock. */
-export async function tryPortalLogin(page: Page, insurer: Insurer, ready: () => Promise<boolean>, deps: LoginDependencies = defaults, recovery?: LoginRecoveryRequest, currentPage?: () => Page): Promise<LoginReason | undefined> {
+export async function tryPortalLogin(page: Page, insurer: Insurer, ready: () => Promise<boolean>, deps: LoginDependencies = defaults, recovery?: LoginRecoveryRequest, currentPage?: () => Page, onLoginSubmitted?: () => void): Promise<LoginReason | undefined> {
   const isReady = async () => {
     const result = await ready();
     if (currentPage) page = currentPage();
@@ -180,6 +181,7 @@ export async function tryPortalLogin(page: Page, insurer: Insurer, ready: () => 
       try { portal = new URL(page.url()).origin === (insurer === "desjardins" ? "https://www.agea-gbim.dsf-dfs.com" : "https://service.pac.bluecross.ca"); } catch {}
       const visible = async (selector: string) => page.locator(selector).first().isVisible().catch(() => false);
       await deps.diagnose(insurer, { version: 1, observedAt: new Date(deps.now()).toISOString(), phase, reason, errorKind, landingHost, browserError,
+        ...(insurer === "bluecross" ? { pageCategory: blueCrossPageCategory(page.url()) } : {}),
         ...(originalFailure ? { originalFailure } : {}), ...(originalFailureUnavailable ? { originalFailureUnavailable: true } : {}),
         location: allowedLoginUrl(insurer, page.url()) ? "login-form" : portal ? "insurer-portal" : "other",
         passwordVisible: await visible(insurer === "desjardins" ? "#Password" : "#password"),
@@ -242,6 +244,7 @@ export async function tryPortalLogin(page: Page, insurer: Insurer, ready: () => 
     // Missing instrumentation never proves absence of transmission.
     if (!boundaryStarted) throw new Error("Login boundary was not recorded.");
     credentials = undefined;
+    onLoginSubmitted?.();
     phase = "awaiting-history";
     const deadline = deps.now() + 30_000;
     while (deps.now() < deadline) {

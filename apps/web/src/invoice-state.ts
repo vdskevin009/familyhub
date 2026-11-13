@@ -369,7 +369,9 @@ export function secondaryReimbursementAmount(item: ReconciliationCase): number |
 export function namedInsurerReimbursementAmount(item: ReconciliationCase, insurer: "Desjardins" | "Blue Cross",
   itemsById?: ReadonlyMap<string, ReimbursementItem>): number | null {
   const explicit = insurer === "Desjardins" ? item.DesjardinsReimbursedAmount : item.BlueCrossReimbursedAmount;
-  if (explicit != null) return explicit;
+  // Explicit null means no known insurer amount, not a legacy calculation zero.
+  const field = insurer === "Desjardins" ? "DesjardinsReimbursedAmount" : "BlueCrossReimbursedAmount";
+  if (field in item) return explicit ?? null;
   if (item.PrimaryInsurer === insurer && "PrimaryReimbursedAmount" in item) return item.PrimaryReimbursedAmount ?? null;
   if (item.SecondaryInsurer === insurer && "SecondaryReimbursedAmount" in item) return item.SecondaryReimbursedAmount ?? null;
   if (!itemsById) return null;

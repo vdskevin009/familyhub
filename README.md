@@ -107,6 +107,8 @@ In FamilyHub open **Other → Settings & tools → Local AI**, enter the reachab
 
 The worker defaults to localhost only. Do not bind it directly to a public interface. To use it from a phone, expose it only through a private HTTPS route you control (for example an existing private VPN/remote-network setup) and keep the pairing key enabled. The worker never needs to be reachable by GitHub Pages itself outside the browser session.
 
+**Without Tailscale:** [Optional stable ngrok Free HTTPS tunnel](docs/STABLE-TUNNEL-NGROK.md) is available as a separately consented operator setup. The free assigned hostname remains stable, but ngrok is *public internet ingress*, not a private VPN. It requires an existing running localhost worker, the original pairing key, an exact allowed origin and a user-configured ngrok account. No public tunnel is started, scheduled or deployed by the GitHub Pages build; keep sensitive data privacy and the free-tier quota in mind.
+
 Environment overrides:
 
 ```text

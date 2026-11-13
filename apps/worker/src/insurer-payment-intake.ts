@@ -28,7 +28,8 @@ export function validatedNewInsurerPayments(existing: Invoice[], collection: Col
     && ["Kevin", "Jasmine", "Nathan"].includes(item.Member) && !!item.ServiceDate && calendarDate(item.ServiceDate) === item.ServiceDate
     && !!item.ClaimedService?.trim() && item.PortalClaimStatus !== "pended"
     && typeof item.BilledAmount === "number" && Number.isFinite(item.BilledAmount) && item.BilledAmount > 0
-    && typeof item.ReimbursedAmount === "number" && Number.isFinite(item.ReimbursedAmount) && item.ReimbursedAmount > 0
+    // A recorded zero is insurer evidence; an absent/pending amount is not.
+    && typeof item.ReimbursedAmount === "number" && Number.isFinite(item.ReimbursedAmount) && item.ReimbursedAmount >= 0
     && item.ReimbursedAmount <= item.BilledAmount);
 }
 

@@ -1,4 +1,5 @@
 import type { WorkerConfig } from "./types";
+import { workerRequestHeaders } from "./worker-transport";
 import type { GroceryLibrary, GroceryRecord, GroceryReceipt } from "../../worker/src/grocery-model";
 export type UploadSource = { name: string; type: string; data: string };
 export type SourceBytes = UploadSource & { hash: string; size: number };
@@ -12,7 +13,7 @@ export async function groceryRequest<T>(config: WorkerConfig, path: string, body
   }
   let response: Response;
   try { response = await fetch(config.Endpoint.replace(/\/$/, "") + path, { method: body === undefined ? "GET" : "POST",
-    headers: { "Content-Type": "application/json", "x-familyhub-key": config.ApiKey.trim() }, body: body === undefined ? undefined : JSON.stringify(body), signal: AbortSignal.timeout(120_000), cache: "no-store", redirect: "error" }); }
+    headers: workerRequestHeaders(config), body: body === undefined ? undefined : JSON.stringify(body), signal: AbortSignal.timeout(120_000), cache: "no-store", redirect: "error" }); }
   catch { throw new Error("PC inaccessible ou résultat inconnu. Vos sources et corrections locales sont conservées. Actualisez les tickets avant de réessayer."); }
   if (!response.ok) { const error = await response.json().catch(() => ({})); throw new Error(error.error || "Action Courses indisponible."); }
   return response.json();

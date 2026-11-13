@@ -1,4 +1,5 @@
 import { AgentReview, CleanupSuggestion, ReconciliationCase, ReimbursementItem, ReimbursementWorkflowStatus, ResearchWatch, UnmatchedReimbursement, WorkerConfig, WorkerTask, WorkerTaskType } from "./types";
+import { workerRequestHeaders } from "./worker-transport";
 import type { PublicBaseline, SavingsJob } from "./savings";
 import type { SavingsContract } from "./savings";
 import type { SharedLibrary, SharedDocument } from "../../worker/src/savings-sharing-model";
@@ -119,10 +120,7 @@ function endpoint(config: WorkerConfig, path: string): string {
 
 function headers(config: WorkerConfig): HeadersInit {
   if (!config.ApiKey.trim()) throw new Error("Enter the worker pairing key.");
-  return {
-    "Content-Type": "application/json",
-    "x-familyhub-key": config.ApiKey.trim()
-  };
+  return workerRequestHeaders(config);
 }
 
 async function request<T>(config: WorkerConfig, path: string, init: RequestInit = {}, timeoutMs = 30_000): Promise<T> {
