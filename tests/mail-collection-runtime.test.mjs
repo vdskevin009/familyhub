@@ -70,3 +70,11 @@ test('grocery and on-demand originals reject changed source policy before cache 
  assert.equal(f.calls.length,0);await assert.rejects(createMailAttachmentCache(join(f.directory,'mail-attachments')).readSource(expected));
  }
 });
+
+
+test('unnamed binary originals are cached before apply with empty filename and no invented ledger attachment',async t=>{
+ let captured;const f=await setup(t,{runner:async request=>{const value=batch(request,true);value.messages[0].payload.parts[1].filename='';value.messages[0].payload.parts[1].mimeType='image/png';captured=value;return value;}});
+ const source={...expected,filename:'',mimeType:'image/png',size:Buffer.from('ORIGINAL generic binary\0\u0001').length};let applied=false;
+ f.deps.collectInvoices=async()=>{const cache=createMailAttachmentCache(join(f.directory,'mail-attachments'));assert.equal((await cache.lookup(source)).filename,'');assert.equal((await cache.readSource(source)).length,source.size);const {normalizeMail}=await import('../apps/worker/dist/gmail-client.js');assert.deepEqual(normalizeMail(captured.messages[0]).attachments,[]);applied=true;};
+ await f.runtime.collectInvoices();assert.equal(applied,true);assert.deepEqual(await createMailAttachmentCache(join(f.directory,'mail-attachments')).readSource(source),Buffer.from('ORIGINAL generic binary\0\u0001'));
+});

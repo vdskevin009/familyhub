@@ -97,8 +97,10 @@ function validateMail(value: unknown, attachments: Map<string, AttachmentData>, 
     if (body.data !== undefined) bytes(body.data, body.size);
     if (body.attachmentId !== undefined) {
       check(attachmentId(body.attachmentId) && body.data === undefined);
-      // External text bodies are not consumed by current parsers: do not silently omit them.
-      check(typeof part.filename === "string" && part.filename.length > 0);
+      // Unnamed binary originals remain source assets, never invented invoice attachments.
+      // Unresolved external text/multipart bodies are still unsafe for current parsers.
+      check(typeof part.filename === "string" && (part.filename.length > 0 || (/^[a-z0-9!#$&^_.+-]+\/[a-z0-9!#$&^_.+-]+$/i.test(part.mimeType)
+        && !/^(?:text|multipart)\//i.test(part.mimeType) && (part.parts === undefined || Array.isArray(part.parts) && part.parts.length === 0))));
       if (requireAttachments) {
         const attachment = attachments.get(attachmentKey(value.id as string, body.attachmentId));
         check(attachment && attachment.size === body.size);

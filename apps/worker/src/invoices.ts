@@ -878,6 +878,7 @@ export async function collectInvoices(overrides: Partial<CollectionDependencies>
         const plannedAt = dependencies.plans?.find(plan => plan.account === key)?.at;
         const planningTime = () => plannedAt ?? Math.floor(dependencies.now().getTime() / 1000);
         if (dependencies.source) progress.transport = "plugin-batch";
+        else delete progress.transport; // Safe no-cursor rollback: newly created cursors belong to direct Gmail.
         const session = await source.open(account);
         const token = ""; // Legacy helper parameter only; source sessions own authorization.
         const callGmail: typeof gmail = async <T>(_token: string, path: string) => session.read<T>(path);

@@ -108,7 +108,7 @@ export class MailCollectionRuntime {
         signal.throwIfAborted();
         if (part.body?.attachmentId) {
           const original = originals.get(JSON.stringify([message.id, part.body.attachmentId]));
-          if (!original || !part.filename || !part.mimeType) throw new Error("Original attachment evidence is incomplete.");
+          if (!original || typeof part.filename !== "string" || !part.mimeType) throw new Error("Original attachment evidence is incomplete.");
           const expected = { account: batch.account, messageId: message.id, attachmentId: part.body.attachmentId, filename: part.filename, mimeType: part.mimeType, size: original.size };
           await cache.save(expected, { ...expected, bytes: Buffer.from(original.data, "base64url") });
         }

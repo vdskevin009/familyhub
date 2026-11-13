@@ -21,6 +21,7 @@ function validate(source: MailAttachmentSource): void {
     || typeof source.filename !== "string" || source.filename.length > 255 || source.filename.includes("\0")
     || typeof source.mimeType !== "string" || source.mimeType.length > 255
     || !/^[a-z0-9!#$&^_.+-]+\/[a-z0-9!#$&^_.+-]+$/i.test(source.mimeType)
+    || source.filename === "" && /^text\//i.test(source.mimeType)
     || !Number.isSafeInteger(source.size) || source.size < 0 || source.size > MAX_MAIL_ATTACHMENT_BYTES) throw invalid();
 }
 function match(expected: MailAttachmentSource, actual: MailAttachmentSource): void {

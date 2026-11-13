@@ -30,6 +30,8 @@ function check(v: unknown, code: GmailPluginFailureCode = "invalid_evidence"): a
 const object = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
 const mailId = (v: unknown): v is string => typeof v === "string" && /^[A-Za-z0-9_-]{1,200}$/.test(v);
 const MAX_OUTPUT = 64_000_000, MAX_ATTACHMENT = 20_000_000, MAX_MESSAGES = 200, MAX_PAGES = 20;
+const unnamedAsset = (filename: unknown, mime: unknown): boolean => filename === "" && typeof mime === "string"
+  && /^[a-zA-Z0-9!#$&^_.+-]+\/[a-zA-Z0-9!#$&^_.+-]+$/.test(mime) && !/^(?:text|multipart)\//i.test(mime);
 // Verified installed Gmail metadata. Explicit false overrides any saved per-tool enablement.
 const gmailTools = ["apply_labels_to_emails", "archive_emails", "batch_modify_email", "batch_read_email", "batch_read_email_threads",
   "bulk_label_matching_emails", "create_draft", "create_label", "delete_emails", "forward_emails", "get_profile", "list_drafts",
@@ -144,7 +146,7 @@ export function validateGmailAttachmentEvidence(call: GmailPluginCall): void {
   const proof = call.attachmentEvidence;
   check(proof && proof.fromTool === "batch_read_email" && proof.linkId === call.arguments.link_id
     && proof.messageId === call.arguments.message_id && proof.attachmentId === call.arguments.attachment_id
-    && proof.readAttachmentSupported === true && typeof proof.filename === "string" && proof.filename.length > 0 && proof.filename.length <= 255
+    && proof.readAttachmentSupported === true && typeof proof.filename === "string" && (proof.filename.length > 0 || unnamedAsset(proof.filename, proof.mimeType)) && proof.filename.length <= 255
     && typeof proof.mimeType === "string" && proof.mimeType.length > 0 && proof.mimeType.length <= 200
     && Number.isSafeInteger(proof.sizeBytes) && proof.sizeBytes > 0 && proof.sizeBytes <= MAX_ATTACHMENT, "unsupported_attachment");
 }
@@ -299,7 +301,8 @@ function references(message: Record<string, unknown>): AttachmentReference[] {
     check(object(part) && object(part.body) && depth <= 12);
     if (part.body.attachment_id != null) {
       check(part.read_attachment_supported === true && typeof part.body.attachment_id === "string" && part.body.attachment_id.length <= 1500
-        && typeof part.filename === "string" && !!part.filename && typeof part.mime_type === "string"
+        && typeof part.filename === "string" && (part.filename.length > 0 || unnamedAsset(part.filename, part.mime_type)) && typeof part.mime_type === "string"
+        && (part.filename !== "" || part.parts == null || (Array.isArray(part.parts) && part.parts.length === 0))
         && Number.isSafeInteger(part.body.size) && Number(part.body.size) > 0 && Number(part.body.size) <= MAX_ATTACHMENT, "unsupported_attachment");
       result.push({ messageId: String(message.id), attachmentId: part.body.attachment_id, filename: part.filename, mime: part.mime_type, size: Number(part.body.size) });
     }

@@ -158,6 +158,7 @@ export class GroceryCollection {
             try { return await session.read<T>(path); } catch (error) { throw new CollectionFailure(error instanceof MailAuthorizationError ? "authorization-unavailable" : "gmail-unavailable"); }
           };
           if (deps.source) progress.transport = "plugin-batch";
+          else delete progress.transport; // Safe no-cursor rollback: newly created cursors belong to direct Gmail.
           if (!progress.window) {
             const at = deps.plans?.find(plan => plan.account === key)?.at ?? Math.floor(deps.now().getTime() / 1000);
             progress.window = groceryWindow(progress, at);

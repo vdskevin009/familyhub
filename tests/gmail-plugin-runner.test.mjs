@@ -138,6 +138,29 @@ test('attachment calls require exact validated parent provenance, never arbitrar
     const c=structuredClone(call);mutate(c);assert.throws(()=>validateGmailAttachmentEvidence(c));
   }
 });
+test('unnamed non-text originals retain empty source filenames and exact bytes',async()=>{
+  const m=withAttachment(),a=attachment();
+  m.payload.parts[1].filename='';m.payload.parts[1].mime_type='image/png';
+  a.filename='';a.mime_type='image/png';a.file_uri.file_name='';a.file_uri.mime_type='image/png';
+  const bytes=Buffer.from([137,80,78,71,13,10,26,10]);
+  const batch=await collectGmailPluginBatch({account,linkId,queries:[],messageIds:['message1']},{invoke:async call=>{
+    if(call.tool==='batch_read_email')return{responses:[m]};
+    validateGmailAttachmentEvidence(call);assert.equal(call.attachmentEvidence.filename,'');return a;
+  },download:async()=>bytes});
+  assert.equal(batch.messages[0].payload.parts[1].filename,'');
+  assert.deepEqual(Buffer.from(batch.attachments[0].data,'base64url'),bytes);
+});
+test('unnamed text, multipart, malformed MIME and non-leaf assets fail before original reads',async()=>{
+  for(const mime of ['text/plain','TEXT/HTML','multipart/related','MULTIPART/MIXED','invalid','image/png']){
+    const m=withAttachment();m.payload.parts[1].filename='';m.payload.parts[1].mime_type=mime;
+    if(mime==='image/png')m.payload.parts[1].parts=[message().payload];
+    let attachments=0;
+    await assert.rejects(collectGmailPluginBatch({account,linkId,queries:[],messageIds:['message1']},{invoke:async call=>{
+      if(call.tool==='batch_read_email')return{responses:[m]};attachments++;return attachment();
+    },download:async()=>Buffer.from('%PDF-123')}));
+    assert.equal(attachments,0);
+  }
+});
 for (const [name, response] of [
   ['omitted terminal field', {message_ids:[]}],
   ['undefined terminal field', {message_ids:[],next_page_token:undefined}],

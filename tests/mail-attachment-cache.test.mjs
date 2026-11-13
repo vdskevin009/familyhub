@@ -160,3 +160,45 @@ test("save and missing-cache failures do not use a network fallback", async () =
     assert.equal(requests, 0);
   } finally { globalThis.fetch = original; }
 });
+
+for (const mimeType of ["image/png", "application/octet-stream"]) test(`unnamed ${mimeType} originals retain empty identity across restart`, async () => {
+  const { directory, cache } = await fixture();
+  const expected = source({ filename: "", mimeType });
+  const reference = await save(cache, expected);
+  assert.equal(reference.filename, "");
+  assert.deepEqual(await cache.lookup(expected), reference);
+  assert.deepEqual(await cache.read(reference, expected), bytes);
+  const restarted = createMailAttachmentCache(directory);
+  assert.deepEqual(await restarted.lookup(expected), reference);
+  assert.deepEqual(await restarted.readSource(expected), bytes);
+  assert.ok((await readdir(directory)).every(name => /^[a-f0-9]{64}\.(bin|source.json)$/.test(name)));
+});
+
+test("unnamed originals cannot be relabeled, cross-account substituted or replaced", async () => {
+  const { cache } = await fixture();
+  const expected = source({ filename: "", mimeType: "image/png" });
+  const reference = await save(cache, expected);
+  for (const patch of [{ filename: "invented.png" }, { mimeType: "image/jpeg" }, { account: "other@example.test" }]) {
+    await assert.rejects(cache.read(reference, { ...expected, ...patch }));
+    await assert.rejects(cache.readSource({ ...expected, ...patch }));
+    await assert.rejects(cache.save(expected, { ...expected, ...patch, bytes }));
+  }
+  await assert.rejects(save(cache, { ...expected, filename: "invented.png" }), /conflict/);
+  const changed = Buffer.from(bytes); changed[0]++;
+  await assert.rejects(save(cache, expected, changed), /conflict/);
+  assert.deepEqual(await cache.readSource(expected), bytes);
+});
+
+test("unnamed text originals are rejected without writes; named text stays supported", async () => {
+  const { directory, cache } = await fixture();
+  for (const mimeType of ["text/plain", "text/html", "TEXT/CSV"]) {
+    const expected = source({ filename: "", mimeType });
+    await assert.rejects(save(cache, expected), /Invalid mail attachment/);
+    await assert.rejects(cache.lookup(expected), /Invalid mail attachment/);
+    await assert.rejects(cache.readSource(expected), /Invalid mail attachment/);
+  }
+  assert.deepEqual(await readdir(directory), []);
+  const named = source({ filename: "original.txt", mimeType: "text/plain" });
+  await save(cache, named);
+  assert.deepEqual(await cache.readSource(named), bytes);
+});

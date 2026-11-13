@@ -178,3 +178,14 @@ test("cyclic page chains and result duplication across pages cannot certify comp
     { messageIds: ["abcdef123456"], nextPageToken: "next" },
     { pageToken: "next", messageIds: ["abcdef123456"] }]);
 });
+
+
+test('unnamed non-text external originals preserve exact identity without inventing invoice attachments',async()=>{
+ const input=plugin(),original=Buffer.from([137,80,78,71,13,10,26,10]),attachmentId='A'.repeat(404),text=input.payload;
+ input.payload={mime_type:'multipart/related',filename:'',headers:text.headers,body:{size:0,content:null,base64_url_content:null,attachment_id:null},parts:[{...text,headers:[]},{mime_type:'image/png',filename:'',headers:[],body:{size:original.length,content:null,base64_url_content:null,attachment_id:attachmentId},read_attachment_supported:true,parts:null}]};
+ const raw=pluginMessageToRawMail(input);assert.equal(raw.payload.parts[1].filename,'');assert.deepEqual(normalizeMail(raw).attachments,[]);assert.equal(normalizeMail(raw).text,normalizeMail(pluginMessageToRawMail(plugin())).text);
+ const b={...batch(),messages:[raw],attachments:[{messageId:raw.id,attachmentId,size:original.length,data:original.toString('base64url')}]};const transport=createPluginBatchTransport(b,account);
+ const result=await transport.gmail(transport.token,'messages/'+raw.id+'/attachments/'+attachmentId);assert.deepEqual(Buffer.from(result.data,'base64url'),original);
+ for(const mime of ['text/html','TEXT/PLAIN','multipart/mixed','invalid']){const bad=structuredClone(input);bad.payload.parts[1].mime_type=mime;assert.throws(()=>pluginMessageToRawMail(bad));}
+ const missing=structuredClone(b);missing.attachments=[];assert.throws(()=>createPluginBatchTransport(missing,account));
+});

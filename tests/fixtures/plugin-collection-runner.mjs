@@ -57,6 +57,22 @@ await collectInvoices({...deps,source:sourceFor(partial,[],pages),plans:[partial
 saved=JSON.parse(await readFile(path,'utf8'));assert.equal(saved.accounts[account.email].window.page,'plugin3');assert.equal(saved.accounts[account.email].through,at+7200);
 const resume=invoiceCollectionPlan(account.email,at+14400);await collectInvoices({...deps,source:sourceFor(resume,[],pages),plans:[resume]});
 saved=JSON.parse(await readFile(path,'utf8'));assert.equal(saved.accounts[account.email].window,undefined);assert.equal(saved.accounts[account.email].through,at+10800);
+// Explicit no-cursor rollback clears plugin provenance before creating/resuming legacy pagination.
+const manualBeforeRollback=JSON.stringify(saved.items);
+let legacyCalls=[];
+const legacy={...deps,now:()=>new Date((at+20000)*1000),credentials:async()=>({accounts:[{...account,clientId:'synthetic',clientSecret:'synthetic',refreshToken:'synthetic'}]}),accessToken:async()=> 'synthetic',gmail:async(_token,path)=>{const page=new URL(path,'https://synthetic.invalid/').searchParams.get('pageToken');legacyCalls.push(page);return page==='legacy3'?{messages:[]}:{messages:[],nextPageToken:page==='legacy2'?'legacy3':'legacy2'};}};
+await collectInvoices(legacy);saved=JSON.parse(await readFile(path,'utf8'));
+assert.equal(saved.accounts[account.email].transport,undefined);assert.equal(saved.accounts[account.email].window.page,'legacy3');
+assert.equal(JSON.stringify(saved.items),manualBeforeRollback);
+await collectInvoices(legacy);saved=JSON.parse(await readFile(path,'utf8'));
+assert.deepEqual(legacyCalls,[null,'legacy2','legacy3']);assert.equal(saved.accounts[account.email].window,undefined);assert.equal(saved.accounts[account.email].through,at+20000);assert.equal(saved.accounts[account.email].transport,undefined);
+assert.equal(JSON.stringify(saved.items),manualBeforeRollback);
+// Unnamed binary originals stay exact source assets, not invented invoice attachment rows.
+const unnamedPlan=invoiceCollectionPlan(account.email,at+21000),unnamedId='f00d1234',original=Buffer.from([137,80,78,71,13,10,26,10]),unnamed=raw(unnamedId);
+unnamed.payload={mimeType:'multipart/related',filename:'',headers:unnamed.payload.headers,body:{size:0},parts:[{...unnamed.payload,headers:[]},{mimeType:'image/png',filename:'',headers:[],body:{size:original.length,attachmentId:'unnamed_original'}}]};
+const unnamedSource=preparedPluginMailSource([{account,batch:{schema:1,account:account.email,messages:[unnamed],attachments:[{messageId:unnamedId,attachmentId:'unnamed_original',size:original.length,data:original.toString('base64url')}],queries:[query(unnamedPlan.incremental,[unnamedId])]}}]);
+await collectInvoices({...deps,source:unnamedSource,plans:[unnamedPlan]});saved=JSON.parse(await readFile(path,'utf8'));
+assert.deepEqual(saved.items.find(item=>item.SourceMessageId===unnamedId).Attachments,[]);assert.equal(JSON.stringify(saved.items.filter(item=>item.SourceMessageId!==unnamedId)),manualBeforeRollback);
 // A cursor without plugin provenance is not assumed compatible.
 saved.accounts[account.email].window={after:at,before:at+18000,page:'oauth'};delete saved.accounts[account.email].transport;
 await writeFile(path,JSON.stringify(saved));await initializeInvoices(true);

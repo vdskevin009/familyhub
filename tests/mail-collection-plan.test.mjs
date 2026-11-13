@@ -80,3 +80,13 @@ test('grocery state changed during asynchronous source preflight is not overwrit
  await assert.rejects(new GroceryCollection(d,store,{...base,source:changed,plans:[plan]}).collect());
  assert.equal(await readFile(path,'utf8'),concurrent);
 });
+
+
+test('completed plugin grocery coverage can explicitly roll back to partial legacy pages then resume them',async t=>{
+ const d=await directory(t),clock=()=>new Date(at*1000),base={credentials:forbidden,accessToken:forbidden,gmail:forbidden,now:clock};
+ const first=await new GroceryCollection(d,store,base).plan(account.email,at);await new GroceryCollection(d,store,{...base,source:source(first),plans:[first]}).collect();
+ const p=join(d,'collection-status.json');let saved=JSON.parse(await readFile(p,'utf8'));assert.equal(saved.accounts[account.email].transport,'plugin-batch');assert.equal(saved.accounts[account.email].window,undefined);
+ const calls=[],legacy={now:()=>new Date((at+300)*1000),maxPages:1,credentials:async()=>({accounts:[{...account,clientId:'synthetic',clientSecret:'synthetic',refreshToken:'synthetic'}]}),accessToken:async()=> 'synthetic',gmail:async(_token,path)=>{const page=new URL(path,'https://synthetic.invalid/').searchParams.get('pageToken');calls.push(page);return page?{messages:[]}:{messages:[],nextPageToken:'legacy2'};}};
+ let status=await new GroceryCollection(d,store,legacy).collect();saved=JSON.parse(await readFile(p,'utf8'));assert.equal(status.incomplete,true);assert.equal(saved.accounts[account.email].transport,undefined);assert.equal(saved.accounts[account.email].window.page,'legacy2');assert.equal(saved.accounts[account.email].through,at);
+ status=await new GroceryCollection(d,store,legacy).collect();saved=JSON.parse(await readFile(p,'utf8'));assert.equal(status.incomplete,false);assert.deepEqual(calls,[null,'legacy2']);assert.equal(saved.accounts[account.email].transport,undefined);assert.equal(saved.accounts[account.email].through,at+300);assert.equal(saved.accounts[account.email].window,undefined);
+});
