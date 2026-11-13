@@ -1,5 +1,10 @@
 # FamilyHub architecture
 
+## Gmail plugin batch foundation (FH-MAIL-008)
+
+The pure, currently unconnected gmail-plugin-batch module converts the observed full plugin MIME format and preflights exact complete query chains, same-account identities and original attachment bytes before exposing an in-memory GmailCall. There is no credential loading, Google fallback, network, intake route or coverage write. Internal collectors now share exact immutable query builders and accept an explicit account-only source with stale-plan preflight; the default direct source and classifiers remain unchanged. Optional transport provenance prevents mixing legacy and plugin cursors. A standalone immutable attachment cache is not yet wired to intake/downloads. Production selection remains unchanged. Orchestration, attachment persistence and all-consumer cutover gates are documented in [GMAIL-PLUGIN-MIGRATION.md](GMAIL-PLUGIN-MIGRATION.md).
+
+
 ## Purchase comparison resolution (FH-GROCERY-012)
 
 Authenticated `GET/POST /groceries/purchase-resolution` owns a separate atomic, revision-checked sidecar with immutable candidates and reversible confirmation decisions. React projects confirmed physical formats into comparison calculations while retaining original receipt data and existing price/quantity/locality guards. The existing scanner reconciles exact explicit source product references; it never guesses an identity from a name or price, refreshes old evidence dates or makes a retailer request. Source references are additive, and legacy line keys remain stable when absent. See `requirements/FH-GROCERY-012.md`.

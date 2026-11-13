@@ -1,5 +1,10 @@
 # FamilyHub - Canonical Requirements
 
+## Gmail plugin migration - FH-MAIL-008
+
+In progress. Replace the requested account's Gmail retrieval through the connected plugin while preserving invoices, Important Mail, emailed Blue Cross tables, groceries, original attachments, history/coverage, source identities, deduplication and manual decisions. The local batch transport, MIME converter, immutable plans and typed collector source injection are foundation only, with synthetic stale-plan/manual-authority/cursor tests. A generic immutable attachment cache is standalone. No production selection, route, schedule or credential flow changes. Full orchestration, attachment persistence, source parity, browser fallback and cutover remain pending. See [scope, limits and acceptance gates](docs/GMAIL-PLUGIN-MIGRATION.md).
+
+
 ## Compact purchase comparison and four retailers - FH-GROCERY-014 (#155)
 
 Testing. Show only qualified amount, coverage/estimated count and incomplete state directly on cards, with “Plus d’infos” opening the accessible detail modal. Extend evidenced comparisons to Fresh St. Market and Save-On-Foods alongside Walmart/Costco for historical purchases and future imports. Retain provenance, quantity assumptions, unit/pack distinctions and source/locality limits; unpriced leads never inflate coverage. See `docs/requirements/FH-GROCERY-014.md`. This supersedes verbose card presentation while preserving FH-GROCERY-013 calculation and evidence rules.

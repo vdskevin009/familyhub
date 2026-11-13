@@ -1,5 +1,10 @@
 # FamilyHub
 
+## Gmail plugin migration foundation
+
+A local batch adapter, immutable query plans and typed internal source injection preserve full plugin MIME for reuse of existing collectors, with a standalone original-byte cache. It does not switch Gmail collection or schedules. See [scope and remaining gates](docs/GMAIL-PLUGIN-MIGRATION.md).
+
+
 ## Proactive mobile home
 
 Achats explains incomplete comparisons and opens each blocked line. Dated product/format candidates can be inspected, explicitly confirmed for that purchase and reversed without rewriting the receipt. Exact source references can reuse fresh confirmed formats through the existing scanner; unknown identity and stale prices remain unresolved. See [purchase resolution rules and acceptance](docs/requirements/FH-GROCERY-012.md).

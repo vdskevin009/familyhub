@@ -1,3 +1,5 @@
+import { legacyMailSource, type MailSource, type MailAccount } from "./mail-source.js";
+import { invoiceHistoryStart, invoiceHistoryVersion, healthReceiptRepairVersion, invoiceWindow, historyWindow, incrementalRequest, repairRequest, historyRequest, needsInvoiceUpgrade, upgradeCandidates, retryCandidates, planInvoiceMail, type InvoiceProgress, type InvoiceMailPlan } from "./mail-collection-plan.js";
 import { validatedNewInsurerPayments } from "./insurer-payment-intake.js";
 import type { LoginReason } from "./portal-login.js";
 import { automaticReplacement, hasManualAuthority, manualReasons, sourceIdentity } from "./ingestion-policy.js";
@@ -29,13 +31,9 @@ export function applyLearnedClassification(extracted: Classification, rule?: Cor
   if (!rule || extracted.transaction && ["ignore", "marketing"].includes(rule.kind)) return extracted;
   return { ...extracted, kind: rule.kind, reason: `${extracted.reason} Prior category correction applied.` };
 }
-export const invoiceHistoryStart = Math.floor(Date.parse("2025-06-01T00:00:00-07:00") / 1000) - 1;
-export const invoiceHistoryVersion = 1;
-export const healthReceiptRepairVersion = 4;
-const invoiceSignals = '{receipt invoice facture reçu recu reimbursement remboursement claim statement "payment confirmation" "amount due" "explanation of benefits" "blue cross" "croix bleue" desjardins has:attachment}';
-const invoiceExclusions = '-in:spam -in:trash -in:sent -in:drafts -from:notifications@github.com';
-type AccountProgress = { through?: number; window?: Window; error?: string; lastSuccess?: string; healthReceiptRepairVersion?: number; healthReceiptRepairPage?: string; healthReceiptRepairTargetVersion?: number;
-  invoiceHistoryVersion?: number; invoiceHistoryWindow?: Window; invoiceHistoryThrough?: number; invoiceHistoryExamined?: number };
+export { invoiceHistoryStart, invoiceHistoryVersion, healthReceiptRepairVersion } from "./mail-collection-plan.js";
+type AccountProgress = InvoiceProgress;
+
 type Decision = { id: string; itemId: string; type: "classification" | "status"; before: Partial<Invoice>; after: Partial<Invoice>; at: string; undoneAt?: string; correctionBefore?: Correction };
 type UnmatchedDecision = { reimbursementId: string; decision: "ignored"; at: string; reason: UnmatchedReimbursement["Reason"] | "manual-source-ignore" };
 type State = { reconciliationIssues?: { Version: 1; Cases: Array<{ ExpenseDocumentId: string; Reasons: string[] }>; Unmatched: UnmatchedReimbursement[] }; items: Invoice[]; confirmedServiceDates?: ServiceDateConfirmations; corrections: Correction[]; decisions: Decision[]; matchDecisions: MatchDecision[]; unmatchedDecisions: UnmatchedDecision[]; workflowRecords: ReimbursementWorkflowRecord[]; reviews: AgentReview[]; accounts: Record<string, AccountProgress>; lastAttempt?: string; lastSuccess?: string; error?: string };
@@ -812,36 +810,66 @@ export async function importConnectorMessage(input: unknown, apply: unknown = fa
   } finally { busy = false; }
 }
 
-type CollectionDependencies = { credentials: typeof credentials; accessToken: typeof accessToken; gmail: typeof gmail; classify: typeof classify; historicalClassify: typeof classifyHistorical; reviewer: Reviewer };
+/** Read-only current-state plan; no file write, source open, or credential refresh. */
+export function invoiceCollectionPlan(email: string, at = Math.floor(Date.now() / 1000)) {
+  return planInvoiceMail(state.accounts[email.toLowerCase()] || {}, state.items, email.toLowerCase(), at);
+}
+
+type CollectionDependencies = { plans?: readonly InvoiceMailPlan[]; source?: MailSource; now: () => Date; credentials: typeof credentials; accessToken: typeof accessToken; gmail: typeof gmail; classify: typeof classify; historicalClassify: typeof classifyHistorical; reviewer: Reviewer };
 export async function collectInvoices(overrides: Partial<CollectionDependencies> = {}): Promise<void> {
   if (busy || blueCrossBusy || desjardinsBusy) throw new Error("An insurer or invoice collection is already running.");
   busy = true;
-  const dependencies: CollectionDependencies = { credentials, accessToken, gmail, classify, historicalClassify: classifyHistorical, reviewer: codexReviewer, ...overrides };
+  const dependencies: CollectionDependencies = { credentials, accessToken, gmail, classify, historicalClassify: classifyHistorical, reviewer: codexReviewer, now: () => new Date(), ...overrides };
+  const source = dependencies.source || legacyMailSource(dependencies, () => dependencies.now().getTime());
+  let accounts: MailAccount[];
+  // Prepared source plans must still match current state BEFORE any attempt/error/checkpoint write.
   try {
-    await edit(() => { state.lastAttempt = new Date().toISOString(); state.error = undefined; });
-    const accounts = (await dependencies.credentials()).accounts;
+    accounts = await source.accounts();
     if (!accounts.length) throw new Error("Connect at least one Gmail account on the PC.");
+    if (dependencies.source) {
+      if (source.transport !== "plugin-batch" || !dependencies.plans || dependencies.plans.length !== accounts.length) throw new Error("Prepared collection requires exact current plans.");
+      for (const account of accounts) {
+        const key = account.email.toLowerCase(), plans = dependencies.plans.filter(plan => plan.account === key);
+        if (plans.length !== 1 || JSON.stringify(plans[0]) !== JSON.stringify(invoiceCollectionPlan(key, plans[0].at))) throw new Error("Prepared invoice plan is stale; no state was changed.");
+        if (!source.preflight) throw new Error("Prepared source preflight is required.");
+        const plan = plans[0];
+        await source.preflight(account, [plan.incremental.path, ...(plan.repair ? [plan.repair.request.path] : []), ...(plan.history ? [plan.history.request.path] : []), ...new Set([...plan.upgradeMessageIds, ...plan.retryMessageIds].map(id => `messages/${encodeURIComponent(id)}?format=full`))]);
+        const progress = state.accounts[key];
+        if (progress?.transport !== "plugin-batch" && (progress?.window?.page || progress?.invoiceHistoryWindow?.page || progress?.healthReceiptRepairPage)) throw new Error("Existing Gmail cursor belongs to another transport; explicit migration is required.");
+      }
+    }
+  } catch (error) {
+    try { if (!dependencies.source) await edit(() => { state.lastAttempt = dependencies.now().toISOString(); state.error = error instanceof Error ? error.message : "Collection failed."; }); }
+    finally { busy = false; }
+    throw error;
+  }
+  let attempted = false;
+  try {
+    await edit(() => {
+      if (dependencies.source && dependencies.plans!.some(plan => JSON.stringify(plan) !== JSON.stringify(invoiceCollectionPlan(plan.account, plan.at)))) throw new Error("Prepared invoice plan changed before application.");
+      attempted = true;
+      state.lastAttempt = dependencies.now().toISOString(); state.error = undefined;
+    });
     let complete = true;
     for (const account of accounts) {
       const key = account.email.toLowerCase();
       const progress = state.accounts[key] ||= {};
       try {
-        let token = await dependencies.accessToken(account);
-        let tokenAt = Date.now();
-        const callGmail: typeof gmail = async (pathToken, path) => {
-          if (Date.now() - tokenAt > 50 * 60_000) { token = await dependencies.accessToken(account); tokenAt = Date.now(); }
-          return dependencies.gmail(token, path);
-        };
+        if (!dependencies.source && progress.transport === "plugin-batch" && (progress.window?.page || progress.invoiceHistoryWindow?.page || progress.healthReceiptRepairPage)) throw new Error("Prepared source cursor cannot be resumed through direct Gmail.");
+        const plannedAt = dependencies.plans?.find(plan => plan.account === key)?.at;
+        const planningTime = () => plannedAt ?? Math.floor(dependencies.now().getTime() / 1000);
+        if (dependencies.source) progress.transport = "plugin-batch";
+        const session = await source.open(account);
+        const token = ""; // Legacy helper parameter only; source sessions own authorization.
+        const callGmail: typeof gmail = async <T>(_token: string, path: string) => session.read<T>(path);
         // Frozen scan window + pagination resumes an interrupted/backlogged run without advancing the watermark prematurely.
         if (!progress.window) await edit(() => {
-          const now = Math.floor(Date.now() / 1000);
-          progress.window = { after: Math.max(0, (progress.through || now - 30 * 86400) - 2 * 86400), before: now };
+          progress.window = invoiceWindow(progress, planningTime());
         });
         const window = progress.window!;
-        let retryBudget = 10;
         const processMessage = async (id: string, retry = false, repair = false, historical = false, amountRepair = false) => {
           const existing = state.items.find(x => x.Id === recordId(key, id));
-          const needsUpgrade = existing && (existing.AnalysisVersion !== 4 || !existing.DocumentRole || !existing.Member || !("BilledAmount" in existing));
+          const needsUpgrade = existing && needsInvoiceUpgrade(existing);
           const repairKnownExpense = Boolean(amountRepair && existing && existing.Category === 0 && existing.DocumentRole === "expense" && existing.Status !== 4);
           if (existing && hasManualAuthority(existing)) return;
           if (existing?.CorrectedAt && !needsUpgrade && !repairKnownExpense) return;
@@ -882,22 +910,15 @@ export async function collectInvoices(overrides: Partial<CollectionDependencies>
             } else state.items.push(item);
           });
         };
-        let upgradeBudget = 25;
-        for (const item of progress.invoiceHistoryVersion === invoiceHistoryVersion ? [...state.items] : []) {
-          if (item.AccountEmail === key && item.SourceMessageId && !item.StructuredSource && (item.AnalysisVersion !== 4 || !item.DocumentRole || !item.Member || !("BilledAmount" in item)) && upgradeBudget-- > 0) await processMessage(item.SourceMessageId, true);
-        }
-        for (const item of progress.invoiceHistoryVersion === invoiceHistoryVersion ? [...state.items] : []) {
-          if (item.AccountEmail === key && item.ClassificationSource === "unavailable" && !item.CorrectedAt && retryBudget-- > 0) await processMessage(item.SourceMessageId, true);
-        }
+        for (const item of progress.invoiceHistoryVersion === invoiceHistoryVersion ? upgradeCandidates([...state.items], key) : []) await processMessage(item.SourceMessageId, true);
+        for (const item of progress.invoiceHistoryVersion === invoiceHistoryVersion ? retryCandidates([...state.items], key) : []) await processMessage(item.SourceMessageId, true);
         for (let pages = 0; pages < 2; pages++) {
-          const q = `after:${window.after} before:${window.before} {receipt invoice facture reçu recu reimbursement remboursement claim statement has:attachment "payment confirmation" "amount due" "booking confirmation" "reservation confirmation" "explanation of benefits" "renewal notice" "blue cross" "croix bleue" desjardins "security alert" "new sign-in" "password changed" "action required" "response required" "account limited" "temporary limitations" "action requise" "réponse requise"} ${invoiceExclusions}`;
-          const params = new URLSearchParams({ q, maxResults: "50", ...(window.page ? { pageToken: window.page } : {}) });
-          const list = await callGmail<{ messages?: { id: string }[]; nextPageToken?: string }>(token, `messages?${params}`);
+          const list = await callGmail<{ messages?: { id: string }[]; nextPageToken?: string }>(token, incrementalRequest(window).path);
           for (const { id } of list.messages || []) await processMessage(id);
           await edit(() => {
             progress.error = undefined;
             if (list.nextPageToken) window.page = list.nextPageToken;
-            else { progress.through = window.before; progress.window = undefined; progress.lastSuccess = new Date().toISOString(); }
+            else { progress.through = window.before; progress.window = undefined; progress.lastSuccess = dependencies.now().toISOString(); }
           });
           if (!list.nextPageToken) break;
         }
@@ -908,11 +929,8 @@ export async function collectInvoices(overrides: Partial<CollectionDependencies>
             progress.healthReceiptRepairPage = undefined;
             progress.healthReceiptRepairTargetVersion = healthReceiptRepairVersion;
           });
-          const after = invoiceHistoryStart;
           for (let pages = 0; pages < 2; pages++) {
-            const params = new URLSearchParams({ q: `after:${after} subject:"Your Receipt" -in:trash -in:spam`, maxResults: "50",
-              ...(progress.healthReceiptRepairPage ? { pageToken: progress.healthReceiptRepairPage } : {}) });
-            const list = await callGmail<{ messages?: { id: string }[]; nextPageToken?: string }>(token, `messages?${params}`);
+            const list = await callGmail<{ messages?: { id: string }[]; nextPageToken?: string }>(token, repairRequest(progress.healthReceiptRepairPage).path);
             for (const { id } of list.messages || []) await processMessage(id, false, true, true, true);
             await edit(() => {
               progress.healthReceiptRepairPage = list.nextPageToken;
@@ -926,14 +944,12 @@ export async function collectInvoices(overrides: Partial<CollectionDependencies>
         // attachment-only messages are included; coverage means query completion, not eligibility.
         if (progress.invoiceHistoryVersion !== invoiceHistoryVersion && !progress.window) {
           if (!progress.invoiceHistoryWindow) await edit(() => {
-            progress.invoiceHistoryWindow = { after: invoiceHistoryStart, before: Math.floor(Date.now() / 1000) };
+            progress.invoiceHistoryWindow = historyWindow(progress, planningTime());
             progress.invoiceHistoryExamined = 0;
           });
           const history = progress.invoiceHistoryWindow!;
           for (let pages = 0; pages < 2; pages++) {
-            const params = new URLSearchParams({ q: `after:${history.after} before:${history.before} ${invoiceSignals} ${invoiceExclusions}`,
-              maxResults: "50", ...(history.page ? { pageToken: history.page } : {}) });
-            const list = await callGmail<{ messages?: { id: string }[]; nextPageToken?: string }>(token, `messages?${params}`);
+            const list = await callGmail<{ messages?: { id: string }[]; nextPageToken?: string }>(token, historyRequest(history).path);
             for (const { id } of list.messages || []) await processMessage(id, false, true, true);
             await edit(() => {
               progress.invoiceHistoryExamined = (progress.invoiceHistoryExamined || 0) + (list.messages?.length || 0);
@@ -950,7 +966,7 @@ export async function collectInvoices(overrides: Partial<CollectionDependencies>
       }
     }
     await edit(() => {
-      if (complete) state.lastSuccess = new Date().toISOString();
+      if (complete) state.lastSuccess = dependencies.now().toISOString();
       else state.error = "Some accounts are incomplete. Check account status; the next run resumes unfinished work.";
     });
     // The collector indexes evidence; the reconciler remains deterministic. The reviewer only
@@ -958,6 +974,7 @@ export async function collectInvoices(overrides: Partial<CollectionDependencies>
     const reviews = complete ? await reviewReconciliations(state.items.filter(item => !item.IgnoredAt), state.reviews, dependencies.reviewer, 10, state.matchDecisions) : state.reviews;
     await edit(() => { state.reviews = reviews; });
   } catch (error) {
+    if (dependencies.source && !attempted) throw error;
     await edit(() => { state.error = error instanceof Error ? error.message : "Collection failed."; });
     throw error;
   } finally { busy = false; }
