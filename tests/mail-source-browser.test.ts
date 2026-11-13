@@ -163,6 +163,32 @@ test("daily source mode comparison happens before collection and never auto-rest
   assert.ok(!source.includes("Stop-Process"));
 });
 
+test("cancelling original retrieval prevents all later Drive requests", async t => {
+  storage(t); await connect(t);
+  const controller = new AbortController(); let calls = 0;
+  t.mock.method(globalThis, "fetch", async () => { calls++; throw new Error("no Drive action after cancel"); });
+  await assert.rejects(googleBridge.archiveFirstAttachment(item, "Synthetic", async () => { controller.abort(); return original; }, controller.signal));
+  assert.equal(calls, 0);
+});
+
+test("cancellation between Drive folder reads prevents further folders and upload", async t => {
+  storage(t); await connect(t);
+  const controller = new AbortController(); let calls = 0;
+  t.mock.method(globalThis, "fetch", async () => { calls++; controller.abort(); return Response.json({ files: [{ id: "synthetic-folder" }] }); });
+  await assert.rejects(googleBridge.archiveFirstAttachment(item, "Unique cancellation root", async () => original, controller.signal));
+  assert.equal(calls, 1);
+});
+test("cancelled Drive folder response cannot schedule a retry or upload", async t => {
+  storage(t); await connect(t);
+  const controller = new AbortController(); let calls = 0;
+  fixture(t, "window", { setTimeout: (callback: () => void) => setTimeout(callback, 0) });
+  t.mock.method(globalThis, "fetch", async () => {
+    calls++; controller.abort();
+    return Response.json({ error: { message: "rate limited" } }, { status: 429 });
+  });
+  await assert.rejects(googleBridge.archiveFirstAttachment(item, "Unique retry cancellation root", async () => original, controller.signal));
+  assert.equal(calls, 1);
+});
 test("paired invoice data remains readable with a warning under get, parse and set failures; browser mail stays blocked", async t => {
   await connect(t, item.AccountEmail, false);
   for (const failure of ["get", "parse", "set"]) {

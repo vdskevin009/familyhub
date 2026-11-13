@@ -6,6 +6,7 @@ import { isAbsolute } from "node:path";
 import { stat } from "node:fs/promises";
 import { privateCodexBinary } from "./private-codex.js";
 import { createPluginBatchTransport, pluginMessageToRawMail, type PluginBatch } from "./gmail-plugin-batch.js";
+import type { MailAttachmentSource } from "./mail-attachment-cache.js";
 
 const APP = "connector_2128aebfecb84f64a069897515042a44";
 export type GmailReadTool = "get_profile" | "search_email_ids" | "batch_read_email" | "read_attachment";
@@ -256,12 +257,17 @@ export async function invokeGmailPlugin(call: GmailPluginCall, signal: AbortSign
   return result;
 }
 
-/** Only the exact original-file host verified by a live download is admitted. No redirects or arbitrary URLs. */
+/** Platform-allowed original storage family, confirmed by actual regional plugin results. No redirects or arbitrary URLs. */
 export function validatedGmailFileUrl(input: unknown): string {
   check(typeof input === "string" && input.length <= 16_000);
   let url: URL;
   try { url = new URL(input); } catch { return fail("unsupported_original_host"); }
-  check(url.protocol === "https:" && url.hostname === "sdmntprwestus3.oaiusercontent.com" && !url.username && !url.password
+  // Require an ASCII authority as well as a canonical hostname: URL parsing must not normalize Unicode lookalikes into an allowed host.
+  const authority = /^https:\/\/([^/?#]+)/i.exec(input)?.[1];
+  const label = url.hostname.split(".")[0];
+  check(authority && /^sdmntpr(?:[a-z0-9-]*[a-z0-9])?\.oaiusercontent\.com(?::443)?$/i.test(authority)
+    && url.protocol === "https:" && /^sdmntpr(?:[a-z0-9-]*[a-z0-9])?\.oaiusercontent\.com$/.test(url.hostname)
+    && label.length <= 63 && !url.username && !url.password
     && !url.hash && (!url.port || url.port === "443"), "unsupported_original_host");
   return url.href;
 }
@@ -309,6 +315,53 @@ function references(message: Record<string, unknown>): AttachmentReference[] {
     if (part.parts != null) { check(Array.isArray(part.parts)); for (const child of part.parts) walk(child, depth + 1); }
   };
   walk(message.payload, 0); check(result.length <= 30); return result;
+}
+
+/** Fetch one ledger-bound original, without claiming message or query coverage. Unrelated body content is not interpreted. */
+export async function collectGmailPluginOriginal(input: { account: string; linkId: string; expected: MailAttachmentSource }, options: GmailPluginRunnerOptions = {}): Promise<Buffer> {
+  check(Buffer.byteLength(JSON.stringify(input)) <= 8000);
+  const { account, linkId, expected } = structuredClone(input);
+  check(typeof account === "string" && account.length <= 320 && account === account.toLowerCase() && /^[^\s@]+@[^\s@]+$/.test(account)
+    && typeof linkId === "string" && /^link_[A-Za-z0-9_-]{1,100}$/.test(linkId) && object(expected)
+    && expected.account === account && mailId(expected.messageId)
+    && typeof expected.attachmentId === "string" && /^[A-Za-z0-9_-]{1,1500}$/.test(expected.attachmentId)
+    && typeof expected.filename === "string" && expected.filename.length <= 255 && !expected.filename.includes("\0")
+    && typeof expected.mimeType === "string" && expected.mimeType.length <= 200
+    && /^[a-z0-9!#$&^_.+-]+\/[a-z0-9!#$&^_.+-]+$/i.test(expected.mimeType) && !/^multipart\//i.test(expected.mimeType)
+    && (expected.filename !== "" || unnamedAsset(expected.filename, expected.mimeType))
+    && Number.isSafeInteger(expected.size) && expected.size > 0 && expected.size <= MAX_ATTACHMENT);
+  const signal = AbortSignal.any([...(options.signal ? [options.signal] : []), AbortSignal.timeout(300_000)]);
+  const invoke = options.invoke || invokeGmailPlugin, download = options.download || downloadGmailOriginal;
+  let evidenceBytes = 0;
+  const call = async (tool: GmailReadTool, args: Record<string, unknown>, attachmentEvidence?: GmailAttachmentEvidence) => {
+    check(!signal.aborted, "timeout_or_cancelled");
+    const value = await invoke(Object.freeze({ tool, arguments: Object.freeze({ link_id: linkId, ...args }),
+      ...(attachmentEvidence ? { attachmentEvidence: Object.freeze(attachmentEvidence) } : {}) }), signal);
+    signal.throwIfAborted(); const serialized = JSON.stringify(value); check(typeof serialized === "string");
+    evidenceBytes += Buffer.byteLength(serialized); check(evidenceBytes <= MAX_OUTPUT, "budget_exceeded"); return payload(value);
+  };
+  const profile = await call("get_profile", {});
+  check(typeof profile.email === "string" && profile.email.toLowerCase() === account, "profile_mismatch");
+  const parent = await call("batch_read_email", { message_ids: [expected.messageId] });
+  check(Array.isArray(parent.responses) && parent.responses.length === 1 && object(parent.responses[0]) && parent.responses[0].id === expected.messageId);
+  const matches: Record<string, unknown>[] = []; let partCount = 0;
+  const walk = (part: unknown, depth: number) => {
+    check(object(part) && depth <= 12 && ++partCount <= 200);
+    if (object(part.body) && part.body.attachment_id === expected.attachmentId) matches.push(part);
+    if (part.parts !== undefined && part.parts !== null) { check(Array.isArray(part.parts)); for (const child of part.parts) walk(child, depth + 1); }
+  };
+  walk(parent.responses[0].payload, 0);
+  check(matches.length === 1); const target = matches[0];
+  check(target.filename === expected.filename && target.mime_type === expected.mimeType && object(target.body) && target.body.size === expected.size
+    && target.read_attachment_supported === true && (target.parts == null || (Array.isArray(target.parts) && target.parts.length === 0)), "unsupported_attachment");
+  const result = await call("read_attachment", { message_id: expected.messageId, attachment_id: expected.attachmentId },
+    { fromTool: "batch_read_email", linkId, messageId: expected.messageId, attachmentId: expected.attachmentId,
+      filename: expected.filename, mimeType: expected.mimeType, sizeBytes: expected.size, readAttachmentSupported: true });
+  check(result.message_id === expected.messageId && result.attachment_id === expected.attachmentId && result.filename === expected.filename
+    && result.size_bytes === expected.size && result.mime_type === expected.mimeType && object(result.file_uri)
+    && result.file_uri.mime_type === expected.mimeType && result.file_uri.file_name === expected.filename);
+  const bytes = await download(validatedGmailFileUrl(result.file_uri.download_url), expected.size, signal); signal.throwIfAborted();
+  check(Buffer.isBuffer(bytes) && bytes.length === expected.size); return bytes;
 }
 
 /** Whole bounded source snapshot, in memory. Any missing page, body or original bytes rejects the entire batch. */

@@ -1,3 +1,4 @@
+import { OriginalPreparationRequiredError } from "./attachment-preparation.js";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { atomicJson, dataDirectory } from "./private-store.js";
@@ -11,11 +12,13 @@ import type { GroceryCollection } from "./grocery-collection.js";
 import type { RawMail } from "./gmail-client.js";
 export type PluginRetrievalRequest = { account: string; linkId: string; queries: readonly { q: string; maxResults: number }[]; messageIds?: readonly string[] };
 export type PluginBatchRunner = (request: PluginRetrievalRequest, options: { signal: AbortSignal }) => Promise<PluginBatch>;
+export type PluginOriginalRequest = { account: string; linkId: string; expected: MailAttachmentSource };
+export type PluginOriginalRunner = (request: PluginOriginalRequest, options: { signal: AbortSignal }) => Promise<Buffer>;
 type Domain = "invoices" | "groceries" | "attachment" | "bluecross";
 type Attempt = { lastAttempt?: string; error?: string };
 type RuntimeState = { schema: 1; running?: Domain; attempts: Partial<Record<Domain, Attempt>> };
 type Dependencies = {
-  directory?: string; grocery: GroceryCollection; runner?: PluginBatchRunner; timeoutMs?: number;
+  directory?: string; grocery: GroceryCollection; runner?: PluginBatchRunner; originalRunner?: PluginOriginalRunner; timeoutMs?: number;
   now?: () => Date; collectInvoices?: typeof collectInvoices; invoicePlan?: typeof invoiceCollectionPlan;
   importBlueCross?: typeof importBlueCrossMessages; writeStatus?: typeof atomicJson;
 };
@@ -30,9 +33,11 @@ export class MailCollectionRuntime {
   private statusUnreadable = false;
   private now: () => Date;
   private runner: PluginBatchRunner;
+  private originalRunner: PluginOriginalRunner;
   constructor(private deps: Dependencies) {
     this.directory = deps.directory || dataDirectory; this.now = deps.now || (() => new Date());
     this.runner = deps.runner || (async (request, options) => (await import("./gmail-plugin-runner.js")).collectGmailPluginBatch(request, options));
+    this.originalRunner = deps.originalRunner || (async (request, options) => (await import("./gmail-plugin-runner.js")).collectGmailPluginOriginal(request, options));
     this.ready = this.load();
   }
   private async load() {
@@ -68,9 +73,11 @@ export class MailCollectionRuntime {
   /** Cancels retrieval only. An applying collector retains its existing atomic/manual-authority semantics. */
   cancel(): boolean { if (!this.active || this.active.applying) return false; this.active.controller.abort(); return true; }
   private async save() { await (this.deps.writeStatus || atomicJson)(join(this.directory, "mail-runtime-status.json"), this.state); }
-  private async run<T>(domain: Domain, action: (signal: AbortSignal, applying: () => void) => Promise<T>): Promise<T> {
+  private async run<T>(domain: Domain, action: (signal: AbortSignal, applying: () => void) => Promise<T>, externalSignal?: AbortSignal): Promise<T> {
     if (this.active) throw new Error("A mail operation is already running. Read its status before retrying.");
     const active = { domain, controller: new AbortController(), applying: false }; this.active = active;
+    const externalAbort = () => { if (!active.applying) active.controller.abort(); };
+    externalSignal?.addEventListener("abort", externalAbort, { once: true }); if (externalSignal?.aborted) externalAbort();
     const timer = setTimeout(() => { if (!active.applying) active.controller.abort(); }, this.deps.timeoutMs ?? 12 * 60_000); timer.unref();
     let writable = false;
     try {
@@ -85,7 +92,7 @@ export class MailCollectionRuntime {
       this.state.attempts[domain] = { ...this.state.attempts[domain], error: active.applying ? "Mail application did not finish cleanly. Some verified pages may already be saved; inspect current collection status before retrying." : "Mail retrieval did not complete. Collector checkpoints were not advanced by this attempt; inspect source status before retrying." };
       throw new Error(this.state.attempts[domain]!.error);
     } finally {
-      clearTimeout(timer); this.state.running = undefined;
+      clearTimeout(timer); externalSignal?.removeEventListener("abort", externalAbort); this.state.running = undefined;
       try { if (writable) await this.save(); } catch { this.state.attempts[domain] = { ...this.state.attempts[domain], error: "Mail operation status could not be saved. Its result is unverified; inspect current collector state before retrying." }; throw new Error(this.state.attempts[domain]!.error); } finally { this.active = undefined; }
     }
   }
@@ -163,15 +170,19 @@ export class MailCollectionRuntime {
       return (this.deps.importBlueCross || importBlueCrossMessages)(email, messageIds, apply, { source: preparedPluginMailSource([{ account, batch }]) });
     });
   }
-  async attachment(expected: MailAttachmentSource): Promise<Buffer | undefined> {
-    await this.ready; const policy = await this.policy();
+  async attachment(expected: MailAttachmentSource, options: { signal?: AbortSignal; cacheOnly?: boolean } = {}): Promise<Buffer | undefined> {
+    options.signal?.throwIfAborted(); await this.ready;
+    const cache = createMailAttachmentCache(join(this.directory, "mail-attachments"));
+    try { const bytes = await cache.readSource(expected); options.signal?.throwIfAborted(); return bytes; } catch { /* Missing/corrupt original can only be retrieved from its exact configured source. */ }
+    options.signal?.throwIfAborted(); const policy = await this.policy();
     if (policy.mode === "legacy") return undefined;
     const account = policy.accounts.find(a => a.email === expected.account); if (!account) throw new Error("Source account is not configured for the Gmail plugin.");
-    const cache = createMailAttachmentCache(join(this.directory, "mail-attachments"));
-    try { return await cache.readSource(expected); } catch { /* Missing/corrupt original can only be retrieved from its exact configured source. */ }
+    if (options.cacheOnly) throw new OriginalPreparationRequiredError();
     return this.run("attachment", async (signal, applying) => {
-      const batch = await this.batch(account, [], [expected.messageId], signal); await this.unchanged(policy, signal); await this.cacheBatch(batch, signal); await this.unchanged(policy, signal); applying();
+      await this.unchanged(policy, signal);
+      const bytes = await this.originalRunner({ account: account.email, linkId: account.linkId, expected }, { signal });
+      await this.unchanged(policy, signal); await cache.save(expected, { ...expected, bytes }); await this.unchanged(policy, signal); applying();
       return cache.readSource(expected);
-    });
+    }, options.signal);
   }
 }

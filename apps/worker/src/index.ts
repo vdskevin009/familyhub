@@ -1,8 +1,9 @@
+import { AttachmentPreparations, OriginalPreparationRequiredError } from "./attachment-preparation.js";
 import { MailCollectionRuntime } from "./mail-collection-runtime.js";
 import { automaticInsurerPaymentsEnabled, automaticInsurerCollectionRequested } from "./insurer-payment-intake.js";
 import { hasPortalCredentials } from "./portal-login.js";
 import { createServer, IncomingMessage, ServerResponse } from "node:http";
-import { randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
+import { createHash, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -36,7 +37,7 @@ import { confirmedGovernmentReimbursement, confirmGovernmentReimbursement } from
 import { blueCrossClaimCauseAnswer, confirmBlueCrossClaimCause } from "./bluecross-claim-cause.js";
 import { confirmedInvoicePractitioner, confirmInvoicePractitioner } from "./claim-practitioner-answers.js";
 import { confirmedInvoiceIllness, confirmInvoiceIllness } from "./claim-invoice-answers.js";
-import { initializeInvoices, initializeBlueCrossStatus, getBlueCrossStatus, syncBlueCrossPortal, initializeDesjardinsStatus, getDesjardinsStatus, syncDesjardinsPortal, backfillDesjardinsPayments, invoiceSnapshot, configureInvoiceMailAccess, correctInvoice, updateInvoiceStatus, undoInvoiceDecision, invoiceAttachment, setDocumentsIgnored, setExpenseIgnored, setManualMatch, setMatchDecision, setReimbursementWorkflowStatus, setUnmatchedIgnored } from "./invoices.js";
+import { initializeInvoices, initializeBlueCrossStatus, getBlueCrossStatus, syncBlueCrossPortal, initializeDesjardinsStatus, getDesjardinsStatus, syncDesjardinsPortal, backfillDesjardinsPayments, invoiceSnapshot, configureInvoiceMailAccess, correctInvoice, updateInvoiceStatus, undoInvoiceDecision, invoiceAttachment, invoiceAttachmentIdentity, setDocumentsIgnored, setExpenseIgnored, setManualMatch, setMatchDecision, setReimbursementWorkflowStatus, setUnmatchedIgnored } from "./invoices.js";
 
 type WorkerTaskType = "general" | "meal-plan" | "research" | "financial-review" | "admin-classify";
 type WorkerTask = {
@@ -120,7 +121,11 @@ function scanNotifications() {
 const groceryStore = new GroceryStore(join(stateDir, "groceries"), extractGrocery);
 const groceryCollection = new GroceryCollection(join(stateDir, "groceries"), groceryStore);
 const mailRuntime = new MailCollectionRuntime({ directory: stateDir, grocery: groceryCollection });
-configureInvoiceMailAccess({ accounts: () => mailRuntime.accounts(), status: () => mailRuntime.status(), attachment: source => mailRuntime.attachment(source) });
+configureInvoiceMailAccess({ accounts: () => mailRuntime.accounts(), status: () => mailRuntime.status(), attachment: (source, options) => mailRuntime.attachment(source, options) });
+const originalPreparations = new AttachmentPreparations({
+  resolve: async (id, attachmentId) => { const identity = invoiceAttachmentIdentity(id, attachmentId); return { fingerprint: createHash("sha256").update(JSON.stringify(identity)).digest("hex"), size: identity.size, name: identity.filename }; },
+  load: (id, attachmentId, signal) => invoiceAttachment(id, attachmentId, { signal })
+});
 const collectInvoices = () => mailRuntime.collectInvoices();
 const importBlueCrossMessages = (email: unknown, messageIds: unknown, apply: unknown) => mailRuntime.importBlueCross(email, messageIds, apply);
 const groceryPlanning = new GroceryPlanningStore(join(stateDir, "groceries"), () => groceryStore.list());
@@ -622,8 +627,21 @@ const server = createServer(async (request, response) => {
         const body = await readJson<{ decisionId?: string }>(request);
         json(response, 200, await undoInvoiceDecision(String(body.decisionId || "")), origin); return;
       }
+      if (parts[2] === "attachments" && parts.length >= 5) {
+        const id = parts[1], attachmentId = decodeURIComponent(parts[3]);
+        if (request.method === "POST" && parts.length === 5 && parts[4] === "prepare") {
+          const body = await readJson<{ requestId?: unknown }>(request);
+          if (typeof body.requestId !== "string") throw new Error("An original preparation request ID is required.");
+          const result = await originalPreparations.prepare(body.requestId, id, attachmentId); json(response, result.status === "pending" ? 202 : 200, result, origin); return;
+        }
+        if (parts[4] === "preparations" && parts.length === 6 && request.method === "GET") { json(response, 200, await originalPreparations.status(parts[5], id, attachmentId), origin); return; }
+        if (parts[4] === "preparations" && parts.length === 7 && parts[6] === "cancel" && request.method === "POST") { json(response, 200, originalPreparations.cancel(parts[5], id, attachmentId), origin); return; }
+      }
       if (request.method === "GET" && parts.length === 4 && parts[2] === "attachments") {
-        const file = await invoiceAttachment(parts[1], decodeURIComponent(parts[3]));
+        const requestId = new URL(request.url || "/", "http://familyhub.local").searchParams.get("preparationRequestId");
+        let file;
+        try { file = requestId ? await originalPreparations.read(requestId, parts[1], decodeURIComponent(parts[3])) : await invoiceAttachment(parts[1], decodeURIComponent(parts[3]), { cacheOnly: true }); }
+        catch (error) { if (error instanceof OriginalPreparationRequiredError) { json(response, 409, { preparationRequired: true, error: error.message }, origin); return; } throw error; }
         if (origin) response.setHeader("Access-Control-Allow-Origin", origin);
         response.setHeader("Vary", "Origin"); response.setHeader("Cache-Control", "no-store");
         response.setHeader("Content-Type", "application/octet-stream");
@@ -633,7 +651,7 @@ const server = createServer(async (request, response) => {
       }
     }
     if (request.method === "GET" && parts.length === 1 && parts[0] === "health") {
-      json(response, 200, { status: "ok", codex: "sdk-ready", version, capabilities: ["grocery-purchase-four-retailers-v1", "grocery-purchase-estimates-v1", "grocery-purchase-resolution-v1", "household-events-v1", "opportunity-actions-v1", "notification-lifecycle-v1", "insurance-reference-v1", "mortgage-evidence-v1", "mortgage-contacts-v1", "mortgage-assistant-v1", "grocery-collection-v1", "grocery-source-type-v1", "grocery-fulfillment-v1", "grocery-comparison-evidence-v1", "grocery-source-estimates-v1", "grocery-receipts-v1", "grocery-planning-v1", "grocery-weekly-v1", groceryExpandedListCapability] }, origin);
+      json(response, 200, { status: "ok", codex: "sdk-ready", version, capabilities: ["attachment-preparation-v1", "grocery-purchase-four-retailers-v1", "grocery-purchase-estimates-v1", "grocery-purchase-resolution-v1", "household-events-v1", "opportunity-actions-v1", "notification-lifecycle-v1", "insurance-reference-v1", "mortgage-evidence-v1", "mortgage-contacts-v1", "mortgage-assistant-v1", "grocery-collection-v1", "grocery-source-type-v1", "grocery-fulfillment-v1", "grocery-comparison-evidence-v1", "grocery-source-estimates-v1", "grocery-receipts-v1", "grocery-planning-v1", "grocery-weekly-v1", groceryExpandedListCapability] }, origin);
       return;
     }
 

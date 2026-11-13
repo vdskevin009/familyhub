@@ -29,7 +29,7 @@ import { latestOwnerAdjudications, withOwnerAdjudications, ownerAdjudicationAppl
 export type InvoiceMailAccess = {
   accounts(): Promise<Array<{ email: string; label: string; sourceMode?: "legacy" | "plugin" }>>;
   status(): { busy: boolean; sourceMode: "legacy" | "plugin"; error?: string; lastAttempt?: string };
-  attachment(source: MailAttachmentSource): Promise<Buffer | undefined>;
+  attachment(source: MailAttachmentSource, options?: { signal?: AbortSignal; cacheOnly?: boolean }): Promise<Buffer | undefined>;
 };
 let invoiceMailAccess: InvoiceMailAccess | undefined;
 /** Startup composition only; never exposed as an HTTP or classifier option. */
@@ -1222,15 +1222,21 @@ export async function undoInvoiceDecision(id: string): Promise<Invoice> {
   return result!;
 }
 
-export async function invoiceAttachment(id: string, attachmentId: string, overrides: Partial<Omit<CollectionDependencies, "classify">> = {}) {
+export function invoiceAttachmentIdentity(id: string, attachmentId: string) {
+  const item = state.items.find(x => x.Id === id), attachment = item?.Attachments.find(x => x.Id === attachmentId);
+  if (!item || !attachment) throw new Error("Attachment not found.");
+  return { account: item.AccountEmail, messageId: item.SourceMessageId, attachmentId: attachment.Id, filename: attachment.FileName, mimeType: attachment.MimeType, size: attachment.Size, localSha256: attachment.LocalSha256 };
+}
+export async function invoiceAttachment(id: string, attachmentId: string, overrides: Partial<Omit<CollectionDependencies, "classify">> & { signal?: AbortSignal; cacheOnly?: boolean } = {}) {
+  overrides.signal?.throwIfAborted();
   const dependencies = { credentials, accessToken, gmail, ...overrides };
   const item = state.items.find(x => x.Id === id);
   const attachment = item?.Attachments.find(x => x.Id === attachmentId);
   if (!item || !attachment) throw new Error("Attachment not found.");
-  if (attachment.LocalSha256) return { bytes: await readConnectorFile(attachment.LocalSha256), name: attachment.FileName };
+  if (attachment.LocalSha256) { const bytes = await readConnectorFile(attachment.LocalSha256); overrides.signal?.throwIfAborted(); return { bytes, name: attachment.FileName }; }
   if (attachment.Size > 20_000_000) throw new Error("This attachment exceeds 20 MB. Open the source email instead.");
   if (invoiceMailAccess) {
-    const bytes = await invoiceMailAccess.attachment({ account: item.AccountEmail, messageId: item.SourceMessageId, attachmentId: attachment.Id, filename: attachment.FileName, mimeType: attachment.MimeType, size: attachment.Size });
+    const bytes = await invoiceMailAccess.attachment({ account: item.AccountEmail, messageId: item.SourceMessageId, attachmentId: attachment.Id, filename: attachment.FileName, mimeType: attachment.MimeType, size: attachment.Size }, { signal: overrides.signal, cacheOnly: overrides.cacheOnly });
     if (bytes !== undefined) return { bytes, name: attachment.FileName };
   }
   const account = (await dependencies.credentials()).accounts.find(x => x.email.toLowerCase() === item.AccountEmail);
@@ -1239,6 +1245,7 @@ export async function invoiceAttachment(id: string, attachmentId: string, overri
   const data = await dependencies.gmail<{ data?: string }>(token, `messages/${encodeURIComponent(item.SourceMessageId)}/attachments/${encodeURIComponent(attachment.Id)}`);
   if (!data.data) throw new Error("Google returned no attachment bytes.");
   const bytes = Buffer.from(data.data, "base64url");
+  overrides.signal?.throwIfAborted();
   if (bytes.length > 20_000_000) throw new Error("Attachment exceeds 20 MB.");
   return { bytes, name: attachment.FileName };
 }

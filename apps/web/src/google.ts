@@ -93,6 +93,7 @@ function requireAccount(slot: string): GoogleAccount {
 const sleep = (ms: number) => new Promise(resolve => window.setTimeout(resolve, ms));
 
 async function apiJson<T>(url: string, token: string, init: RequestInit = {}, attempt = 0): Promise<T> {
+  init.signal?.throwIfAborted();
   const response = await fetch(url, {
     ...init,
     headers: { ...(init.headers ?? {}), Authorization: `Bearer ${token}` }
@@ -473,7 +474,8 @@ function escapeDriveQuery(value: string): string {
   return value.replace(/'/g, "\\'");
 }
 
-async function ensureFolder(account: GoogleAccount, name: string, parentId?: string): Promise<string> {
+async function ensureFolder(account: GoogleAccount, name: string, parentId?: string, signal?: AbortSignal): Promise<string> {
+  signal?.throwIfAborted();
   const cacheKey = `${account.email}:${parentId || "root"}:${name}`;
   const cached = folderCache.get(cacheKey);
   if (cached) return cached;
@@ -485,11 +487,12 @@ async function ensureFolder(account: GoogleAccount, name: string, parentId?: str
     parentId ? `'${escapeDriveQuery(parentId)}' in parents` : "'root' in parents"
   ].join(" and ");
   const params = new URLSearchParams({ q: query, spaces: "drive", fields: "files(id,name)", pageSize: "10" });
-  const list = await apiJson<{ files?: Array<{ id: string }> }>(`https://www.googleapis.com/drive/v3/files?${params}`, account.token);
+  const list = await apiJson<{ files?: Array<{ id: string }> }>(`https://www.googleapis.com/drive/v3/files?${params}`, account.token, { signal });
   const existing = list.files?.[0]?.id;
   if (existing) { folderCache.set(cacheKey, existing); return existing; }
 
   const created = await apiJson<{ id: string }>("https://www.googleapis.com/drive/v3/files?fields=id", account.token, {
+    signal,
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -543,7 +546,8 @@ async function uploadFile(account: GoogleAccount, bytes: Uint8Array, fileName: s
   return result.id;
 }
 
-async function archiveFirstAttachment(item: ReimbursementItem, rootName = "FamilyHub", loadOriginal?: () => Promise<Uint8Array>): Promise<{ fileId: string; path: string }> {
+async function archiveFirstAttachment(item: ReimbursementItem, rootName = "FamilyHub", loadOriginal?: () => Promise<Uint8Array>, signal?: AbortSignal): Promise<{ fileId: string; path: string }> {
+  signal?.throwIfAborted();
   const account = requireAccount(item.AccountLabel);
   if (!account.scopes.has(DRIVE_SCOPE)) throw new Error("Google Drive permission was not granted. Reconnect the account and approve Drive access.");
   const attachment = item.Attachments[0];
@@ -553,12 +557,17 @@ async function archiveFirstAttachment(item: ReimbursementItem, rootName = "Famil
   if (item.WorkerManaged && !loadOriginal) throw new Error("Reconnect the paired PC to retrieve this original attachment.");
   // Obtain the exact original before creating any Drive folders. Worker failures never use Gmail fallback.
   const bytes = item.WorkerManaged ? await loadOriginal!() : await attachmentBytes(item.AccountLabel, item.SourceMessageId, attachment.Id, item.AccountEmail);
+  signal?.throwIfAborted();
   if (bytes.byteLength !== attachment.Size || bytes.byteLength > 20_000_000) throw new Error("Original attachment size does not match its source.");
   const segments = archiveSegments(item, rootName.trim() || "FamilyHub");
   let parentId: string | undefined;
-  for (const segment of segments) parentId = await ensureFolder(account, segment, parentId);
+  for (const segment of segments) {
+    signal?.throwIfAborted();
+    parentId = await ensureFolder(account, segment, parentId, signal);
+  }
   if (!parentId) throw new Error("Could not create the Drive archive folder.");
 
+  signal?.throwIfAborted();
   const fileId = await uploadFile(account, bytes, attachment.FileName || "document", attachment.MimeType, parentId, item);
   return { fileId, path: segments.join("/") + "/" + attachment.FileName };
 }

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { collectGmailPluginBatch as realCollect, gmailPluginArguments, gmailPluginEventReader, gmailPluginIsolation, validatedGmailFileUrl, validateGmailAttachmentEvidence } from '../apps/worker/dist/gmail-plugin-runner.js';
+import { collectGmailPluginBatch as realCollect, collectGmailPluginOriginal, gmailPluginArguments, gmailPluginEventReader, gmailPluginIsolation, validatedGmailFileUrl, validateGmailAttachmentEvidence } from '../apps/worker/dist/gmail-plugin-runner.js';
 
 const account = 'synthetic@example.test', linkId = 'link_synthetic';
 // Most scenarios start with an already-correct synthetic profile; binding failures are tested separately below.
@@ -23,6 +23,48 @@ const attachment = () => ({ message_id: 'message1', attachment_id: 'attachment1'
   content: ['EXTRACTED PREVIEW MUST NEVER BE USED'], content_truncated: true,
   file_uri: { download_url: uri, file_id: 'synthetic', mime_type: 'application/pdf', file_name: 'synthetic.pdf' } });
 const expected = { tool: 'search_email_ids', arguments: { link_id: linkId, query: query.q, max_results: 2 } };
+const originalPlan=()=>({account,linkId,expected:{account,messageId:'message1',attachmentId:'attachment1',filename:'synthetic.pdf',mimeType:'application/pdf',size:8}});
+const originalOptions=(parent=withAttachment(),result=attachment(),calls=[])=>({invoke:async call=>{
+  calls.push(call);if(call.tool==='get_profile')return{email:account};
+  if(call.tool==='batch_read_email')return{responses:[parent]};
+  validateGmailAttachmentEvidence(call);return result;
+},download:async()=>Buffer.from('%PDF-123')});
+test('selective original reads exactly its parent and target, ignoring unrelated body formatting and originals',async()=>{
+  const m=withAttachment(),calls=[];m.payload.parts[0].body={content:'unrelated',size:999999};
+  m.payload.parts.push({...m.payload.parts[1],filename:'unrelated.pdf',read_attachment_supported:false,body:{size:8,attachment_id:'unrelated'}});
+  const bytes=await collectGmailPluginOriginal(originalPlan(),originalOptions(m,attachment(),calls));
+  assert.equal(bytes.toString(),'%PDF-123');assert.deepEqual(calls.map(c=>c.tool),['get_profile','batch_read_email','read_attachment']);
+  assert.deepEqual(calls[1].arguments,{link_id:linkId,message_ids:['message1']});
+  assert.deepEqual(calls[2].arguments,{link_id:linkId,message_id:'message1',attachment_id:'attachment1'});
+});
+test('selective original validates unique exact target identity, supported leaf metadata and parent identity',async()=>{
+  for(const mutate of [m=>m.id='other',m=>m.payload.parts.pop(),m=>m.payload.parts.push(structuredClone(m.payload.parts[1])),
+    m=>m.payload.parts[1].filename='other.pdf',m=>m.payload.parts[1].mime_type='image/png',m=>m.payload.parts[1].body.size=9,
+    m=>m.payload.parts[1].read_attachment_supported=false,m=>m.payload.parts[1].parts=[message().payload]]){
+    const m=withAttachment(),calls=[];mutate(m);await assert.rejects(collectGmailPluginOriginal(originalPlan(),originalOptions(m,attachment(),calls)));
+    assert.deepEqual(calls.map(c=>c.tool),['get_profile','batch_read_email']);
+  }
+});
+test('selective original rejects account mismatch and abort before source reads',async()=>{
+  const p=originalPlan();p.expected.account='other@example.test';let calls=0;
+  await assert.rejects(collectGmailPluginOriginal(p,{invoke:async()=>{calls++;}}));assert.equal(calls,0);
+  await assert.rejects(collectGmailPluginOriginal(originalPlan(),{invoke:async()=>{calls++;return{email:'other@example.test'}}}));assert.equal(calls,1);
+  const controller=new AbortController();controller.abort();
+  await assert.rejects(collectGmailPluginOriginal(originalPlan(),{signal:controller.signal,invoke:async()=>{calls++;}}));assert.equal(calls,1);
+});
+test('selective original retains strict response, host, size and original-byte validation',async()=>{
+  for(const mutate of [a=>a.message_id='other',a=>a.attachment_id='other',a=>a.filename='other',a=>a.mime_type='image/png',a=>a.size_bytes=9,
+    a=>a.file_uri.file_name='other',a=>a.file_uri.mime_type='image/png',a=>a.file_uri.download_url='https://evil.test/original']){
+    const a=attachment();mutate(a);let downloads=0;
+    await assert.rejects(collectGmailPluginOriginal(originalPlan(),{...originalOptions(withAttachment(),a),download:async()=>{downloads++;return Buffer.alloc(8)}}));assert.equal(downloads,0);
+  }
+  await assert.rejects(collectGmailPluginOriginal(originalPlan(),{...originalOptions(),download:async()=>Buffer.alloc(7)}));
+});
+test('selective original supports unnamed assets without assigning a source filename',async()=>{
+  const p=originalPlan(),m=withAttachment(),a=attachment();p.expected.filename='';p.expected.mimeType='image/png';
+  m.payload.parts[1].filename='';m.payload.parts[1].mime_type='image/png';a.filename='';a.mime_type='image/png';a.file_uri.file_name='';a.file_uri.mime_type='image/png';
+  assert.equal((await collectGmailPluginOriginal(p,originalOptions(m,a))).length,8);
+});
 const event = (type, overrides = {}) => ({ type, item: { id: 'call1', type: 'mcp_tool_call', server: 'codex_apps', tool: 'gmail.search_email_ids', arguments: expected.arguments,
   status: type === 'item.started' ? 'in_progress' : 'completed', error: null,
   result: type === 'item.started' ? null : { structured_content: { message_ids: [], next_page_token: null } }, ...overrides } });
@@ -195,6 +237,22 @@ test('identity, declared size, original host and downloaded bytes must match',as
 test('URL validation rejects redirects destinations, suffix tricks, userinfo, fragments and ports',()=>{
   assert.equal(validatedGmailFileUrl(uri),uri);
   for(const url of ['http://sdmntprwestus3.oaiusercontent.com/x','https://sdmntprwestus3.oaiusercontent.com.evil.test/x','https://evil.test/sdmntprwestus3.oaiusercontent.com','https://user:password@sdmntprwestus3.oaiusercontent.com/x','https://sdmntprwestus3.oaiusercontent.com:444/x','https://sdmntprwestus3.oaiusercontent.com/x#fragment','file:///secret']) assert.throws(()=>validatedGmailFileUrl(url));
+});
+test('original host family accepts only a bounded ASCII provider label and exact suffix',()=>{
+  for(const host of ['sdmntprwestus.oaiusercontent.com','sdmntprwestus3.oaiusercontent.com','sdmntpr-region2.oaiusercontent.com',`sdmntpr${'a'.repeat(56)}.oaiusercontent.com`]){
+    const url=`https://${host}/original?signature=synthetic`;
+    assert.equal(validatedGmailFileUrl(url),url);
+  }
+  assert.equal(validatedGmailFileUrl('https://SDMNTPRWESTUS.oaiusercontent.com:443/original'),'https://sdmntprwestus.oaiusercontent.com/original');
+  for(const authority of ['sdmntprwestus.oaiusercontent.com.evil.test','nested.sdmntprwestus.oaiusercontent.com',
+    'sdmntprwestus.evil.oaiusercontent.com','sdmntprwestus-.oaiusercontent.com','sdmntpr_westus.oaiusercontent.com',
+    `sdmntpr${'a'.repeat(57)}.oaiusercontent.com`,'sdmntprwestus.oaiusercontent.com.',
+    'user@sdmntprwestus.oaiusercontent.com','sdmntprwestus.oaiusercontent.com:444',
+    'sdmntprwestus.oaiusercontent.com:0443','sdmntprwestus.oaiusercontent.com:443@evil.test',
+    'ｓdmntprwestus.oaiusercontent.com','sdmntprwestus。oaiusercontent.com',
+    '%EF%BD%93dmntprwestus.oaiusercontent.com','%73dmntprwestus.oaiusercontent.com',
+    'sdmntprwestus.oaiusercontent.com\\@evil.test','sdmntprwestus.amazonaws.com'])
+    assert.throws(()=>validatedGmailFileUrl(`https://${authority}/original`));
 });
 test('abort and message limit prevent any tool invocation',async()=>{
   const controller=new AbortController();controller.abort();let calls=0;

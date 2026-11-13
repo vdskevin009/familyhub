@@ -20,9 +20,9 @@ test("invoice failure does not suppress the separate grocery phase", async () =>
 });
 
 test("lost mutation response is never replayed and cannot report success", async () => {
-  let starts = 0;
+  let starts = 0, invoiceReads = 0;
   const result = await runDailyCollections(async (path, method = "GET") => {
-    if (path === "/invoices") return {};
+    if (path === "/invoices") return ++invoiceReads === 1 ? {} : success;
     if (path === "/health") return { capabilities: ["grocery-collection-v1"] };
     if (method === "POST" && path === "/groceries/collect") { starts++; throw new Error("response lost"); }
     return success;
@@ -101,12 +101,82 @@ test("invoice continuation uses explicit current-worker readiness, never a hardc
       reads++;
       if (reads === 1) return {};
       if (reads === 2) return { error: "Partial", continuationReady: true, progress: { account: { healthReceiptRepairVersion: 4 } } };
-      return {};
+      return success;
     }
     return { setupRequired: true };
   }, tick);
   assert.equal(result.invoices, "complete"); assert.equal(starts, 2);
 });
+
+for (const phase of ["invoices", "groceries"]) {
+  const statusPath = phase === "invoices" ? "/invoices" : "/groceries/collection-status";
+  const collectPath = `/${phase}/collect`;
+  const stale = { ...success, lastSuccess: "2026-09-01T12:00:00.000Z" };
+
+  test(`${phase}: unrelated initial busy waits for idle then starts a verified collection`, async () => {
+    let reads = 0, starts = 0;
+    const result = await runDailyCollections(async (path, method = "GET") => {
+      if (path === "/health") return { capabilities: ["grocery-collection-v1"] };
+      if (path === collectPath && method === "POST") {
+        assert.equal(reads, 3, "no POST while unrelated operation is busy");
+        starts++; return { busy: true };
+      }
+      if (path !== statusPath) return { setupRequired: true };
+      reads++;
+      if (reads < 3) return { ...stale, busy: true };
+      if (reads === 3) return stale;
+      return success;
+    }, tick);
+    assert.equal(result[phase], "complete"); assert.equal(starts, 1);
+  });
+
+  test(`${phase}: stale success after unrelated busy cannot silently complete`, async () => {
+    let reads = 0, starts = 0;
+    const result = await runDailyCollections(async (path, method = "GET") => {
+      if (path === "/health") return { capabilities: ["grocery-collection-v1"] };
+      if (path === collectPath && method === "POST") { starts++; return {}; }
+      if (path !== statusPath) return { setupRequired: true };
+      return ++reads === 1 ? { ...stale, busy: true } : stale;
+    }, tick);
+    assert.equal(result[phase], "incomplete-or-unknown"); assert.equal(starts, 1);
+  });
+
+  test(`${phase}: lost POST after unrelated busy is never replayed`, async () => {
+    let reads = 0, starts = 0;
+    const result = await runDailyCollections(async (path, method = "GET") => {
+      if (path === "/health") return { capabilities: ["grocery-collection-v1"] };
+      if (path === collectPath && method === "POST") { starts++; throw new Error("response lost"); }
+      if (path !== statusPath) return { setupRequired: true };
+      return ++reads === 1 ? { ...stale, busy: true } : stale;
+    }, tick);
+    assert.equal(result[phase], "incomplete-or-unknown"); assert.equal(starts, 1); assert.equal(reads, 2);
+  });
+
+  test(`${phase}: a fresh existing collection is adopted without a duplicate POST`, async () => {
+    let reads = 0, starts = 0;
+    const result = await runDailyCollections(async (path, method = "GET") => {
+      if (path === "/health") return { capabilities: ["grocery-collection-v1"] };
+      if (path === collectPath && method === "POST") { starts++; return {}; }
+      if (path !== statusPath) return { setupRequired: true };
+      return ++reads === 1 ? { ...stale, busy: true } : success;
+    }, tick);
+    assert.equal(result[phase], "complete"); assert.equal(starts, 0);
+  });
+
+  test(`${phase}: changed success must be current and not precede the attempt`, async () => {
+    for (const state of [success, { ...success, lastSuccess: "2026-10-02T12:00:00.000Z", lastAttempt: "2026-10-02T12:01:00.000Z" },
+      { ...success, lastSuccess: "2026-10-02T12:00:00.000Z", lastAttempt: "invalid" }]) {
+      let reads = 0, starts = 0;
+      const result = await runDailyCollections(async (path, method = "GET") => {
+        if (path === "/health") return { capabilities: ["grocery-collection-v1"] };
+        if (path === collectPath && method === "POST") { starts++; return {}; }
+        if (path !== statusPath) return { setupRequired: true };
+        return ++reads === 1 ? stale : state;
+      }, { ...tick, now: () => Date.parse("2026-10-02T00:00:00.000Z") });
+      assert.equal(result[phase], "incomplete-or-unknown"); assert.equal(starts, 1);
+    }
+  });
+}
 
 test("retrieval failure cannot be retried merely because old progress has a partial window", async () => {
   let starts = 0;

@@ -274,23 +274,81 @@ export function undoInvoiceDecision(config: WorkerConfig, decisionId: string): P
   return request(config, "/invoices/decisions/undo", { method: "POST", body: JSON.stringify({ decisionId }) });
 }
 type AttachmentSource = Pick<ReimbursementItem, "Id" | "Attachments">;
-export async function workerAttachmentBlob(config: WorkerConfig, item: AttachmentSource, index: number): Promise<{ blob: Blob; fileName: string }> {
-  const attachment = item.Attachments[index];
-  if (!attachment) throw new Error("Attachment not found.");
-  const response = await fetch(endpoint(config, `/invoices/${encodeURIComponent(item.Id)}/attachments/${encodeURIComponent(attachment.Id)}`), {
-    headers: headers(config), signal: AbortSignal.timeout(60_000)
-  });
-  if (!response.ok) {
-    const result = await response.json().catch(() => ({})) as { error?: string };
-    throw new Error(result.error || "Attachment retrieval failed.");
-  }
-  const bytes = await response.arrayBuffer();
-  return {
-    blob: new Blob([bytes], { type: /\.pdf$/i.test(attachment.FileName) ? "application/pdf" : attachment.MimeType || "application/octet-stream" }),
-    fileName: attachment.FileName
+/** Read-only originals: fast cached/legacy GET, or a cancellable, source-bound job.
+ * An uncertain prepare POST is recovered only through GET of its existing request ID.
+ */
+export async function workerAttachmentBlob(config: WorkerConfig, item: AttachmentSource, index: number, signal?: AbortSignal): Promise<{ blob: Blob; fileName: string }> {
+  const original = item.Attachments[index];
+  if (!original) throw new Error("Attachment not found.");
+  const attachment = { ...original };
+  const base = `/invoices/${encodeURIComponent(item.Id)}/attachments/${encodeURIComponent(attachment.Id)}`;
+  const active = AbortSignal.any([...(signal ? [signal] : []), AbortSignal.timeout(13 * 60_000)]);
+  const call = (path: string, init: RequestInit = {}, timeout = 30_000) => {
+    active.throwIfAborted();
+    return fetch(endpoint(config, path), { ...init, headers: { ...headers(config), ...(init.headers ?? {}) },
+      signal: AbortSignal.any([active, AbortSignal.timeout(timeout)]), cache: "no-store", redirect: "error" });
   };
+  let requestId: string | undefined, cancelSent = false;
+  const cancel = () => {
+    if (!requestId || cancelSent) return;
+    cancelSent = true;
+    // Separate deadline: cancelling the caller must not abort its cancellation notice.
+    void fetch(endpoint(config, `${base}/preparations/${requestId}/cancel`), { method: "POST", headers: headers(config),
+      signal: AbortSignal.timeout(30_000), cache: "no-store", redirect: "error" }).catch(() => {});
+  };
+  active.addEventListener("abort", cancel, { once: true });
+  const pause = () => new Promise<void>((resolve, reject) => {
+    active.throwIfAborted();
+    const stop = () => { clearTimeout(timer); reject(active.reason); };
+    const timer = setTimeout(() => { active.removeEventListener("abort", stop); resolve(); }, 1500);
+    active.addEventListener("abort", stop, { once: true });
+  });
+  type Status = { requestId: string; status: "pending" | "ready" | "failed" | "cancelled"; error?: string };
+  const status = async (response: Response): Promise<Status> => {
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(body.error || "Original preparation could not be confirmed. Read its status before retrying.");
+    if (body.requestId !== requestId || !["pending", "ready", "failed", "cancelled"].includes(body.status)) throw new Error("Invalid original preparation response.");
+    return body;
+  };
+  try {
+    let response = await call(base, {}, 60_000);
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({}));
+      if (response.status !== 409 || body.preparationRequired !== true) throw new Error(body.error || "Attachment retrieval failed.");
+      const healthResponse = await call("/health");
+      const health = await healthResponse.json().catch(() => ({}));
+      if (!healthResponse.ok || !health.capabilities?.includes("attachment-preparation-v1")) throw new Error("Update the paired worker to prepare this original file.");
+      active.throwIfAborted();
+      requestId = crypto.randomUUID();
+      let prepared: Response;
+      try {
+        prepared = await call(`${base}/prepare`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ requestId }) });
+      } catch {
+        active.throwIfAborted();
+        // Never repeat POST or invent a new job after a lost response.
+        prepared = await call(`${base}/preparations/${requestId}`);
+      }
+      let current = await status(prepared);
+      while (current.status === "pending") {
+        await pause();
+        current = await status(await call(`${base}/preparations/${requestId}`));
+      }
+      active.throwIfAborted();
+      if (current.status !== "ready") throw new Error(current.error || (current.status === "cancelled" ? "Original retrieval was cancelled." : "Original retrieval failed."));
+      response = await call(`${base}?preparationRequestId=${encodeURIComponent(requestId)}`);
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        throw new Error(body.error || "Prepared original is no longer available. Its source may have changed.");
+      }
+    }
+    const bytes = await response.arrayBuffer();
+    active.throwIfAborted();
+    return { blob: new Blob([bytes], { type: /\.pdf$/i.test(attachment.FileName) ? "application/pdf" : attachment.MimeType || "application/octet-stream" }), fileName: attachment.FileName };
+  } catch (error) {
+    if (active.aborted) throw new Error(signal?.aborted ? "Original retrieval cancelled. No file was opened, downloaded or archived." : "Original retrieval timed out. No file was opened, downloaded or archived.");
+    throw error;
+  } finally { active.removeEventListener("abort", cancel); }
 }
-
 function downloadBlob(blob: Blob, fileName: string): void {
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
@@ -308,9 +366,12 @@ function downloadBlob(blob: Blob, fileName: string): void {
  * do not treat the final PDF navigation as an unsolicited async popup.
  * If the browser blocks the viewer, fall back to a normal download.
  */
-export async function viewWorkerAttachment(config: WorkerConfig, item: AttachmentSource, index: number): Promise<void> {
+export async function viewWorkerAttachment(config: WorkerConfig, item: AttachmentSource, index: number, signal?: AbortSignal): Promise<void> {
   const attachment = item.Attachments[index];
   if (!attachment) throw new Error("Attachment not found.");
+  signal?.throwIfAborted();
+  const cancelled = new AbortController();
+  const active = AbortSignal.any([cancelled.signal, ...(signal ? [signal] : [])]);
   const viewer = window.open("", "_blank");
   if (viewer) {
     viewer.opener = null;
@@ -319,8 +380,11 @@ export async function viewWorkerAttachment(config: WorkerConfig, item: Attachmen
       viewer.document.body.textContent = "Loading invoice…";
     } catch { /* Navigation below is still sufficient. */ }
   }
+  const closed = setInterval(() => { if (viewer?.closed) cancelled.abort(); }, 250);
   try {
-    const { blob, fileName } = await workerAttachmentBlob(config, item, index);
+    const { blob, fileName } = await workerAttachmentBlob(config, item, index, active);
+    active.throwIfAborted();
+    if (viewer?.closed) throw new Error("Original viewer was closed; no file was opened or downloaded.");
     if (!viewer) {
       downloadBlob(blob, fileName);
       return;
@@ -331,11 +395,12 @@ export async function viewWorkerAttachment(config: WorkerConfig, item: Attachmen
   } catch (error) {
     if (viewer) viewer.close();
     throw error;
-  }
+  } finally { clearInterval(closed); }
 }
 
-export async function downloadWorkerAttachment(config: WorkerConfig, item: AttachmentSource, index: number): Promise<void> {
-  const { blob, fileName } = await workerAttachmentBlob(config, item, index);
+export async function downloadWorkerAttachment(config: WorkerConfig, item: AttachmentSource, index: number, signal?: AbortSignal): Promise<void> {
+  const { blob, fileName } = await workerAttachmentBlob(config, item, index, signal);
+  signal?.throwIfAborted();
   downloadBlob(blob, fileName);
 }
 

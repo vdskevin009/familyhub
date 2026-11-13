@@ -31,6 +31,14 @@ test('paired plugin routes expose configured source and exact cached originals w
   const snapshot=await(await call('/invoices',{headers})).json();assert.equal(snapshot.sourceMode,'plugin');assert.equal(snapshot.setupRequired,false);assert.equal(snapshot.accounts[0].sourceMode,'plugin');assert.equal(snapshot.accounts[0].email,email);
   const path=`/invoices/${encodeURIComponent(invoice.Id)}/attachments/${encodeURIComponent(source.attachmentId)}`;
   assert.equal((await call(path)).status,401);const original=await call(path,{headers});assert.equal(original.status,200);assert.deepEqual(Buffer.from(await original.arrayBuffer()),bytes);
+  assert.ok((await(await call('/health',{headers})).json()).capabilities.includes('attachment-preparation-v1'));
+  assert.equal((await call(path+'/prepare',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({requestId:'request_1'})})).status,401);
+  assert.equal((await call(path+'/prepare',{method:'POST',headers:{...headers,Origin:'https://evil.example','Content-Type':'application/json'},body:JSON.stringify({requestId:'request_1'})})).status,403);
+  const prepared=await call(path+'/prepare',{method:'POST',headers:{...headers,'Content-Type':'application/json'},body:JSON.stringify({requestId:'request_1'})});assert.ok([200,202].includes(prepared.status));
+  let status;for(let i=0;i<30;i++){status=await(await call(path+'/preparations/request_1',{headers})).json();if(status.status!=='pending')break;await new Promise(r=>setTimeout(r,10));}assert.equal(status.status,'ready');
+  const readyFile=await call(path+'?preparationRequestId=request_1',{headers});assert.equal(readyFile.status,200);assert.equal(readyFile.headers.get('x-content-type-options'),'nosniff');assert.deepEqual(Buffer.from(await readyFile.arrayBuffer()),bytes);
+  assert.equal((await call(path+'/preparations/request_1/cancel',{method:'POST'})).status,401);
+  assert.equal((await(await call(path+'/preparations/request_1/cancel',{method:'POST',headers})).json()).status,'cancelled');assert.notEqual((await call(path+'?preparationRequestId=request_1',{headers})).status,200);
   const after=JSON.parse(await readFile(join(directory,'invoices.json'),'utf8'));assert.equal(after.items[0].SourceMessageId,invoice.SourceMessageId);assert.equal(after.items[0].Id,invoice.Id);
   const ledgerBeforeFailure=await readFile(join(directory,'invoices.json'),'utf8');
   assert.equal((await call('/invoices/collect',{method:'POST',headers})).status,202);
@@ -38,6 +46,9 @@ test('paired plugin routes expose configured source and exact cached originals w
   assert.equal(failed.busy,false);assert.match(failed.error,/checkpoints were not advanced/);assert.equal(failed.continuationReady,false);
   assert.equal(await readFile(join(directory,'invoices.json'),'utf8'),ledgerBeforeFailure);
   await writeFile(join(directory,'mail-source-policy.json'),'{');const broken=await(await call('/invoices',{headers})).json();assert.equal(broken.sourceMode,'plugin');assert.equal(broken.setupRequired,true);assert.match(broken.error,/policy/);assert.equal((await call('/invoices/collect',{method:'POST',headers})).status,409);
+  const cachedBroken=await call(path,{headers});assert.equal(cachedBroken.status,200);assert.deepEqual(Buffer.from(await cachedBroken.arrayBuffer()),bytes);
+  const brokenPrepare=await call(path+'/prepare',{method:'POST',headers:{...headers,'Content-Type':'application/json'},body:JSON.stringify({requestId:'request_2'})});assert.ok([200,202].includes(brokenPrepare.status));
+  for(let i=0;i<30;i++){status=await(await call(path+'/preparations/request_2',{headers})).json();if(status.status!=='pending')break;await new Promise(r=>setTimeout(r,10));}assert.equal(status.status,'ready');
   assert.doesNotMatch(logs,/link_synthetic|SYNTHETIC original/);
  }finally{child.kill();await ended;await rm(directory,{recursive:true,force:true});}
 });

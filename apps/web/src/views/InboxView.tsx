@@ -1,5 +1,5 @@
 import { PageHeader, Sheet } from "../ui/primitives";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Archive, Check, ChevronDown, Download, ExternalLink, FileText, Inbox, Mail, RefreshCw, RotateCcw, ShieldCheck, Trash2
 } from "lucide-react";
@@ -46,6 +46,18 @@ export default function InboxView({ hub }: Props) {
   ));
   const [months, setMonths] = useState(12);
   const [busy, setBusy] = useState("");
+  const originalRequest = useRef<AbortController | undefined>(undefined);
+  const originalPhase = useRef<"retrieving" | "external">("retrieving");
+  const [loadingOriginal, setLoadingOriginal] = useState(false);
+  useEffect(() => {
+    setBusy(""); setLoadingOriginal(false);
+    return () => { originalRequest.current?.abort(); originalRequest.current = undefined; };
+  }, [hub.worker.Endpoint, hub.worker.ApiKey]);
+  function cancelOriginal() {
+    if (!originalRequest.current || originalPhase.current !== "retrieving") return;
+    originalRequest.current?.abort();
+    setMessage("Original retrieval cancelled. No download or Drive archive will start.");
+  }
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [stats, setStats] = useState<ScanStats | null>(null);
@@ -114,17 +126,18 @@ export default function InboxView({ hub }: Props) {
   }
 
   async function download(item: ReimbursementItem, index: number) {
-    setBusy(item.Id); setError("");
+    if (originalRequest.current) return;
+    const controller = new AbortController(); originalRequest.current = controller; originalPhase.current = "retrieving";
+    setBusy(item.Id); setError(""); setLoadingOriginal(item.WorkerManaged === true);
     try {
-      if (item.WorkerManaged) await downloadWorkerAttachment(hub.worker, item, index);
+      if (item.WorkerManaged) await downloadWorkerAttachment(hub.worker, item, index, controller.signal);
       else {
         const file = item.Attachments[index];
         await googleBridge.downloadAttachment(item.AccountLabel, item.SourceMessageId, file.Id, file.FileName, file.MimeType, item.AccountEmail);
       }
-    } catch (err) { setError(err instanceof Error ? err.message : "Download failed."); }
-    finally { setBusy(""); }
+    } catch (err) { if (originalRequest.current === controller && !controller.signal.aborted) setError(err instanceof Error ? err.message : "Download failed."); }
+    finally { if (originalRequest.current === controller) { originalRequest.current = undefined; setBusy(""); setLoadingOriginal(false); } }
   }
-
   const visible = useMemo(() => hub.reimbursements.Items
     .filter(item => {
       if (filter === "important") return item.AttentionLevel === "critical" || item.AttentionLevel === "action" || item.AttentionLevel === "important";
@@ -208,6 +221,7 @@ export default function InboxView({ hub }: Props) {
   }
 
   async function archive(item: ReimbursementItem) {
+    if (originalRequest.current) return;
     if (!hub.admin.ArchiveEnabled) {
       setError("Drive archiving is disabled in Plus → Réglages et outils → Document archive.");
       return;
@@ -216,17 +230,25 @@ export default function InboxView({ hub }: Props) {
       setError("Reconnect this Google account and approve Drive access before archiving.");
       return;
     }
+    const controller = new AbortController(); originalRequest.current = controller; originalPhase.current = "retrieving";
+    setLoadingOriginal(item.WorkerManaged === true);
     setBusy(`archive-${item.Id}`);
     setError("");
     try {
       const archived = await googleBridge.archiveFirstAttachment(item, hub.admin.DriveRootName, item.WorkerManaged
-        ? async () => new Uint8Array(await (await workerAttachmentBlob(hub.worker, item, 0)).blob.arrayBuffer()) : undefined);
+        ? async () => {
+          const bytes = new Uint8Array(await (await workerAttachmentBlob(hub.worker, item, 0, controller.signal)).blob.arrayBuffer());
+          controller.signal.throwIfAborted();
+          originalPhase.current = "external"; setLoadingOriginal(false);
+          return bytes;
+        } : undefined, controller.signal);
+      if (originalRequest.current !== controller || controller.signal.aborted) return;
       updateItem(item.Id, { DriveFileId: archived.fileId, DrivePath: archived.path, ArchivedAt: new Date().toISOString() });
       setMessage(`Archived ${item.Attachments[0]?.FileName || "document"} to ${archived.path}.`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Drive archive failed.");
+      if (originalRequest.current === controller && !controller.signal.aborted) setError(err instanceof Error ? err.message : "Drive archive failed.");
     } finally {
-      setBusy("");
+      if (originalRequest.current === controller) { originalRequest.current = undefined; setBusy(""); setLoadingOriginal(false); }
     }
   }
 
@@ -237,6 +259,7 @@ export default function InboxView({ hub }: Props) {
       <PageHeader title="Important mail" subtitle="Messages that need your attention">
         <button type="button" className="button secondary" onClick={() => setConnectionsOpen(true)}>Sources{workerError || collection?.error ? " · !" : ""}</button>
       </PageHeader>
+      {loadingOriginal && <div className="banner" role="status">Preparing the original file. This may take a few minutes. <button type="button" className="mini-button" onClick={cancelOriginal}>Cancel retrieval</button></div>}
       {collection?.sourcePolicyWarning && <div className="banner error" role="status">{collection.sourcePolicyWarning}</div>}
       {(workerError || collection?.error) && <div className="banner error" role="alert">{workerError || collection?.error}</div>}
       {error && <div className="banner error">{error}</div>}
