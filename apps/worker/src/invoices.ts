@@ -705,8 +705,8 @@ export async function classify(mail: Mail, email: string, label = email, diagnos
     return clinicReceipt && (classified.category !== "health" || classified.documentRole !== "expense" || !classified.transaction)
       ? clinicFallback() : { source: "codex", result: classified };
   } catch (error) {
-    if (clinicReceipt) return clinicFallback();
     if (diagnostic) throw error;
+    if (clinicReceipt) return clinicFallback();
     return { source: "unavailable", result: { kind: "other", confidence: 0, transaction: false, reimbursement: "unknown",
       amount: null, currency: "", category: "other", member: "unknown", documentRole: "other", insurer: null, serviceDate: null,
       billedAmount: null, reimbursedAmount: null, attention: "none", attentionReason: "", reason: "Classification unavailable; review this email manually. The collector will retry." } };

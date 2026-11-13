@@ -217,3 +217,5 @@ Purchase comparisons (FH-GROCERY-013/014) separate verified current-local prices
 The local Gmail plugin candidate includes bounded original-file preparation/polling for slow cold reads. Source retrieval checks passed for the reviewed frozen queries, but this is not a production cutover or classifier/parser parity claim; follow the remaining gates in docs/GMAIL-PLUGIN-MIGRATION.md.
 
 Manual Blue Cross email import clients must use the advertised bluecross-import-jobs-v1 request-ID/status protocol; requests without an ID fail before any work. This local candidate has not been activated in production.
+
+The local private-classifier candidate now validates inherited tool restrictions and narrow sandbox input access before analysis, with bounded child-process lifecycle and no unsandboxed fallback. Availability depends on the verified sandbox backend; production cutover remains a separate reviewed step.

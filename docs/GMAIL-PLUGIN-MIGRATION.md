@@ -177,3 +177,13 @@ The proposed stricter classifier isolation profile disables inherited tools, but
 The selective-original helper has synthetic acceptance only. Its previous live full-window attachment identities were not retained, so no additional live target-only probe or new recovery search was performed under the bounded follow-up scope.
 
 Blue Cross follow-up validation passed worker TypeScript build and 56/56 focused tests spanning durable jobs (15 cases), real synthetic importer boundaries, runtime, paired routes and request security. Full prior aggregate results above were not rerun for this narrow checkpoint; the known PowerShell execution-policy blocker remains unchanged. No live Blue Cross import or invoice classifier replay was performed.
+
+### Reviewed private-classifier isolation candidate
+
+The private classifier now discovers effective inherited tool/plugin configuration and constructs explicit per-invocation restrictions, verifies the effective tool and filesystem profiles, and rejects completed actions or unexpected output events. Its input is passed on stdin; schema/image files are narrowly scoped inputs rather than broad access to the private state directory. The protected process has a 240-second execution deadline within a 300-second total budget, and cancellation/invalid-output settlement waits for the owned child to close. No unsandboxed fallback is permitted.
+
+On the existing Windows environment, MXC synthetic canaries verified allowed input reads, denied outside reads, denied writes and denied loopback network access. A fictitious text/image classification completed successfully with no actions. Independent review covered parser framing, stdin failure and process lifecycle. These are synthetic capability proofs, not a completed real-mail replay or production deployment. Any unsupported isolation capability remains a fail-closed blocker.
+
+The diagnostic-only classifier option now propagates errors before the clinic fallback; normal production fallback behavior is unchanged. Its focused regression uses a nonexistent synthetic CLI, not private data. The held real replay uses real diagnostic classification and the real reviewer with a shared first-error latch so a swallowed collector/reviewer error cannot trigger further model attempts or count as successful acceptance.
+
+Pre-replay source freeze checks: worker/web TypeScript and Vite passed; final invoice/security aggregate 442/443 with only the unchanged PowerShell execution-policy fixture failure, invoice/browser 84/84, grocery/daily 99/99 and source-resolution 9/9. The diagnostic plus isolation focused suite passed 29/29. Reviewed private-classifier/helper compiled hashes were unchanged. No real replay result is claimed by this checkpoint.

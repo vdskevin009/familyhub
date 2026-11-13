@@ -785,3 +785,5 @@ The observed final review offered no receipt upload before confirmation. Report 
 Local Gmail migration follow-up: frozen invoice and grocery query retrieval passed read-only source checks with production hashes unchanged. Cold original preparation jobs and unrelated-busy daily collection regressions are implemented locally; production activation and isolated classifier/parser replay remain unverified. See docs/GMAIL-PLUGIN-MIGRATION.md for exact bounds and gates.
 
 FH-MAIL-008 follow-up: manual Blue Cross import protocol is now explicitly asynchronous and request-ID-bound in local source, with durable non-replay receipts and preserved explicit preview/apply intent. Production activation remains pending; synchronous external callers must be updated rather than silently assumed compatible.
+
+FH-MAIL-008 isolation follow-up: the local classifier candidate now validates effective inherited-tool/filesystem isolation and bounded process lifecycle. Synthetic capability proofs passed. This does not mark the migration deployed or real-data replay complete.
