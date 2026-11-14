@@ -29,7 +29,7 @@ const screenshots = resolve("output/playwright/card-payments");
 await mkdir(screenshots, { recursive: true });
 let browser;
 try {
-    browser = await chromium.launch({ headless: true, args: ["--no-sandbox"] });
+    browser = await chromium.launch({ ...(process.env.FAMILYHUB_TEST_BROWSER_CHANNEL ? { channel: process.env.FAMILYHUB_TEST_BROWSER_CHANNEL } : {}), headless: true, args: ["--no-sandbox"] });
     for (const width of [320, 390, 768, 1440]) {
         const finance = new FinanceLibrary(join(temp, String(width)));
         const imported = (await finance.import({ bundle: cardPaymentFixture(), apply: true, expectedRevision: "empty" })).state;
@@ -52,16 +52,17 @@ try {
             return reply({ state: "idle", accounts: [], jobs: [], schedule: null, daily: null });
         });
         await page.goto(base + "?view=finances");
-        await page.getByRole("heading", { name: "Dépenses par catégorie", exact: true }).waitFor();
+        await page.getByRole("heading", { name: "Où va l’argent ?", exact: true }).waitFor();
         const scope = page.getByLabel("Opérations affichées", { exact: true });
         await openFinanceRegister(page);
-        const register = page.getByRole("heading", { name: "Opérations et catégories", exact: true }).locator("..").locator(".finance-register");
+        const register = page.getByRole("heading", { name: "Opérations", exact: true }).locator("..").locator(".finance-register");
         assert.equal(await scope.inputValue(), "expenses");
         assert.equal(await register.getByRole("button").count(), 2);
         assert.doesNotMatch(await register.innerText(), /PAYMENT-THANKYOU|TFR-TO/);
         assert.match(await page.locator(".finance-totals").first().innerText(), /30,00/);
         assert.equal(await page.locator(".finance-tabs button").count(), 3);
         const bar = page.locator(".finance-expense-charts > section").first().getByRole("button", { name: /^À catégoriser/ });
+        await page.getByRole("button", { name: "Retour aux dépenses", exact: true }).click();
         await bar.focus(); await page.keyboard.press("Enter");
         const sheet = page.getByRole("dialog", { name: /^Paiements.*À catégoriser$/ });
         await sheet.waitFor();
@@ -103,6 +104,7 @@ try {
         await search.fill("");
         await page.keyboard.press("Escape");
         await page.waitForFunction(() => document.activeElement?.textContent?.startsWith("À catégoriser"));
+        await openFinanceRegister(page);
         await scope.selectOption("excluded");
         assert.equal(await register.getByRole("button").count(), 2);
         for (const [account, visible, absent] of [["card", "PAYMENT-THANKYOU", "TFR-TO"], ["bank", "TFR-TO", "PAYMENT-THANKYOU"]]) {

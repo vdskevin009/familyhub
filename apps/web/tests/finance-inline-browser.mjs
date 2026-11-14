@@ -20,7 +20,7 @@ server.listen(0, "127.0.0.1"); await once(server, "listening");
 const base = process.env.FAMILYHUB_TEST_BASE || `http://127.0.0.1:${server.address().port}/familyhub/`;
 let browser;
 try {
-    browser = await chromium.launch({ headless: true });
+    browser = await chromium.launch({ ...(process.env.FAMILYHUB_TEST_BROWSER_CHANNEL ? { channel: process.env.FAMILYHUB_TEST_BROWSER_CHANNEL } : {}), headless: true });
     for (const width of [320, 390, 768, 1440]) {
         const finance = new FinanceLibrary(join(temp, String(width))), bundle = categoryFixture();
         bundle.bankActivities.push({ ...bundle.bankActivities[0], id: "later", sourceRowId: "later", matchingFingerprint: "later", descriptionOriginal: "LATER UNIQUE SYNTHETIC", transactionDate: "2026-09-12", signedOutflowCents: 100, debitCents: 100, creditCents: null });
@@ -55,7 +55,7 @@ try {
             if (path === "/health") return reply({ status: "ok", version: "2.25.2", codex: "available" });
             return reply({ items: [], accounts: [], jobs: [], state: "idle", schedule: null, daily: null });
         });
-        await page.goto(base + "?view=finances"); await page.getByRole("heading", { name: "Dépenses par catégorie", exact: true }).waitFor();
+        await page.goto(base + "?view=finances"); await page.getByRole("heading", { name: "Où va l’argent ?", exact: true }).waitFor();
         const filters = await openFinanceFilters(page); await filters.getByLabel("Vue", { exact: true }).selectOption("custom"); await filters.getByLabel("Du", { exact: true }).fill("2026-04-01"); await filters.getByLabel("Au", { exact: true }).fill("2026-10-09"); await filters.getByRole("button", { name: "Voir les résultats" }).click();
         await page.locator('[data-finance-bar="groceries"]').click();
         const sheet = page.getByRole("dialog", { name: "Paiements · Courses alimentaires", exact: true }), toolbar = sheet.locator(".finance-inline-toolbar");

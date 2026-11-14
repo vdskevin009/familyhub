@@ -25,6 +25,8 @@ export async function openFinanceRegister(page) {
     if (await disclosure.getAttribute("open") === null) await disclosure.locator(":scope > summary").click();
 }
 export async function openFinanceSection(page, label) {
+    const back = page.getByRole("button", { name: "Retour aux dépenses", exact: true });
+    if (await back.isVisible()) await back.click();
     const summary = page.locator(".finance-journey-disclosure > summary").filter({ hasText: label }).first();
     if (await summary.count() && !await summary.evaluate(el => el.parentElement.open)) await summary.click();
 }

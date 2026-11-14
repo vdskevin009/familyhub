@@ -35,7 +35,7 @@ const jobs = [job(first, "old-network", [{ ...offer, title: "Synthetic old offer
 jobs[0].createdAt = "2026-10-09T12:00:00Z"; jobs[0].completedAt = "2026-10-09T12:01:00Z";
 let browser;
 try {
-    browser = await chromium.launch({ headless: true });
+    browser = await chromium.launch({ ...(process.env.FAMILYHUB_TEST_BROWSER_CHANNEL ? { channel: process.env.FAMILYHUB_TEST_BROWSER_CHANNEL } : {}), headless: true });
     for (const width of [320, 390, 768, 1440]) {
         const fixture = trendsFixture();
         fixture.bundle.bankActivities.push({ ...fixture.bundle.bankActivities[0], id: "synthetic-recurring", sourceRowId: "synthetic-recurring", matchingFingerprint: "synthetic-recurring", transactionDate: "2026-09-05", descriptionOriginal: "TELUS SYNTHETIC", signedOutflowCents: 12000, debitCents: 12000, creditCents: null, accountId: "card" });
@@ -74,7 +74,7 @@ try {
             assert(await dialog.evaluate(el => { const r = el.getBoundingClientRect(); return r.left >= -1 && r.top >= -1 && r.right <= innerWidth + 1 && r.bottom <= innerHeight + 1; }), "Dialog stays inside viewport");
         };
         await page.goto(base + "?view=finances");
-        await page.getByRole("heading", { name: "Dépenses par catégorie", exact: true }).waitFor();
+        await page.getByRole("heading", { name: "Où va l’argent ?", exact: true }).waitFor();
         const noBellOverlap = async () => assert(await page.locator(".shell-tools button").evaluate(el => {
             const a = el.getBoundingClientRect(), action = document.querySelector(".page-heading-actions button")?.getBoundingClientRect();
             return !action || a.right <= action.left || a.left >= action.right || a.bottom <= action.top || a.top >= action.bottom;
@@ -114,6 +114,32 @@ try {
         await click(info); const infoDialog = page.getByRole("dialog", { name: "Calcul des dépenses", exact: true }); await bounded(infoDialog);
         assert.match(await infoDialog.innerText(), /hypothécaire|capital\/intérêts/); await page.keyboard.press("Escape"); assert(await info.evaluate(el => el === document.activeElement));
         await page.screenshot({ path: join(output, `finances-${width}.png`) });
+        const operations = page.locator('.finance-operations-panel');
+        await operations.locator(':scope > summary').focus();
+        await page.keyboard.press('Enter');
+        await page.waitForFunction(() => document.activeElement?.id === 'finance-operations-title');
+        await page.getByRole('button', { name: 'Retour aux dépenses', exact: true }).click();
+        for (let repeat = 0; repeat < 3; repeat++) {
+            await page.getByRole('button', { name: 'Voir les opérations', exact: true }).click();
+            await page.getByRole('heading', { name: 'Opérations', exact: true }).waitFor();
+            assert.equal(await categories.isVisible(), false, 'Operation screen isolates the list');
+            await overflow(operations);
+            await operations.getByLabel('Rechercher', { exact: true }).fill('SYNTHETIC');
+            await operations.getByLabel('Trier les opérations').selectOption('amount');
+            await operations.getByLabel('Trier les opérations').selectOption('date');
+            await page.getByRole('button', { name: 'Retour aux dépenses', exact: true }).click();
+            await page.waitForFunction(() => document.activeElement?.id === 'finance-open-operations');
+            assert.equal(await categories.isVisible(), true);
+        }
+        await page.getByRole('button', { name: 'Voir les opérations', exact: true }).click();
+        assert.equal(await operations.getByLabel('Rechercher', { exact: true }).inputValue(), 'SYNTHETIC', 'Back retains list filters');
+        await page.screenshot({ path: join(output, `operations-${width}.png`) });
+        await page.getByRole('button', { name: 'Retour aux dépenses', exact: true }).click();
+        await page.getByRole('button', { name: 'Investissements', exact: true }).click();
+        await page.getByRole('heading', { name: 'Comptes et valeurs observées' }).waitFor();
+        assert.match(await page.locator('.finance-view').innerText(), /pas somme des cotisations/);
+        await page.screenshot({ path: join(output, `investments-${width}.png`) });
+
         await page.goto(base + "?view=savings");
         await page.getByRole("button", { name: /Ouvrir le contrat Synthetic internet package/ }).waitFor();
         await noBellOverlap();

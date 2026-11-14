@@ -261,6 +261,10 @@ export default function FinancesView({
     const [state, setState] = useState<FinanceState | null>(null),
         [tab, setTab] = useState<"expenses" | "investments" | "trends">("expenses");
     const [trendMonth, setTrendMonth] = useState("");
+    const [operationsOpen, setOperationsOpen] = useState(false);
+    const [operationSort, setOperationSort] = useState<"date" | "amount">("date");
+    function showOperations() { setOperationsOpen(true); requestAnimationFrame(() => document.getElementById("finance-operations-title")?.focus()); }
+    function closeOperations() { setOperationsOpen(false); requestAnimationFrame(() => document.getElementById("finance-open-operations")?.focus()); }
     const [error, setError] = useState(""),
         [message, setMessage] = useState(""),
         [busy, setBusy] = useState(false),
@@ -366,7 +370,7 @@ export default function FinancesView({
     }, [hub.worker.Endpoint, hub.worker.ApiKey]);
     useEffect(
         () => setPage(0),
-        [from, to, account, currency, category, search, reviewOnly, operationScope],
+        [from, to, account, currency, category, search, reviewOnly, operationScope, operationSort],
     );
     async function refresh() {
         setLoading(true);
@@ -546,7 +550,7 @@ export default function FinancesView({
                     (!reviewOnly || !r.reviewed) &&
                     r.description.toLowerCase().includes(search.toLowerCase()),
             )
-            .sort(byAmountDescending) ?? [];
+            .sort(operationSort === "amount" ? byAmountDescending : (a, b) => b.date.localeCompare(a.date) || a.id.localeCompare(b.id)) ?? [];
     const editRow = classified.find((r) => r.id === editing);
     function openDecision(id: string, saved = state, queueIds?: string[]) {
         if (!saved) return;
@@ -613,7 +617,7 @@ export default function FinancesView({
     const expenseValues = summary?.categories.filter(c => c.count).sort((a, b) => b.cents - a.cents).map(c => ({ id: c.key, label: expenseCategories[c.key], cents: c.cents })) ?? [];
     const expenseScale = Math.max(1, ...expenseValues.map(c => Math.abs(c.cents)));
     return (
-        <section className="view-stack finance-view">
+        <section className={`view-stack finance-view${tab === "expenses" && operationsOpen ? " finance-operations-open" : ""}`}>
             <PageHeader
                 title="Finances"
             >
@@ -631,7 +635,7 @@ export default function FinancesView({
                 <button
                     aria-current={tab === "expenses" ? "page" : undefined}
                     className={tab === "expenses" ? "active" : ""}
-                    onClick={() => setTab("expenses")}
+                    onClick={() => { setTab("expenses"); setOperationsOpen(false); }}
                 >
                     Dépenses
                 </button>
@@ -703,7 +707,10 @@ export default function FinancesView({
                                         <p>Remboursements déduits. Totaux par date d’opération. La vue annuelle conserve les mois partiels et les lacunes; elle n’extrapole pas une année complète.</p>
                                         <p>{summary.reviewCount} opérations à revoir · {summary.unreviewedCount} suggestions non confirmées.</p>
                                     </InfoPopover></div></div>
-                                    <h2>Dépenses par catégorie</h2>
+                                    <p className="finance-total-formula">{money(summary.included.filter(r => r.outflowCents > 0).reduce((sum, r) => sum + r.outflowCents, 0), currency)} de dépenses − {money(-summary.included.filter(r => r.outflowCents < 0).reduce((sum, r) => sum + r.outflowCents, 0), currency)} remboursés</p>
+                                    <p className="muted">Mouvements de la période, pas un solde bancaire disponible.</p>
+                                    <button id="finance-open-operations" className="button secondary finance-operations-link" onClick={showOperations}>Voir les opérations</button>
+                                    <h2>Où va l’argent ?</h2>
                                     {summary.included.length ? (
                                         <>
                                             <Bars currency={currency} values={expenseValues.slice(0, 5)} scale={expenseScale} onSelect={key => openCategory(key as ExpenseCategory)} />
@@ -754,9 +761,9 @@ export default function FinancesView({
                                 </> : <p>Aucun mouvement d'épargne ou de placement explicitement classé dans cette période. Choisissez « Épargne / Investissements » lors de la catégorisation d'une opération; aucune affectation automatique n'est faite.</p>}
                             </section>
                             </details>
-                            <details className="finance-journey-disclosure"><summary>Voir les opérations et catégories ({rows.length})</summary>
+                            <details className="finance-journey-disclosure finance-operations-panel" open={operationsOpen} onToggle={event => { if (event.currentTarget.open !== operationsOpen) { if (event.currentTarget.open) showOperations(); else setOperationsOpen(false); } }}><summary>Voir les opérations et catégories ({rows.length})</summary>
                             <section className="surface view-stack">
-                                <h2>Opérations et catégories</h2>
+                                <button className="button secondary finance-operations-back" onClick={closeOperations}>Retour aux dépenses</button><h2 id="finance-operations-title" tabIndex={-1}>Opérations</h2><label>Trier les opérations<select value={operationSort} onChange={event => setOperationSort(event.target.value as "date" | "amount")}><option value="date">Date, plus récentes d’abord</option><option value="amount">Montant décroissant</option></select></label>
                                 {undoOptions.length > 0 && <details className="finance-edit-history">
                                     <summary>Modifications récentes</summary>
                                     <p className="muted">Les 10 dernières modifications. Une annulation restaure les décisions précédentes du groupe entier, seulement si aucune de ses opérations n’a été modifiée depuis.</p>
@@ -811,7 +818,7 @@ export default function FinancesView({
                                     Suggestions à confirmer seulement
                                 </label>
                                 <p className="muted">
-                                    {rows.length} opération(s) {operationScope === "expenses" ? "dans les dépenses" : "hors dépenses"}, par montant décroissant. Les règles de
+                                    {rows.length} opération(s) {operationScope === "expenses" ? "dans les dépenses" : "hors dépenses"}, {operationSort === "date" ? "par date décroissante" : "par montant décroissant"}. Les règles de
                                     libellé sont des suggestions; les paniers
                                     mixtes demandent une revue.
                                 </p>
@@ -853,7 +860,7 @@ export default function FinancesView({
                                                 </span>
                                                 <strong>
                                                     {money(
-                                                        r.outflowCents,
+                                                        -r.outflowCents,
                                                         r.currency,
                                                     )}
                                                 </strong>
@@ -1006,7 +1013,7 @@ export default function FinancesView({
                         <>
                             {!investmentDetail && <>
                             <section className="surface view-stack">
-                                <div className="compact-heading"><h2>Comptes et valeurs observées</h2><InfoPopover title="Valeurs des comptes"><p>Chaque valeur conserve sa date et sa devise. Les instantanés de dates différentes ne constituent pas un patrimoine synchronisé; aucun rendement ou cours en direct n'est déduit.</p></InfoPopover></div>
+                                <p className="muted">{investmentAccounts.length} comptes observés. Valeurs datées, pas somme des cotisations.</p><div className="compact-heading"><h2>Comptes et valeurs observées</h2><InfoPopover title="Valeurs des comptes"><p>Chaque valeur conserve sa date et sa devise. Les instantanés de dates différentes ne constituent pas un patrimoine synchronisé; aucun rendement ou cours en direct n'est déduit.</p></InfoPopover></div>
                                 <div className="finance-register">
                                     {investmentAccounts.map((a) => {
                                         const h = data.holdings
@@ -1027,7 +1034,7 @@ export default function FinancesView({
                                                     <strong>{a.name}</strong>
                                                     <small>
                                                         {a.type} ·{" "}
-                                                        {h?.asOf ?? a.asOf}
+                                                        {(h?.asOf ?? a.asOf) || "Date source inconnue"}
                                                     </small>
                                                 </span>
                                                 <strong>
@@ -1049,6 +1056,7 @@ export default function FinancesView({
                                     })}
                                 </div>
                             </section>
+                            <aside className="finance-observation-note"><h3>À ne pas confondre</h3><p>Cotisations : montants versés. Performance : gains et pertes. Patrimoine : actifs moins dettes.</p><p>Aucun total consolidé entre dates ou devises différentes. Positions, liquidités, flux et sources restent accessibles dans chaque compte.</p></aside>
                             </>}
                             {selected && investmentDetail && (
                                 <section className="surface view-stack">
@@ -1339,8 +1347,9 @@ export default function FinancesView({
                 </>
             )}
             <CategoryPayments category={categoryPayments} open={Boolean(categoryPayments) && !editing} summary={tab === "trends" ? trend?.summary ?? null : summary} state={state} onSave={saveInline} onReload={reloadInline} onUndo={id => undoChange(id, true)} accounts={data?.accounts ?? []} account={account} currency={currency} from={tab === "trends" ? trend?.from ?? "" : from} to={tab === "trends" ? trend?.to ?? "" : to} onClose={closeCategory} onEdit={(id, queueIds) => openDecision(id, state, queueIds)} />
+            {paired && data && <p className="finance-collection-note">Dernière collecte enregistrée : {displayDate(data.collectedOn)}. La collecte ne prouve ni la fraîcheur bancaire ni une couverture complète.</p>}
             {paired && (
-                <details className="surface finance-import">
+                <details id="finance-source-details" className="surface finance-import">
                     <summary>
                         Sources et import privé{" "}
                         {data ? `· collecte du ${data.collectedOn}` : ""}

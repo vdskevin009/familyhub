@@ -29,7 +29,7 @@ const screenshots = resolve("output/playwright/trends");
 await mkdir(screenshots, { recursive: true });
 let browser;
 try {
-    browser = await chromium.launch({ headless: true, args: ["--no-sandbox"] });
+    browser = await chromium.launch({ ...(process.env.FAMILYHUB_TEST_BROWSER_CHANNEL ? { channel: process.env.FAMILYHUB_TEST_BROWSER_CHANNEL } : {}), headless: true, args: ["--no-sandbox"] });
     for (const width of [320, 390, 768, 1440]) {
         const finance = new FinanceLibrary(join(temp, String(width))), fixture = trendsFixture();
         let initial = (await finance.import({ bundle: fixture.bundle, apply: true, expectedRevision: "empty" })).state;
@@ -66,7 +66,7 @@ try {
             return reply({ state: "idle", accounts: [], jobs: [], schedule: null, daily: null });
         });
         await page.goto(base + "?view=finances");
-        await page.getByRole("heading", { name: "Dépenses par catégorie", exact: true }).waitFor();
+        await page.getByRole("heading", { name: "Où va l’argent ?", exact: true }).waitFor();
         assert.equal(await page.locator(".finance-tabs button").count(), 3);
         await page.getByRole("button", { name: "Tendances", exact: true }).click();
         const view = page.locator(".finance-trends");
@@ -79,14 +79,14 @@ try {
         assert.equal(await view.locator(".trend-months button").count(), 12);
         assert.equal(await view.locator(".trend-headline").count(), 0, "Annual landing does not contain monthly detail");
         assert.equal(await view.locator(".trend-category").count(), 0);
-        assert.equal(await view.locator('[data-trend-month="2026-10"] .trend-actual-ring').count(), 1);
+        assert.equal(await view.locator('[data-trend-month="2026-10"] .trend-observed-bar').count(), 1);
         await view.screenshot({ path: join(screenshots, `annual-${width}.png`) });
-        const gaugeState = async selector => page.locator(selector).evaluate(el => ({ rings: [...el.querySelectorAll("circle[pathLength]")].map(c => [c.getAttribute("class"), c.getAttribute("stroke-dasharray")]) }));
+        const gaugeState = async selector => page.locator(selector).evaluate(el => ({ rings: [...el.querySelectorAll("rect")].map(c => [c.getAttribute("class"), c.getAttribute("x"), c.getAttribute("width")]) }));
         const parity = async month => {
             if (await view.getByRole("button", { name: "Retour à l'année", exact: true }).isVisible()) await view.getByRole("button", { name: "Retour à l'année", exact: true }).click();
             const annual = await gaugeState(`[data-trend-month="${month}"]`);
             await openMonth(month);
-            assert.deepEqual(await gaugeState(".trend-headline"), annual, "Identical ring normalization for the same filtered month");
+            assert.deepEqual(await gaugeState(".trend-headline"), annual, "Identical bar normalization for the same filtered month");
         };
         await parity("2026-10"); await parity("2026-09");
         for (let i = 0; i < 3; i++) {
@@ -167,32 +167,32 @@ try {
         assert.equal(saved.decisionHistory.length, initial.decisionHistory.length + 1);
         mode = "missing"; await page.getByRole("button", { name: "Actualiser", exact: true }).click();
         await view.getByRole("status").filter({ hasText: "Référence indicative" }).waitFor();
-        assert.equal(await view.locator(".trend-headline .trend-actual-ring").count(), 1, "Actual remains colored with an indicative partial baseline");
+        assert.equal(await view.locator(".trend-headline .trend-observed-bar").count(), 1, "Actual remains colored with an indicative partial baseline");
         assert.match(await view.locator(".trend-headline").innerText(), /780,00.*715,00/s);
         mode = "target-gap"; await page.getByRole("button", { name: "Actualiser", exact: true }).click();
-        await view.locator(".trend-headline .trend-reference-ring").waitFor();
+        await view.locator(".trend-headline .trend-history-bar").waitFor();
         await view.getByRole("status").filter({ hasText: "Référence indicative" }).waitFor();
         assert.match(await view.locator(".trend-headline").innerText(), /780,00.*715,00/s);
         assert.match(await view.locator(".trend-headline").innerText(), /Référence indicative/);
-        assert.equal(await view.locator(".trend-headline .trend-actual-ring").count(), 1);
-        assert.equal(await view.locator(".trend-headline .trend-reference-ring").count(), 1);
+        assert.equal(await view.locator(".trend-headline .trend-observed-bar").count(), 1);
+        assert.equal(await view.locator(".trend-headline .trend-history-bar").count(), 1);
         mode = "missing"; await page.getByRole("button", { name: "Actualiser", exact: true }).click();
-        await view.locator(".trend-headline .trend-reference-ring").waitFor();
+        await view.locator(".trend-headline .trend-history-bar").waitFor();
         await selectFinanceFilter(page, "Compte", "missing");
         assert.match(await view.locator(".trend-headline").innerText(), /Non disponible.*Non disponible/s);
         await view.screenshot({ path: join(screenshots, `missing-${width}.png`) });
         await selectFinanceFilter(page, "Compte", "");
         mode = "zero"; await page.getByRole("button", { name: "Actualiser", exact: true }).click();
         await view.locator(".trend-total").filter({ hasText: /^Non disponible/ }).waitFor();
-        assert.equal(await view.locator(".trend-headline .trend-actual-ring").count(), 0);
+        assert.equal(await view.locator(".trend-headline .trend-observed-bar").count(), 0);
         assert.match(await view.locator(".trend-headline").innerText(), /Référence.*Non disponible/);
         mode = "net-zero"; await page.getByRole("button", { name: "Actualiser", exact: true }).click();
         await view.locator(".trend-total").filter({ hasText: /^0,00/ }).waitFor();
-        assert.equal(await view.locator(".trend-headline .trend-actual-ring").count(), 0);
+        assert.equal(await view.locator(".trend-headline .trend-observed-bar").count(), 0);
         assert.match(await view.locator(".trend-headline").innerText(), /0,00.*715,00/s);
         mode = "refund"; await page.getByRole("button", { name: "Actualiser", exact: true }).click();
         await view.locator(".trend-total").filter({ hasText: /-20,00/ }).waitFor();
-        assert.equal(await view.locator(".trend-headline .trend-actual-ring").count(), 1);
+        assert.equal(await view.locator(".trend-headline .trend-observed-bar").count(), 1);
         assert.match(await view.locator(".trend-headline").innerText(), /-20,00.*Non disponible/s);
         mode = "error"; await page.getByRole("button", { name: "Actualiser", exact: true }).click();
         await page.getByText("Synthetic unavailable", { exact: true }).waitFor();
