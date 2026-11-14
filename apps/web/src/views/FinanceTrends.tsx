@@ -7,15 +7,16 @@ import "../finance-trends.css";
 const money = (cents: number | null, currency: string) => cents === null ? "Non disponible" : new Intl.NumberFormat("fr-CA", { style: "currency", currency }).format(cents / 100);
 const monthName = (month: string, short = false) => new Date(month + "-15T12:00:00Z").toLocaleDateString("fr-CA", { month: short ? "short" : "long", ...(short ? {} : { year: "numeric" }) });
 
-/** Amounts, not a budget target. Actual observation never depends on a baseline. */
+/** Signed observed amounts on a common annual scale, never a goal or progress ring. */
 export function Gauge({ actual, baseline, scale }: { actual: number | null; baseline: number | null; scale?: number }) {
-    const maximum = scale ?? Math.max(Math.abs(actual ?? 0), Math.abs(baseline ?? 0), 1);
-    const length = (value: number) => Math.min(95, Math.abs(value) / Math.max(1, maximum) * 95);
-    return <svg className="trend-gauge" viewBox="0 0 120 120" aria-hidden="true">
-        {[46, 34].map(r => <circle key={r} cx="60" cy="60" r={r} fill="none" stroke="var(--line)" strokeWidth="7" />)}
-        {actual !== null && actual !== 0 && <circle className="trend-actual-ring" cx="60" cy="60" r="46" fill="none" stroke="var(--green)" strokeWidth="7" pathLength="100" strokeDasharray={`${length(actual)} 100`} transform="rotate(-90 60 60)" />}
-        {baseline !== null && baseline !== 0 && <circle className="trend-reference-ring" cx="60" cy="60" r="34" fill="none" stroke="var(--muted)" strokeWidth="5" pathLength="100" strokeDasharray={`${length(baseline)} 100`} transform="rotate(-90 60 60)" />}
-        {actual === null && <text x="60" y="66" textAnchor="middle" fill="var(--muted)" fontSize="24">—</text>}
+    const maximum = Math.max(1, scale ?? Math.max(Math.abs(actual ?? 0), Math.abs(baseline ?? 0)));
+    const position = (value: number) => 60 + Math.max(-1, Math.min(1, value / maximum)) * 55;
+    return <svg className="trend-history-bars" viewBox="0 0 120 42" aria-hidden="true">
+        <line x1="5" x2="115" y1="21" y2="21" stroke="var(--line)" />
+        <line x1="60" x2="60" y1="2" y2="36" stroke="var(--muted)" />
+        {actual !== null && actual !== 0 && <rect className="trend-observed-bar" x={Math.min(60, position(actual))} y="5" width={Math.max(1, Math.abs(position(actual) - 60))} height="10" rx="2" fill="var(--green)" />}
+        {baseline !== null && baseline !== 0 && <rect className="trend-history-bar" x={Math.min(60, position(baseline))} y="26" width={Math.max(1, Math.abs(position(baseline) - 60))} height="7" rx="1" fill="none" stroke="var(--muted)" strokeDasharray="3 2" />}
+        <text x="60" y="42" textAnchor="middle" fill="var(--muted)" fontSize="7">0</text>
     </svg>;
 }
 
@@ -65,7 +66,7 @@ export default function FinanceTrends({ state, trend, account, currency, onMonth
     const openMonth = (month: string) => { onMonth(month); setDetail(true); setCategory(""); focus("#trends-month-title"); };
     const back = () => { setDetail(false); focus(`[data-trend-month="${trend.month}"]`); };
     const method = <div className="view-stack trend-method">
-        <p>Le cercle extérieur montre le montant net observé, même sans comparaison. Le cercle intérieur montre la référence historique lorsqu’elle existe. Les douze mois et leur détail partagent la même échelle annuelle. Un montant négatif signifie des remboursements nets; ce n'est pas une progression vers un budget.</p>
+        <p>La barre pleine montre le montant net observé, même sans comparaison. La barre en pointillés montre la référence historique lorsqu'elle existe. Les douze mois et leur détail partagent la même échelle annuelle, avec le zéro au centre. Les remboursements nets apparaissent à gauche du zéro. Ces montants ne sont pas des objectifs de budget.</p>
         <p>La référence est la moyenne des périodes réellement observées parmi les {baselineWindowMonths} mois précédents, sans le mois cible ni les mois encore incomplets. Les mois absents sont exclus, jamais remplacés par zéro. Pour un mois partiel, les mêmes {trend.elapsedDays} premières journées sont retenues. Aucune extrapolation.</p>
         <p>Les bornes de mouvements ne prouvent pas un historique exhaustif. Les montants et écarts indicatifs restent visibles lorsque la couverture est partielle; ils ne certifient pas un historique complet. Aucun compte incomplet n'est supposé nul.</p>
         <p>Les paiements de carte, transferts, placements, doublons confirmés et natures à vérifier restent exclus. Les remboursements conservent leur signe. {trend.summary.included.filter(r => !r.reviewed).length} classifications sont encore suggérées dans ce mois.</p>
@@ -77,13 +78,14 @@ export default function FinanceTrends({ state, trend, account, currency, onMonth
     </div>;
     return <div ref={root} className="finance-trends view-stack">
         {!detail ? <section className="surface view-stack trend-annual" aria-labelledby="trends-year-title">
-            <div className="trend-heading"><h2 id="trends-year-title">Année</h2><div className="trend-controls"><label><select aria-label="Année analysée" value={year} onChange={e => onMonth(e.target.value + trend.month.slice(4))}>{years.map(y => <option key={y}>{y}</option>)}</select></label><InfoPopover title="Lecture des tendances">{method}</InfoPopover></div></div>
-            <div className="trend-months">{yearMonths.map(m => <button type="button" data-trend-month={m.month} key={m.month} className={m.month === trend.month ? "selected" : ""} onClick={() => openMonth(m.month)} aria-label={`Ouvrir ${monthName(m.month)}. Observé : ${money(m.actualCents, currency)}. Référence : ${money(m.baselineCents, currency)}. ${m.future ? "Mois à venir" : m.referenceIndicative ? `Référence indicative sur ${m.referenceMonths.length} mois observé(s)` : !m.baselineReady ? "Référence indisponible" : m.partial ? "Mois partiel" : "Mois terminé"}`}>
+            <div className="trend-heading"><div><p className="trend-eyebrow">Votre historique</p><h2 id="trends-year-title">Dépenses au fil des mois</h2></div><div className="trend-controls"><label><select aria-label="Année analysée" value={year} onChange={e => onMonth(e.target.value + trend.month.slice(4))}>{years.map(y => <option key={y}>{y}</option>)}</select></label><InfoPopover title="Lecture des tendances">{method}</InfoPopover></div></div>
+            <p className="trend-intro">Votre année, mois par mois, sans objectif de budget. Ouvrez un mois pour retrouver ses catégories et ses opérations.</p><div className="trend-months">{yearMonths.map(m => <button type="button" data-trend-month={m.month} key={m.month} className={m.month === trend.month ? "selected" : ""} aria-current={m.month === trend.month ? "date" : undefined} onClick={() => openMonth(m.month)} aria-label={`Ouvrir ${monthName(m.month)}. ${m.partial ? "Mois incomplet. " : ""}Observé : ${money(m.actualCents, currency)}. Référence : ${money(m.baselineCents, currency)}. ${m.future ? "Mois à venir" : m.referenceIndicative ? `Référence indicative sur ${m.referenceMonths.length} mois observé(s)` : !m.baselineReady ? "Référence indisponible" : m.partial ? "Mois partiel" : "Mois terminé"}`}>
                 <strong>{monthName(m.month, true)}</strong><Gauge actual={m.actualCents} baseline={m.baselineCents} scale={annualScale} />
                 <span>{m.actualCents === null ? "—" : money(m.actualCents, currency)}</span>
-                <small>{m.future ? "À venir" : !m.available ? "Sans données" : m.actualCents === null ? "Bornes à vérifier" : m.actualCents < 0 ? "Net remboursé" : m.partial ? `Au ${Number(m.to.slice(8))}` : "Observé"}</small>
+                <small>{m.future ? "À venir" : !m.available ? "Sans données" : m.actualCents === null ? "Bornes à vérifier" : m.partial ? `Partiel · au ${Number(m.to.slice(8))}${m.actualCents < 0 ? " · net remboursé" : ""}` : m.actualCents < 0 ? "Net remboursé" : "Observé"}</small>
+                <small className="trend-tile-reference">{m.baselineReady ? `Réf. ${m.referenceIndicative ? "indicative" : "observée"} : ${money(m.baselineCents, currency)}` : "Réf. indisponible"}</small>
             </button>)}</div>
-            <div className="trend-legend"><span className="trend-key actual">Observé</span><span className="trend-key typical">Référence historique</span></div>
+            <div className="trend-legend"><span className="trend-key actual">Observé</span><span className="trend-key typical">Référence historique</span><span>Échelle annuelle commune · remboursements à gauche de 0</span></div>
         </section> : <>
             <div className="trend-detail-nav"><button type="button" className="button secondary" onClick={back}>Retour à l'année</button><InfoPopover title="Lecture des tendances">{method}</InfoPopover></div>
             <section className="surface view-stack" aria-labelledby="trends-month-title">
@@ -100,14 +102,14 @@ export default function FinanceTrends({ state, trend, account, currency, onMonth
                 </InfoPopover></div>
                     <small className="trend-reference-caption">Référence {trend.referenceIndicative ? "indicative" : "observée"} ({trend.baselineReady ? trend.referenceMonths.length : 0} mois) : <strong>{money(trend.baselineCents, currency)}</strong></small>
                 </div></div>
-                <small>{trend.available ? `${trend.from} au ${trend.to}${trend.partial ? ` · ${trend.elapsedDays} premiers jours` : ""}` : "Aucune période disponible"}</small>
+                <small className="trend-period">{trend.partial && <strong>Mois incomplet · </strong>}{trend.available ? `${trend.from} au ${trend.to}${trend.partial ? ` · ${trend.elapsedDays} premiers jours` : ""}` : "Aucune période disponible"}</small>
                 {!trend.baselineReady && <small className="trend-coverage" role="status">Référence indisponible · aucune période antérieure observée</small>}
-                {trend.referenceIndicative && <small className="trend-coverage sr-only" role="status">Référence indicative · {trend.referenceMonths.length} mois observé(s)</small>}
+                {trend.referenceIndicative && <small className="trend-coverage" role="status">Référence indicative · {trend.referenceMonths.length} mois observé(s). Couverture ou classifications à vérifier.</small>}
                 <div className="trend-heading"><h2>Catégories</h2><details className="trend-category-filter"><summary>Filtrer</summary><label>Afficher une catégorie<select aria-label="Afficher une catégorie" value={category} onChange={e => setCategory(e.target.value)}><option value="">Toutes les catégories</option>{Object.entries(expenseCategories).filter(([key]) => key !== "savings-investments").map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label></details></div>
                 <div className="trend-categories">{categories.map(c => <button type="button" key={c.key} className="trend-category" onClick={() => onCategory(c.key)}>
                     <span className="trend-category-line"><strong>{c.label}</strong><b>{money(c.actualCents, currency)}</b></span>
                     <svg viewBox="0 0 310 26" preserveAspectRatio="none" aria-hidden="true"><line x1={position(0)} x2={position(0)} y1="0" y2="26" stroke="var(--muted)" />{c.actualCents !== null && <rect x={Math.min(position(0), position(c.actualCents))} y="2" width={Math.abs(position(c.actualCents) - position(0))} height="8" fill="var(--green)" />}{c.baselineCents !== null && <rect x={Math.min(position(0), position(c.baselineCents))} y="15" width={Math.abs(position(c.baselineCents) - position(0))} height="8" fill="none" stroke="var(--muted)" strokeDasharray="4 2" />}</svg>
-                    <small>{c.count} opérations · Référence {money(c.baselineCents, currency)}</small>
+                    <small>{c.count} opérations · Référence {trend.referenceIndicative ? "indicative " : ""}{money(c.baselineCents, currency)} · Voir les opérations</small>
                 </button>)}</div>{!categories.length && <p>Aucune dépense pour ce filtre. Changez de catégorie ou de mois.</p>}
             </section>
             <details className="surface trend-daily"><summary>Cumul quotidien</summary><DailyCurve trend={trend} currency={currency} /></details>

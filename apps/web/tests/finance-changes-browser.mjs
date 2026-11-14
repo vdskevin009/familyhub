@@ -21,7 +21,7 @@ server.listen(0, "127.0.0.1"); await once(server, "listening");
 const base = process.env.FAMILYHUB_TEST_BASE || `http://127.0.0.1:${server.address().port}/familyhub/`;
 let browser;
 try {
-    browser = await chromium.launch({ headless: true });
+    browser = await chromium.launch({ ...(process.env.FAMILYHUB_TEST_BROWSER_CHANNEL ? { channel: process.env.FAMILYHUB_TEST_BROWSER_CHANNEL } : {}), headless: true });
     for (const width of [320, 390, 768, 1440]) {
         const finance = new FinanceLibrary(join(temp, String(width)));
         let initial = (await finance.import({ bundle: categoryFixture(), apply: true, expectedRevision: "empty" })).state;
@@ -58,9 +58,9 @@ try {
             return reply({ state: "idle", accounts: [], jobs: [], schedule: null, daily: null });
         });
         await page.goto(base + "?view=finances");
-        await page.getByRole("heading", { name: "Dépenses par catégorie", exact: true }).waitFor();
+        await page.getByRole("heading", { name: "Où va l’argent ?", exact: true }).waitFor();
         const total = page.locator(".compact-finance-totals"), box = await total.boundingBox();
-        assert.ok(box.height < 90, `Total too tall: ${box.height}px at ${width}`);
+        assert.ok(box.height <= 120, `Total too tall: ${box.height}px at ${width}`);
         assert.equal(await total.locator(":scope > div").count(), 1);
         assert.equal(await total.evaluate(el => el.closest("section")?.querySelector(".finance-bars") !== null), true);
         assert.doesNotMatch(await total.innerText(), /suggestions non confirmées|opérations à revoir/);
@@ -75,10 +75,11 @@ try {
         await filters.getByLabel("Compte", { exact: true }).selectOption("card");
         await filters.getByRole("button", { name: "Voir les résultats" }).click();
         await openFinanceRegister(page);
-        const register = page.getByRole("heading", { name: "Opérations et catégories", exact: true }).locator("..").locator(".finance-register");
+        const register = page.getByRole("heading", { name: "Opérations", exact: true }).locator("..").locator(".finance-register");
         const editor = page.getByRole("dialog", { name: "Vérifier l’opération", exact: true });
         const open = async () => { await openFinanceRegister(page); await register.getByRole("button").filter({ hasText: /MAPLE MARKET 01/ }).first().click(); await editor.waitFor(); };
-        // Financial amounts (signed cents) order the register, even when dates differ.
+        // Optional amount order retains the original classification workflow.
+        await page.getByLabel("Trier les opérations").selectOption("amount");
         assert.match(await register.locator(".finance-service").first().innerText(), /MAPLE MÁRKET 01/);
         const filterOptions = await page.getByLabel("Catégorie", { exact: true }).locator("option").allTextContents();
         const alphabetical = values => [...values].sort((a, b) => a.localeCompare(b, "fr-CA", { sensitivity: "base" }));
@@ -119,7 +120,7 @@ try {
         for (const id of ["refund", "transfer", "repayment", "investment", "review", "duplicate", "c"]) {
             assert.equal(saved.decisions[id].nature, initial.decisions[id].nature); assert.equal(saved.decisions[id].note, initial.decisions[id].note);
         }
-        await page.reload(); await page.getByRole("heading", { name: "Dépenses par catégorie", exact: true }).waitFor();
+        await page.reload(); await page.getByRole("heading", { name: "Où va l’argent ?", exact: true }).waitFor();
         await openFinanceRegister(page);
         await page.getByText("Modifications récentes", { exact: true }).click();
         await page.getByRole("button", { name: /^Annuler la modification de 10 opérations/ }).click();
@@ -182,7 +183,7 @@ try {
         assert.equal(school.decisions.refund.nature, "refund");
         assert.equal(school.decisions.repayment.nature, "repayment");
         assert.deepEqual(school.data, initial.data);
-        await page.reload(); await page.getByRole("heading", { name: "Dépenses par catégorie", exact: true }).waitFor();
+        await page.reload(); await page.getByRole("heading", { name: "Où va l’argent ?", exact: true }).waitFor();
         await page.getByRole("button", { name: /^Jasmine school/ }).waitFor();
         await open(); assert.equal(await category.inputValue(), "jasmine-school");
         assert.equal(await editor.evaluate(el => el.scrollWidth > el.clientWidth), false);

@@ -27,3 +27,7 @@ Private reference images guide layout only. No reference image or screenshot amo
 ## Verification
 
 Synthetic model tests cover the prior-month window, minimum cohort, account/currency bounds, partial-day matching, disconnected intervals, refunds, independently excluded settlement legs, pending rows, zero/negative months, decision changes and calendar boundaries. Browser acceptance covers 320/390/768/1440px, keyboard return, source drill-down, saved decisions, empty/error/missing states and the existing spending period. Both suites are included in the existing finance CI commands. Public release and physical-phone acceptance are separate from these local checks; Issue #177 records delivery evidence.
+
+## Reviewed presentation (FH-FIN-022)
+
+The owner-approved November 2026 review supersedes the ring presentation above with signed horizontal observed bars and dashed historical-reference bars. All twelve months and selected detail share a common annual scale around zero; net-negative refunds extend left. Zero remains a numeric zero without a positive bar. Partial periods and indicative references are explicitly labeled. This is observed history, not progress toward a budget. Model eligibility, source editing, daily table, pending separation and retained source warnings are unchanged. Publication and live verification remain separate from local synthetic tests.

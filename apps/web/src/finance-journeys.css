@@ -39,3 +39,29 @@
 
 .finance-category-payments > label input { font-size: 16px; }
 .finance-inline-payment .finance-service:disabled { opacity: 1; }
+
+/* Approved finance review, preserving all source/edit workflows. */
+.finance-view .finance-category-total > div { grid-template-columns: minmax(0, 1fr) 44px; }
+.finance-category-total > div > span { grid-column: 1; }
+.finance-view .finance-category-total > div > strong { grid-column: 1; grid-row: 2; font-size: clamp(28px, 7vw, 40px); white-space: normal; overflow-wrap: anywhere; }
+.finance-total-formula { color: var(--muted); font-size: 14px; line-height: 1.5; }
+.finance-operations-link { width: 100%; justify-content: space-between; min-height: 48px; }
+.finance-operations-open .finance-expense-charts,
+.finance-operations-open .finance-journey-disclosure:not(.finance-operations-panel),
+.finance-operations-open .finance-operations-panel > summary { display: none; }
+.finance-operations-panel > section > label { display: grid; gap: 6px; }
+.finance-operations-panel select { min-height: 44px; min-width: 0; max-width: 100%; }
+
+.finance-collection-note { color: var(--muted); font-size: 13px; line-height: 1.5; }
+.finance-observation-note { padding: 18px; background: var(--soft); border-radius: var(--radius-sm); line-height: 1.5; }
+.finance-observation-note h3 { margin-top: 0; }
+
+.finance-operations-panel > section { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; }
+.finance-operations-panel > section > * { grid-column: 1 / -1; }
+.finance-operations-panel > section > label:not(.finance-check) { grid-column: auto; font-size: 13px; }
+.finance-operations-panel .finance-filters { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; }
+.finance-operations-panel .finance-filters label { min-width: 0; }
+.finance-operations-panel .finance-filters input { min-width: 0; width: 100%; }
+.finance-operations-panel .finance-filters label:last-child { order: -1; }
+.finance-operations-panel .finance-check { display: flex; align-items: center; gap: 8px; min-height: 44px; }
+.finance-operations-panel .finance-check input { width: 20px; height: 20px; }

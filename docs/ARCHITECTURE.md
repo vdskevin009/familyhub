@@ -321,3 +321,7 @@ Paired original downloads advertise attachment-preparation-v1 for bounded, idemp
 Blue Cross manual import now uses a request-ID-bound async protocol with durable receipt/status recovery and an explicit pre-apply cancellation boundary. Missing IDs fail before work; legacy synchronous callers must adopt the advertised capability. Preview stays read-only and unknown outcomes never auto-retry. See the migration document for protocol and remaining release gates.
 
 Private classification is now guarded by effective-configuration discovery, explicit inherited-tool denial, narrow per-invocation input filesystem permissions, no sandbox fallback, validated event output and owned-child close semantics. Synthetic Windows MXC capability and fictitious classification proofs passed; production activation and real-mail replay remain separately gated.
+
+## Reviewed finance evidence (FH-FIN-022)
+
+The optional pure full-feed adapter and guarded paired API orchestration are documented in [Finances full feed](FINANCES-FULL-FEED.md). They preserve explicit account identity, pagination, unknown freshness and existing source/manual history. No collector or schedule is activated by importing this module. Presentation and validation gates are in [Finance review](FINANCE-REVIEW.md).

@@ -48,7 +48,7 @@ const screenshots = resolve("output/playwright/finance");
 await mkdir(screenshots, { recursive: true });
 let browser;
 try {
-    browser = await chromium.launch({ headless: true, args: ["--no-sandbox"] });
+    browser = await chromium.launch({ ...(process.env.FAMILYHUB_TEST_BROWSER_CHANNEL ? { channel: process.env.FAMILYHUB_TEST_BROWSER_CHANNEL } : {}), headless: true, args: ["--no-sandbox"] });
     for (const width of [320, 390, 768, 1440]) {
         const finance = new FinanceLibrary(
             join(temp, String(width), "finances"),
@@ -193,7 +193,7 @@ try {
             .getByRole("button", { name: /Confirmer l.import sur le PC/ })
             .click();
         await page
-            .getByRole("heading", { name: "Dépenses par catégorie" })
+            .getByRole("heading", { name: "Où va l’argent ?" })
             .waitFor();
         await page.locator(".finance-import > summary").click();
         assert.equal(await page.getByLabel("Mois", { exact: true }).inputValue(), "9");
@@ -287,7 +287,7 @@ try {
         await sheet.waitFor({ state: "hidden" });
         await page.reload();
         await page
-            .getByRole("heading", { name: "Dépenses par catégorie" })
+            .getByRole("heading", { name: "Où va l’argent ?" })
             .waitFor();
         assert.equal(
             (await finance.read()).decisions.groceries.note,
@@ -313,6 +313,7 @@ try {
         await openFinanceRegister(page);
         await page.getByLabel("Rechercher", { exact: true }).fill("SPOTIFY");
         await page.locator(".finance-check input").check();
+        await page.getByRole("button", { name: "Retour aux dépenses", exact: true }).click();
         const categoryBars = page.locator(".finance-expense-charts > section").first();
         const foodBar = categoryBars.getByRole("button", { name: /^Courses alimentaires/ });
         await foodBar.focus(); await page.keyboard.press("Enter");
@@ -381,6 +382,7 @@ try {
         assert.equal(await page.locator("dialog[open]").count(), 0);
         await foodBar.click(); await foodSheet.waitFor(); await page.keyboard.press("Escape");
         assert.equal(await page.locator("dialog[open]").count(), 0);
+        await openFinanceRegister(page);
         await page.locator(".finance-check input").uncheck();
         await openFinanceRegister(page);
         await page.getByLabel("Rechercher", { exact: true }).fill("SPOTIFY");
@@ -430,7 +432,7 @@ try {
         await sheet.getByRole("button", { name: "Retour aux paiements de la catégorie", exact: true }).click();
         await categorySheet.getByRole("button", { name: "Fermer la catégorie", exact: true }).click();
         await page.reload();
-        await page.getByRole("heading", { name: "Dépenses par catégorie", exact: true }).waitFor();
+        await page.getByRole("heading", { name: "Où va l’argent ?", exact: true }).waitFor();
         await selectFinanceFilter(page, "Mois", "6");
         await openFinanceSection(page, "Épargne / Investissements classés");
         assert.match(await flows.locator(".finance-totals").innerText(), /500,00.*500,00/s);
@@ -676,7 +678,7 @@ try {
         assert.equal(await page.locator(".finance-register button").filter({ hasText: "SPOTIFY SYNTHETIC" }).count(), 0);
         await openFinanceRegister(page);
         assert.match(await page.locator(".finance-register button").filter({ hasText: "SYNTHETIC RESTAURANT" }).innerText(), /Animaux de compagnie.*Confirmé/s);
-        await page.locator(".finance-expense-charts").getByRole("button", { name: /Animaux de compagnie/ }).click();
+        await page.getByRole("button", { name: "Retour aux dépenses", exact: true }).click(); await page.locator(".finance-expense-charts").getByRole("button", { name: /Animaux de compagnie/ }).click();
         const petPayments = page.getByRole("dialog", { name: /^Paiements.*Animaux de compagnie$/ });
         await petPayments.waitFor();
         assert.match(await petPayments.innerText(), /SYNTHETIC RESTAURANT/);
