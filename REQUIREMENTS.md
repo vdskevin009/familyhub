@@ -1,5 +1,9 @@
 # FamilyHub - Canonical Requirements
 
+## Purchase-only Courses and monthly PC Express spending - FH-GROCERY-015 (#155)
+
+Testing. Courses exposes only Achats, retaining per-purchase comparisons and original source tools. A read-only monthly chart separates verified final receipts from confirmation estimates, deduplicates explicit order identities across accounts and excludes contradictory or unusable evidence. Unknown months and incomplete mailbox/refund coverage remain explicit. See [FH-GROCERY-015](docs/requirements/FH-GROCERY-015.md). This supersedes the Catalogue/Moins cher navigation, not the underlying preserved records or comparison logic.
+
 ## Gmail plugin migration - FH-MAIL-008
 
 In progress. Replace the requested account's Gmail retrieval through the connected plugin while preserving invoices, Important Mail, emailed Blue Cross tables, groceries, original attachments, history/coverage, source identities, deduplication and manual decisions. A local opt-in runtime now connects account-bound plugin retrieval, immutable plans, existing collector/manual routes and original-byte cache/downloads. Source selection fails closed after activation; default legacy remains only for unselected installations. Synthetic lifecycle/security/browser tests cover stale state, cancellation and no-fallback behavior. No production policy, credential, schedule or deployment has changed. Full orchestration, attachment persistence, source parity, browser fallback and cutover remain pending. See [scope, limits and acceptance gates](docs/GMAIL-PLUGIN-MIGRATION.md).
