@@ -31,6 +31,7 @@ try{
  await chart.getByLabel("Année",{exact:true}).selectOption("2025");await chart.getByText(/20,00/).first().waitFor();await chart.getByLabel("Année",{exact:true}).selectOption("2026");
  const graph=chart.getByRole("region",{name:/Graphique mensuel/});await graph.focus();assert.equal(await graph.evaluate(el=>document.activeElement===el),true);
  fail=true;await page.reload();await page.getByText(/Historique en cache/).waitFor();await chart.getByText(/Données en cache/).waitFor();fail=false;
+ for (const oldTab of ["target", "needs", "compare"]) { await page.goto(base.replace("tab=catalogue", "tab=" + oldTab)); await chart.getByText(/112,00/).first().waitFor(); assert.equal(new URL(page.url()).searchParams.get("tab"), "tickets"); assert.equal(await page.getByRole("button", { name: "Catalogue", exact: true }).count(), 0); }
  await context.close();console.log(`PASS monthly chart, dedup, paid/estimate separation, coverage, year control, removed tabs, cache and no overflow at ${width}px`);
  }
  assert.equal(writes,0);assert.deepEqual(errors,[]);assert.deepEqual(external,[]);
