@@ -36,7 +36,11 @@ export function financeFeedQueries(plan: Pick<PluginImportPlan,'accounts'|'from'
   };
 }
 function readBatch(batch: FeedBatch, expected: Obj, kind: Dataset) {
-  if(canonical(batch.query)!==canonical(expected) || !batch.pages.length) return fail();
+  // Membership order is not query scope. Preserve the raw request in evidence.
+  const selected=batch.query?.account_id?.val;
+  if(!Array.isArray(selected) || selected.some(id=>typeof id!=='string') || new Set(selected).size!==selected.length) return fail();
+  const equivalent={...batch.query,account_id:{...batch.query.account_id,val:[...selected].sort()}};
+  if(canonical(equivalent)!==canonical(expected) || !batch.pages.length) return fail();
   let cursor:string|null=null; const cursors=new Set<string>(); const rows:Obj[]=[];
   let complete=true; const coverage:Obj[]=[];
   for(const [i,p] of batch.pages.entries()) {

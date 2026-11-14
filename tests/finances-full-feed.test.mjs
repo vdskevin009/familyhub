@@ -94,3 +94,20 @@ test('original trade and cancellation remain raw evidence without synthetic ledg
  f.evidence.activity=f.batch('investment_transactions',[original,{...original,investment_transaction_id:'fiction-cancel',type:'cancel',cancel_transaction_id:'fiction-trade',name:'Synthetic cancel'}]);
  const result=prepareFinanceFeed(f.evidence,f.plan,f.state);assert.equal(result.bundle.brokerageActivities.length,0);assert.equal(result.bundle.pluginFeedEvidence.evidence.activity.pages[0].result.items.length,2);
 });
+
+test('account membership ordering preserves scope without accepting duplicates or changed accounts',()=>{
+ const f=fixture();
+ f.plan.accounts[pluginAccountKey('fiction','second-account')]='rrsp';
+ f.evidence.linkedAccounts.institutions[0].accounts.push({item_id:'fiction',account_id:'second-account',balances:{iso_currency_code:'CAD'}});
+ const queries=financeFeedQueries(f.plan);
+ for(const [k,t] of [['transactions','transactions'],['holdings','investment_holdings'],['activity','investment_transactions']]) {
+  f.evidence[k].query=structuredClone(queries[t]); f.evidence[k].query.account_id.val.reverse();
+ }
+ const before=JSON.stringify(f.evidence);
+ assert.doesNotThrow(()=>prepareFinanceFeed(f.evidence,f.plan,f.state));
+ assert.equal(JSON.stringify(f.evidence),before);
+ f.evidence.transactions.query.account_id.val.push('second-account');
+ assert.throws(()=>prepareFinanceFeed(f.evidence,f.plan,f.state));
+ f.evidence.transactions.query.account_id.val=['fiction-account','unreviewed'];
+ assert.throws(()=>prepareFinanceFeed(f.evidence,f.plan,f.state));
+});
