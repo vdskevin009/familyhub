@@ -88,13 +88,16 @@ export default function GroceryPurchases({ config, records, onReview }: { config
   function openDetails(id: string, trigger: HTMLButtonElement) { if (closing.current) return; opener.current = trigger; dialogUrl.current = location.href; dialogEntry.current = crypto.randomUUID(); history.pushState({ ...history.state, familyhubPurchaseDialog: dialogEntry.current }, "", location.href); setSelected(id); }
   function totals(r: GroceryRecord, compact = false) {
     return purchaseScenarioStores(plan, r, undefined, resolution, records).map(store => <div className="grocery-purchase-store" key={store.name}>
-      <div className="grocery-purchase-store-heading"><span>{store.name}</span><strong>{store.normalized === null ? "Indisponible" : money(store.normalized, r.receipt.currency)}</strong></div>
+      <div className="grocery-purchase-store-heading"><span>{store.name}</span><strong>{store.normalized === null ? "Indisponible" : !store.complete ? "Panier incomplet" : money(store.normalized, r.receipt.currency)}</strong></div>
+      {store.normalized !== null && !store.complete && <small><strong>Sous-total de {store.covered} article{store.covered > 1 ? "s" : ""} seulement : {money(store.normalized, r.receipt.currency)}</strong> · {store.missing} non chiffré{store.missing > 1 ? "s" : ""}</small>}
       {compact ? <small>{!store.complete ? "Partiel " : ""}{store.covered}/{store.count} · dont {store.estimated} estimé{store.estimated > 1 ? "s" : ""}{store.nonlocal ? " · Non local" : store.historical ? " · Ancien" : ""}</small> : <>
       <small><strong>{store.estimated ? "Scénario estimé au prorata" : store.complete ? "Comparaison vérifiée" : "Comparatif incomplet"}</strong></small>
       <small>{store.covered}/{store.count} comparés, dont {store.estimated} estimé{store.estimated > 1 ? "s" : ""} · {store.verified} vérifiés{!store.complete ? " · sous-total partiel" : ""}</small>
-      {store.estimated > 0 && <small>Paquets entiers : {store.outlay === null ? "coût à préciser" : `${store.packEstimated ? "exemple estimé " : "scénario "}${money(store.outlay, r.receipt.currency)}`}. {store.limited ? "Prix anciens, non locaux ou conditions à vérifier dans le détail." : "Hypothèses et substitutions détaillées par produit."}</small>}
+      {store.normalized !== null && <small>Paquets entiers : {store.outlay === null ? "coût à préciser" : `${store.packEstimated ? "exemple estimé " : "scénario "}${money(store.outlay, r.receipt.currency)}`}. {store.limited ? "Prix anciens, non locaux ou conditions à vérifier dans le détail." : "Hypothèses et substitutions détaillées par produit."}</small>}
+      {store.observationDates.length > 0 && <small>Prix observés : {store.observationDates.join(", ")}.</small>}
+      {!store.complete && store.missingProducts.length > 0 && <p className="grocery-purchase-detail-note">Non chiffrés : {store.missingProducts.join(", ")}. Aucun montant ajouté pour ces articles.</p>}
       {store.comparisonOnly && !store.estimated && <small>Prix observés le {store.observationDates.join(", ")} · équivalents de même format, identité SKU et marque non garanties.</small>}
-      {store.sourceEstimate !== null && store.normalized !== null && <small>Sur ces mêmes articles : source estimée {money(store.sourceEstimate, r.receipt.currency)} · écart observé {money(Math.round((store.sourceEstimate - store.normalized) * 100) / 100, r.receipt.currency)}. Hors frais et taxes ; pas une économie de commande.</small>}
+      {store.sourceEstimate !== null && store.normalized !== null && <small>Sur ces mêmes articles : source {r.receipt.sourceType === "final-receipt" ? "transcrite" : "estimée"} {money(store.sourceEstimate, r.receipt.currency)} · écart observé {money(Math.round((store.sourceEstimate - store.normalized) * 100) / 100, r.receipt.currency)}. Hors frais et taxes ; pas une économie de commande.</small>}
       {store.multiContext && <p className="grocery-purchase-detail-note">Prix relevés dans différents magasins ou canaux : estimation, sans panier local unique confirmé.</p>}
       </>}
     </div>);
@@ -105,7 +108,7 @@ export default function GroceryPurchases({ config, records, onReview }: { config
         <div className="grocery-purchase-heading"><div className="grocery-purchase-brand"><span className="grocery-purchase-logo" aria-hidden="true">{archive ? "Achat" : "PCX"}</span><div><strong>{archive ? r.receipt.store || "Magasin à vérifier" : "PC Express"}</strong><span>{dateLabel(purchaseDate(r))}</span></div></div><ChevronRight size={18} aria-hidden="true" /></div>
         <div className="grocery-purchase-amount"><span>{purchaseAmountLabel(r)}</span><strong>{money(r.receipt.total, r.receipt.currency)}</strong></div>
       </button>
-      <div className="grocery-purchase-totals" aria-label={`Comparatif de l'achat chez ${r.receipt.store}`}><p>Comparaison au prorata</p>{totals(r, true)}<small className="grocery-purchase-cost-note">Coût équivalent · hors frais et taxes</small></div>
+      <div className="grocery-purchase-totals" aria-label={`Comparatif de l'achat chez ${r.receipt.store}`}><p>Comparaison à quantité équivalente</p>{totals(r, true)}<small className="grocery-purchase-cost-note">Sous-totaux des seuls articles chiffrés · hors frais et taxes</small></div>
       <button className="grocery-purchase-more" onClick={event => { openDetails(r.id, event.currentTarget); }} aria-label={`Plus d’infos pour l’achat du ${purchaseDate(r) || "date inconnue"}`}>Plus d’infos<ChevronRight size={15} aria-hidden="true" /></button>
     </article>)}</div>;
   }

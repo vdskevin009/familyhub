@@ -9,3 +9,7 @@ Include Walmart, Costco, Fresh St. Market and Save-On-Foods in historical purcha
 When the source quantity is uncertain, an explicit reviewed quantity hypothesis may be reused across retailers only on the same common physical/count basis with provenance. Do not reinterpret the target quantity independently to match each retailer’s package. Distinguish prorata quantity cost from the cost of whole packages; preserve the original source format and all withdrawals. Report real coverage per purchase/store before and after ingestion and verify the served commit separately from compilation.
 
 Implementation references: `GroceryPurchases`, `grocery-purchase-scenarios`, purchase-resolution sidecar and existing 15-minute scanner. No new secret, permission, cart operation, purchase, Push or scheduler.
+
+## Comparison coverage correction (#155)
+
+Testing: incomplete comparisons use “Panier incomplet” as the headline and identify the priced subset and missing count beside its subtotal. Details list unpriced products, observation dates and whole-package outlay. A source subtotal is computed over exactly those matched lines, only when each has source-bound evidence; the full receipt total is never a substitute. Unknown explicit club/family/multipack source formats cannot inherit one ordinary competitor package. Yogurt scenarios preserve an explicit fat percentage. Quantity normalization and grouped whole-pack rounding retain synthetic regression coverage. No private records, prices, confirmations or original receipts are modified.

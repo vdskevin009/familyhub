@@ -3,6 +3,7 @@ import type { GroceryPlan } from "../../worker/src/grocery-planning";
 import type { PurchaseResolution } from "../../worker/src/grocery-purchase-resolution";
 import type { PurchaseScenario } from "../../worker/src/grocery-purchase-scenario-model";
 import { derivePurchaseScenarios, scenarioStore, scenarioUnavailableReason } from "../../worker/src/grocery-purchase-scenarios";
+import { estimatedSourceLine } from "../../worker/src/grocery-purchase-evidence";
 import { purchaseScenarioRetailers } from "../../worker/src/grocery-purchase-retailers";
 import { purchaseLocalDate, purchaseStoreComparisons, type PurchaseLineComparison } from "./grocery-purchases";
 
@@ -18,6 +19,8 @@ export function purchaseScenarioStores(plan: GroceryPlan, record: GroceryRecord,
       const price=plan.prices.find(p=>p.id===scenario.priceId)!;
       return {...line,price,reason:"",confidence:"estimated",scenario,normalized:scenario.normalized,outlay:scenario.outlay,packs:scenario.packs,ratio:scenario.ratio,calculated:Math.abs(scenario.ratio-Math.round(scenario.ratio))>1e-10};
     });
+    const matchedSource = lines.map((line,index) => line.normalized === null ? null : estimatedSourceLine(plan.sourceEstimates,record,index)?.amount ?? line.sourceEstimate ?? (record.receipt.sourceType === "final-receipt" ? line.line.amount : null));
+    const sourceKnown = matchedSource.filter((amount): amount is number => amount !== null && amount !== undefined);
     const covered=lines.filter(l=>l.normalized!==null),verified=covered.filter(l=>l.confidence==="verified").length,estimated=covered.length-verified;
     const groups=new Map<string,{amount:number;size:number|null;price:number|null;weighed:boolean}>();
     for(const line of covered){
@@ -29,7 +32,7 @@ export function purchaseScenarioStores(plan: GroceryPlan, record: GroceryRecord,
     const outlay=outlayKnown?[...groups.values()].reduce((n,g)=>n+(g.weighed?g.amount/g.size!:Math.ceil(g.amount/g.size!-1e-10))*g.price!,0):null;
     const contexts=[...new Set(covered.map(l=>JSON.stringify([l.price!.retailerId,l.price!.locality,l.price!.mode])))];
     const nonlocal=covered.some(l=>!l.price!.localityConfirmed||!plan.retailers.find(r=>r.id===l.price!.retailerId)?.areaConfirmed||l.price!.locality!==plan.retailers.find(r=>r.id===l.price!.retailerId)?.locality);
-    return {...store,lines,covered:covered.length,count:lines.length,verified,estimated,complete:lines.length>0&&covered.length===lines.length,normalized:covered.length?Math.round(covered.reduce((n,l)=>n+l.normalized!,0)*100)/100:null,outlay:outlay===null?null:Math.round(outlay*100)/100,packEstimated:covered.some(l=>l.scenario?.packEstimated),sourceEstimate:estimated?null:store.sourceEstimate,nonlocal,multiContext:contexts.length>1,
+    return {...store,lines,covered:covered.length,count:lines.length,verified,estimated,complete:lines.length>0&&covered.length===lines.length,normalized:covered.length?Math.round(covered.reduce((n,l)=>n+l.normalized!,0)*100)/100:null,outlay:outlay===null?null:Math.round(outlay*100)/100,packEstimated:covered.some(l=>l.scenario?.packEstimated),sourceEstimate:covered.length > 0 && sourceKnown.length === covered.length ? Math.round(sourceKnown.reduce((sum,amount)=>sum+amount,0)*100)/100 : null,missing:lines.length-covered.length,missingProducts:lines.filter(l=>l.normalized===null).map(l=>l.line.product||l.line.name),observationDates:[...new Set(covered.map(l=>l.price!.evidence.date))].sort(),nonlocal,multiContext:contexts.length>1,
       historical:covered.some(l=>l.scenario&&l.scenario.ageDays>7),limited:covered.some(l=>(l.scenario?.limits.length??0)>0)};
   });
 }

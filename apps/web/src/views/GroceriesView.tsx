@@ -7,6 +7,7 @@ import { fileSource, groceryRequest, importGroceries, loadGroceries, reviewGroce
 import { groceryCache } from "../grocery-cache";
 import "../grocery.css";
 import GroceryPurchases from "./GroceryPurchases";
+import GroceryMonthlySpending from "./GroceryMonthlySpending";
 type Edit = { record: GroceryRecord; receipt: GroceryReceipt };
 const amount = (s: string) => s === "" ? null : Number(s);
 const money = (n: number, currency: string) => `${n.toFixed(2)} ${currency}`;
@@ -107,6 +108,7 @@ export default function GroceriesView({ config, initialRecordId }: { config: Wor
     {error && <Notice error onDismiss={() => setError("")}>{error}</Notice>}{notice && <Notice onDismiss={() => setNotice("")}>{notice}</Notice>}
     {busy && <p role="status">Opération en cours… Les sources importées restent conservées.</p>}
     {offline && <p className="grocery-warning">Historique en cache sur cet appareil. Connectez le PC puis actualisez pour retrouver les derniers achats.</p>}
+    <GroceryMonthlySpending records={records} offline={offline} />
     <GroceryPurchases config={config} records={records} onReview={r => void action(() => open(r))} /><details className="grocery-purchase-tools" open={toolsOpen} onToggle={event => setToolsOpen(event.currentTarget.open)}><summary>Sources et outils</summary><section id="grocery-ticket-import" className="grocery-import" aria-label="Ajouter un ticket">
       <div><ShoppingBasket size={25} /><h2>Un ticket, plusieurs photos si besoin</h2><p>Photographiez de haut en bas, avec un petit chevauchement. Gardez toutes les photos du même ticket ensemble.</p></div>
       <input ref={cameraInput} className="sr-only" type="file" accept="image/jpeg,image/png,image/webp" capture="environment" aria-label="Prendre une photo du ticket" onChange={e => void addFiles(e.target.files)} disabled={busy} />

@@ -1,0 +1,29 @@
+.grocery-spending { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 20px; display: grid; gap: 12px; min-width: 0; }
+.grocery-spending h2, .grocery-spending p { margin: 0; }
+.grocery-spending p { font-size: 13px; line-height: 1.5; }
+.grocery-spending-eyebrow { color: var(--muted); font-size: 12px !important; margin-bottom: 5px !important; }
+.grocery-spending select { min-height: 44px; background: var(--surface); color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 6px 12px; }
+.grocery-spending-currency { display: grid; gap: 14px; min-width: 0; }
+.grocery-spending-summary { display: flex; gap: 16px 28px; flex-wrap: wrap; }
+.grocery-spending-summary > div { display: grid; gap: 5px; }
+.grocery-spending-summary span { color: var(--muted); font-size: 12px; }
+.grocery-spending-summary strong { font-size: 21px; font-variant-numeric: tabular-nums; }
+.grocery-spending-legend { display: flex; gap: 8px 18px; flex-wrap: wrap; }
+.grocery-spending-legend > span { display: flex; align-items: center; gap: 7px; }
+.grocery-spending-legend i { width: 12px; height: 12px; border-radius: 2px; }
+.grocery-spending .paid { background: #18705c; }
+.grocery-spending .estimated { background: repeating-linear-gradient(135deg, #b16b18 0 3px, #f3d4a0 3px 6px); border: 1px solid #b16b18; }
+.grocery-spending-scroll { overflow-x: auto; max-width: 100%; border-radius: 4px; }
+.grocery-spending-bars { display: flex; gap: 8px; min-width: 0; padding: 14px 2px 4px; }
+.grocery-spending-column { flex: 1; min-width: 34px; display: grid; gap: 8px; text-align: center; font-size: 11px; }
+.grocery-spending-pair { height: 150px; display: flex; justify-content: center; align-items: flex-end; gap: 3px; border-bottom: 1px solid var(--line); }
+.grocery-spending-pair > span:not(.grocery-spending-missing) { width: 26px; max-width: 35%; border-radius: 3px 3px 0 0; min-height: 0; box-sizing: border-box; }
+.grocery-spending-pair .estimated[style="height: 0%;"] { border: 0; }
+.grocery-spending-missing { color: var(--muted); padding-bottom: 4px; }
+.grocery-spending-note { color: var(--muted); }
+.grocery-spending summary { min-height: 44px; align-content: center; cursor: pointer; font-size: 13px; }
+.grocery-spending details p { margin: 8px 0; }
+.grocery-spending-values { list-style: none; padding: 0; margin: 0; }
+.grocery-spending-values li { display: grid; gap: 5px; padding: 12px 0; border-bottom: 1px solid var(--line); font-size: 13px; }
+.grocery-spending :focus-visible { outline: 2px solid var(--text); outline-offset: 3px; }
+@media (max-width: 480px) { .grocery-spending { padding: 14px; } .grocery-spending-summary strong { font-size: 19px; } }

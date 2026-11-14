@@ -13,6 +13,7 @@ const DocumentLibraryView = lazy(() => import("./views/DocumentLibraryView"));
 const SavingsView = lazy(() => import("./views/SavingsView"));
 const MortgageView = lazy(() => import("./views/MortgageView"));
 const FinancesView = lazy(() => import("./views/FinancesView"));
+const ContributionsView = lazy(() => import("./views/ContributionsView"));
 const CoursesView = lazy(() => import("./views/CoursesView"));
 const NotificationsView = lazy(() => import("./views/NotificationsView"));
 import { PageHeader } from "./ui/primitives";
@@ -38,6 +39,7 @@ const nav: Array<{ id: AppView; label: string; shortLabel?: string; icon: typeof
   { id: "other", label: "Plus", icon: MoreHorizontal }
 ];
 const otherViews: Array<{ id: AppView; label: string; description: string; icon: typeof Home }> = [
+  { id: "contributions", label: "Contributions", description: "Objectifs personnels REER et REEE", icon: CircleDollarSign },
   { id: "finances", label: "Finances", description: "Dépenses, comptes et abonnements détectés", icon: CircleDollarSign },
   { id: "mortgage", label: "Hypothèque", description: "Dossier, échéances et taux de référence", icon: Home },
   { id: "documents", label: "Documents", description: "Factures et décomptes des assureurs", icon: FileText },
@@ -141,6 +143,7 @@ export default function App() {
         {view === "reimbursements" && <ReimbursementsView key={routeKey} hub={state} />}
         {documentKind && <div className="view-stack"><nav className="segment-tabs document-tabs" aria-label="Sources documentaires">{documentViews.map(item => <button type="button" key={item.id} className={documentKind === item.id ? "active" : ""} aria-current={documentKind === item.id ? "page" : undefined} onClick={() => navigate(item.id)}>{item.label}</button>)}</nav><DocumentLibraryView key={documentKind} hub={state} kind={documentKind} /></div>}
         {view === "savings" && <SavingsView key={routeKey} hub={state} onNavigate={navigate} />}
+        {view === "contributions" && <ContributionsView worker={state.worker} />}
         {view === "mortgage" && <MortgageView worker={state.worker} />}
         {view === "finances" && <FinancesView key={routeKey} hub={state} onNavigate={navigate} />}
         {view === "groceries" && <CoursesView key={routeKey} config={state.worker} plannerItems={state.planner.GroceryItems} />}

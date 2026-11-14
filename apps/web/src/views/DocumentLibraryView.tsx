@@ -1,6 +1,6 @@
 import { FilterButton, FilterChips, Notice, PageHeader, SearchField, Sheet, SkeletonList, useSessionValue, type ActiveFilter } from "../ui/primitives";
 import { requireSaved } from "../ui/mutation-queue";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowUpRight, ExternalLink, FileText, RefreshCw, Search } from "lucide-react";
 import { dateLabel } from "../domain";
 import { documentDate, excludedInvoiceCandidates, libraryItems, pdfAttachmentIndexes, type DocumentLibraryKind } from "../document-library";
@@ -52,6 +52,11 @@ export default function DocumentLibraryView({ hub, kind }: Props) {
   const [bulkMessage, setBulkMessage] = useState("");
   const [busy, setBusy] = useState(false);
   const [opening, setOpening] = useState("");
+  const originalRequest = useRef<AbortController | undefined>(undefined);
+  useEffect(() => {
+    setOpening("");
+    return () => { originalRequest.current?.abort(); originalRequest.current = undefined; };
+  }, [kind, hub.worker.Endpoint, hub.worker.ApiKey]);
   const [error, setError] = useState("");
   const [reviewing, setReviewing] = useState("");
   const [reviewMessage, setReviewMessage] = useState("");
@@ -164,12 +169,13 @@ export default function DocumentLibraryView({ hub, kind }: Props) {
   }
 
   async function openPdf(item: ReimbursementItem, index: number) {
+    if (originalRequest.current) return;
+    const controller = new AbortController(); originalRequest.current = controller;
     setOpening(`${item.Id}:${index}`); setError("");
-    try { await viewWorkerAttachment(hub.worker, item, index); }
-    catch (cause) { setError(cause instanceof Error ? cause.message : "The PDF could not be opened."); }
-    finally { setOpening(""); }
+    try { await viewWorkerAttachment(hub.worker, item, index, controller.signal); }
+    catch (cause) { if (originalRequest.current === controller && !controller.signal.aborted) setError(cause instanceof Error ? cause.message : "The PDF could not be opened."); }
+    finally { if (originalRequest.current === controller) { originalRequest.current = undefined; setOpening(""); } }
   }
-
   function resetFilters() { setPerson("all"); setYear("all"); setFromDate(""); setBeforeDate(""); setStatusFilter("all"); setRecordFilter("all"); setQuery(""); }
   const activeFilters: ActiveFilter[] = [
     ...(person !== "all" ? [{ id: "person", label: person === "unknown" ? "Person to confirm" : person, clear: () => setPerson("all") }] : []),
@@ -188,6 +194,7 @@ export default function DocumentLibraryView({ hub, kind }: Props) {
       <button type="button" role="tab" aria-selected={!exclusionMode} className={!exclusionMode ? "active" : ""} onClick={() => setLibraryMode("included")}><span>Invoices</span><strong>{includedItems.length}</strong></button>
       <button type="button" role="tab" aria-selected={exclusionMode} className={exclusionMode ? "active" : ""} onClick={() => setLibraryMode("excluded")}><span>Excluded</span><strong>{excludedItems.length}</strong></button>
     </div>}
+    {opening && <div className="banner" role="status">Preparing the original file. This may take a few minutes. <button type="button" className="mini-button" onClick={() => originalRequest.current?.abort()}>Cancel retrieval</button></div>}
     <div className="workspace-controls">
       <div className="search-filter-row"><SearchField value={query} onChange={setQuery} label={exclusionMode ? "Search excluded candidates" : "Search documents"} placeholder={exclusionMode ? "Search excluded mail…" : "Search documents…"} /><FilterButton count={activeFilters.length} onClick={() => setFiltersOpen(true)} /></div>
       <FilterChips filters={activeFilters} onReset={resetFilters} />

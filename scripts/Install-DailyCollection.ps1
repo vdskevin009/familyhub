@@ -6,8 +6,14 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 $resolvedData = [IO.Path]::GetFullPath($DataDirectory)
-if (-not (Test-Path -LiteralPath (Join-Path $resolvedData 'gmail-credentials.dpapi'))) { throw 'Run Connect-Gmail.ps1 first. An unconnected daily task will not be installed.' }
+
 $node = (Get-Command node -ErrorAction Stop).Source
+$env:FAMILYHUB_WORKER_DATA = $resolvedData
+$readiness = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../apps/worker/dist/mail-source-policy-cli.js'))
+$sourceReadinessJson = & $node $readiness
+if ($LASTEXITCODE -ne 0) { throw 'Mail source configuration is unavailable or invalid. The daily task was not installed.' }
+try { $sourceReadiness = $sourceReadinessJson | ConvertFrom-Json } catch { throw 'Mail source readiness response is invalid.' }
+if ($sourceReadiness.mode -notin @('legacy', 'plugin') -or $sourceReadiness.ready -ne $true) { throw 'Mail source readiness is not confirmed.' }
 $runner = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot 'Run-DailyCollection.ps1'))
 foreach ($value in @($resolvedData, $node, $runner, $CodexPath)) { if ($value.Contains('"')) { throw 'Paths cannot contain quotes.' } }
 $arguments = '-NoProfile -NonInteractive -ExecutionPolicy Bypass -File "' + $runner + '" -DataDirectory "' + $resolvedData + '" -NodePath "' + $node + '" -Port ' + $Port

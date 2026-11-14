@@ -7,7 +7,7 @@ function releaseIdentity() {
 }
 export default defineConfig({
   plugins: [react(), { name: "familyhub-release", generateBundle() {
-    this.emitFile({ type: "asset", fileName: "release.json", source: JSON.stringify({ schema: 1, revision: releaseIdentity(), builtAt: new Date().toISOString(), product: "familyhub", capabilities: ["proactive-home-v1", "mobile-five-nav-v1"] }) });
+    this.emitFile({ type: "asset", fileName: "release.json", source: JSON.stringify({ schema: 1, revision: releaseIdentity(), builtAt: new Date().toISOString(), product: "familyhub", mailRetrievalMode: process.env.VITE_MAIL_RETRIEVAL_MODE || "legacy", capabilities: ["proactive-home-v1", "mobile-five-nav-v1"] }) });
   } }],
   base: "/familyhub/",
   build: { outDir: "dist", sourcemap: true }
