@@ -29,6 +29,8 @@ jobs:
         run: npm run typecheck
 
       - name: Build React PWA and local worker
+        env:
+          VITE_MAIL_RETRIEVAL_MODE: plugin-only
         run: npm run build
 
       - name: Verify PWA installability metadata
