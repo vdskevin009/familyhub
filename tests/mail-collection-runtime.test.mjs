@@ -10,6 +10,7 @@ import { createMailAttachmentCache } from '../apps/worker/dist/mail-attachment-c
 const at=1793534400, account={email:'synthetic@example.test',label:'Synthetic',linkId:'link_synthetic'};
 const other={email:'other@example.test',label:'Other',linkId:'link_other'};
 const policy=accounts=>({schema:1,mode:'plugin',accounts});
+const scopedPolicy=accounts=>({schema:2,mode:'plugin',accounts});
 const now=()=>new Date(at*1000);
 const raw=(id='abcdef123456')=>({id,threadId:'thread',internalDate:String(at*1000),labelIds:[],payload:{mimeType:'text/plain',headers:[{name:'From',value:'source@example.test'},{name:'Subject',value:'Synthetic'}],body:{size:0,data:''}}});
 function batch(request,attachment=false){const mail=raw(),bytes=Buffer.from('ORIGINAL generic binary\0\u0001');let attachments=[];if(attachment){mail.payload={mimeType:'multipart/mixed',headers:mail.payload.headers,body:{size:0},parts:[mail.payload,{mimeType:'application/octet-stream',filename:'original.bin',body:{size:bytes.length,attachmentId:'source_attachment'}}]};attachments=[{messageId:mail.id,attachmentId:'source_attachment',size:bytes.length,data:bytes.toString('base64url')}];}return {schema:1,account:request.account,messages:attachment?[mail]:[],attachments,queries:request.queries.map(q=>({...q,complete:true,pages:[{messageIds:attachment?[mail.id]:[]}]}))};}
@@ -20,6 +21,50 @@ const deps={directory,grocery,now,invoicePlan:(email,stamp)=>planInvoiceMail({},
 test('policy missing is legacy; malformed, duplicate and unsupported explicit selections never fallback',async t=>{const f=await setup(t);assert.deepEqual(await mailSourceReadiness(f.directory),{mode:'plugin',ready:true});for(const bad of ['{',JSON.stringify({schema:1,mode:'legacy'}),JSON.stringify(policy([account,account])),JSON.stringify(policy([{...account,email:'UPPER@example.test'}]))]){await writeFile(join(f.directory,'mail-source-policy.json'),bad);await assert.rejects(readMailSourcePolicy(f.directory));}await rm(join(f.directory,'mail-source-policy.json'));assert.deepEqual(await readMailSourcePolicy(f.directory),{schema:1,mode:'legacy'});assert.deepEqual(await mailSourceReadiness(f.directory),{mode:'legacy',ready:false});});
 
 test('all configured plugin accounts feed one combined invoice and grocery application with fresh plans',async t=>{const requests=[];const f=await setup(t,{runner:async request=>{requests.push(request);return batch(request);}},[account,other]);assert.deepEqual(await f.runtime.accounts(),[{email:account.email,label:account.label,sourceMode:'plugin'},{email:other.email,label:other.label,sourceMode:'plugin'}]);await f.runtime.collectInvoices();await f.runtime.collectGroceries();assert.equal(f.calls.length,2);for(const [,input]of f.calls){assert.equal(input.plans.length,2);assert.deepEqual((await input.source.accounts()).map(a=>a.email),[account.email,other.email]);}assert.equal(requests.length,4);assert.equal(requests[0].queries.length,3);assert.equal(requests[2].queries.length,1);assert.equal(f.runtime.status().error,undefined);});
+
+test('schema 2 routes two grocery accounts without expanding invoice collection',async t=>{
+ const requests=[];const f=await setup(t,{runner:async request=>{requests.push(request);return batch(request);}});
+ await writeFile(join(f.directory,'mail-source-policy.json'),JSON.stringify(scopedPolicy([{...account,collections:['invoices','groceries']},{...other,collections:['groceries']}])));
+ await f.runtime.collectInvoices();await f.runtime.collectGroceries();
+ assert.deepEqual((await f.calls[0][1].source.accounts()).map(a=>a.email),[account.email]);
+ assert.deepEqual((await f.calls[1][1].source.accounts()).map(a=>a.email),[account.email,other.email]);
+ assert.deepEqual(requests.map(r=>r.account),[account.email,account.email,other.email]);
+ assert.equal(f.calls[0][1].plans.length,1);assert.equal(f.calls[1][1].plans.length,2);
+ assert.equal((await f.runtime.accounts()).length,2); // Identity inventory is not permission for every collection.
+});
+
+test('explicit scoped policy rejects missing, empty, duplicate, unknown and legacy-injected scopes',async t=>{
+ const f=await setup(t);
+ for(const collections of [undefined,[],['invoices','invoices'],['mail'],['groceries','invoices','groceries'],'groceries']){
+  await writeFile(join(f.directory,'mail-source-policy.json'),JSON.stringify(scopedPolicy([{...account,collections}])));
+  await assert.rejects(readMailSourcePolicy(f.directory));await assert.rejects(f.runtime.collectInvoices());
+ }
+ await writeFile(join(f.directory,'mail-source-policy.json'),JSON.stringify(policy([{...account,collections:['groceries']}])));
+ await assert.rejects(readMailSourcePolicy(f.directory));assert.equal(f.calls.length,0);
+});
+
+test('grocery-only accounts cannot trigger invoice import or network original reads',async t=>{
+ let reads=0;const f=await setup(t,{runner:async request=>{reads++;return batch(request);},originalRunner:async()=>{reads++;throw Error('must not read');}});
+ await writeFile(join(f.directory,'mail-source-policy.json'),JSON.stringify(scopedPolicy([{...account,collections:['groceries']}])));
+ await assert.rejects(f.runtime.collectInvoices());await assert.rejects(f.runtime.importBlueCross(account.email,['abcdef123456'],false));
+ await assert.rejects(f.runtime.attachment(expected));assert.equal(reads,0);assert.equal(f.calls.length,0);
+ const bytes=Buffer.from('ORIGINAL generic binary\0\u0001'),source={...expected,size:bytes.length};
+ await createMailAttachmentCache(join(f.directory,'mail-attachments')).save(source,{...source,bytes});
+ assert.deepEqual(await f.runtime.attachment(source),bytes);assert.equal(reads,0);
+});
+
+test('invoice-only selection never reports grocery success or invokes grocery sources',async t=>{
+ let reads=0;const f=await setup(t,{runner:async request=>{reads++;return batch(request);}});
+ await writeFile(join(f.directory,'mail-source-policy.json'),JSON.stringify(scopedPolicy([{...account,collections:['invoices']}])));
+ await assert.rejects(f.runtime.collectGroceries());assert.equal(reads,0);assert.equal(f.calls.length,0);
+});
+
+test('scope revision during retrieval invalidates application; missing scoped policy cannot fallback',async t=>{
+ let f;f=await setup(t,{runner:async request=>{await writeFile(join(f.directory,'mail-source-policy.json'),JSON.stringify(scopedPolicy([{...account,collections:['groceries']}])));return batch(request);}});
+ await writeFile(join(f.directory,'mail-source-policy.json'),JSON.stringify(scopedPolicy([{...account,collections:['invoices','groceries']}])));
+ await assert.rejects(f.runtime.collectInvoices());assert.equal(f.calls.length,0);
+ await rm(join(f.directory,'mail-source-policy.json'));await assert.rejects(readMailSourcePolicy(f.directory),/explicit source rollback/);
+});
 
 test('all validated originals are cached before application regardless of classifier eligibility',async t=>{let checked=false;const f=await setup(t,{runner:async request=>batch(request,true)});f.deps.collectInvoices=async()=>{const bytes=await createMailAttachmentCache(join(f.directory,'mail-attachments')).readSource({...expected,size:Buffer.from('ORIGINAL generic binary\0\u0001').length});assert.equal(bytes.toString(),'ORIGINAL generic binary\0\u0001');checked=true;};await f.runtime.collectInvoices();assert.equal(checked,true);});
 

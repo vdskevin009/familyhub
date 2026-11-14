@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { atomicJson, dataDirectory } from "./private-store.js";
 import { credentials } from "./gmail-client.js";
-import { readMailSourcePolicy, rememberPluginSelection, type PluginMailAccount } from "./mail-source-policy.js";
+import { readMailSourcePolicy, rememberPluginSelection, accountsForCollection, type PluginMailAccount } from "./mail-source-policy.js";
 import { createPluginBatchTransport, type PluginBatch } from "./gmail-plugin-batch.js";
 import { createMailAttachmentCache, type MailAttachmentSource } from "./mail-attachment-cache.js";
 import { preparedPluginMailSource } from "./prepared-plugin-mail-source.js";
@@ -62,7 +62,10 @@ export class MailCollectionRuntime {
   async accounts() {
     await this.ready;
     const policy = await this.policy();
-    if (policy.mode === "plugin") return policy.accounts.map(({ email, label }) => ({ email, label, sourceMode: "plugin" as const }));
+    if (policy.mode === "plugin") {
+      if (policy.schema === 2) return policy.accounts.map(({ email, label, collections }) => ({ email, label, collections: [...collections], sourceMode: "plugin" as const }));
+      return policy.accounts.map(({ email, label }) => ({ email, label, sourceMode: "plugin" as const }));
+    }
     return (await credentials()).accounts.map(({ email, label }) => ({ email, label, sourceMode: "legacy" as const }));
   }
   status() {
@@ -129,9 +132,11 @@ export class MailCollectionRuntime {
       const policy = await this.policy();
       if (policy.mode === "legacy") { applying(); return (this.deps.collectInvoices || collectInvoices)(); }
       const at = Math.floor(this.now().getTime() / 1000), makePlan = this.deps.invoicePlan || invoiceCollectionPlan;
-      const plans = policy.accounts.map(a => makePlan(a.email, at)), inputs = [];
-      for (let i = 0; i < policy.accounts.length; i++) {
-        const account = policy.accounts[i], plan = plans[i];
+      const accounts = accountsForCollection(policy, "invoices");
+      if (!accounts.length) throw new Error("No source account is authorized for invoice collection.");
+      const plans = accounts.map(a => makePlan(a.email, at)), inputs = [];
+      for (let i = 0; i < accounts.length; i++) {
+        const account = accounts[i], plan = plans[i];
         const queries = [plan.incremental, ...(plan.repair ? [plan.repair.request] : []), ...(plan.history ? [plan.history.request] : [])];
         const batch = await this.batch(account, queries.map(({ q, maxResults }) => ({ q, maxResults })), [...new Set([...plan.upgradeMessageIds, ...plan.retryMessageIds])], signal);
         inputs.push({ account, batch });
@@ -146,7 +151,9 @@ export class MailCollectionRuntime {
       const policy = await this.policy();
       if (policy.mode === "legacy") { applying(); return this.deps.grocery.collect(); }
       const at = Math.floor(this.now().getTime() / 1000), plans = [], inputs = [];
-      for (const account of policy.accounts) {
+      const accounts = accountsForCollection(policy, "groceries");
+      if (!accounts.length) throw new Error("No source account is authorized for grocery collection.");
+      for (const account of accounts) {
         const plan = await this.deps.grocery.plan(account.email, at); plans.push(plan);
         const batch = await this.batch(account, [{ q: plan.request.q, maxResults: plan.request.maxResults }], [], signal); inputs.push({ account, batch });
       }
@@ -166,7 +173,7 @@ export class MailCollectionRuntime {
       const policy = await this.policy();
       const beforeApply = async () => { await this.unchanged(policy, signal); await options.onApplying?.(); signal.throwIfAborted(); applying(); };
       if (policy.mode === "legacy") return (this.deps.importBlueCross || importBlueCrossMessages)(email, messageIds, apply, { signal, beforeApply });
-      const account = policy.accounts.find(a => a.email === email.toLowerCase()); if (!account) throw new Error("Source account is not configured for the Gmail plugin.");
+      const account = accountsForCollection(policy, "invoices").find(a => a.email === email.toLowerCase()); if (!account) throw new Error("Source account is not authorized for invoice collection.");
       const batch = await this.batch(account, [], messageIds, signal); await this.unchanged(policy, signal); await this.cacheBatch(batch, signal); await this.unchanged(policy, signal);
       return (this.deps.importBlueCross || importBlueCrossMessages)(email, messageIds, apply, { source: preparedPluginMailSource([{ account, batch }]), signal, beforeApply });
     }, options.signal);
@@ -177,7 +184,8 @@ export class MailCollectionRuntime {
     try { const bytes = await cache.readSource(expected); options.signal?.throwIfAborted(); return bytes; } catch { /* Missing/corrupt original can only be retrieved from its exact configured source. */ }
     options.signal?.throwIfAborted(); const policy = await this.policy();
     if (policy.mode === "legacy") return undefined;
-    const account = policy.accounts.find(a => a.email === expected.account); if (!account) throw new Error("Source account is not configured for the Gmail plugin.");
+    // This entry point serves stored invoice originals, not grocery source discovery.
+    const account = accountsForCollection(policy, "invoices").find(a => a.email === expected.account); if (!account) throw new Error("Source account is not authorized for invoice originals.");
     if (options.cacheOnly) throw new OriginalPreparationRequiredError();
     return this.run("attachment", async (signal, applying) => {
       await this.unchanged(policy, signal);

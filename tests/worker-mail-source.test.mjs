@@ -8,6 +8,32 @@ import { createServer } from 'node:net';
 import { once } from 'node:events';
 import { createMailAttachmentCache } from '../apps/worker/dist/mail-attachment-cache.js';
 import { toInvoice } from '../apps/worker/dist/invoice-model.js';
+import { invoiceHistoryVersion, healthReceiptRepairVersion } from '../apps/worker/dist/mail-collection-plan.js';
+
+test('invoice snapshot readiness ignores grocery-only stale invoice progress while retaining source scopes',async()=>{
+ const directory=await mkdtemp(join(tmpdir(),'familyhub-scoped-snapshot-'));
+ const primary={email:'primary@example.test',label:'Primary',linkId:'link_primary',collections:['invoices','groceries']};
+ const grocery={email:'grocery@example.test',label:'Grocery',linkId:'link_grocery',collections:['groceries']};
+ const completedGrocery={...grocery,email:'completed-grocery@example.test',linkId:'link_completed'};
+ await writeFile(join(directory,'invoices.json'),JSON.stringify({items:[],accounts:{[primary.email]:{invoiceHistoryVersion,healthReceiptRepairVersion:healthReceiptRepairVersion-1},[grocery.email]:{window:{after:1,before:2},error:'Synthetic old invoice error'},[completedGrocery.email]:{invoiceHistoryVersion,healthReceiptRepairVersion}},corrections:[],decisions:[],matchDecisions:[],workflowRecords:[],reviews:[],unmatchedDecisions:[]}));
+ const policyPath=join(directory,'mail-source-policy.json');
+ await writeFile(policyPath,JSON.stringify({schema:2,mode:'plugin',accounts:[primary,grocery]}));
+ await writeFile(join(directory,'pairing-key.txt'),'synthetic-key');
+ const reservation=createServer();reservation.listen(0,'127.0.0.1');await once(reservation,'listening');const port=reservation.address().port;await new Promise(resolve=>reservation.close(resolve));
+ const child=spawn(process.execPath,['apps/worker/dist/index.js'],{env:{...process.env,FAMILYHUB_WORKER_DATA:directory,FAMILYHUB_WORKER_HOST:'127.0.0.1',FAMILYHUB_WORKER_PORT:String(port),FAMILYHUB_CODEX_PATH:join(directory,'nonexistent-test-only-codex.exe')},stdio:['ignore','pipe','pipe']});
+ let logs='';child.stdout.on('data',chunk=>logs+=chunk);child.stderr.on('data',chunk=>logs+=chunk);const ended=once(child,'exit');
+ const headers={'x-familyhub-key':'synthetic-key',Origin:'https://vdskevin009.github.io'};
+ const get=path=>fetch(`http://127.0.0.1:${port}${path}`,{headers});
+ try{
+  let ready=false;for(let i=0;i<80;i++){try{if((await get('/health')).ok){ready=true;break;}}catch{}await new Promise(r=>setTimeout(r,100));}assert.ok(ready,logs);
+  const mixed=await(await get('/invoices')).json();
+  assert.equal(mixed.setupRequired,false);assert.equal(mixed.continuationReady,true);assert.equal(mixed.coverage.complete,true);
+  assert.equal(mixed.accounts.length,2);assert.deepEqual(mixed.accounts.find(a=>a.email===grocery.email).collections,['groceries']);
+  await writeFile(policyPath,JSON.stringify({schema:2,mode:'plugin',accounts:[completedGrocery]}));
+  const only=await(await get('/invoices')).json();assert.equal(only.setupRequired,true);assert.equal(only.continuationReady,false);assert.equal(only.coverage.complete,false);
+  assert.equal(only.accounts[0].sourceMode,'plugin');assert.equal(only.accounts[0].email,completedGrocery.email);
+ }finally{child.kill();await ended;await rm(directory,{recursive:true,force:true});}
+});
 
 test('paired plugin routes expose configured source and exact cached originals without OAuth or runner access',async()=>{
  const directory=await mkdtemp(join(tmpdir(),'familyhub-plugin-api-')),email='synthetic@example.test',bytes=Buffer.from('SYNTHETIC original file');

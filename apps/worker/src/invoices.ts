@@ -27,7 +27,7 @@ import { multipleServiceDates, withConfirmedServiceDates, type ServiceDateConfir
 import { latestOwnerAdjudications, withOwnerAdjudications, ownerAdjudicationApplies, type OwnerAdjudication } from "./owner-adjudication.js";
 
 export type InvoiceMailAccess = {
-  accounts(): Promise<Array<{ email: string; label: string; sourceMode?: "legacy" | "plugin" }>>;
+  accounts(): Promise<Array<{ email: string; label: string; sourceMode?: "legacy" | "plugin"; collections?: ("invoices" | "groceries")[] }>>;
   status(): { busy: boolean; sourceMode: "legacy" | "plugin"; error?: string; lastAttempt?: string };
   attachment(source: MailAttachmentSource, options?: { signal?: AbortSignal; cacheOnly?: boolean }): Promise<Buffer | undefined>;
 };
@@ -548,8 +548,9 @@ export async function initializeInvoices(readOnly = false): Promise<void> {
   catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw new Error("Invoice index is unreadable. Restore the index before collecting; it was not overwritten."); }
 }
 export async function invoiceSnapshot() {
-  let accounts: { email: string; label: string }[] = [];
+  let accounts: { email: string; label: string; sourceMode?: "legacy" | "plugin"; collections?: ("invoices" | "groceries")[] }[] = [];
   try { accounts = invoiceMailAccess ? await invoiceMailAccess.accounts() : (await credentials()).accounts.map(({ email, label }) => ({ email, label })); } catch { /* Visible setup-required status. */ }
+  const invoiceAccounts = accounts.filter(account => !account.collections || account.collections.includes("invoices"));
   const mailStatus = invoiceMailAccess?.status();
   const activeItems = activeReconciliationItems();
   const effectiveItems = activeItems.map(item => item.IgnoredAt ? { ...item, Status: 4, NeedsReview: false } : item);
@@ -563,7 +564,7 @@ export async function invoiceSnapshot() {
   const signatures = new Map(reviewTargets(effectiveItems, reconciliation).map(target => [target.key, target.signature]));
   const reviews = state.reviews.filter(item => signatures.get(item.key) === item.signature);
   return { items: displayItems, reconciliations: reconciliation.cases.map(decorateWorkflowCase), ignoredExpenses: ignoredExpenses.map(decorateWorkflowCase), unmatchedReimbursements: reconciliation.unmatched, ignoredUnmatchedReimbursements, diagnostics: reconciliation.diagnostics,
-    coverage: { since: "2025-06-01", complete: !mailStatus?.error && accounts.length > 0 && accounts.every(account => {
+    coverage: { since: "2025-06-01", complete: !mailStatus?.error && invoiceAccounts.length > 0 && invoiceAccounts.every(account => {
       const progress = state.accounts[account.email.toLowerCase()];
       return progress?.invoiceHistoryVersion === invoiceHistoryVersion && !progress.invoiceHistoryWindow && !progress.window && !progress.error;
     }) },
@@ -574,9 +575,9 @@ export async function invoiceSnapshot() {
     learning: { decisions: state.decisions.filter(item => !item.undoneAt).length, undoable: state.decisions.filter(item => !item.undoneAt).slice(-10).reverse() },
     busy: busy || !!mailStatus?.busy, sourceMode: mailStatus?.sourceMode || "legacy", accounts, progress: state.accounts,
     lastAttempt: mailStatus?.lastAttempt || state.lastAttempt, lastSuccess: state.lastSuccess,
-    error: mailStatus?.error || state.error, setupRequired: !accounts.length,
-    continuationReady: !mailStatus?.error && accounts.length > 0 && accounts.every(account => !state.accounts[account.email.toLowerCase()]?.error)
-      && accounts.some(account => { const p = state.accounts[account.email.toLowerCase()]; return p && (p.window || p.invoiceHistoryWindow || p.healthReceiptRepairVersion !== healthReceiptRepairVersion || p.invoiceHistoryVersion !== invoiceHistoryVersion); }) };
+    error: mailStatus?.error || state.error, setupRequired: !invoiceAccounts.length,
+    continuationReady: !mailStatus?.error && invoiceAccounts.length > 0 && invoiceAccounts.every(account => !state.accounts[account.email.toLowerCase()]?.error)
+      && invoiceAccounts.some(account => { const p = state.accounts[account.email.toLowerCase()]; return p && (p.window || p.invoiceHistoryWindow || p.healthReceiptRepairVersion !== healthReceiptRepairVersion || p.invoiceHistoryVersion !== invoiceHistoryVersion); }) };
 }
 
 const attentionRank: Record<Invoice["AttentionLevel"], number> = { critical: 3, action: 2, important: 1, none: 0 };

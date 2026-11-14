@@ -2,7 +2,15 @@ import { readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { dataDirectory, atomicJson } from "./private-store.js";
 export type PluginMailAccount = { email: string; label: string; linkId: string };
-export type MailSourcePolicy = { schema: 1; mode: "legacy" } | { schema: 1; mode: "plugin"; accounts: PluginMailAccount[] };
+export type MailCollectionDomain = "invoices" | "groceries";
+export type ScopedPluginMailAccount = PluginMailAccount & { collections: MailCollectionDomain[] };
+export type MailSourcePolicy = { schema: 1; mode: "legacy" }
+  | { schema: 1; mode: "plugin"; accounts: PluginMailAccount[] }
+  | { schema: 2; mode: "plugin"; accounts: ScopedPluginMailAccount[] };
+/** Schema 1 preserves its historical all-domain meaning; schema 2 always requires explicit scopes. */
+export function accountsForCollection(policy: Exclude<MailSourcePolicy, { mode: "legacy" }>, domain: MailCollectionDomain): PluginMailAccount[] {
+  return policy.schema === 1 ? policy.accounts : policy.accounts.filter(account => account.collections.includes(domain));
+}
 async function pluginWasSelected(directory: string): Promise<boolean> {
   try {
     const text = await readFile(join(directory, "mail-source-selection.json"), "utf8");
@@ -25,15 +33,19 @@ export async function readMailSourcePolicy(directory = dataDirectory): Promise<M
   let value: unknown; try { value = JSON.parse(text); } catch { throw new Error("Mail source policy is invalid."); }
   const p = value as { schema?: unknown; mode?: unknown; accounts?: unknown; allowDirectGmail?: unknown };
   if (p?.schema === 1 && p.mode === "legacy" && p.allowDirectGmail === true && p.accounts === undefined && Object.keys(p).every(key => ["schema", "mode", "allowDirectGmail"].includes(key))) return { schema: 1, mode: "legacy" };
-  if (!p || p.schema !== 1 || p.mode !== "plugin" || !Object.keys(p).every(key => ["schema", "mode", "accounts"].includes(key)) || !Array.isArray(p.accounts) || !p.accounts.length || p.accounts.length > 16) throw new Error("Mail source policy is invalid.");
-  const accounts: PluginMailAccount[] = [];
+  if (!p || ![1, 2].includes(p.schema as number) || p.mode !== "plugin" || !Object.keys(p).every(key => ["schema", "mode", "accounts"].includes(key)) || !Array.isArray(p.accounts) || !p.accounts.length || p.accounts.length > 16) throw new Error("Mail source policy is invalid.");
+  const accounts: ScopedPluginMailAccount[] = [];
   for (const a of p.accounts) {
-    if (!a || typeof a !== "object" || Array.isArray(a) || !Object.keys(a).every(key => ["email", "label", "linkId"].includes(key)) || typeof a.email !== "string" || a.email.length > 320 || !/^[^\s@]+@[^\s@]+$/.test(a.email) || a.email !== a.email.toLowerCase()
+    if (!a || typeof a !== "object" || Array.isArray(a) || !Object.keys(a).every(key => (p.schema === 2 ? ["email", "label", "linkId", "collections"] : ["email", "label", "linkId"]).includes(key)) || typeof a.email !== "string" || a.email.length > 320 || !/^[^\s@]+@[^\s@]+$/.test(a.email) || a.email !== a.email.toLowerCase()
       || typeof a.label !== "string" || !a.label.trim() || a.label.length > 200 || typeof a.linkId !== "string" || !/^link_[A-Za-z0-9_-]{1,100}$/.test(a.linkId)) throw new Error("Mail source policy is invalid.");
-    accounts.push({ email: a.email, label: a.label, linkId: a.linkId });
+    if (p.schema === 2 && (!Array.isArray(a.collections) || !a.collections.length || a.collections.length > 2
+      || a.collections.some((domain: unknown) => domain !== "invoices" && domain !== "groceries")
+      || new Set(a.collections).size !== a.collections.length)) throw new Error("Mail source collection scopes are invalid.");
+    accounts.push({ email: a.email, label: a.label, linkId: a.linkId, collections: p.schema === 2 ? [...a.collections].sort() : ["invoices", "groceries"] });
   }
   if (new Set(accounts.map(a => a.email)).size !== accounts.length || new Set(accounts.map(a => a.linkId)).size !== accounts.length) throw new Error("Mail source policy accounts conflict.");
-  return { schema: 1, mode: "plugin", accounts };
+  return p.schema === 2 ? { schema: 2, mode: "plugin", accounts }
+    : { schema: 1, mode: "plugin", accounts: accounts.map(({ collections: _collections, ...account }) => account) };
 }
 /** Configuration readiness only, never proof of a live connection. */
 export async function mailSourceReadiness(directory = dataDirectory) {

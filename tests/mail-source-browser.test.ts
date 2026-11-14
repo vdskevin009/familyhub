@@ -68,6 +68,16 @@ test("authenticated invoice snapshot retains source mode and remembers plugin ac
   assert.throws(() => assertBrowserMailAllowed(item.AccountEmail));
 });
 
+test("grocery-only mailbox scopes survive snapshots and still block browser Gmail fallback", async t => {
+  storage(t);
+  const email = "grocery-only@example.test";
+  t.mock.method(globalThis, "fetch", async () => Response.json({ sourceMode: "plugin", accounts: [{ email, label: "Grocery source", collections: ["groceries"] }], setupRequired: true }));
+  const result = await fetchInvoices(config);
+  assert.deepEqual(result.accounts[0].collections, ["groceries"]);
+  assert.equal(result.setupRequired, true);
+  assert.throws(() => assertBrowserMailAllowed(email));
+});
+
 test("plugin policy blocks browser scan and download without blocking Drive-only Google login", async t => {
   storage(t);
   rememberMailSources([{ email: item.AccountEmail, sourceMode: "plugin" }]);

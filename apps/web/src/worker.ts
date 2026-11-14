@@ -196,7 +196,7 @@ export type InvoiceSnapshot = {
   coverage?: { since: string; complete: boolean };
   diagnostics?: { totalExpenses: number; fullyReimbursed: number; waitingPrimary: number; waitingSecondary: number; patientBalance: number; needsAttention: number; unmatchedInsurerRecords: number; duplicateCandidates: number; missingServiceDates: number; unknownMembers: number; patientAsProvider: number; amountsReconstructed: number; insurerPaymentsOverBilled: number; contradictoryEvidence: number; averageMatchConfidence: number };
   learning: { decisions: number; undoable: Array<{ id: string; itemId: string; type: string; at: string }> };
-  accounts: { email: string; label: string; sourceMode?: "plugin" | "legacy" }[];
+  accounts: { email: string; label: string; sourceMode?: "plugin" | "legacy"; collections?: ("invoices" | "groceries")[] }[];
   progress: Record<string, { error?: string; window?: unknown; lastSuccess?: string }>;
   lastAttempt?: string; lastSuccess?: string; error?: string;
 };
