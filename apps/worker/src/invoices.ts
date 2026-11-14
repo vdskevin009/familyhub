@@ -639,7 +639,13 @@ export async function importBlueCrossMessages(email: unknown, messageIds: unknow
   } finally { busy = false; }
 }
 
-export async function classify(mail: Mail, email: string, label = email, diagnostic = false): Promise<{ result: Classification; source: Invoice["ClassificationSource"] }> {
+export function classificationLearningExamples(corrections: readonly Correction[], email: string, diagnostic = false, options: { omitLearnedExamples?: boolean } = {}) {
+  if (diagnostic && options.omitLearnedExamples === true) return [];
+  return corrections.filter(item => item.account === email && item.sender && item.subject).slice(-12).map(item => ({
+    sender: item.sender, subject: item.subject, correctedKind: item.kind, confirmations: item.confirmations || 1
+  }));
+}
+export async function classify(mail: Mail, email: string, label = email, diagnostic = false, diagnosticOptions: { omitLearnedExamples?: boolean } = {}): Promise<{ result: Classification; source: Invoice["ClassificationSource"] }> {
   const rule = [...state.corrections].reverse().find(x => x.account === email && x.fingerprint === fingerprint(mail));
   const proof = evidence(mail);
   if (rule && (rule.kind === "ignore" || rule.kind === "marketing") && !proof.transaction) {
@@ -670,9 +676,7 @@ export async function classify(mail: Mail, email: string, label = email, diagnos
     const work = join(dataDirectory, "classification-work");
     await mkdir(work, { recursive: true });
     // Do not expose shell, MCP or web tools to untrusted email text. No paid API key is configured here.
-    const learnedExamples = state.corrections.filter(item => item.account === email && item.sender && item.subject).slice(-12).map(item => ({
-      sender: item.sender, subject: item.subject, correctedKind: item.kind, confirmations: item.confirmations || 1
-    }));
+    const learnedExamples = classificationLearningExamples(state.corrections, email, diagnostic, diagnosticOptions);
     const prompt = [
       "Separate patient/member, clinic/provider, and service type. A forwarding sender or cardholder is never the provider. Preserve the service label from the appointment or insurer row.",
       "Keep service date separate from payment, statement, printed and received dates. Date-only values are calendar YYYY-MM-DD, without timezone conversion. Upcoming appointments are not the billed service.",

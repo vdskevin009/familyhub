@@ -187,3 +187,9 @@ On the existing Windows environment, MXC synthetic canaries verified allowed inp
 The diagnostic-only classifier option now propagates errors before the clinic fallback; normal production fallback behavior is unchanged. Its focused regression uses a nonexistent synthetic CLI, not private data. The held real replay uses real diagnostic classification and the real reviewer with a shared first-error latch so a swallowed collector/reviewer error cannot trigger further model attempts or count as successful acceptance.
 
 Pre-replay source freeze checks: worker/web TypeScript and Vite passed; final invoice/security aggregate 442/443 with only the unchanged PowerShell execution-policy fixture failure, invoice/browser 84/84, grocery/daily 99/99 and source-resolution 9/9. The diagnostic plus isolation focused suite passed 29/29. Reviewed private-classifier/helper compiled hashes were unchanged. No real replay result is claimed by this checkpoint.
+
+### Consent-scoped replay refinement
+
+The permitted sensitive-data validation is limited to seven source messages and their associated invoices. An explicit diagnostic-only option omits unrelated historical sender/subject correction examples; the production default remains unchanged. The regression verifies identical default context and an empty examples list only for the opted-in diagnostic mode.
+
+The private harness requires exactly seven retrieved messages, verifies each classifier input belongs to the selected account and message set, and rejects whole out-of-scope or mixed reviewer targets before any model call. It additionally requires the original reviewer context/signature/candidates to be independently reproducible from only those authorized documents. It never transmits a filtered or invented target. Full-ledger comparisons remain local. Learned-example context and broader reviewer parity are expressly untested under this limited consent.
