@@ -1,3 +1,5 @@
+import { legacyMailSource, MailAuthorizationError, type MailSource, type MailAccount } from "./mail-source.js";
+import { groceryWindow, groceryRequest, planGroceryMail, type GroceryMailPlan } from "./mail-collection-plan.js";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { credentials, accessToken, gmail, type RawMail } from "./gmail-client.js";
@@ -9,7 +11,7 @@ import { parsePcExpressMail, PC_EXPRESS_GMAIL_QUERY, type PcExpressMessage } fro
 type Counts = { examined: number; imported: number; unchanged: number; conflicts: number };
 type Window = { after: number; before: number; page?: string };
 type Failure = "setup-required" | "authorization-unavailable" | "gmail-unavailable" | "source-review-required" | "invalid-page" | "storage-limit" | "store-unavailable" | "review-required";
-type AccountState = { through?: number; window?: Window; lastAttempt?: string; lastSuccess?: string; error?: Failure;
+type AccountState = { transport?: "plugin-batch"; through?: number; window?: Window; lastAttempt?: string; lastSuccess?: string; error?: Failure;
   pending: PcExpressMessage[]; seen: Record<string, number>; counts: Counts };
 type CollectionState = { schema: 1; accounts: Record<string, AccountState>; activeAccounts: string[];
   lastAttempt?: string; lastSuccess?: string; lastImportedAt?: string; error?: Failure };
@@ -17,7 +19,7 @@ export type GroceryCollectionStatus = { busy: boolean; incomplete: boolean; last
   counts: Counts; accounts: Array<{ account: string; active: boolean; lastAttempt?: string; lastSuccess?: string; error?: Failure;
     through?: number; window?: { after: number; before: number }; pendingOrders: number; pendingMessages: number; counts: Counts }> };
 export type GroceryCollectionStore = { importDeliveredConfirmation(messages: PcExpressMessage[]): Promise<{ outcome: "imported" | "unchanged" | "conflict" }> };
-type Dependencies = { credentials: typeof credentials; accessToken: typeof accessToken; gmail: typeof gmail;
+type Dependencies = { source?: MailSource; plans?: readonly GroceryMailPlan[]; credentials: typeof credentials; accessToken: typeof accessToken; gmail: typeof gmail;
   parse: typeof parsePcExpressMail; now: () => Date; write: typeof atomicJson; maxPages: number; pageSize: number; maxPendingMessages: number };
 const day = 86_400;
 const maxAccounts = 16, maxSeen = 4000, maxPendingBytes = 20_000_000;
@@ -63,6 +65,7 @@ export class GroceryCollection {
       for (const key of ["lastAttempt", "lastSuccess", "lastImportedAt"] as const) if (state[key] !== undefined && !stamp(state[key])) throw new Error();
       if (state.error !== undefined && !failures.includes(state.error)) throw new Error();
       for (const [account, value] of Object.entries(state.accounts)) {
+        if (value.transport !== undefined && value.transport !== "plugin-batch") throw new Error();
         if (!account || account.length > 320 || account !== account.toLowerCase() || !object(value) || !Array.isArray(value.pending)
           || value.pending.length > 1000 || !object(value.seen) || Object.keys(value.seen).length > maxSeen || !object(value.counts)) throw new Error();
         for (const count of Object.keys(counts()) as Array<keyof Counts>) if (!epoch(value.counts[count])) throw new Error();
@@ -106,20 +109,39 @@ export class GroceryCollection {
   async status(): Promise<GroceryCollectionStatus> { return this.project(await this.read()); }
   /** Cross-domain concurrency checks must not depend on reading the Courses store. */
   isBusy(): boolean { return this.busy; }
-  async collect(): Promise<GroceryCollectionStatus> {
+  /** Read-only snapshot; no credentials, source requests, status writes or collection. */
+  async plan(email: string, at = Math.floor(this.dependencies.now().getTime() / 1000)): Promise<GroceryMailPlan> {
+    const state = await this.read();
+    return planGroceryMail(state.accounts[email.toLowerCase()] || initialAccount(), email.toLowerCase(), at, this.dependencies.pageSize);
+  }
+  async collect(prepared: Pick<Partial<Dependencies>, "source" | "plans"> = {}): Promise<GroceryCollectionStatus> {
     if (this.busy) throw new Error("Grocery collection already running.");
     this.busy = true;
     try {
       this.runtimeError = undefined; this.runtimeAttempt = this.dependencies.now().toISOString();
-      const state = await this.read(), deps = this.dependencies;
-      state.lastAttempt = this.runtimeAttempt; state.error = undefined;
-      let accounts: Awaited<ReturnType<typeof credentials>>["accounts"];
+      const state = await this.read(), deps = { ...this.dependencies, ...prepared };
+      const initialState = JSON.stringify(state);
+      const source = deps.source || legacyMailSource(deps, () => deps.now().getTime());
+      let accounts: MailAccount[];
       try {
-        accounts = (await deps.credentials()).accounts;
+        accounts = await source.accounts();
         if (!Array.isArray(accounts) || !accounts.length || accounts.length > maxAccounts
           || accounts.some(account => typeof account.email !== "string" || !account.email.trim() || account.email.length > 320)
           || new Set(accounts.map(account => account.email.trim().toLowerCase())).size !== accounts.length) throw new Error();
-      } catch { state.error = "setup-required"; await deps.write(this.path, state); return { ...this.project(state), busy: false }; }
+      } catch { if (deps.source) throw new Error("Prepared source accounts unavailable; no state was changed."); state.error = "setup-required"; await deps.write(this.path, state); return { ...this.project(state), busy: false }; }
+      if (deps.source) {
+        if (source.transport !== "plugin-batch" || !deps.plans || deps.plans.length !== accounts.length) throw new Error("Prepared grocery collection requires exact current plans.");
+        for (const account of accounts) {
+          const key = account.email.toLowerCase(), progress = state.accounts[key] || initialAccount();
+          const plans = deps.plans.filter(plan => plan.account === key);
+          if (plans.length !== 1 || JSON.stringify(plans[0]) !== JSON.stringify(planGroceryMail(progress, key, plans[0].at, deps.pageSize))) throw new Error("Prepared grocery plan is stale; no state was changed.");
+          if (!source.preflight) throw new Error("Prepared source preflight is required.");
+          await source.preflight(account, [plans[0].request.path]);
+          if (progress.transport !== "plugin-batch" && progress.window?.page) throw new Error("Existing Gmail cursor belongs to another transport; explicit migration is required.");
+        }
+      }
+      if (deps.source && JSON.stringify(await this.read()) !== initialState) throw new Error("Prepared grocery state changed before application.");
+      state.lastAttempt = this.runtimeAttempt; state.error = undefined;
       const activeAccounts = accounts.map(account => account.email.trim().toLowerCase());
       if (new Set([...Object.keys(state.accounts), ...activeAccounts]).size > maxAccounts) throw new Error("Grocery account limit reached; existing evidence was preserved.");
       state.activeAccounts = activeAccounts;
@@ -129,18 +151,17 @@ export class GroceryCollection {
         const key = account.email.trim().toLowerCase(), progress = state.accounts[key];
         progress.lastAttempt = deps.now().toISOString(); progress.error = undefined;
         try {
-          let token: string;
-          try { token = await deps.accessToken(account); } catch { throw new CollectionFailure("authorization-unavailable"); }
-          let tokenAt = deps.now().getTime();
+          if (!deps.source && progress.transport === "plugin-batch" && progress.window?.page) throw new CollectionFailure("invalid-page");
+          let session;
+          try { session = await source.open(account); } catch { throw new CollectionFailure("authorization-unavailable"); }
           const call = async <T>(path: string): Promise<T> => {
-            if (deps.now().getTime() - tokenAt > 50 * 60_000) {
-              try { token = await deps.accessToken(account); tokenAt = deps.now().getTime(); } catch { throw new CollectionFailure("authorization-unavailable"); }
-            }
-            try { return await deps.gmail<T>(token, path); } catch { throw new CollectionFailure("gmail-unavailable"); }
+            try { return await session.read<T>(path); } catch (error) { throw new CollectionFailure(error instanceof MailAuthorizationError ? "authorization-unavailable" : "gmail-unavailable"); }
           };
+          if (deps.source) progress.transport = "plugin-batch";
+          else delete progress.transport; // Safe no-cursor rollback: newly created cursors belong to direct Gmail.
           if (!progress.window) {
-            const before = Math.floor(deps.now().getTime() / 1000);
-            progress.window = { after: Math.max(0, progress.through === undefined ? before - 30 * day : progress.through - 2 * day), before };
+            const at = deps.plans?.find(plan => plan.account === key)?.at ?? Math.floor(deps.now().getTime() / 1000);
+            progress.window = groceryWindow(progress, at);
             await deps.write(this.path, state);
           }
           const window = progress.window;
@@ -148,9 +169,7 @@ export class GroceryCollection {
           for (let page = 0; page < deps.maxPages; page++) {
             if (pageTokens.has(window.page || "")) throw new CollectionFailure("invalid-page");
             pageTokens.add(window.page || "");
-            const query = `${PC_EXPRESS_GMAIL_QUERY} after:${window.after} before:${window.before} -in:sent -in:drafts -in:spam -in:trash`;
-            const params = new URLSearchParams({ q: query, maxResults: String(deps.pageSize), ...(window.page ? { pageToken: window.page } : {}) });
-            const list = await call<{ messages?: { id: string }[]; nextPageToken?: string }>(`messages?${params}`);
+            const list = await call<{ messages?: { id: string }[]; nextPageToken?: string }>(groceryRequest(window, deps.pageSize).path);
             if (!object(list) || list.messages !== undefined && (!Array.isArray(list.messages) || list.messages.length > deps.pageSize || list.messages.some(message => !object(message) || !identity(message.id)))
               || list.nextPageToken !== undefined && (typeof list.nextPageToken !== "string" || !list.nextPageToken || list.nextPageToken.length > 4096 || list.nextPageToken === window.page)) throw new CollectionFailure("invalid-page");
             // Stage the entire page. A failed message leaves its page cursor and pending evidence unchanged.

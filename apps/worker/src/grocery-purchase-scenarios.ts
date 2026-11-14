@@ -33,6 +33,11 @@ function compatible(a: string, b: string) {
   if (!family || family !== scenarioFamily(y)) return false;
   // Explicit dietary/production constraints never disappear under an estimated label.
   for (const r of [/gluten[- ]?free|sans gluten/, /lactose[- ]?free|sans lactose/, /organic|organics|biologique|\bbio\b/, /free[- ]range|plein air/, /unsweetened|sans sucre/, /vegan|vegetalien/, /decaf|decaffein/]) if (r.test(x) && !r.test(y)) return false;
+  if (["greek-plain", "skyr-plain"].includes(family)) {
+    const fat = /\b(\d+(?:[.,]\d+)?)\s*%/.exec(x)?.[1]?.replace(",", ".");
+    const referenceFat = /\b(\d+(?:[.,]\d+)?)\s*%/.exec(y)?.[1]?.replace(",", ".");
+    if (fat !== undefined && (referenceFat === undefined || Number(fat) !== Number(referenceFat))) return false;
+  }
   if (family === "eggs" && /liquid|substitute|egg white|blancs d/.test(y)) return false;
   if (family === "chicken-breast" && /frozen|surgele/.test(x) !== /frozen|surgele/.test(y)) return false;
   return true;
@@ -81,6 +86,9 @@ function inferredFormat(record: GroceryRecord, index: number, plan: GroceryPlan,
   if (hint) return { size: hint.size, unit: hint.unit, note: "Format de scénario, identité de l'achat non prouvée : " + hint.note, source: { title: hint.note, url: hint.sourceUrl, date: hint.observedAt } };
   const reusable = sameId.length ? sameId : named;
   if (reusable.length && reusable.every(c => c.size === reusable[0].size && c.unit === reusable[0].unit)) { const c = reusable[0]; return { size: c.size!, unit: c.unit!, note: "Format repris comme hypothèse depuis une autre preuve, sans confirmer l'identité de cet achat : " + c.formatLabel + ".", source: { title: c.note, url: c.sourceUrl, date: c.observedAt } }; }
+  // An explicitly large/multiple source pack cannot silently become one competitor pack.
+  // A source-bound candidate or hint above is required before normalizing this quantity.
+  if (/\bclub\b|family[- ]?size|format familial|\d+\s*(?:pk|pack|[- ]pack)\b|\d+\s*[x×]\s*\d+/i.test(title)) return null;
   // A source pack is a scenario unit, never evidence of the historical quantity.
   const formats = refs.map(p => ({ p, r: reference(p, state?.scenarioHints ?? []) })).filter(x => x.r && !x.p.weighed)
     .sort((a,b) => Number(normalizeProduct(b.p.product)===normalizeProduct(title))-Number(normalizeProduct(a.p.product)===normalizeProduct(title)) || Number(/\b(?:club|\d+\s*[×x])\b/i.test(a.p.product)) - Number(/\b(?:club|\d+\s*[×x])\b/i.test(b.p.product)) || a.p.evidence.date.localeCompare(b.p.evidence.date) * -1 || normalizedSize(a.r!.size,a.r!.unit).size - normalizedSize(b.r!.size,b.r!.unit).size);

@@ -143,11 +143,17 @@ export function parsePcExpressMail(raw: RawMail, accountId: string): PcExpressMe
   const service = freeService ? 0 : summaryMoney(summary, "Frais de service", true);
   if (freeService && [...summary.matchAll(/(?:^|\n)Frais de service(?=\s|$)/g)].length !== 1) fail("invalid-summary");
   const products = productEvidence(html);
-  if (products.reduce((sum, p) => sum + Math.round(p.estimatedUnitPrice * 100) * p.quantity, 0) !== subtotal
+  // Printed unit estimates may round independently from the source subtotal.
+  // Accept only a one-cent discrepancy, retain both facts, and never invent a
+  // balancing line or silently relax summary/tax arithmetic.
+  const calculatedSubtotal = products.reduce((sum, p) => sum + Math.round(p.estimatedUnitPrice * 100) * p.quantity, 0);
+  const subtotalDifference = subtotal - calculatedSubtotal;
+  if (Math.abs(subtotalDifference) > 1
     || subtotal + (gst ?? 0) + (pst ?? 0) + (extra ?? 0) + (service ?? 0) !== estimatedTotal) fail("inconsistent-estimates");
   const warnings = ["Confirmation de commande : total et prix estimés, aucun montant final débité établi.",
     "Les montants des lignes restent inconnus : les prix de confirmation et les valeurs zéro ne prouvent ni paiement ni gratuité.",
     `Date source : réception Gmail convertie en America/Vancouver (${receivedAt}). Formats et substitutions restent non vérifiés.`];
+  if (subtotalDifference !== 0) warnings.push(`Écart de 0,01 CAD entre le sous-total source (${(subtotal / 100).toFixed(2)} CAD) et les prix unitaires affichés × quantités (${(calculatedSubtotal / 100).toFixed(2)} CAD). Cause non établie ; les deux estimations sont conservées sans ajustement.`);
   if (extra !== null) warnings.push(`Frais supplémentaires estimés : ${(extra / 100).toFixed(2)} CAD ; ne sont pas assimilés à des frais de livraison.`);
   const receipt = validateReceipt({ sourceType: "confirmation", store: "PC Express", date: localDate, currency: "CAD", reference: ids[0], total: estimatedTotal / 100,
     delivery: null, service: service === null ? null : service / 100, tip: null, tax: gst === null && pst === null ? null : ((gst ?? 0) + (pst ?? 0)) / 100, discount: null,
@@ -155,6 +161,7 @@ export function parsePcExpressMail(raw: RawMail, accountId: string): PcExpressMe
       evidence: `Gmail ${raw.id} : ${p.name} ; quantité ${p.quantity} ; prix unitaire estimé ${p.estimatedUnitPrice.toFixed(2)} CAD ; total de ligne imprimé ${p.printedLineEstimate.toFixed(2)} CAD, non retenu comme montant payé.` })), warnings });
   return { ...message, receipt, source: structuredSource(message, subjects[0], { currency: "CAD", currencyBasis: "PC Express Canada source; dollar-denominated amounts.",
     sourceDate: localDate, dateBasis: "Gmail internalDate converted to America/Vancouver", estimatedTotal: estimatedTotal / 100, estimatedSubtotal: subtotal / 100,
+    ...(subtotalDifference !== 0 ? { calculatedEstimatedSubtotal: calculatedSubtotal / 100, estimatedSubtotalDifference: subtotalDifference / 100 } : {}),
     estimatedGst: gst === null ? null : gst / 100, estimatedPst: pst === null ? null : pst / 100, estimatedAdditionalFees: extra === null ? null : extra / 100,
     estimatedService: service === null ? null : service / 100, finalTotal: null, products }) };
 }

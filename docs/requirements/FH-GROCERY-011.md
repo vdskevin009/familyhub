@@ -28,3 +28,9 @@ Freeze collection windows, persist pending evidence separately and commit page c
 Before release, integrate this narrow patch into the current source branch and preserve newer installed changes. Do not copy the entire preparation snapshot onto the existing installation. Coordinate installed collector/model/store/runner changes; older workers that reject saved records with null `reviewedAt` cannot read newly imported automatic records. An operator-reviewed rollback/migration plan is required before activation; never silently rewrite automatic provenance as human review.
 
 Verify pairing/origin authorization, authenticated health capability `grocery-collection-v1`, read-only collection status, an authorized paired collection, persistence/read-back and duplicate replay. Verify the next natural scheduled run separately. Existing Windows schedule and security settings are unchanged. Private live acceptance and handset display remain separate from synthetic tests.
+
+## Bounded source-estimate discrepancy (#155)
+
+Testing: the parser admits only a one-cent absolute difference between the complete product unit-price-times-quantity sum and the printed estimated subtotal. It retains both amounts and the signed difference in the structured excerpt and adds a visible warning that the cause is not established. No balancing item, final payment, discount, or correction is inferred. Summary subtotal plus explicit taxes/fees must still equal the estimated total exactly. Larger discrepancies, incomplete rows, invalid MIME and inconsistent nonzero printed line estimates still fail closed.
+
+Worker compilation and 43 synthetic parser/collector/store tests pass, including both discrepancy signs, rejection above one cent, exact summary arithmetic and idempotent preservation. Exact original-mail replay, production activation and subsequent natural-run verification remain separate gates. No real family data is in the tests.

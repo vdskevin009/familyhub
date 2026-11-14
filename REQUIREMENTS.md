@@ -1,5 +1,14 @@
 # FamilyHub - Canonical Requirements
 
+## Purchase-only Courses and monthly PC Express spending - FH-GROCERY-015 (#155)
+
+Testing. Courses exposes only Achats, retaining per-purchase comparisons and original source tools. A read-only monthly chart separates verified final receipts from confirmation estimates, deduplicates explicit order identities across accounts and excludes contradictory or unusable evidence. Unknown months and incomplete mailbox/refund coverage remain explicit. See [FH-GROCERY-015](docs/requirements/FH-GROCERY-015.md). This supersedes the Catalogue/Moins cher navigation, not the underlying preserved records or comparison logic.
+
+## Gmail plugin migration - FH-MAIL-008
+
+In progress. Replace the requested account's Gmail retrieval through the connected plugin while preserving invoices, Important Mail, emailed Blue Cross tables, groceries, original attachments, history/coverage, source identities, deduplication and manual decisions. A local opt-in runtime now connects account-bound plugin retrieval, immutable plans, existing collector/manual routes and original-byte cache/downloads. Source selection fails closed after activation; default legacy remains only for unselected installations. Synthetic lifecycle/security/browser tests cover stale state, cancellation and no-fallback behavior. No production policy, credential, schedule or deployment has changed. Full orchestration, attachment persistence, source parity, browser fallback and cutover remain pending. See [scope, limits and acceptance gates](docs/GMAIL-PLUGIN-MIGRATION.md).
+
+
 ## Compact purchase comparison and four retailers - FH-GROCERY-014 (#155)
 
 Testing. Show only qualified amount, coverage/estimated count and incomplete state directly on cards, with “Plus d’infos” opening the accessible detail modal. Extend evidenced comparisons to Fresh St. Market and Save-On-Foods alongside Walmart/Costco for historical purchases and future imports. Retain provenance, quantity assumptions, unit/pack distinctions and source/locality limits; unpriced leads never inflate coverage. See `docs/requirements/FH-GROCERY-014.md`. This supersedes verbose card presentation while preserving FH-GROCERY-013 calculation and evidence rules.
@@ -776,3 +785,9 @@ Coordination defaults are owner-confirmed, revisioned private answers. The expli
 This narrowly supersedes the older blanket manual-Next statements in FH-CLAIM-002/004/005/007 only for these observed guarded Desjardins intermediate pages. It also supersedes the older prohibition on remembering coordination answers only for an explicitly confirmed owner preference, not automatic learning. Paired coordination-answer read/save retains existing origin, pairing, conflict, scope and revision checks.
 
 The observed final review offered no receipt upload before confirmation. Report not-requested-before-confirmation, retain the original PDF in FamilyHub and never claim upload success. Receipt-requested variants require their own acceptance evidence and remain guarded; selected-file state alone never proves upload and uncertain transmission is never replayed. Readiness means prepared for the owner's final review, not eligibility, coverage, absence from current history, payment or submission. Original records, manual decisions, credentials, pairing and schedules remain authoritative. All published fixtures are synthetic.
+
+Local Gmail migration follow-up: frozen invoice and grocery query retrieval passed read-only source checks with production hashes unchanged. Cold original preparation jobs and unrelated-busy daily collection regressions are implemented locally; production activation and isolated classifier/parser replay remain unverified. See docs/GMAIL-PLUGIN-MIGRATION.md for exact bounds and gates.
+
+FH-MAIL-008 follow-up: manual Blue Cross import protocol is now explicitly asynchronous and request-ID-bound in local source, with durable non-replay receipts and preserved explicit preview/apply intent. Production activation remains pending; synchronous external callers must be updated rather than silently assumed compatible.
+
+FH-MAIL-008 isolation follow-up: the local classifier candidate now validates effective inherited-tool/filesystem isolation and bounded process lifecycle. Synthetic capability proofs passed. This does not mark the migration deployed or real-data replay complete.

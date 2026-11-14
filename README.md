@@ -1,5 +1,10 @@
 # FamilyHub
 
+## Gmail plugin migration foundation
+
+An opt-in local plugin runtime preserves full MIME and original attachments while reusing existing collectors, manual triggers and the daily lifecycle. Source-policy validation, account-bound retrieval and paired attachment/Drive paths are implemented locally; no production policy or schedule is activated. See [scope and remaining gates](docs/GMAIL-PLUGIN-MIGRATION.md).
+
+
 ## Proactive mobile home
 
 Achats explains incomplete comparisons and opens each blocked line. Dated product/format candidates can be inspected, explicitly confirmed for that purchase and reversed without rewriting the receipt. Exact source references can reuse fresh confirmed formats through the existing scanner; unknown identity and stale prices remain unresolved. See [purchase resolution rules and acceptance](docs/requirements/FH-GROCERY-012.md).
@@ -167,7 +172,7 @@ Each household account is connected independently. Tokens are short-lived and re
 
 The scheduled PC scan is the authoritative mailbox-analysis path when a worker is paired. It starts with a bounded Gmail query, then applies a second deterministic filter. Marketing headers, Gmail promotion labels, bulk precedence and common newsletter/sales language lower confidence or remove the candidate. A generic mention of “benefits” or “insurance” is not enough on its own to classify an email as a claim. Browser scanning remains only as an unpaired fallback for older setups.
 
-Detected amounts and document types are heuristics. Review them before filing a claim or treating them as financial records. Full message bodies and attachment bytes are not persisted by the app.
+Detected amounts and document types are heuristics. Review them before filing a claim or treating them as financial records. Full message bodies remain transient. In the opt-in plugin source, original attachment bytes and minimal source identities are cached privately on the worker for reliable later download; this source is not activated by the code change.
 
 ## Money data
 
@@ -208,3 +213,9 @@ Daily insurer previews (FH-REIMB-041): on Windows, run `scripts/Install-InsurerP
 Mortgage decision analysis reuses the existing daily source automation and the authoritative paired worker. It adds private source-dated reports, same-maturity net comparisons, explicit variable scenarios, material alerts and mobile charts while preserving the frozen baseline and all original evidence. See [Mortgage assistant](docs/MORTGAGE-ASSISTANT.md).
 
 Purchase comparisons (FH-GROCERY-013/014) separate verified current-local prices from explicit estimated scenarios. Compact Achats cards show qualified equivalent cost and covered/estimated counts for Walmart, Costco, Fresh St. Market and Save-On-Foods. “Plus d’infos” opens the accessible detail modal with sources, assumptions and whole-package outlay; Back closes that modal without rebuilding the page. Unverified price leads stay outside calculated coverage. Missing independent prices remain unavailable. Estimates never authorize substitutions or feed certain-savings alerts.
+
+The local Gmail plugin candidate includes bounded original-file preparation/polling for slow cold reads. Source retrieval checks passed for the reviewed frozen queries, but this is not a production cutover or classifier/parser parity claim; follow the remaining gates in docs/GMAIL-PLUGIN-MIGRATION.md.
+
+Manual Blue Cross email import clients must use the advertised bluecross-import-jobs-v1 request-ID/status protocol; requests without an ID fail before any work. This local candidate has not been activated in production.
+
+The local private-classifier candidate now validates inherited tool restrictions and narrow sandbox input access before analysis, with bounded child-process lifecycle and no unsandboxed fallback. Availability depends on the verified sandbox backend; production cutover remains a separate reviewed step.
