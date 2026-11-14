@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { resolve } from 'node:path';
 import {privateIsolationPlan,privateDisabledFeatures,privateLegacyAliases,disabledCodeModeWarning,verifyPrivateEffectiveConfig,privateAnalysisEventReader,privateFilesystemOverrides,verifyPrivateFilesystemConfig} from '../apps/worker/dist/private-codex-isolation.js';
 const config=()=>({config:{apps:{_default:{enabled:true},some_app:{enabled:true}},mcp_servers:{node_repl:{enabled:true},'other.server':{enabled:true}},plugins:{'plugin@market':{enabled:true}}},layers:[{name:{type:'user'},version:'v1'}]});
 const inventory=()=>({installed:[{pluginId:'another@market',installed:true,enabled:true,version:'1'}]});
@@ -20,13 +21,13 @@ test('generic isolation rejects malformed inventories and revision/config shapes
 test('saved permission selections are not silently replaced',()=>{
   const c=config();c.config.default_permissions='user-restricted';assert.throws(()=>privateIsolationPlan(c,inventory()));
 });
-const profile='familyhub-private-00000000-0000-4000-8000-000000000000',inputs=['C:\\synthetic\\schema.json','C:\\synthetic\\image.png'];
+const profile='familyhub-private-00000000-0000-4000-8000-000000000000',inputs=[resolve('/synthetic/schema.json'),resolve('/synthetic/image.png')];
 test('filesystem override grants only exact explicit inputs, root deny and disabled network',()=>{
   const values=privateFilesystemOverrides(profile,inputs);
   assert.ok(values.includes('windows.sandbox="mxc"'));
   assert.ok(values.some(v=>v.includes('\":root\"=\"deny\"')&&v.includes('network={enabled=false}')));
   assert.ok(!values.some(v=>/extends|:workspace_roots|:tmpdir|:user_home|write/.test(v)));
-  for(const files of [[],['relative.txt'],['C:\\synthetic\\*'],[inputs[0],inputs[0]]])assert.throws(()=>privateFilesystemOverrides(profile,files));
+  for(const files of [[],['relative.txt'],[resolve('/synthetic/*')],[inputs[0],inputs[0]]])assert.throws(()=>privateFilesystemOverrides(profile,files));
 });
 test('filesystem metadata rejects widening, wrong backend, inheritance or extra paths',()=>{
   const value=()=>({config:{windows:{sandbox:'mxc'},default_permissions:profile,permissions:{[profile]:{filesystem:{':root':'deny',...Object.fromEntries(inputs.map(p=>[p,'read'])),glob_scan_max_depth:null},network:{enabled:false}}}}});
