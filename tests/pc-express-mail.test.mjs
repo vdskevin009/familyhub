@@ -149,3 +149,19 @@ test("full synthetic MIME travels through the real parser, collector and durable
     assert.doesNotMatch(Buffer.from(stored.data, "base64").toString("utf8"), /private-token|Private delivery address|1111|<html/);
   }
 });
+
+
+test("one-cent unit subtotal discrepancy preserves both estimates without a balancing item", () => {
+  for (const [subtotal, total, difference] of [["10,01", "11,46", 0.01], ["9,99", "11,44", -0.01]]) {
+    const result = parse(raw(confirm().replace("<p>10,00 $</p>", `<p>${subtotal} $</p>`).replace("<p>11,45 $</p>", `<p>${total} $</p>`)));
+    const source = JSON.parse(Buffer.from(result.source.data, "base64"));
+    assert.equal(source.calculatedEstimatedSubtotal, 10);
+    assert.equal(source.estimatedSubtotalDifference, difference);
+    assert.equal(result.receipt.items.length, 2);
+    assert.ok(result.receipt.items.every(item => item.amount === null));
+    assert.match(result.receipt.warnings.join(" "), /Cause non établie/);
+    assert.equal(result.receipt.total, Number(total.replace(",", ".")));
+  }
+  rejects(raw(confirm().replace("<p>10,00 $</p>", "<p>10,02 $</p>").replace("<p>11,45 $</p>", "<p>11,47 $</p>")), "inconsistent-estimates");
+  rejects(raw(confirm().replace("<p>10,00 $</p>", "<p>10,01 $</p>")), "inconsistent-estimates");
+});
