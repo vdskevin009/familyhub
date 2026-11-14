@@ -11,6 +11,7 @@ import { SavingsLibrary, SavingsConflict } from "./savings-library.js";
 import { MortgageDailyRunner } from "./mortgage-runner.js";
 import { MortgageStore, MortgageConflict } from "./mortgage-store.js";
 import { FinanceLibrary, FinanceConflict } from "./finance-library.js";
+import { readContributionsView } from "./contributions-view.js";
 import { NotificationLibrary, NotificationConflict } from "./notification-library.js";
 import { OpportunityActions, OpportunityActionsConflict } from "./opportunity-actions.js";
 import { PushConfiguration, sendPush } from "./notification-push.js";
@@ -370,6 +371,9 @@ const server = createServer(async (request, response) => {
       }
       if (parts.length === 4 && parts[2] === "sources" && request.method === "GET") { const source = await groceryStore.source(parts[1], parts[3]); if (!source) { json(response, 404, { error: "Source introuvable." }, origin); return; } json(response, 200, source, origin); return; }
     }
+    if (parts.length === 2 && parts[0] === "contributions" && parts[1] === "progress" && request.method === "GET") {
+      json(response, 200, await readContributionsView(stateDir, await financeLibrary.read()), origin); return;
+    }
     if (parts[0] === "finances") {
       if (parts.length === 2 && parts[1] === "changes" && request.method === "POST") { json(response, 200, await financeLibrary.change(await readJson(request)), origin); return; }
       if (parts.length === 1 && request.method === "GET") { json(response, 200, await financeLibrary.read(), origin); return; }
@@ -628,7 +632,7 @@ const server = createServer(async (request, response) => {
       }
     }
     if (request.method === "GET" && parts.length === 1 && parts[0] === "health") {
-      json(response, 200, { status: "ok", codex: "sdk-ready", version, capabilities: ["grocery-purchase-four-retailers-v1", "grocery-purchase-estimates-v1", "grocery-purchase-resolution-v1", "household-events-v1", "opportunity-actions-v1", "notification-lifecycle-v1", "insurance-reference-v1", "mortgage-evidence-v1", "mortgage-contacts-v1", "mortgage-assistant-v1", "grocery-collection-v1", "grocery-source-type-v1", "grocery-fulfillment-v1", "grocery-comparison-evidence-v1", "grocery-source-estimates-v1", "grocery-receipts-v1", "grocery-planning-v1", "grocery-weekly-v1", groceryExpandedListCapability] }, origin);
+      json(response, 200, { status: "ok", codex: "sdk-ready", version, capabilities: ["contribution-progress-v1", "grocery-purchase-four-retailers-v1", "grocery-purchase-estimates-v1", "grocery-purchase-resolution-v1", "household-events-v1", "opportunity-actions-v1", "notification-lifecycle-v1", "insurance-reference-v1", "mortgage-evidence-v1", "mortgage-contacts-v1", "mortgage-assistant-v1", "grocery-collection-v1", "grocery-source-type-v1", "grocery-fulfillment-v1", "grocery-comparison-evidence-v1", "grocery-source-estimates-v1", "grocery-receipts-v1", "grocery-planning-v1", "grocery-weekly-v1", groceryExpandedListCapability] }, origin);
       return;
     }
 
