@@ -250,7 +250,14 @@ try {
       }
     }
     await page.goto(base + "?view=groceries&tab=compare");
-    await page.getByRole("navigation", { name: "Gestion Courses", exact: true }).getByRole("button", { name: "Comparer", exact: true }).waitFor();
+    const purchaseTabs = page.getByRole("navigation", { name: "Outils Courses", exact: true });
+    const purchasesTab = purchaseTabs.getByRole("button", { name: "Achats", exact: true });
+    await purchasesTab.waitFor();
+    assert.equal(await purchasesTab.getAttribute("aria-current"), "page");
+    assert.equal(await purchaseTabs.getByRole("button").count(), 1);
+    assert.equal(new URL(page.url()).searchParams.get("view"), "groceries");
+    assert.equal(new URL(page.url()).searchParams.get("tab"), "tickets");
+    assert.equal(await page.getByRole("navigation", { name: "Gestion Courses", exact: true }).count(), 0);
     await noOverflow(page, "Grocery deep link " + width);
     await page.goto(base); await waitReady(page);
     await page.screenshot({ path: join(output, "today-" + width + ".png"), fullPage: true });

@@ -15,7 +15,7 @@ const site=createServer(async(req,res)=>{const path=new URL(req.url,"http://loca
 try{
  api.listen(0,"127.0.0.1");site.listen(0,"127.0.0.1");await Promise.all([once(api,"listening"),once(site,"listening")]);await mkdir(directory,{recursive:true});
  const endpoint=`http://127.0.0.1:${api.address().port}`,base=`http://127.0.0.1:${site.address().port}/familyhub/?view=groceries&tab=catalogue`;
- browser=await chromium.launch({headless:true,channel:process.env.FAMILYHUB_TEST_BROWSER_CHANNEL||"msedge"});
+ browser=await chromium.launch({headless:true,channel:process.env.FAMILYHUB_TEST_BROWSER_CHANNEL||(process.platform==="win32"?"msedge":undefined)});
  for(const width of [320,390,768,1280]){
  const context=await browser.newContext({viewport:{width,height:900},reducedMotion:"reduce",serviceWorkers:"block"});
  await context.route("**/*",route=>{if(new URL(route.request().url()).hostname!=="127.0.0.1"){external.push(route.request().url());return route.abort();}return route.continue();});
