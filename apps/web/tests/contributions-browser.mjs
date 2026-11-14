@@ -27,12 +27,15 @@ try {
     await page.route("https://synthetic-worker.invalid/**",route=>route.fulfill({status:mode==="offline"?503:200,contentType:"application/json",body:JSON.stringify(mode==="invalid"?{schema:0}:mode==="empty"?{...snapshot,plans:[]}:snapshot)}));
     await page.goto(base+"?view=contributions");
     const trigger = page.getByRole("button",{name:"Voir les versements REER",exact:true}); await trigger.waitFor();
+    if (process.env.CONTRIBUTIONS_TEST_FONT) await page.addStyleTag({content:`body { font-family: ${process.env.CONTRIBUTIONS_TEST_FONT} !important; }`});
     assert.equal(await page.locator(".contribution-card").count(),2);
     assert.equal(await page.locator(".contribution-card.reached").count(),0);
     assert.equal(await page.locator(".contribution-card.effort").count(),1);
     assert.equal(await page.locator(".contribution-card time").count(),0);
     assert.equal(await page.getByRole("progressbar").count(),2);
+    if (!(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1))) console.error(await page.evaluate(()=>({width:innerWidth,scrollWidth:document.documentElement.scrollWidth,font:getComputedStyle(document.body).fontFamily,overflow:[...document.querySelectorAll("body *")].map(el=>({tag:el.tagName,class:el.className,rect:el.getBoundingClientRect().toJSON(),minWidth:getComputedStyle(el).minWidth})).filter(item=>item.rect.right>innerWidth+1)})));
     assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
+    if (process.env.CONTRIBUTIONS_TEST_FONT && width === 320) console.log("Fallback heading geometry", JSON.stringify(await page.evaluate(()=>({viewport:innerWidth,scrollWidth:document.documentElement.scrollWidth,items:[".page-heading h1", ".page-heading-actions button", ".shell-tools button"].map(selector=>({selector,rect:document.querySelector(selector).getBoundingClientRect().toJSON()}))}))));
     for(let i=0;i<2;i++) {
       await trigger.focus(); await page.keyboard.press("Enter");
       const dialog=page.getByRole("dialog"); await dialog.waitFor();
@@ -45,7 +48,7 @@ try {
       assert.ok(await trigger.evaluate(el=>el===document.activeElement));
     }
     await mkdir("output/playwright/contributions",{recursive:true});
-    await page.screenshot({path:`output/playwright/contributions/cards-${width}.png`,fullPage:true});
+    await page.screenshot({path:`output/playwright/contributions/cards-${width}${process.env.CONTRIBUTIONS_TEST_FONT ? "-fallback" : ""}.png`,fullPage:true});
     for(const next of ["empty","invalid","offline","ready"]) {
       mode=next; await page.getByRole("button",{name:"Actualiser",exact:true}).click();
       if(next==="ready") await trigger.waitFor();

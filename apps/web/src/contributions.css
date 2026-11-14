@@ -1,4 +1,7 @@
 .contributions-view { max-width: 960px; margin-inline: auto; }
+/* The shared heading reserves 62px for the bell. Let its action wrap when
+   fallback font metrics leave insufficient room instead of widening the grid. */
+.contributions-view > .page-heading { flex-wrap: wrap; }
 .contribution-cards { display: grid; gap: 20px; }
 .contribution-card { background: var(--surface, #fff); border: 1px solid var(--border, #dbe1e9); border-radius: 18px; padding: 24px; color: var(--text, #172c46); }
 .contribution-card header { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; }
