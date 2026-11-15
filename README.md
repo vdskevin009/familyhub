@@ -219,3 +219,5 @@ The local Gmail plugin candidate includes bounded original-file preparation/poll
 Manual Blue Cross email import clients must use the advertised bluecross-import-jobs-v1 request-ID/status protocol; requests without an ID fail before any work. This local candidate has not been activated in production.
 
 The local private-classifier candidate now validates inherited tool restrictions and narrow sandbox input access before analysis, with bounded child-process lifecycle and no unsandboxed fallback. Availability depends on the verified sandbox backend; production cutover remains a separate reviewed step.
+
+Source-native expense snapshots use a separate private store and explicitly separate UI mode. See [source expense contract and limitations](docs/FINANCE-SOURCE-EXPENSES.md); deployment and private source activation are separate from synthetic tests.
