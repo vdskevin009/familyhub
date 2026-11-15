@@ -39,6 +39,7 @@ export function vancouverFinanceTime(now: Date): {day: string; minute: number} {
 export type StageReceiptPayload = {
   schema: 1; stage: FinanceStage; attemptId: string; localDate: string; scopeDigest: string;
   status: 'confirmed' | 'partial' | 'failed';
+  verificationLimits?: string[];
   confirmedSubjectIds: string[];
   retainedUnassigned?: {subjectId: string; evidenceDigests: string[]; sourceNative: true; persisted: true; readbackVerified: true; limits: string[]}[];
   evidenceDigests: string[];
@@ -77,6 +78,7 @@ export function validateReceipt(receipt: StageReceipt, attempt: FinanceAttempt, 
   const p = receipt.payload;
   if (!p || dailyFinanceDigest(p) !== receipt.digest || !hashPattern.test(receipt.digest) || p.schema !== 1 ||
       !financeStages.includes(p.stage) || p.attemptId !== attempt.id || p.localDate !== attempt.localDate || p.scopeDigest !== attempt.scopeDigest ||
+      (p.verificationLimits !== undefined && (!Array.isArray(p.verificationLimits) || p.verificationLimits.some(limit => typeof limit !== 'string' || !limit.trim()))) ||
       !Array.isArray(p.confirmedSubjectIds) || new Set(p.confirmedSubjectIds).size !== p.confirmedSubjectIds.length ||
       p.confirmedSubjectIds.some(id => !scope.subjects[p.stage].includes(id)) ||
       !Array.isArray(p.evidenceDigests) || !p.evidenceDigests.length || p.evidenceDigests.some(d => !hashPattern.test(d)) ||

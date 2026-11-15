@@ -108,13 +108,28 @@ export async function produceCloudFinanceReport(options:CloudReadbackOptions,man
  const nativeHashes=await bindNativePages(root,expensesInput.transactions,manifest.nativeTransactions,'transactions');
  const expenseSnapshot=prepareSourceExpenses(expensesInput,clock());guard(same(expenseSnapshot.query.accountSourceKeys,keys));
  let txComplete=pagesComplete(expensesInput.transactions,'transactions',ids,options.scope.periods[0])&&expenseSnapshot.coverage.complete;
- const sectionStates=new Map<string,boolean>();guard(manifest.sections.length===requiredSections.length&&new Set(manifest.sections.map(s=>s.dataset)).size===requiredSections.length);
- for(const entry of manifest.sections){guard(requiredSections.includes(entry.dataset));const value=await rawPair(root,entry.raw);captureTime(value);nativeHashes.push(...await bindNativePages(root,value,entry.nativePages,entry.dataset));sectionStates.set(entry.dataset,pagesComplete(value,entry.dataset,ids,options.scope.periods[0]));}
+ const sectionStates=new Map<string,boolean>(),sectionSources=new Map<string,any>();guard(manifest.sections.length===requiredSections.length&&new Set(manifest.sections.map(s=>s.dataset)).size===requiredSections.length);
+ for(const entry of manifest.sections){guard(requiredSections.includes(entry.dataset));const value=await rawPair(root,entry.raw);captureTime(value);nativeHashes.push(...await bindNativePages(root,value,entry.nativePages,entry.dataset));sectionStates.set(entry.dataset,pagesComplete(value,entry.dataset,ids,options.scope.periods[0]));sectionSources.set(entry.dataset,value);}
  const state=await current(options);guard(same(protectedFacts(base.ledger),protectedFacts(state.ledger))&&same(base.config,state.config)&&base.ledger.imports.every((x:any)=>state.ledger.imports.some(y=>same(x,y))));
  guard((base.ledger.data?.balanceObservations??[]).every((row:any)=>(state.ledger.data?.balanceObservations??[]).some(current=>same(row,current))));
  guard(base.expenses.snapshots.every((x:any)=>state.expenses.snapshots.some(y=>same(x,y)))&&state.expenses.snapshots.some(s=>same(s,expenseSnapshot)));
  const inventory=validateFinanceSourceInventory(JSON.parse((await refBytes(root,manifest.inventory)).toString('utf8')),clock());guard(same(inventory,state.inventory.snapshot)&&time(inventory.collectedAt)>=time(base.capturedAt));
  guard(same(inventory.accounts.map(a=>a.sourceKey).sort(),keys.filter(k=>!Object.hasOwn(mapping,k))));
+  const expectedCapture=Math.max(time(linked.collectedAt),...[...sectionSources.values()].map(v=>time(v.collectedAt)));
+ guard(time(inventory.collectedAt)===expectedCapture);
+ const enumerationComplete=linkedBody.institutions.every((i:any)=>coverage(i.account_coverage,'accounts'))&&!(linkedBody.manual_accounts?.length);
+ const mappedCurrent=keys.some(k=>Object.hasOwn(mapping,k));
+ const expectedAccountsAvailability={status:enumerationComplete?(mappedCurrent?'partial':'available'):'unavailable',coverage:enumerationComplete?(mappedCurrent?'partial':'complete'):'unknown',observedCount:inventory.accounts.length};
+ guard(same(inventory.availability.accounts,expectedAccountsAvailability));
+ let inventorySemanticsComplete=true;
+ for(const [dataset,field] of [['investment_holdings','holdings'],['investment_transactions','activity'],['recurring_transactions','recurring'],['liabilities','liabilities']] as const){
+  const native=sectionSources.get(dataset),count=native.pages.reduce((n:number,p:any)=>n+p.result.items.length,0),complete=sectionStates.get(dataset)===true;
+  const partial=!complete&&native.pages.some((p:any)=>p.result.coverage?.availability==='ready'&&p.result.coverage?.is_complete_for_query===false);
+  guard(same(inventory.availability[field],{status:complete?'available':partial?'partial':'unavailable',coverage:complete?'complete':partial?'partial':'unknown',observedCount:count}));
+ }
+ const recurring=sectionSources.get('recurring_transactions'),recurringCount=recurring.pages.reduce((n:number,p:any)=>n+p.result.items.length,0);
+ if(sectionStates.get('recurring_transactions')&&recurringCount===0)guard(inventory.predictions.length===0);
+ else{guard(same(inventory.predictions,base.inventory.snapshot?.predictions??[]));inventorySemanticsComplete=false;}
  let balancesComplete=true;
  for(const [key,a] of byKey){
   const balance=a.balances;const known=balance&&typeof balance.current==='number'&&Number.isFinite(balance.current)&&typeof balance.iso_currency_code==='string';
@@ -123,7 +138,14 @@ export async function produceCloudFinanceReport(options:CloudReadbackOptions,man
    guard(state.ledger.data?.accounts.some(row=>row.id===mapping[key]));
    if(known)guard(state.ledger.data?.balanceObservations?.some(row=>row.accountId===mapping[key]&&row.balanceCents===amount(balance.current)&&row.currency===balance.iso_currency_code&&row.capturedAt===linked.collectedAt&&row.sourceAsOf===null&&row.source.sha256===manifest.linked.capture.sha256));
   }else{
-   const row=inventory.accounts.find(row=>row.sourceKey===key)!;guard(row.name===a.name);
+      const row=inventory.accounts.find(row=>row.sourceKey===key)!;guard(row.name===a.name);
+   const owner=linkedBody.institutions.find((i:any)=>i.accounts.some((r:any)=>r.item_id===a.item_id&&r.account_id===a.account_id));
+   const sourceInstitution=typeof owner?.institution?.name==='string'?owner.institution.name:null;
+   const sourceKind=['depository','credit','investment','loan','other'].includes(a.type)?a.type:'unknown';
+   guard(row.kind===sourceKind&&row.institution===sourceInstitution);
+   const liabilities=sectionSources.get('liabilities'),liabilityCount=liabilities.pages.reduce((n:number,p:any)=>n+p.result.items.length,0);
+   if(row.kind!=='credit'||sectionStates.get('liabilities')&&liabilityCount===0)guard(row.credit===null);
+   else{const prior=base.inventory.snapshot?.accounts.find((r:any)=>r.sourceKey===key);guard(same(row.credit,prior?.credit??null));inventorySemanticsComplete=false;}
    if(known)guard(row.balance?.amountCents===amount(balance.current)&&row.balance.currency===balance.iso_currency_code&&row.balance.sourceAsOf===null);else guard(row.balance===null);
   }
  }
@@ -131,10 +153,10 @@ export async function produceCloudFinanceReport(options:CloudReadbackOptions,man
  // The live projection is independently recomputed; no configuration attribution is changed.
  guard(same(state.config.plans.map(p=>p.id).sort(),[...options.scope.subjects.contributions].sort()));
  const evidence=[...nativeHashes,manifest.baseline.sha256,manifest.mapping.sha256,manifest.linked.archive.sha256,manifest.expenses.archive.sha256,manifest.inventory.sha256,...manifest.sections.map(s=>s.raw.archive.sha256),dailyFinanceDigest(state)];
- const accountsComplete=linkedBody.institutions.every((i:any)=>coverage(i.account_coverage,'accounts'))&&!(linkedBody.manual_accounts?.length);
+ const accountsComplete=enumerationComplete&&inventorySemanticsComplete;
  const collectionComplete=accountsComplete&&txComplete&&[...sectionStates.values()].every(Boolean);
- const statuses={collection:collectionComplete,accounts:accountsComplete,balances:balancesComplete&&accountsComplete,transactions:txComplete,contributions:txComplete};
- const receipts:StageReceipt[]=financeStages.map(stage=>{const subjects=options.scope.subjects[stage],retain=stage==='contributions'||stage==='transactions';const payload={schema:1 as const,stage,attemptId:options.admission.attempt.id,localDate:options.admission.attempt.localDate,scopeDigest:manifest.scopeDigest,status:statuses[stage]?'confirmed' as const:'partial' as const,confirmedSubjectIds:retain?[]:[...subjects],...(retain?{retainedUnassigned:subjects.map(subjectId=>({subjectId,evidenceDigests:evidence,sourceNative:true as const,persisted:true as const,readbackVerified:true as const,limits:['Complete raw source retained separately; canonical attribution and existing Contributions configuration remain unchanged. CSV blank cells cannot distinguish absent, null and empty source values; original bytes and envelope are preserved.']}))}:{}),evidenceDigests:evidence,withheldCount:statuses[stage]?0:1,uncertainWrite:false,sourceFreshness:'unknown' as const,sourceAsOf:null};return {payload,digest:dailyFinanceDigest(payload)}});
+ const statuses={collection:collectionComplete,accounts:accountsComplete,balances:balancesComplete&&enumerationComplete,transactions:txComplete,contributions:txComplete};
+ const receipts:StageReceipt[]=financeStages.map(stage=>{const subjects=options.scope.subjects[stage],retain=stage==='contributions'||stage==='transactions';const payload={schema:1 as const,stage,attemptId:options.admission.attempt.id,localDate:options.admission.attempt.localDate,scopeDigest:manifest.scopeDigest,status:statuses[stage]?'confirmed' as const:'partial' as const,...(!inventorySemanticsComplete&&['accounts','collection'].includes(stage)?{verificationLimits:['Nonempty credit or recurring fields are preserved from baseline but not independently source-derived; stage remains partial.']} : {}),confirmedSubjectIds:retain?[]:[...subjects],...(retain?{retainedUnassigned:subjects.map(subjectId=>({subjectId,evidenceDigests:evidence,sourceNative:true as const,persisted:true as const,readbackVerified:true as const,limits:['Complete raw source retained separately; canonical attribution and existing Contributions configuration remain unchanged. CSV blank cells cannot distinguish absent, null and empty source values; original bytes and envelope are preserved.']}))}:{}),evidenceDigests:evidence,withheldCount:statuses[stage]?0:1,uncertainWrite:false,sourceFreshness:'unknown' as const,sourceAsOf:null};return {payload,digest:dailyFinanceDigest(payload)}});
  await check();return {writeOutcome:'confirmed',receipts};
 }
 export function cloudFinanceVerifiers(options:CloudReadbackOptions,loadManifest:()=>Promise<FinanceCloudManifest>){
@@ -143,8 +165,3 @@ export function cloudFinanceVerifiers(options:CloudReadbackOptions,loadManifest:
   verifyOutcomeReadOnly:async(report:StageReport)=>same(await produceCloudFinanceReport(options,await loadManifest()),report)
  };
 }
-
-
-
-
-
