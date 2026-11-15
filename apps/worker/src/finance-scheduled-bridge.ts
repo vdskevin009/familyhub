@@ -1,9 +1,9 @@
 import {randomBytes} from 'node:crypto';
-import {mkdir,readFile,unlink} from 'node:fs/promises';
+import {mkdir,readFile,unlink,access} from 'node:fs/promises';
 import {join} from 'node:path';
 import {dailyFinanceDigest,financeScopeDigest,decideDailyFinance,vancouverFinanceTime,financeStages,validateReceipt,readState,durableExclusive,replace} from './finance-daily-gate.js';
 import type {DailyFinanceScope,FinanceAttempt,StageReport,FinanceGateCallbacks} from './finance-daily-gate.js';
-export type ScheduledAdmission={schema:1; mode:'scheduled'; token:string; action:'collect'|'recover'; admittedDay:string; invocationStartedAt:string; expiresAt:string; attempt:FinanceAttempt; stateDigest:string; scopeDigest:string};
+export type ScheduledAdmission={schema:1|2; reservationProtocol?:'preoperation-v1'; mode:'scheduled'; token:string; action:'collect'|'recover'; admittedDay:string; invocationStartedAt:string; expiresAt:string; attempt:FinanceAttempt; stateDigest:string; scopeDigest:string};
 type Input={directory:string;scope:DailyFinanceScope;now?:Date};
 const paths=(directory:string)=>{const dir=join(directory,'finance-feed','daily-gate');return {dir,state:join(dir,'state.json'),lease:join(dir,'lease.lock'),finalizer:join(dir,'finalize.lock')}};
 /** LOCAL ONLY. No adapter imports, provider calls, health checks or manual reset. */
@@ -25,15 +25,15 @@ export async function beginScheduledFinance(input:Input){
  const attempt:FinanceAttempt=decision.action==='recover'?state.pending!:{id:randomBytes(16).toString('hex'),localDate:decision.localDate,scopeDigest:digest,startedAt:start,leaseExpiresAt:expiresAt};
  state={...state,revision:state.revision+1,pending:attempt,days:{...state.days,[attempt.localDate]:{...state.days[attempt.localDate],scopeDigest:digest,status:'pending',lastAttemptAt:start,attemptId:attempt.id}}};
  await replace(p.state,state);
- const admission:ScheduledAdmission={schema:1,mode:'scheduled',token,action:decision.action,admittedDay:decision.localDate,invocationStartedAt:start,expiresAt,attempt,scopeDigest:digest,stateDigest:dailyFinanceDigest(state)};
+ const admission:ScheduledAdmission={schema:2,reservationProtocol:'preoperation-v1',mode:'scheduled',token,action:decision.action,admittedDay:decision.localDate,invocationStartedAt:start,expiresAt,attempt,scopeDigest:digest,stateDigest:dailyFinanceDigest(state)};
  const file=join(p.dir,'admission-'+dailyFinanceDigest(token)+'.json');
  await durableExclusive(file,JSON.stringify(admission));
  return {action:decision.action,reason:decision.reason,complete:false,admissionFile:file,validUntil:expiresAt,admission};
 }
 /** Call immediately before EACH cloud source call or intake mutation. Does not enforce external tool behavior. */
-export async function assertScheduledAdmission(input:Input,admission:ScheduledAdmission,operation:'collect'|'readback'){
+async function validateScheduledAdmission(input:Input,admission:ScheduledAdmission,operation:'collect'|'readback'){
  const p=paths(input.directory),a=structuredClone(admission),now=input.now??new Date(),local=vancouverFinanceTime(now);
- if(a.schema!==1||a.mode!=='scheduled'||!['collect','recover'].includes(a.action)||!/^[a-f0-9]{64}$/.test(a.token)||financeScopeDigest(input.scope)!==a.scopeDigest)throw Error('Invalid scheduled admission.');
+ if((a.schema!==1&&a.schema!==2)||(a.schema===2&&a.reservationProtocol!=='preoperation-v1')||(a.schema===1&&a.reservationProtocol!==undefined)||a.mode!=='scheduled'||!['collect','recover'].includes(a.action)||!/^[a-f0-9]{64}$/.test(a.token)||financeScopeDigest(input.scope)!==a.scopeDigest)throw Error('Invalid scheduled admission.');
  const stored=JSON.parse(await readFile(join(p.dir,'admission-'+dailyFinanceDigest(a.token)+'.json'),'utf8'));
  const lock=JSON.parse(await readFile(p.lease,'utf8'));
  if(dailyFinanceDigest(stored)!==dailyFinanceDigest(a)||lock.bridge!==true||lock.tokenDigest!==dailyFinanceDigest(a.token))throw Error('Admission token mismatch.');
@@ -42,6 +42,54 @@ export async function assertScheduledAdmission(input:Input,admission:ScheduledAd
  if(dailyFinanceDigest(await readState(p.state))!==a.stateDigest)throw Error('Admission state drift.');
  return a;
 }
+
+/** New reservations journal the first operation BEFORE admission is returned to a caller.
+ * Cancellation and first-operation admission share one exclusive lock. A stale lock is never stolen.
+ * This cannot sandbox an uncooperative caller; every source/API boundary must call this guard.
+ */
+export async function assertScheduledAdmission(input:Input, admission:ScheduledAdmission, operation:'collect'|'readback'){
+ if(admission.reservationProtocol!=='preoperation-v1')return validateScheduledAdmission(input,admission,operation);
+ const p=paths(input.directory),mutex=join(p.dir,'phase-'+dailyFinanceDigest(admission.token)+'.lock');
+ await durableExclusive(mutex,JSON.stringify({schema:1,admissionDigest:dailyFinanceDigest(admission)}));
+ try{
+  await validateScheduledAdmission(input,admission,operation);
+  const file=join(p.dir,'started-'+dailyFinanceDigest(admission.token)+'.json');
+  const bytes=JSON.stringify({schema:1,admissionDigest:dailyFinanceDigest(admission),attemptId:admission.attempt.id});
+  try{await durableExclusive(file,bytes)}catch(e){if((e as NodeJS.ErrnoException).code!=='EEXIST'||await readFile(file,'utf8')!==bytes)throw e;}
+  await validateScheduledAdmission(input,admission,operation);
+  return admission;
+ }finally{await unlink(mutex)}
+}
+
+/** Live owner cancellation, NOT expired/dead-owner recovery. No provider/API callbacks.
+ * Old admissions, recovery admissions and anything that crossed a guard remain fail-closed.
+ */
+export async function abandonUnstartedReservation(input:Input,admission:ScheduledAdmission){
+ if(admission.schema!==2||admission.reservationProtocol!=='preoperation-v1'||admission.action!=='collect')throw Error('Reservation protocol required; operator recovery only.');
+ const p=paths(input.directory),mutex=join(p.dir,'phase-'+dailyFinanceDigest(admission.token)+'.lock');
+ await durableExclusive(mutex,JSON.stringify({schema:1,admissionDigest:dailyFinanceDigest(admission)}));
+ try{
+  await validateScheduledAdmission(input,admission,'collect');
+  for(const name of ['started-'+dailyFinanceDigest(admission.token)+'.json','finalize.lock']){
+   let present=false;try{await access(join(p.dir,name));present=true}catch(e){if((e as NodeJS.ErrnoException).code!=='ENOENT')throw e}
+   if(present)throw Error('Operation may have started; read-only operator recovery required.');
+  }
+  const state=await readState(p.state);
+  if(state.pending?.id!==admission.attempt.id)throw Error('Pending attempt mismatch.');
+  const next={...state,revision:state.revision+1,days:{...state.days,[admission.admittedDay]:{
+   ...state.days[admission.admittedDay],status:'partial' as const,receiptDigests:[]}}};
+  delete next.pending;
+  const proof={schema:1,kind:'unstarted-reservation-abandoned',admissionDigest:dailyFinanceDigest(admission),
+   beforeStateDigest:dailyFinanceDigest(state),afterStateDigest:dailyFinanceDigest(next),complete:false};
+  const file=join(p.dir,'abandoned-'+dailyFinanceDigest(admission.token)+'.json'),bytes=JSON.stringify(proof);
+  try{await durableExclusive(file,bytes)}catch(e){if((e as NodeJS.ErrnoException).code!=='EEXIST'||await readFile(file,'utf8')!==bytes)throw e}
+  await validateScheduledAdmission(input,admission,'collect');
+  await replace(p.state,next);
+  await unlink(p.lease);
+  return {complete:false,reason:'unstarted-abandoned-retry-next-hour'};
+ }finally{await unlink(mutex)}
+}
+
 export async function finalizeScheduledFinance(input:Omit<Input,'now'> & {clock?:()=>Date}, admission:ScheduledAdmission,reportInput:StageReport,loadVerifier:()=>Promise<Pick<FinanceGateCallbacks,'verifyReceiptReadOnly'|'verifyOutcomeReadOnly'>>){
  const p=paths(input.directory),scope=structuredClone(input.scope),clock=input.clock??(()=>new Date()),a=structuredClone(admission),report=structuredClone(reportInput);
  // Lost final response: prove this exact admission/report against local durable artifacts only.

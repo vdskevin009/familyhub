@@ -335,3 +335,6 @@ The web-only finance-source-trends projection consumes one validated immutable S
 ## Monthly account versions
 
 The paired account-captures store preserves immutable received snapshots independently of the canonical ledger and legacy inventory. The read-only account-history projection verifies archived import hashes and preserves original source dates and recorded signs. The client selects exactly one version and currency: documented provider conventions support observed net totals, while older recorded sums are labelled separately. Neither source is merged through inferred account identity. See FINANCE-ACCOUNT-CAPTURES.md and FINANCE-MONTHLY-ACCOUNTS-UI.md for contracts, retention and activation gates.
+
+
+The candidate preoperation-v1 scheduled bridge journals first operation authorization before returning its guard. A serialized live-owner cancellation can release only an unstarted reservation, recording incomplete state and preserving hourly throttling. It cannot recover old admissions or replace operator-established crash evidence. See FINANCE-DAILY-GATE.md; no production activation is implied.
