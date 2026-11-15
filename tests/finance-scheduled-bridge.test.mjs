@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtemp,readFile,unlink} from 'node:fs/promises';
+import {mkdtemp,readFile,unlink,writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {beginScheduledFinance,assertScheduledAdmission,finalizeScheduledFinance,journalScheduledIntent} from '../apps/worker/src/finance-scheduled-bridge.ts';
@@ -15,3 +15,5 @@ test('window closure and changed scope block before loading verifier',async()=>{
 test('finalizer overlap does not duplicate verifier callbacks',async()=>{const h=await setup(),b=await h.b(),r=h.report(b.admission);let release;const wait=new Promise(resolve=>release=resolve);let entered;const started=new Promise(resolve=>entered=resolve);const first=h.finish(b.admission,r,async()=>{entered();await wait;return {verifyReceiptReadOnly:async()=>true,verifyOutcomeReadOnly:async()=>true}});await started;await assert.rejects(h.finish(b.admission,r),/EEXIST/);release();assert.equal((await first).complete,true)});
 
 test('private intent is immutable, replay-safe and forbidden under recovery admission',async()=>{const h=await setup(),b=await h.b(),intent={operationId:'synthetic',kind:'private-intake',payloadDigest:'b'.repeat(64),expectedRevision:'synthetic-rev',readbackLocator:'synthetic-private-record'};const a=await journalScheduledIntent(h.input(),b.admission,intent);assert.deepEqual(await journalScheduledIntent(h.input(),b.admission,intent),a);await assert.rejects(journalScheduledIntent(h.input(),b.admission,{...intent,payloadDigest:'c'.repeat(64)}),/conflict/);h.time('2025-01-10T17:00:00Z');await unlink(join(h.directory,'finance-feed/daily-gate/lease.lock'));const r=await h.b();await assert.rejects(journalScheduledIntent(h.input(),r.admission,intent),/readback only/)});
+
+test('artifact persisted before state commit accepts exact bytes but rejects conflicting content',async()=>{for(const conflict of [false,true]){const h=await setup(),b=await h.b(),report=h.report(b.admission);const artifact={schema:1,attempt:b.admission.attempt,report,verifiedAt:h.input().now.toISOString(),complete:true};const path=join(h.directory,'finance-feed/daily-gate','verified-'+dailyFinanceDigest(artifact)+'.json');const bytes=conflict?'conflicting immutable evidence':JSON.stringify(artifact);await writeFile(path,bytes);if(conflict){await assert.rejects(h.finish(b.admission,report));assert.equal(await readFile(path,'utf8'),bytes);assert.ok(JSON.parse(await readFile(join(h.directory,'finance-feed/daily-gate/state.json'))).pending)}else assert.equal((await h.finish(b.admission,report)).complete,true)}});

@@ -66,7 +66,8 @@ export async function finalizeScheduledFinance(input:Omit<Input,'now'> & {clock?
   if(report.writeOutcome==='uncertain'||report.receipts.some(r=>r.payload.uncertainWrite))throw Error('Outcome uncertain; lease retained for operator-reviewed recovery.');
   await guard();if(await verifier.verifyOutcomeReadOnly(structuredClone(report),structuredClone(a.attempt))!==true)throw Error('Independent outcome verification failed.');await guard();
   const complete=report.writeOutcome==='confirmed'&&all,artifact={schema:1,attempt:a.attempt,report,verifiedAt:clock().toISOString(),complete},artifactDigest=dailyFinanceDigest(artifact);
-  await durableExclusive(join(p.dir,'verified-'+artifactDigest+'.json'),JSON.stringify(artifact));
+  const artifactPath=join(p.dir,'verified-'+artifactDigest+'.json'),artifactBytes=JSON.stringify(artifact);
+  try{await durableExclusive(artifactPath,artifactBytes)}catch(e){if((e as NodeJS.ErrnoException).code!=='EEXIST'||await readFile(artifactPath,'utf8')!==artifactBytes)throw e;}
   await guard();let state=await readState(p.state);
   state={...state,revision:state.revision+1,days:{...state.days,[a.attempt.localDate]:{scopeDigest:a.scopeDigest,status:complete?'complete':'partial',lastAttemptAt:a.invocationStartedAt,attemptId:a.attempt.id,receiptDigests:report.receipts.map(r=>r.digest),artifactDigest,...(complete?{completedAt:clock().toISOString()}:{})}}};delete state.pending;
   await replace(p.state,state);await unlink(p.lease);
