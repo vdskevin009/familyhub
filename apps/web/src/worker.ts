@@ -153,7 +153,21 @@ export async function saveFinanceChange(config: WorkerConfig, body: object) {
   }
 }
 export const saveFinanceDecision = (config: WorkerConfig, id: string, expectedRevision: string, decision: import("../../worker/src/finance-model").FinanceDecision) => request<import("../../worker/src/finance-model").FinanceState>(config,"/finances/decision",{ method:"POST",body:JSON.stringify({id,expectedRevision,decision}) });
-export const importFinances = (config: WorkerConfig, bundle: unknown, expectedRevision: string, apply = false) => request<{ state?: import("../../worker/src/finance-model").FinanceState; added:number; possibleDuplicates:number; accounts?:number; from?:string; to?:string; revision?:string; alreadyImported?:boolean }>(config,"/finances/import",{ method:"POST",body:JSON.stringify({bundle,expectedRevision,apply}) },60_000);
+export async function importFinances(config: WorkerConfig, bundle: unknown, expectedRevision: string, apply = false) {
+  const input = bundle as { balanceObservations?: unknown; importMode?: unknown };
+  if (input?.balanceObservations !== undefined || input?.importMode !== undefined) {
+    const health = await request<{ capabilities?: string[] }>(config, "/health");
+    if (!health.capabilities?.includes("finance-balance-observations-v1")) throw new Error("Mettez à jour le worker PC pour conserver les soldes reçus et leurs dates. Aucun import effectué.");
+  }
+  const result = await request<{ state?: import("../../worker/src/finance-model").FinanceState; added:number; possibleDuplicates:number; balanceObservations?:number; capability?:string; accounts?:number; from?:string; to?:string; revision?:string; alreadyImported?:boolean }>(config,"/finances/import",{ method:"POST",body:JSON.stringify({bundle,expectedRevision,apply}) },60_000);
+  if (Array.isArray(input?.balanceObservations)) {
+    if (apply || result.alreadyImported) {
+      const saved = result.state?.data?.balanceObservations;
+      if (!saved || input.balanceObservations.some(row => !saved.some(o => o.accountId === row.accountId && o.currency === row.currency && o.balanceCents === row.balanceCents && Date.parse(o.capturedAt) === Date.parse(row.capturedAt) && o.sourceAsOf === row.sourceAsOf && o.source.sha256 === row.source?.sha256))) throw new Error("Import des soldes non confirmé. Rechargez le PC avant de réessayer; aucun nouvel import automatique.");
+    } else if (result.capability !== "finance-balance-observations-v1" || result.balanceObservations !== input.balanceObservations.length) throw new Error("Le worker n’a pas confirmé l’aperçu des soldes. Aucun import effectué.");
+  }
+  return result;
+}
 
 export type BlueCrossSyncResult = { autoImported?: number; pendingNew?: number; pendingChanged?: number; status: "success" | "login-required"; applied?: boolean; found?: number; new?: number;
   changed?: number; unchanged?: number; ambiguous?: number; duplicates?: number; errors?: number; complete?: boolean;

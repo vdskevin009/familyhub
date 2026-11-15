@@ -1,7 +1,8 @@
-import { readFile, mkdir, writeFile, rename } from "node:fs/promises";
+import { readFile, mkdir, writeFile, rename, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { createHash, randomUUID } from "node:crypto";
 import { parseFinancePreparation } from "./finance-import.js";
+import { archivedFinanceCollection } from "./finance-observations.js";
 import { validateFinanceState } from "./finance-validation.js";
 import { FinanceConflict, prepareFinanceChange, type FinanceChangeInput } from "./finance-changes.js";
 import {
@@ -35,10 +36,30 @@ async function atomic(path: string, value: unknown) {
     await writeFile(temporary, JSON.stringify(value), { mode: 0o600 });
     await rename(temporary, path);
 }
+function mergeObservations(previous: FinanceData | null, incoming: FinanceData) {
+    const saved = [...(previous?.balanceObservations ?? [])];
+    for (const row of incoming.balanceObservations ?? []) {
+        const old = saved.find(o => o.accountId === row.accountId && Date.parse(o.capturedAt) === Date.parse(row.capturedAt));
+        if (old && (old.balanceCents !== row.balanceCents || old.currency !== row.currency || old.sourceAsOf !== row.sourceAsOf || old.source.sha256 !== row.source.sha256)) throw new FinanceConflict("Soldes contradictoires pour la même collecte.");
+        if (!old) saved.push(row);
+    }
+    if (saved.length > 50000) throw new Error("Historique des soldes trop volumineux.");
+    return previous?.balanceObservations || incoming.balanceObservations ? { balanceObservations: saved } : {};
+}
 function mergeData(
     previous: FinanceData | null,
     incoming: FinanceData,
+    observationsOnly = false,
 ): { data: FinanceData; added: number; possibleDuplicates: number } {
+    const observations = mergeObservations(previous, incoming);
+    if (observationsOnly) {
+        if (!previous) throw new Error("Importez le registre de comptes avant leurs observations.");
+        for (const a of incoming.accounts) {
+            const old = previous.accounts.find(p => p.id === a.id);
+            if (!old || old.identity !== a.identity || old.type !== a.type || old.currency !== a.currency || JSON.stringify(old) !== JSON.stringify(a)) throw new FinanceConflict("Le registre historique des comptes doit rester inchangé.");
+        }
+        return { data: { ...previous, ...observations }, added: 0, possibleDuplicates: 0 };
+    }
     const base = previous ?? {
         ...incoming,
         accounts: [],
@@ -166,6 +187,7 @@ function mergeData(
     return {
         data: {
             ...latest,
+            ...observations,
             accounts,
             transactions,
             activities,
@@ -194,7 +216,20 @@ export class FinanceLibrary {
             if ((e as NodeJS.ErrnoException).code === "ENOENT") return empty();
             throw e;
         }
-        return validateFinanceState(JSON.parse(value));
+        const state = validateFinanceState(JSON.parse(value));
+        const last = state.imports.at(-1);
+        if (last && last.collection === undefined && state.data) {
+            // Read-only compatibility projection; never rewrite a ledger or invent a capture.
+            last.collection = null;
+            try {
+                const path = join(this.directory, "sources", last.hash + ".json");
+                if ((await stat(path)).size <= 20_000_000) {
+                    const raw = await readFile(path, "utf8");
+                    if (createHash("sha256").update(raw).digest("hex") === last.hash) last.collection = archivedFinanceCollection(JSON.parse(raw), state.data.accounts.map(a => a.id));
+                }
+            } catch { /* Missing/unreadable legacy evidence stays unknown. Financial state is retained. */ }
+        }
+        return state;
     }
     import(value: {
         bundle?: unknown;
@@ -213,12 +248,14 @@ export class FinanceLibrary {
                     possibleDuplicates: 0,
                     alreadyImported: true,
                 };
-            const merged = mergeData(current.data, data);
+            const merged = mergeData(current.data, data, (value.bundle as { importMode?: string }).importMode === "balance-observations-only");
             if (value.apply !== true)
                 return {
                     added: merged.added,
                     possibleDuplicates: merged.possibleDuplicates,
                     accounts: data.accounts.length,
+                    balanceObservations: data.balanceObservations?.length ?? 0,
+                    capability: "finance-balance-observations-v1",
                     from: data.scope.from,
                     to: data.scope.to,
                     revision: current.revision,
@@ -246,7 +283,7 @@ export class FinanceLibrary {
                 importedAt: at,
                 imports: [
                     ...current.imports,
-                    { hash, at, added: merged.added },
+                    { hash, at, added: merged.added, collection: archivedFinanceCollection(value.bundle, merged.data.accounts.map(a => a.id)) },
                 ],
             };
             if (current.data)

@@ -662,7 +662,7 @@ const server = createServer(async (request, response) => {
       }
     }
     if (request.method === "GET" && parts.length === 1 && parts[0] === "health") {
-      json(response, 200, { status: "ok", codex: "sdk-ready", version, capabilities: ["contribution-progress-v1", "bluecross-import-jobs-v1", "attachment-preparation-v1", "grocery-purchase-four-retailers-v1", "grocery-purchase-estimates-v1", "grocery-purchase-resolution-v1", "household-events-v1", "opportunity-actions-v1", "notification-lifecycle-v1", "insurance-reference-v1", "mortgage-evidence-v1", "mortgage-contacts-v1", "mortgage-assistant-v1", "grocery-collection-v1", "grocery-source-type-v1", "grocery-fulfillment-v1", "grocery-comparison-evidence-v1", "grocery-source-estimates-v1", "grocery-receipts-v1", "grocery-planning-v1", "grocery-weekly-v1", groceryExpandedListCapability] }, origin);
+      json(response, 200, { status: "ok", codex: "sdk-ready", version, capabilities: ["finance-balance-observations-v1", "contribution-progress-v1", "bluecross-import-jobs-v1", "attachment-preparation-v1", "grocery-purchase-four-retailers-v1", "grocery-purchase-estimates-v1", "grocery-purchase-resolution-v1", "household-events-v1", "opportunity-actions-v1", "notification-lifecycle-v1", "insurance-reference-v1", "mortgage-evidence-v1", "mortgage-contacts-v1", "mortgage-assistant-v1", "grocery-collection-v1", "grocery-source-type-v1", "grocery-fulfillment-v1", "grocery-comparison-evidence-v1", "grocery-source-estimates-v1", "grocery-receipts-v1", "grocery-planning-v1", "grocery-weekly-v1", groceryExpandedListCapability] }, origin);
       return;
     }
 
