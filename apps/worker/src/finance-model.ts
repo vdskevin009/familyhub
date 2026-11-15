@@ -137,9 +137,15 @@ export type FinanceFeeReport = {
     description: string;
     source: Evidence;
 };
+export type FinanceCollection = { retrievedAt: string; accountIds: string[] };
+export type FinanceBalanceObservation = {
+    accountId: string; currency: string; balanceCents: number; capturedAt: string;
+    sourceAsOf: string | null; source: Evidence;
+};
 export type FinanceData = {
     scope: { from: string; to: string };
     collectedOn: string;
+    balanceObservations?: FinanceBalanceObservation[];
     accounts: FinanceAccount[];
     transactions: FinanceTransaction[];
     activities: FinanceActivity[];
@@ -159,7 +165,7 @@ export type FinanceState = {
     decisions: Record<string, FinanceDecision>;
     decisionHistory: FinanceAuditEvent[];
     operations?: FinanceOperation[];
-    imports: { hash: string; at: string; added: number }[];
+    imports: { hash: string; at: string; added: number; collection?: FinanceCollection | null }[];
 };
 export type FinanceAuditEvent = {
     id: string; previous: FinanceDecision | null; decision: FinanceDecision | null; at: string; operationId?: string;
