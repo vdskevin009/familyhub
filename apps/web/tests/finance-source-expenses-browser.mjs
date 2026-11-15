@@ -27,6 +27,8 @@ const previous=validateSourceExpenses({...source,collectedAt:new Date(Date.parse
 const saved={revision:createHash('sha256').update(JSON.stringify([previous,source])).digest('hex'),snapshots:[previous,source]};
 const many=validateSourceExpenses({...source,collectedAt:new Date(Date.parse(collectedAt)+500).toISOString(),evidenceSha256:'c'.repeat(64),rows:Array.from({length:85},(_,i)=>({...source.rows.find(r=>r.description.endsWith('purchase')),sourceKey:'fsi_'+createHash('sha256').update('synthetic-row-'+i).digest('hex'),description:'Achat fictif '+i}))});
 const large={revision:createHash('sha256').update(JSON.stringify([previous,source,many])).digest('hex'),snapshots:[previous,source,many]};
+const categoryCase=validateSourceExpenses({...source,evidenceSha256:'d'.repeat(64),rows:[['groceries',42000],['dining_drinks',18500],['shopping',12000],['transportation',8000],['entertainment',4500],['travel',-3500]].map(([primary,amount],i)=>({...source.rows.find(r=>r.description.endsWith('purchase')),sourceKey:'fsi_'+createHash('sha256').update('category-demo-'+i).digest('hex'),description:'Exemple fictif '+primary,outflowCents:amount,category:{primary,detailed:null,confidence:'HIGH'}}))});
+const categorySaved={revision:'d'.repeat(64),snapshots:[categoryCase]};
 let browser;
 try {
  browser=await chromium.launch({...(process.env.FAMILYHUB_TEST_BROWSER_CHANNEL?{channel:process.env.FAMILYHUB_TEST_BROWSER_CHANNEL}:{}),headless:true});
@@ -39,7 +41,7 @@ try {
    if(url.origin===new URL(base).origin)return route.continue();
    if(url.hostname!=='synthetic-worker.invalid')return route.abort();
    if(req.method()==='OPTIONS')return route.fulfill({json:{}});if(req.method()!=='GET'){writes.push(path);return route.fulfill({status:403,json:{}});}
-   if(path==='/finance/source-expenses'){reads++;if(mode==='delayed'){let finish;delayedFinished=new Promise(r=>{finish=r;});const gate=new Promise(r=>{releaseDelayed=r;});markDelayedStarted();await gate;await route.fulfill({json:{capability,state:saved}});finish();return;}if(mode==='large')return route.fulfill({json:{capability,state:large}});if(mode==='error')return route.fulfill({status:503,json:{error:'synthetic failure'}});if(mode==='empty')return route.fulfill({json:{capability,state:{revision:'empty',snapshots:[]}}});return route.fulfill({json:{capability,state:saved}});}
+   if(path==='/finance/source-expenses'){reads++;if(mode==='delayed'){let finish;delayedFinished=new Promise(r=>{finish=r;});const gate=new Promise(r=>{releaseDelayed=r;});markDelayedStarted();await gate;await route.fulfill({json:{capability,state:saved}});finish();return;}if(mode==='categories')return route.fulfill({json:{capability,state:categorySaved}});if(mode==='large')return route.fulfill({json:{capability,state:large}});if(mode==='error')return route.fulfill({status:503,json:{error:'synthetic failure'}});if(mode==='empty')return route.fulfill({json:{capability,state:{revision:'empty',snapshots:[]}}});return route.fulfill({json:{capability,state:saved}});}
    const body=path==='/finances'?(mode==='no-ledger'?{...state,data:null}:state):path==='/health'?{status:'ok',version:'2.30.0',capabilities:supported?[capability]:[]}:path==='/invoices'?{items:[],reconciliations:[],unmatchedReimbursements:[],setupRequired:true,accounts:[]}:path==='/savings/contracts'?{records:[]}:{records:[],jobs:[],items:[],state:'idle'};return route.fulfill({json:body});
   });
   await page.goto(base);const sourceView=page.locator('.source-expenses');await sourceView.waitFor();
@@ -49,6 +51,40 @@ try {
   assert.match(await sourceView.locator('[data-source-total="net"]').innerText(),/115,00/);assert.match(await sourceView.locator('[data-source-total="refunds"]').innerText(),/20,00/);assert.match(await sourceView.innerText(),/Paiement de carte exclu|transferts et revenus/);
   assert.equal(await sourceView.locator('.source-expense-capture time').getAttribute('datetime'),collectedAt);assert.match(await sourceView.locator('.source-expense-capture').innerText(),/H[AN]P|UTC|GMT/);
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);await page.screenshot({path:join(output,'expenses-'+width+'.png'),fullPage:true});
+  const groceries=sourceView.locator('[data-source-category="groceries"]');
+  assert.match(await groceries.innerText(),/80,00/);
+  assert.match(await groceries.innerText(),/20,00/);
+  assert.equal(await sourceView.locator('[data-source-category="transfers"]').count(),0);
+  for(let repeat=0;repeat<2;repeat++){
+    await groceries.focus();await page.keyboard.press('Enter');
+    await page.waitForFunction(()=>document.activeElement?.closest('.source-category-detail')!==null);
+    assert.equal(await sourceView.locator('.source-expense-rows li').count(),2);
+    assert.match(await sourceView.locator('.source-expense-rows').innerText(),/refund/);
+    await page.setViewportSize({width,height:1600});
+    await sourceView.locator('.source-expense-rows').screenshot({path:join(output,'category-detail-'+width+'.png')});
+    await page.setViewportSize({width,height:900});
+    await sourceView.getByRole('button',{name:'Toutes les opérations',exact:true}).click();
+    await page.waitForFunction(()=>document.activeElement?.getAttribute('data-source-category')==='groceries');
+  }
+  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);
+  mode='categories';await page.getByRole('button',{name:'Actualiser',exact:true}).click();
+  await sourceView.getByRole('button',{name:'Toutes les catégories (6)',exact:true}).waitFor();
+  assert.equal(await sourceView.locator('[data-source-category]').count(),4);
+  await page.screenshot({path:join(output,'category-overview-'+width+'.png'),fullPage:true});
+  await page.setViewportSize({width,height:1600});
+  await sourceView.locator('.source-category-chart').screenshot({path:join(output,'category-chart-'+width+'.png')});
+  await page.setViewportSize({width,height:900});
+  await sourceView.getByRole('button',{name:'Toutes les catégories (6)',exact:true}).click();
+  const credit=sourceView.locator('[data-source-category="travel"]');
+  assert.match(await credit.innerText(),/net créditeur/);
+  assert.equal(await credit.locator('.source-category-bar > span').evaluate(el=>parseFloat(el.style.left)<50),true,'Credit is left of zero, not a positive spending bar');
+  await credit.click();assert.equal(await sourceView.locator('.source-expense-rows li').count(),1);
+  await sourceView.getByLabel('Opérations affichées',{exact:true}).selectOption('pending');
+  assert.equal(await sourceView.getByRole('button',{name:'Toutes les opérations',exact:true}).count(),0,'Changing row scope clears category');
+  await sourceView.getByRole('button',{name:'Réduire les catégories',exact:true}).click();
+  assert.equal(await sourceView.locator('[data-source-category]').count(),4);
+  mode='ready';await page.getByRole('button',{name:'Actualiser',exact:true}).click();
+  await sourceView.locator('[data-source-category="groceries"]').waitFor();
   await page.getByRole('button',{name:'Tendances',exact:true}).click();
   const trends=page.locator('.source-trends');await trends.waitFor();
   assert.equal(await trends.locator('[data-source-trend-month]').count(),12);

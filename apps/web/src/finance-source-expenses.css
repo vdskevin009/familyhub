@@ -1,1 +1,28 @@
 .source-expenses{min-width:0}.source-expenses label{display:grid;gap:.35rem;min-width:0}.source-expenses select,.source-expenses input{max-width:100%;width:100%;min-width:0}.source-expense-filters{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.8rem}.source-expense-capture{color:var(--muted);overflow-wrap:anywhere}.source-expense-summary{border-block:1px solid var(--line);padding-block:1rem}.source-expense-summary dl{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.7rem}.source-expense-summary dt{color:var(--muted)}.source-expense-summary dd{margin:0;font-weight:700;font-size:clamp(1.05rem,2vw,1.4rem);overflow-wrap:anywhere}.source-expense-rows{list-style:none;padding:0;margin:0}.source-expense-rows li{display:flex;gap:1rem;justify-content:space-between;padding:1rem 0;border-bottom:1px solid var(--line);min-width:0}.source-expense-rows li>div{min-width:0;display:grid;gap:.3rem;overflow-wrap:anywhere}.source-expense-rows li>strong{flex-shrink:0;white-space:nowrap}.source-expense-rows span,.source-expense-rows small{color:var(--muted)}.source-expense-categories>div{display:flex;justify-content:space-between;gap:1rem;margin-block:.6rem}.source-expense-categories dd{margin:0}.source-expense-mode{display:flex;gap:.5rem;flex-wrap:wrap}.source-expense-mode button[aria-pressed=true]{font-weight:700;outline:2px solid var(--accent);outline-offset:2px}.source-expenses summary{cursor:pointer;min-height:44px;padding-block:.6rem}.source-expenses :focus-visible{outline:2px solid var(--accent);outline-offset:3px}@media(max-width:540px){.source-expense-filters{grid-template-columns:1fr}.source-expense-summary dl{grid-template-columns:1fr}.source-expense-summary dl>div{display:flex;justify-content:space-between;gap:.8rem}.source-expense-rows li{flex-direction:column;gap:.4rem}.source-expense-rows li>strong{align-self:flex-end}.source-expense-mode button{flex:1;white-space:normal}}
+
+.source-category-chart { padding-block: .5rem; }
+.source-category-heading, .source-category-detail { display:flex; align-items:center; justify-content:space-between; gap:.75rem; flex-wrap:wrap; }
+.source-category-heading > span, .source-category-caption, .source-category-meta { font-size:13px; color:var(--muted); }
+.source-category-caption { margin-block:.45rem; }
+.source-category-chart ul { list-style:none; padding:0; margin:.5rem 0; }
+.source-category-chart li + li { border-top:1px solid var(--line); }
+.source-category-chart li button { display:grid; gap:.45rem; width:100%; min-height:76px; padding:.8rem .25rem; border:0; background:transparent; text-align:left; border-radius:4px; }
+.source-category-chart li button:hover, .source-category-chart li button[aria-pressed=true] { background:var(--accent-soft); }
+.source-category-value { display:flex; justify-content:space-between; gap:1rem; align-items:baseline; }
+.source-category-value strong:first-child { overflow-wrap:anywhere; min-width:0; }
+.source-category-value strong:last-child { white-space:nowrap; font-variant-numeric:tabular-nums; }
+.source-category-bar { display:block; height:6px; background:var(--soft); border-radius:3px; overflow:hidden; }
+.source-category-bar > span { display:block; height:100%; background:var(--accent); border-radius:3px; }
+.source-category-bar > span.credit { background:var(--muted); }
+.source-category-meta { display:flex; justify-content:space-between; gap:.5rem; flex-wrap:wrap; }
+.source-category-detail { margin-top:.75rem; }
+@media (forced-colors: active) { .source-category-bar { border:1px solid CanvasText; } .source-category-bar > span { background:Highlight; forced-color-adjust:none; } }
+.source-category-bar { position:relative; overflow:visible; }
+.source-category-bar::before { content:""; position:absolute; left:50%; top:-3px; height:12px; width:1px; background:var(--muted); }
+.source-category-bar > span { position:absolute; top:0; }
+.source-expense-summary dl.source-expense-net-first { display:grid; grid-template-columns:1fr 1fr; margin-block:.6rem 0; }
+.source-expense-summary .source-expense-net-first > div { display:block; }
+.source-expense-summary .source-expense-net-first .source-expense-net { grid-column:1/-1; display:flex; justify-content:space-between; align-items:baseline; gap:.7rem; }
+.source-expense-summary .source-expense-net-first .source-expense-net dd { font-size:1.7rem; letter-spacing:-.025em; }
+.source-expense-net-first dt { font-size:13px; }
+.source-expense-net-first dd { font-size:14px; }

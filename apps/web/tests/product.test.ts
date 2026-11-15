@@ -1,3 +1,4 @@
+import "./source-category-totals.test";
 import "./grocery-purchase-scenarios.test";
 import "./grocery-receipt-products.test";
 import "./grocery-purchases.test";
