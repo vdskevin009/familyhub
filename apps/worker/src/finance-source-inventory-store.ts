@@ -1,14 +1,14 @@
 import { createHash, randomUUID } from "node:crypto";
 import { mkdir, open, rename, unlink } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import { SOURCE_INVENTORY_LIMITS, SourceInventoryError, validateFinanceSourceInventory, type FinanceSourceInventory } from "./finance-source-inventory-model.js";
+import { SOURCE_INVENTORY_LIMITS, SourceInventoryError, validateFinanceSourceInventory, type FinanceSourceInventory, type FinanceSourceInventoryState } from "./finance-source-inventory-model.js";
+export type { FinanceSourceInventoryState } from "./finance-source-inventory-model.js";
 
 /** Raw provider IDs are used only in memory to derive a namespaced display identity. Never persist them. */
 export function financeSourceKey(kind: "account" | "prediction", itemId: string, recordId: string): string {
   if (!["account", "prediction"].includes(kind) || [itemId, recordId].some(value => typeof value !== "string" || !value.trim() || value.length > 512 || /[\u0000-\u001f\u007f]/.test(value))) throw new SourceInventoryError("Identité source invalide.");
   return "fsi_" + createHash("sha256").update(JSON.stringify(["finances-plugin", kind, itemId, recordId])).digest("hex");
 }
-export type FinanceSourceInventoryState = { revision: string; snapshot: FinanceSourceInventory | null };
 const revisionOf = (snapshot: FinanceSourceInventory) => createHash("sha256").update(JSON.stringify(snapshot)).digest("hex");
 export class SourceInventoryConflict extends SourceInventoryError {}
 
@@ -20,6 +20,12 @@ export class FinanceSourceInventoryStore {
   private queue: Promise<unknown> = Promise.resolve();
   private readonly path: string;
   constructor(privateDirectory: string) { this.path = join(privateDirectory, "finance", "source-inventory.json"); }
+  async preview(value: unknown, expectedRevision: string, now = new Date()) {
+    const snapshot = validateFinanceSourceInventory(value, now), current = await this.read(now), revision = revisionOf(snapshot);
+    if (typeof expectedRevision !== "string" || expectedRevision !== current.revision) throw new SourceInventoryConflict("L'inventaire a changé. Actualisez avant de réessayer.");
+    if (revision !== current.revision && current.snapshot && Date.parse(snapshot.collectedAt) <= Date.parse(current.snapshot.collectedAt)) throw new SourceInventoryConflict("Cette collecte est antérieure ou contradictoire. L'inventaire conservé est inchangé.");
+    return { snapshot, proposedRevision: revision, alreadyImported: revision === current.revision };
+  }
   async read(now = new Date()): Promise<FinanceSourceInventoryState> {
     let file;
     try {

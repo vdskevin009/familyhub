@@ -1,5 +1,6 @@
 /** Private display evidence only. No canonical account IDs, ledger rows, totals or inferred mappings. */
 export const SOURCE_INVENTORY_LIMITS = { accounts: 100, predictions: 500, bytes: 1_000_000, clockSkewMs: 300_000, staleAfterMs: 86_400_000 } as const;
+export const SOURCE_INVENTORY_CAPABILITY = "finance-source-inventory-v1" as const;
 export type SourceMoney = { amountCents: number; currency: string };
 export type SourceDatedMoney = SourceMoney & { sourceAsOf: string | null };
 export type SourceAvailability = {
@@ -46,6 +47,16 @@ export type FinanceSourceInventory = {
     budgets: "not-provided";
     goals: "not-provided";
   };
+};
+export type FinanceSourceInventoryState = { revision: string; snapshot: FinanceSourceInventory | null };
+export type SourceInventoryImportResult = {
+  capability: typeof SOURCE_INVENTORY_CAPABILITY;
+  applied: boolean;
+  alreadyImported: boolean;
+  expectedRevision: string;
+  proposedRevision: string;
+  snapshot: FinanceSourceInventory;
+  state: FinanceSourceInventoryState | null;
 };
 
 export class SourceInventoryError extends Error {}
@@ -153,4 +164,14 @@ export function validateFinanceSourceInventory(value: unknown, now = new Date())
 
 export function sourceInventoryIsStale(snapshot: Pick<FinanceSourceInventory, "collectedAt">, now = new Date()): boolean {
   return now.getTime() - Date.parse(snapshot.collectedAt) > SOURCE_INVENTORY_LIMITS.staleAfterMs;
+}
+
+export function validateFinanceSourceInventoryState(value: unknown, now = new Date()): FinanceSourceInventoryState {
+  const row = object(value, ["revision", "snapshot"]);
+  if (row.snapshot === null) {
+    if (row.revision !== "empty") return fail();
+    return { revision: "empty", snapshot: null };
+  }
+  if (typeof row.revision !== "string" || !/^[a-f0-9]{64}$/.test(row.revision)) return fail();
+  return { revision: row.revision, snapshot: validateFinanceSourceInventory(row.snapshot, now) };
 }
