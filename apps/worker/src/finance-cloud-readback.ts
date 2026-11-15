@@ -1,3 +1,6 @@
+import {prepareCloudAccountCapture} from './finance-cloud-account-captures.js';
+import {FinanceAccountCapturesStore,accountCaptureId,legacyInventoryCapture} from './finance-account-captures-store.js';
+import {ACCOUNT_CAPTURES_CAPABILITY} from './finance-account-captures-model.js';
 /** Read-only verification of private cloud captures against real FamilyHub stores. No provider client. */
 import {parseNativeFinanceCsv} from './finance-cloud-native.js';
 import {createHash} from 'node:crypto';
@@ -15,8 +18,8 @@ import type {FinanceState} from './finance-model.js';
 export type PrivateRef={path:string;sha256:string};
 export type NativePage={response:RawCapture;resultIndex:number;export?:RawCapture & {sourceFileId:string}};
 export type RawCapture={capture:PrivateRef;archive:PrivateRef};
-export type FinanceCloudManifest={schema:1;attemptId:string;scopeDigest:string;baseline:PrivateRef;mapping:PrivateRef;linked:RawCapture;expenses:RawCapture;nativeTransactions:NativePage[];sections:{dataset:string;raw:RawCapture;nativePages:NativePage[]}[];inventory:PrivateRef};
-export type CloudReadbackOptions={directory:string;evidenceDirectory:string;scope:DailyFinanceScope & {mappingDigest:string;accountPolicy: 'all-linked'};admission:ScheduledAdmission;clock?:()=>Date;get:(route:string)=>Promise<any>};
+export type FinanceCloudManifest={schema:1;attemptId:string;scopeDigest:string;baseline:PrivateRef;mapping:PrivateRef;linked:RawCapture;expenses:RawCapture;nativeTransactions:NativePage[];sections:{dataset:string;raw:RawCapture;nativePages:NativePage[]}[];inventory:PrivateRef;accountCapture:PrivateRef};
+export type CloudReadbackOptions={directory:string;evidenceDirectory:string;scope:DailyFinanceScope & {mappingDigest:string;accountPolicy: 'all-linked';accountScope:'returned-institution-accounts'};admission:ScheduledAdmission;clock?:()=>Date;get:(route:string)=>Promise<any>};
 const sha=(v:Buffer|string)=>createHash('sha256').update(v).digest('hex');
 const same=(a:unknown,b:unknown)=>dailyFinanceDigest(a)===dailyFinanceDigest(b);
 const guard=(ok:unknown)=>{if(!ok)throw Error('Private cloud evidence/readback mismatch; no completion.');};
@@ -61,7 +64,7 @@ function pagesComplete(batch:any,dataset:string,ids:string[],period:{from:string
 const protectedFacts=(state:FinanceState)=>{const copy=structuredClone(state);delete copy.data?.balanceObservations;const {revision,importedAt,imports,...rest}=copy;return rest};
 function context(options:CloudReadbackOptions){
  const clock=options.clock??(()=>new Date());const check=()=>assertScheduledAdmission({...options,now:clock()},options.admission,'readback');
- const get=async(route:string)=>{await check();guard(['/finances','/finance/source-inventory','/finance/source-expenses','/contributions/progress'].includes(route));return options.get(route)};
+ const get=async(route:string)=>{await check();guard(['/finances','/finance/source-inventory','/finance/source-expenses','/contributions/progress','/finance/account-captures'].includes(route));return options.get(route)};
  return {clock,check,get};
 }
 async function current(options:CloudReadbackOptions){
@@ -69,11 +72,13 @@ async function current(options:CloudReadbackOptions){
  const ledger=await new FinanceLibrary(join(options.directory,'finances')).read();
  const inventory=await new FinanceSourceInventoryStore(options.directory).read(clock());
  const expenses=await new FinanceSourceExpensesStore(options.directory).read(clock());
+ const accountCaptures=await new FinanceAccountCapturesStore(options.directory).read(clock());
  const config=JSON.parse(await readFile(join(options.directory,'contributions','config.json'),'utf8')) as ContributionsConfig;
+ const apiCaptures=await get('/finance/account-captures');guard(apiCaptures?.capability===ACCOUNT_CAPTURES_CAPABILITY&&same(apiCaptures.state,accountCaptures));
  const apiLedger=await get('/finances'),apiInventory=await get('/finance/source-inventory'),apiExpenses=await get('/finance/source-expenses'),apiProgress=await get('/contributions/progress');
  guard(same(ledger,apiLedger)&&same(inventory,apiInventory.state)&&same(expenses,apiExpenses.state));
  const evaluatedOn=new Intl.DateTimeFormat('en-CA',{timeZone:config.timezone,year:'numeric',month:'2-digit',day:'2-digit'}).format(clock());
- const progress=contributionsView(ledger,config,evaluatedOn);guard(same(progress,apiProgress));await check();return {ledger,inventory,expenses,config,progress};
+ const progress=contributionsView(ledger,config,evaluatedOn);guard(same(progress,apiProgress));await check();return {ledger,inventory,expenses,config,progress,accountCaptures};
 }
 /** Baseline is a private local artifact, captured before collection/intake; never a production mutation. */
 export async function saveCloudFinanceBaseline(options:CloudReadbackOptions){
@@ -99,8 +104,9 @@ export async function produceCloudFinanceReport(options:CloudReadbackOptions,man
  guard(accounts.length>0&&accounts.length<=100);
  const byKey=new Map<string,any>();for(const a of accounts){const k=financeSourceKey('account',a.item_id,a.account_id);guard(!byKey.has(k));byKey.set(k,a)}
  const keys=[...byKey.keys()].sort(),ids=[...new Set(accounts.map((a:any)=>a.account_id))].sort() as string[];
- guard(options.scope.accountPolicy==='all-linked');
- for(const stage of ['accounts','balances','transactions'] as const)guard(same(options.scope.subjects[stage],['all-linked-source-universe']));
+ guard(options.scope.accountPolicy==='all-linked'&&options.scope.accountScope==='returned-institution-accounts');
+ for(const stage of ['accounts','balances'] as const)guard(same(options.scope.subjects[stage],['returned-institution-accounts']));
+ guard(same(options.scope.subjects.transactions,['all-linked-source-universe']));
  guard(same([...options.scope.subjects.collection].sort(),['accounts','transactions',...requiredSections].sort())&&options.scope.periods.length===1);
  guard(Object.values(mapping).every(id=>base.ledger.data?.accounts.some((a:any)=>a.id===id)));
  guard(same(expensesInput.accounts.map(a=>financeSourceKey('account',a.item_id,a.account_id)).sort(),keys));
@@ -110,7 +116,15 @@ export async function produceCloudFinanceReport(options:CloudReadbackOptions,man
  let txComplete=pagesComplete(expensesInput.transactions,'transactions',ids,options.scope.periods[0])&&expenseSnapshot.coverage.complete;
  const sectionStates=new Map<string,boolean>(),sectionSources=new Map<string,any>();guard(manifest.sections.length===requiredSections.length&&new Set(manifest.sections.map(s=>s.dataset)).size===requiredSections.length);
  for(const entry of manifest.sections){guard(requiredSections.includes(entry.dataset));const value=await rawPair(root,entry.raw);captureTime(value);nativeHashes.push(...await bindNativePages(root,value,entry.nativePages,entry.dataset));sectionStates.set(entry.dataset,pagesComplete(value,entry.dataset,ids,options.scope.periods[0]));sectionSources.set(entry.dataset,value);}
- const state=await current(options);guard(same(protectedFacts(base.ledger),protectedFacts(state.ledger))&&same(base.config,state.config)&&base.ledger.imports.every((x:any)=>state.ledger.imports.some(y=>same(x,y))));
+ const preparedAccountCapture=prepareCloudAccountCapture(linked,manifest.linked.capture.sha256,clock());
+ guard(same(preparedAccountCapture,JSON.parse((await refBytes(root,manifest.accountCapture)).toString('utf8'))));
+ const state=await current(options);
+ guard(base.accountCaptures&&Array.isArray(base.accountCaptures.captures));
+ const expectedCaptureRow={id:accountCaptureId('source-capture',preparedAccountCapture.snapshot),origin:'source-capture',snapshot:preparedAccountCapture.snapshot};
+ guard(state.accountCaptures.captures.some(c=>same(c,expectedCaptureRow))&&base.accountCaptures.captures.every((prior:any)=>state.accountCaptures.captures.some(c=>same(c,prior))));
+ const currentLegacy=state.inventory.snapshot?legacyInventoryCapture(state.inventory.snapshot,clock()):null;
+ guard(state.accountCaptures.captures.every(c=>base.accountCaptures.captures.some((prior:any)=>same(c,prior))||same(c,expectedCaptureRow)||(currentLegacy&&same(c,currentLegacy))));
+ guard(same(protectedFacts(base.ledger),protectedFacts(state.ledger))&&same(base.config,state.config)&&base.ledger.imports.every((x:any)=>state.ledger.imports.some(y=>same(x,y))));
  guard((base.ledger.data?.balanceObservations??[]).every((row:any)=>(state.ledger.data?.balanceObservations??[]).some(current=>same(row,current))));
  guard(base.expenses.snapshots.every((x:any)=>state.expenses.snapshots.some(y=>same(x,y)))&&state.expenses.snapshots.some(s=>same(s,expenseSnapshot)));
  const inventory=validateFinanceSourceInventory(JSON.parse((await refBytes(root,manifest.inventory)).toString('utf8')),clock());guard(same(inventory,state.inventory.snapshot)&&time(inventory.collectedAt)>=time(base.capturedAt));
@@ -152,11 +166,11 @@ export async function produceCloudFinanceReport(options:CloudReadbackOptions,man
  guard(state.config.plans.every(plan=>options.scope.periods[0].from<=plan.from&&options.scope.periods[0].through>=(plan.through<state.progress.evaluatedOn?plan.through:state.progress.evaluatedOn)));
  // The live projection is independently recomputed; no configuration attribution is changed.
  guard(same(state.config.plans.map(p=>p.id).sort(),[...options.scope.subjects.contributions].sort()));
- const evidence=[...nativeHashes,manifest.baseline.sha256,manifest.mapping.sha256,manifest.linked.archive.sha256,manifest.expenses.archive.sha256,manifest.inventory.sha256,...manifest.sections.map(s=>s.raw.archive.sha256),dailyFinanceDigest(state)];
+ const evidence=[manifest.accountCapture.sha256,...nativeHashes,manifest.baseline.sha256,manifest.mapping.sha256,manifest.linked.archive.sha256,manifest.expenses.archive.sha256,manifest.inventory.sha256,...manifest.sections.map(s=>s.raw.archive.sha256),dailyFinanceDigest(state)];
  const accountsComplete=enumerationComplete&&inventorySemanticsComplete;
  const collectionComplete=accountsComplete&&txComplete&&[...sectionStates.values()].every(Boolean);
  const statuses={collection:collectionComplete,accounts:accountsComplete,balances:balancesComplete&&enumerationComplete,transactions:txComplete,contributions:txComplete};
- const receipts:StageReceipt[]=financeStages.map(stage=>{const subjects=options.scope.subjects[stage],retain=stage==='contributions'||stage==='transactions';const payload={schema:1 as const,stage,attemptId:options.admission.attempt.id,localDate:options.admission.attempt.localDate,scopeDigest:manifest.scopeDigest,status:statuses[stage]?'confirmed' as const:'partial' as const,...(!inventorySemanticsComplete&&['accounts','collection'].includes(stage)?{verificationLimits:['Nonempty credit or recurring fields are preserved from baseline but not independently source-derived; stage remains partial.']} : {}),confirmedSubjectIds:retain?[]:[...subjects],...(retain?{retainedUnassigned:subjects.map(subjectId=>({subjectId,evidenceDigests:evidence,sourceNative:true as const,persisted:true as const,readbackVerified:true as const,limits:['Complete raw source retained separately; canonical attribution and existing Contributions configuration remain unchanged. CSV blank cells cannot distinguish absent, null and empty source values; original bytes and envelope are preserved.']}))}:{}),evidenceDigests:evidence,withheldCount:statuses[stage]?0:1,uncertainWrite:false,sourceFreshness:'unknown' as const,sourceAsOf:null};return {payload,digest:dailyFinanceDigest(payload)}});
+ const receipts:StageReceipt[]=financeStages.map(stage=>{const subjects=options.scope.subjects[stage],retain=stage==='contributions'||stage==='transactions';const payload={schema:1 as const,stage,attemptId:options.admission.attempt.id,localDate:options.admission.attempt.localDate,scopeDigest:manifest.scopeDigest,status:statuses[stage]?'confirmed' as const:'partial' as const,...(['accounts','balances'].includes(stage)?{verificationLimits:preparedAccountCapture.verificationLimits}:{}),...(!inventorySemanticsComplete&&['accounts','collection'].includes(stage)?{verificationLimits:[...preparedAccountCapture.verificationLimits,'Nonempty credit or recurring fields are preserved from baseline but not independently source-derived; stage remains partial.']} : {}),confirmedSubjectIds:retain?[]:[...subjects],...(retain?{retainedUnassigned:subjects.map(subjectId=>({subjectId,evidenceDigests:evidence,sourceNative:true as const,persisted:true as const,readbackVerified:true as const,limits:['Complete raw source retained separately; canonical attribution and existing Contributions configuration remain unchanged. CSV blank cells cannot distinguish absent, null and empty source values; original bytes and envelope are preserved.']}))}:{}),evidenceDigests:evidence,withheldCount:statuses[stage]?0:1,uncertainWrite:false,sourceFreshness:'unknown' as const,sourceAsOf:null};return {payload,digest:dailyFinanceDigest(payload)}});
  await check();return {writeOutcome:'confirmed',receipts};
 }
 export function cloudFinanceVerifiers(options:CloudReadbackOptions,loadManifest:()=>Promise<FinanceCloudManifest>){
@@ -164,4 +178,15 @@ export function cloudFinanceVerifiers(options:CloudReadbackOptions,loadManifest:
   verifyReceiptReadOnly:async(receipt:StageReceipt)=>{const actual=await produceCloudFinanceReport(options,await loadManifest());return actual.receipts.some(r=>same(r,receipt))},
   verifyOutcomeReadOnly:async(report:StageReport)=>same(await produceCloudFinanceReport(options,await loadManifest()),report)
  };
+}
+/** Prepare the fourth intake artifact only; the caller must separately preview/apply/read back its real API. */
+export async function saveCloudAccountPreparation(options:CloudReadbackOptions,manifest:Pick<FinanceCloudManifest,'baseline'|'linked'|'attemptId'|'scopeDigest'>){
+ await assertScheduledAdmission({...options,now:(options.clock??(()=>new Date()))()},options.admission,'collect');
+ guard(manifest.attemptId===options.admission.attempt.id&&manifest.scopeDigest===financeScopeDigest(options.scope)&&options.scope.accountScope==='returned-institution-accounts');
+ const baseline=JSON.parse((await refBytes(options.evidenceDirectory,manifest.baseline)).toString('utf8')),linked=await rawPair(options.evidenceDirectory,manifest.linked);
+ guard(baseline.attemptId===manifest.attemptId&&time(linked.collectedAt)>=time(baseline.capturedAt)&&time(linked.collectedAt)<=(options.clock??(()=>new Date()))().getTime()&&time(linked.collectedAt)<=time(options.admission.expiresAt));
+ const value=prepareCloudAccountCapture(linked,manifest.linked.capture.sha256,(options.clock??(()=>new Date()))()),name='account-capture-'+options.admission.attempt.id+'.json',bytes=JSON.stringify(value),file=join(options.evidenceDirectory,name);
+ await assertScheduledAdmission({...options,now:(options.clock??(()=>new Date()))()},options.admission,'collect');
+ try{await durableExclusive(file,bytes)}catch(e){if((e as NodeJS.ErrnoException).code!=='EEXIST'||await readFile(file,'utf8')!==bytes)throw e}
+ guard(await readFile(file,'utf8')===bytes);return {path:name,sha256:sha(bytes)};
 }

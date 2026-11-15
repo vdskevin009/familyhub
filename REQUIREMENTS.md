@@ -851,9 +851,12 @@ Validation gates: model/store/API and archive safety, replay and concurrent revi
 
 Retry the intended Finances scope hourly between 08:00 and 20:59 in America/Vancouver, only until verified complete success for that local date. The gate binds scope periods/accounts/sections and all five stage receipts, accepts only complete verified persistence (including explicitly retained unassigned source-native evidence), rejects missing/withheld/uncertain results, suppresses all collector/API callbacks after success, and recovers pending writes through authoritative reads only. Isolated synthetic tests cover timezone/day rollover, concurrency and replay. No real adapter, schedule or production activation is included. See [contract and precise time boundary](docs/FINANCE-DAILY-GATE.md). Existing work item #281; no new external issue.
 
-### FH-FIN-026 — Two-phase cloud admission
+### FH-FIN-029 — Two-phase cloud admission
 Scheduled collection must admit locally before any cloud Finances calls, retain a cross-process token-bound lease, journal private mutation intent, and finalize only against independent authoritative readback. Complete-day repeats and lost-response replays must use local proof without source/API calls. Expired or abandoned leases fail closed pending operator review and read-only recovery. Manual updates must not reset scheduled completion. See docs/FINANCE-DAILY-GATE.md.
 
 ## FH-FIN-028 - Cloud capture read-only verification (local candidate)
 
 Bind scheduled receipts to post-admission native cloud captures, full private source archives and independent existing FamilyHub GET/store readback. All-linked policy admits newly linked accounts without inferred canonical attribution; unavailable coverage stays partial. Contributions may remain an independently verified no-op with complete unassigned source retained separately. No collector, real intake, deployment or scheduler is activated by this implementation. See docs/FINANCE-CLOUD-READBACK.md.
+
+### FH-FIN-028 fourth-intake extension (isolated candidate)
+Accounts and balances completion additionally requires the exact fresh, complete returned-institution-accounts capture in the monthly account-capture API/store. Old mapped observations plus unmapped inventory are insufficient. Missing manual sections remain null, explicitly empty sections remain 0, and provider/credit semantics cannot be inferred or copied from stale inventory. Baseline history is preserved with expected legacy appends across inventory replacement. No real cycle, runtime or deployment is modified by this candidate.
