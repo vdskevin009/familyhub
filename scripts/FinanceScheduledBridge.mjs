@@ -26,5 +26,3 @@ if(command==='scheduled-begin'){
  }else{await assertScheduledAdmission({directory,scope},admission,command==='scheduled-check-collect'?'collect':'readback');result={admitted:true,operation:command}}
 }
 console.log(JSON.stringify(result));
-
-

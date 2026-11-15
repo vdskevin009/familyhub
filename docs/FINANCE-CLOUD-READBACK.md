@@ -51,7 +51,7 @@ Nonempty recurring forecast transformations and credit-field transformations are
 
 ## Fourth intake: returned institutional account captures
 
-Local candidate requires the monthly capture contract from PR #288 head `248a9c40d2ff04d33c2d6689dd7d4a0f575f7891`. Only its model, pure preparation helper and read-only store dependency were imported into this isolated candidate. No index route registration, installed runtime, security pin, UI or deployment is changed here.
+This integration builds on the published monthly capture contract from PR #288 (main `7f7e3c3`). Its existing model, pure preparation helper, store and API remain unchanged. No index route registration, installed runtime, security pin, UI or deployment is changed here.
 
 The reviewed scope must now also bind `accountScope:"returned-institution-accounts"`. Accounts and balances subjects each become `["returned-institution-accounts"]`; the existing transaction-policy marker remains separately bound. This is an explicit new scope, not a silent rewrite of a completed daily run. Do not reuse or alter an old admission, baseline or completed private cycle.
 
