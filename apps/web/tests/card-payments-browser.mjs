@@ -63,6 +63,9 @@ try {
         assert.equal(await page.locator(".finance-tabs button").count(), 3);
         const bar = page.locator(".finance-expense-charts > section").first().getByRole("button", { name: /^À catégoriser/ });
         await page.getByRole("button", { name: "Retour aux dépenses", exact: true }).click();
+        // Complete and verify the return-focus transition before starting a new keyboard action.
+        // Otherwise its queued animation frame can steal focus after bar.focus(), so Enter reopens Operations.
+        await page.waitForFunction(() => document.activeElement?.id === "finance-open-operations");
         await bar.focus(); await page.keyboard.press("Enter");
         const sheet = page.getByRole("dialog", { name: /^Paiements.*À catégoriser$/ });
         await sheet.waitFor();
