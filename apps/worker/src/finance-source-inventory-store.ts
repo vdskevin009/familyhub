@@ -19,7 +19,7 @@ export class SourceInventoryConflict extends SourceInventoryError {}
 export class FinanceSourceInventoryStore {
   private queue: Promise<unknown> = Promise.resolve();
   private readonly path: string;
-  constructor(privateDirectory: string) { this.path = join(privateDirectory, "finance", "source-inventory.json"); }
+  constructor(privateDirectory: string, private readonly preserveBeforeReplace?: (previous: FinanceSourceInventory | null, incoming: FinanceSourceInventory, now: Date, commit: () => Promise<FinanceSourceInventoryState>) => Promise<FinanceSourceInventoryState>) { this.path = join(privateDirectory, "finance", "source-inventory.json"); }
   async preview(value: unknown, expectedRevision: string, now = new Date()) {
     const snapshot = validateFinanceSourceInventory(value, now), current = await this.read(now), revision = revisionOf(snapshot);
     if (typeof expectedRevision !== "string" || expectedRevision !== current.revision) throw new SourceInventoryConflict("L'inventaire a changé. Actualisez avant de réessayer.");
@@ -62,6 +62,7 @@ export class FinanceSourceInventoryStore {
       if (revision === current.revision) return current;
       if (current.snapshot && Date.parse(snapshot.collectedAt) <= Date.parse(current.snapshot.collectedAt)) throw new SourceInventoryConflict("Cette collecte est antérieure ou contradictoire. L'inventaire conservé est inchangé.");
       const state = { revision, snapshot };
+      const commit = async () => {
       await mkdir(dirname(this.path), { recursive: true });
       const temporary = this.path + "." + randomUUID() + ".tmp";
       try {
@@ -72,6 +73,8 @@ export class FinanceSourceInventoryStore {
       const confirmed = await this.read(now);
       if (confirmed.revision !== revision) throw new SourceInventoryError("Enregistrement de l'inventaire non confirmé. Relisez avant de réessayer.");
       return confirmed;
+      };
+      return this.preserveBeforeReplace ? this.preserveBeforeReplace(current.snapshot, snapshot, now, commit) : commit();
     });
     this.queue = run.catch(() => {});
     return run;

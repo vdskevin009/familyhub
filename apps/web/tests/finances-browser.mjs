@@ -468,7 +468,7 @@ try {
             fullPage: true,
         });
         await page
-            .getByRole("button", { name: "Investissements", exact: true })
+            .getByRole("button", { name: "Comptes", exact: true })
             .click();
         assert.equal(await page.locator("#investment-detail-title").count(), 0, "Account landing contains no automatic detail");
         await page.screenshot({ path: join(screenshots, "investment-accounts-" + width + ".png"), fullPage: true });
@@ -663,6 +663,7 @@ try {
         });
         // A newly available category uses the existing persistent editor, filter and all-row drill-down.
         await page.goto(base + "?view=finances");
+        await page.getByRole("button", { name: "Registre historique", exact: true }).click();
         await selectFinanceFilter(page, "Vue", "year");
         await openFinanceRegister(page);
         await page.locator(".finance-register button").filter({ hasText: "SYNTHETIC RESTAURANT" }).first().click();

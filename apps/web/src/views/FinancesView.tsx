@@ -1,3 +1,7 @@
+import { useFinanceAccountHistory } from "../use-finance-account-history";
+import FinanceMonthlyAccounts from "./FinanceMonthlyAccounts";
+import { useFinanceAccountCaptures } from "../use-finance-account-captures";
+import { initialAccountSelection, type MonthlyAccountSelection } from "../finance-monthly-accounts";
 import FinanceSourceTrends from "./FinanceSourceTrends";
 import FinanceSourceExpenses from "./FinanceSourceExpenses";
 import {useSourceExpenses} from "../use-source-expenses";
@@ -269,6 +273,10 @@ export default function FinancesView({
     onNavigate: (view: AppView) => void;
 }) {
     const sourceInventory = useFinanceSourceInventory(hub.worker);
+    const accountCaptures = useFinanceAccountCaptures(hub.worker);
+    const accountHistory = useFinanceAccountHistory(hub.worker);
+    const [accountSelection, setAccountSelection] = useState<MonthlyAccountSelection>(initialAccountSelection);
+    useEffect(() => { setAccountSelection(initialAccountSelection); }, [hub.worker.Endpoint, hub.worker.ApiKey]);
     const [historicalAccountsOpen, setHistoricalAccountsOpen] = useState<boolean | null>(null);
     const sourceExpenses = useSourceExpenses(hub.worker);
     const [expenseChoice,setExpenseChoice] = useState<"source"|"ledger"|null>(null);
@@ -398,6 +406,8 @@ export default function FinancesView({
         setLoading(true);
         setError("");
         void sourceInventory.reload();
+        void accountCaptures.reload();
+        void accountHistory.reload();
         void sourceExpenses.reload();
         try {
             initialize(await fetchFinances(hub.worker));
@@ -669,7 +679,7 @@ export default function FinancesView({
                     className={tab === "investments" ? "active" : ""}
                     onClick={() => setTab("investments")}
                 >
-                    Investissements
+                    Comptes
                 </button>
                 <button aria-current={tab === "trends" ? "page" : undefined} className={tab === "trends" ? "active" : ""} onClick={() => setTab("trends")}>
                     Tendances
@@ -707,7 +717,7 @@ export default function FinancesView({
                 </div>
             )}
             {paired && (tab === "expenses" || tab === "trends") && <><div className="source-expense-mode" role="group" aria-label={tab === "trends" ? "Jeu de données des tendances" : "Jeu de données des dépenses"}><button className="button secondary" aria-pressed={expenseMode === "source"} onClick={() => {setExpenseChoice("source");setOperationsOpen(false);}}>Source récente</button><button className="button secondary" aria-pressed={expenseMode === "ledger"} onClick={() => {setExpenseChoice("ledger");setOperationsOpen(false);}}>Registre historique</button></div>{expenseMode === "source" && (sourceExpenses.status === "ready" ? (tab === "trends" ? <FinanceSourceTrends snapshots={sourceExpenses.snapshots}/> : <FinanceSourceExpenses snapshots={sourceExpenses.snapshots}/>) : <p role="status">{sourceExpenses.status === "loading" ? "Chargement des dépenses source enregistrées sur le PC." : sourceExpenses.status === "unsupported" ? "Cette vue nécessite une mise à jour du worker PC. Le registre historique reste disponible séparément." : "Dépenses source indisponibles. Actualisez pour relire le PC; aucune ancienne valeur ne remplace cette collecte."}</p>)}</>}
-            {paired && tab === "investments" && !investmentDetail && <FinanceReceivedAccounts data={data ?? null} inventory={sourceInventory} onOpen={openInvestment} historicalOpen={historicalAccountsOpen} onHistoricalOpen={setHistoricalAccountsOpen} />}
+            {paired && tab === "investments" && !investmentDetail && <FinanceMonthlyAccounts read={accountCaptures} history={accountHistory} historicalAccountIds={data?.accounts.filter(a => a.type !== "credit-card").map(a => a.id) ?? []} selection={accountSelection} onSelection={setAccountSelection} onOpenHistorical={openInvestment} legacy={<FinanceReceivedAccounts data={data ?? null} inventory={sourceInventory} onOpen={openInvestment} historicalOpen={historicalAccountsOpen} onHistoricalOpen={setHistoricalAccountsOpen} />} />}
             {data && state && summary && !((tab === "expenses" || tab === "trends") && expenseMode === "source") && (
                 <>
                     {tab === "investments" ? investmentDetail && <details className="finance-journey-controls"><summary>Période des activités : {from} au {to}</summary><PeriodNavigator range={{ from, to }} scope={data.scope} onChange={range => { setFrom(range.from); setTo(range.to); }} /></details> :

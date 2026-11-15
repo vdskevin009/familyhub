@@ -223,3 +223,7 @@ The local private-classifier candidate now validates inherited tool restrictions
 Source-native expense snapshots use a separate private store and explicitly separate UI mode. See [source expense contract and limitations](docs/FINANCE-SOURCE-EXPENSES.md); deployment and private source activation are separate from synthetic tests.
 
 Source-native Tendances can now display the same saved expense capture independently of the historical ledger, preserving capture/date/account/currency scope and unknown bank freshness. See [source expense and trend semantics](docs/FINANCE-SOURCE-EXPENSES.md). This local continuation does not start collection or deploy the worker.
+
+## Monthly account versions
+
+The approved compact Accounts view uses month arrows, one selected capture and currency-qualified observed totals. New source accounts remain independent from hash-verified historical register versions, and unknown bank freshness stays explicit. Implementation and activation gates: [monthly account captures](docs/FINANCE-ACCOUNT-CAPTURES.md) and [UI acceptance](docs/FINANCE-MONTHLY-ACCOUNTS-UI.md). No scheduled collection or installed runtime is activated by the source change alone.
