@@ -1,3 +1,4 @@
+import {parseFinancePreparation} from './finance-import.js';
 import {prepareCloudAccountCapture} from './finance-cloud-account-captures.js';
 import {FinanceAccountCapturesStore,accountCaptureId,legacyInventoryCapture} from './finance-account-captures-store.js';
 import {ACCOUNT_CAPTURES_CAPABILITY} from './finance-account-captures-model.js';
@@ -189,4 +190,34 @@ export async function saveCloudAccountPreparation(options:CloudReadbackOptions,m
  await assertScheduledAdmission({...options,now:(options.clock??(()=>new Date()))()},options.admission,'collect');
  try{await durableExclusive(file,bytes)}catch(e){if((e as NodeJS.ErrnoException).code!=='EEXIST'||await readFile(file,'utf8')!==bytes)throw e}
  guard(await readFile(file,'utf8')===bytes);return {path:name,sha256:sha(bytes)};
+}
+/** Pure/local preparation for a reviewed four-target controller. No network or production mutation. */
+export async function loadCloudIntakePlan(options:CloudReadbackOptions,manifest:FinanceCloudManifest){
+ const root=options.evidenceDirectory,now=(options.clock??(()=>new Date()))();
+ guard(manifest.schema===1&&manifest.attemptId===options.admission.attempt.id&&manifest.scopeDigest===financeScopeDigest(options.scope)&&options.scope.accountScope==='returned-institution-accounts');
+ const base=JSON.parse((await refBytes(root,manifest.baseline)).toString('utf8')),mapping=JSON.parse((await refBytes(root,manifest.mapping)).toString('utf8'));
+ guard(base.attemptId===manifest.attemptId&&base.scopeDigest===manifest.scopeDigest&&base.accountCaptures&&manifest.mapping.sha256===options.scope.mappingDigest);
+ const linked=await rawPair(root,manifest.linked),input=await rawPair(root,manifest.expenses) as SourceExpensesEvidence;
+ const checkTime=(value:any)=>guard(time(value.collectedAt)>=time(base.capturedAt)&&time(base.capturedAt)>=time(options.admission.attempt.startedAt)&&time(value.collectedAt)<=time(options.admission.expiresAt)&&time(value.collectedAt)<=now.getTime());checkTime(linked);checkTime(input);
+ const preparedAccountCapture=prepareCloudAccountCapture(linked,manifest.linked.capture.sha256,now);guard(same(preparedAccountCapture,JSON.parse((await refBytes(root,manifest.accountCapture)).toString('utf8'))));
+ const institutions=linked.rawLinkedAccounts.structuredContent.institutions,accounts:any[]=institutions.flatMap((i:any)=>i.accounts),byKey=new Map<string,any>(accounts.map(a=>[financeSourceKey('account',a.item_id,a.account_id),a]));
+ guard(Object.values(mapping).every(id=>base.ledger.data.accounts.some((a:any)=>a.id===id))&&new Set(Object.values(mapping)).size===Object.values(mapping).length);
+ const ids=accounts.map(a=>a.account_id).sort();guard(new Set(ids).size===ids.length&&options.scope.periods.length===1&&same(input.accounts.map(a=>financeSourceKey('account',a.item_id,a.account_id)).sort(),[...byKey.keys()].sort()));
+ await bindNativePages(root,input.transactions,manifest.nativeTransactions,'transactions');pagesComplete(input.transactions,'transactions',ids,options.scope.periods[0]);guard(input.transactions.query.select_fields===undefined);
+ const expenses=prepareSourceExpenses(input,now),sectionSources=new Map<string,any>(),sectionStates=new Map<string,boolean>();
+ guard(manifest.sections.length===requiredSections.length&&new Set(manifest.sections.map(s=>s.dataset)).size===requiredSections.length);
+ for(const entry of manifest.sections){guard(requiredSections.includes(entry.dataset));const value=await rawPair(root,entry.raw);checkTime(value);await bindNativePages(root,value,entry.nativePages,entry.dataset);sectionSources.set(entry.dataset,value);sectionStates.set(entry.dataset,pagesComplete(value,entry.dataset,ids,options.scope.periods[0]));}
+ guard(base.inventory.snapshot);const candidate=structuredClone(base.inventory.snapshot);
+ candidate.collectedAt=new Date(Math.max(time(linked.collectedAt),...[...sectionSources.values()].map(v=>time(v.collectedAt)))).toISOString();
+ candidate.accounts=accounts.filter(a=>!Object.hasOwn(mapping,financeSourceKey('account',a.item_id,a.account_id))).map(a=>{const sourceKey=financeSourceKey('account',a.item_id,a.account_id),prior=base.inventory.snapshot.accounts.find((x:any)=>x.sourceKey===sourceKey),owner=institutions.find((i:any)=>i.accounts.some((x:any)=>x.item_id===a.item_id&&x.account_id===a.account_id));return {sourceKey,name:a.name,institution:typeof owner?.institution?.name==='string'?owner.institution.name:null,kind:['depository','credit','investment','loan','other'].includes(a.type)?a.type:'unknown',reconciliation:'not-reconciled',balance:a.balances?.current==null?null:{amountCents:amount(a.balances.current),currency:a.balances.iso_currency_code,sourceAsOf:null},credit:prior?.credit??null}});
+ const mappedCurrent=[...byKey.keys()].some(k=>Object.hasOwn(mapping,k));candidate.availability.accounts={status:mappedCurrent?'partial':'available',coverage:mappedCurrent?'partial':'complete',observedCount:candidate.accounts.length};
+ for(const [dataset,field] of [['investment_holdings','holdings'],['investment_transactions','activity'],['recurring_transactions','recurring'],['liabilities','liabilities']] as const){const source=sectionSources.get(dataset),complete=sectionStates.get(dataset),partial=!complete&&source.pages.some((p:any)=>p.result.coverage?.availability==='ready'&&p.result.coverage?.is_complete_for_query===false);candidate.availability[field]={status:complete?'available':partial?'partial':'unavailable',coverage:complete?'complete':partial?'partial':'unknown',observedCount:source.pages.reduce((n:number,p:any)=>n+p.result.items.length,0)};}
+ const inventory=validateFinanceSourceInventory(candidate,now);guard(same(inventory,JSON.parse((await refBytes(root,manifest.inventory)).toString('utf8'))));
+ const mapped=accounts.filter(a=>Object.hasOwn(mapping,financeSourceKey('account',a.item_id,a.account_id))),historical=mapped.map(a=>base.ledger.data.accounts.find((old:any)=>old.id===mapping[financeSourceKey('account',a.item_id,a.account_id)]));
+ const sourceInput=(s:any)=>s.detail!==undefined?s.detail:{file:s.name,...(s.sha256?{sha256:s.sha256}:{}),...(s.record?{record:s.record}:{}),...(s.page?{page:s.page}:{})};
+ const balances={schema:'familyhub.td.preparation.v1',importMode:'balance-observations-only',collectedOn:base.ledger.data.collectedOn,scope:base.ledger.data.scope,accounts:historical.map(a=>({accountId:a.id,identityFingerprint:a.identity,alias:a.name,type:a.type,currency:a.currency,observedBalanceCents:a.balanceCents,observedOn:a.asOf,identityEvidence:sourceInput(a.source)})),collection:{retrievedAt:linked.collectedAt,accountIds:historical.map(a=>a.id)},balanceObservations:mapped.map(a=>({accountId:mapping[financeSourceKey('account',a.item_id,a.account_id)],currency:a.balances.iso_currency_code,balanceCents:amount(a.balances.current),capturedAt:linked.collectedAt,sourceAsOf:null,source:{file:manifest.linked.capture.path.split(/[\\/]/).at(-1),sha256:manifest.linked.capture.sha256}})),bankActivities:[],brokerageActivities:[],holdingsSnapshots:[],coverage:[],pendingActivities:[],limits:[]};
+ // Empty reviewed mappings are a supported no-op target, never invented canonical accounts.
+ if(historical.length){const parsed=parseFinancePreparation(balances);guard(same(parsed.accounts,historical));}
+ const {reportFile:_reportFile,...sourceManifest}=manifest as FinanceCloudManifest & {reportFile?:string};
+ return {schema:1 as const,attemptId:manifest.attemptId,scopeDigest:manifest.scopeDigest,manifestDigest:dailyFinanceDigest(sourceManifest),baseline:base,balances:historical.length?balances:null,inventory,expenses,accountCapture:preparedAccountCapture.snapshot};
 }
