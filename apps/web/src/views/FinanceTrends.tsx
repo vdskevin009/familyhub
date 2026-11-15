@@ -20,7 +20,7 @@ export function Gauge({ actual, baseline, scale }: { actual: number | null; base
     </svg>;
 }
 
-function DailyCurve({ trend, currency }: { trend: SpendingTrend; currency: string }) {
+export function DailyCurve({ trend, currency }: { trend: Pick<SpendingTrend, "daily" | "elapsedDays" | "baselineReady">; currency: string }) {
     const values = trend.daily.flatMap(d => [d.actualCents, d.baselineCents]).filter((v): v is number => v !== null);
     if (!values.length) return <p>Aucun cumul disponible pour ce mois.</p>;
     const low = Math.min(0, ...values), high = Math.max(1, ...values), height = 160, width = 360;

@@ -82,3 +82,7 @@ if (saved.state?.revision !== preview.proposedRevision) throw new Error("Readbac
 ```
 
 For a raw HTTP caller, the POST body is `{capability:"finance-source-inventory-v1",snapshot,expectedRevision,apply:false}` for preview and the same body with `apply:true` after review. Include the existing pairing header and allowed origin, GET capability first, then independently GET `/finance/source-inventory` after apply. A timeout or response loss is not permission to replay the POST.
+
+## Account overview discoverability follow-up (Testing)
+
+Investments presents received balances in two visible evidence groups: attested canonical observations and non-reconciled source accounts. Neither group is a consolidated total or proof of distinct unique identities across sources. The separate historical register disclosure preserves old values and dates, including credit accounts, and opens automatically when no received balance group is available. Other tabs retain the existing source disclosure. Capture timestamps are never substituted for old bank dates. This is presentation-only; existing paired APIs, data stores and capture provenance are unchanged.

@@ -38,3 +38,5 @@ function Snapshot({snapshot}:{snapshot:SourceExpensesSnapshot}){
     {!rows.length&&<p>Aucune ligne reçue pour ce filtre. Cela ne certifie pas l’absence de mouvements.</p>}{rows.length>limit&&<button className="button secondary" onClick={()=>setLimit(n=>n+20)}>Voir les opérations suivantes ({rows.length-limit})</button>}
   </>;
 }
+
+export { names as sourceExpenseClassNames, categories as sourceExpenseCategoryNames };

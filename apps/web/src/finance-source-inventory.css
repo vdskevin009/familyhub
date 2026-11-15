@@ -18,3 +18,10 @@
 .finance-source-note { max-width: 75ch; }
 .finance-source-panel > summary { cursor: pointer; min-height: 2.75rem; padding-block: .6rem; box-sizing: border-box; overflow-wrap: anywhere; }
 .finance-source-panel > summary:focus-visible { outline: 2px solid currentColor; outline-offset: 3px; }
+
+.finance-received-accounts { min-width: 0; overflow-wrap: anywhere; }
+.finance-received-accounts .finance-service { min-width: 0; }
+.finance-received-accounts .finance-service > strong { font-variant-numeric: tabular-nums; }
+.finance-historical-accounts > summary { cursor: pointer; min-height: 2.75rem; padding-block: .6rem; box-sizing: border-box; }
+.finance-historical-accounts > summary:focus-visible { outline: 2px solid currentColor; outline-offset: 3px; }
+@media (max-width: 30rem) { .finance-received-accounts .finance-service { display: grid; grid-template-columns: minmax(0, 1fr); } .finance-received-accounts .finance-service > strong { justify-self: start; } }

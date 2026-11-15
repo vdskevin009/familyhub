@@ -27,3 +27,61 @@ test("provider labels are escaped; original zero and future forecast are not con
   const html = renderToStaticMarkup(<FinanceSourceInventory snapshot={validateFinanceSourceInventory(f, inventoryNow)} now={inventoryNow} />);
   assert.match(html, /&lt;script&gt;/); assert.doesNotMatch(html, /<script>|Date prévue déjà passée/); assert.match(html, /0,00/); assert.match(html, /dateTime="2030-06-01"/);
 });
+
+// Presentation-only account discovery: synthetic canonical and source evidence stay separate.
+import FinanceReceivedAccounts from "../apps/web/src/views/FinanceReceivedAccounts";
+import { FinanceLibrary } from "../apps/worker/dist/finance-library.js";
+import { mkdtemp, rm } from "node:fs/promises";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+// @ts-ignore Shared synthetic fixture.
+import { financeFixture } from "./finance-fixture.mjs";
+// @ts-ignore Shared synthetic fixture.
+import { observationsFixture } from "./finance-observations-fixture.mjs";
+async function syntheticAccountData() {
+  const dir = await mkdtemp(join(tmpdir(), "familyhub-received-view-"));
+  try {
+    const library = new FinanceLibrary(dir);
+    const before = (await library.import({ bundle: financeFixture(), apply: true, expectedRevision: "empty" })).state;
+    return (await library.import({ bundle: observationsFixture(before), apply: true, expectedRevision: before.revision })).state.data!;
+  } finally { await rm(dir, { recursive: true, force: true }); }
+}
+const noOpen = () => { throw new Error("Static view must not navigate or write"); };
+test("received accounts are two open evidence groups, preserving two capture clocks and the hidden historical register", async () => {
+  const data = await syntheticAccountData(), before = JSON.stringify(data), f = inventoryFixture();
+  f.collectedAt = "2026-11-02T12:00:00Z";
+  f.accounts = Array.from({ length: 7 }, (_, i) => ({ ...f.accounts[0], sourceKey: "fsi_" + String(i).repeat(64), credit: null, name: i === 0 ? data.accounts[0].name : "Compte source fictif " + i }));
+  f.predictions = []; f.availability.accounts.observedCount = 7; f.availability.recurring.observedCount = 0; f.availability.liabilities.observedCount = 0;
+  const snapshot = validateFinanceSourceInventory(f, inventoryNow);
+  const html = renderToStaticMarkup(<FinanceReceivedAccounts data={data} inventory={{ status: "ready", snapshot }} onOpen={noOpen} historicalOpen={false} onHistoricalOpen={noOpen} />);
+  assert.equal((html.match(/data-received-account="true"/g) ?? []).length, 2);
+  assert.equal((html.match(/class="finance-source-status"/g) ?? []).length, 7);
+  assert.match(html, /Voir les 7 comptes source non rapprochés/); assert.match(html, /Comptes rapprochés du registre/); assert.match(html, /Comptes source non rapprochés/);
+  assert.match(html, /<time dateTime="2026-11-01T12:34:56Z"/); assert.match(html, /<time dateTime="2026-11-02T12:00:00.000Z"/);
+  assert.match(html, /Date bancaire inconnue/); assert.match(html, /Date bancaire non fournie/);
+  assert.match(html, /<details class="surface finance-historical-accounts">/);
+  assert.match(html, /Observation historique · 2026-10-09/);
+  assert(html.indexOf('finance-source-accounts') < html.indexOf('finance-historical-accounts'));
+  assert.doesNotMatch(html, /Solde total|Patrimoine total|9 comptes|fsi_[a-f0-9]/);
+  assert.equal(JSON.stringify(data), before);
+});
+test("old workers retain every historical account including cards; missing source evidence has no fabricated balance", async () => {
+  const data = await syntheticAccountData(); data.balanceObservations = [];
+  const html = renderToStaticMarkup(<FinanceReceivedAccounts data={data} inventory={{ status: "unsupported", snapshot: null }} onOpen={noOpen} historicalOpen={null} onHistoricalOpen={noOpen} />);
+  assert.match(html, /<details class="surface finance-historical-accounts" open="">/);
+  assert.equal((html.match(/data-investment-account=/g) ?? []).length, 4);
+  assert.match(html, /Carte de test/); assert.match(html, /nécessite une mise à jour/);
+  assert.doesNotMatch(html, /data-received-account|Date bancaire inconnue/);
+  for (const status of ["loading", "error"] as const) {
+    const empty = renderToStaticMarkup(<FinanceReceivedAccounts data={null} inventory={{ status, snapshot: null }} onOpen={noOpen} historicalOpen={false} onHistoricalOpen={noOpen} />);
+    assert.match(empty, /role="status"/); assert.doesNotMatch(empty, /data-investment-account|0,00|Date bancaire inconnue/);
+  }
+});
+test("newer bank-dated evidence does not erase prior receipts or mislabel the historical date", async () => {
+  const data = await syntheticAccountData(); data.accounts.find(a => a.id === "bank")!.asOf = "2031-01-01";
+  const before = JSON.stringify(data);
+  const html = renderToStaticMarkup(<FinanceReceivedAccounts data={data} inventory={{ status: "ready", snapshot: null }} onOpen={noOpen} historicalOpen={true} onHistoricalOpen={noOpen} />);
+  assert.equal((html.match(/data-received-account="true"/g) ?? []).length, 1);
+  assert.match(html, /Observation historique · 2031-01-01/); assert.match(html, /open=""/);
+  assert.equal(JSON.stringify(data), before); assert.equal(data.balanceObservations?.length, 2);
+});

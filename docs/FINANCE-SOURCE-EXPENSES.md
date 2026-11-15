@@ -1,6 +1,6 @@
 # Source-native expenses (FH-FIN-025)
 
-This separate view addresses current provider transactions without guessing mappings to historical FamilyHub accounts. It never imports source-native rows into the canonical ledger. Local implementation and synthetic tests are not deployment or private-source activation.
+This separate view addresses current provider transactions without guessing mappings to historical FamilyHub accounts. It never imports source-native rows into the canonical ledger. The base expense view is verified in PR #286 (eb84f81), including CI/Pages, installed worker, private import/readback and public QA. The source Trends continuation described below is a separate local candidate, not yet published.
 
 ## Preparation and exact scope
 
@@ -31,3 +31,15 @@ No financial source snapshots enter localStorage/IndexedDB. Failed/newer reads c
 ## Synthetic verification
 
 Registered in test:finances and test:finances:browser: classification/sign/refund/transfer/pending/currency/unknown coverage, identity deduplication and contradictions, preview/no writes, auth/origin/no-store/body caps, stale revisions/concurrency/replay/restart/corrupt preservation, capability/exact receipt/independent GET/no replay, and 320/390/768/1440px UI selection, keyboard, empty/error/older-worker and overflow checks. All fixtures are synthetic. No private worker data is used for testing. Linux Chromium CI, installed runtime and actual phone acceptance remain separate from local Edge evidence.
+
+## Source trends continuation (FH-FIN-025)
+
+Tendances now shares the explicit Source récente / Registre historique choice with Dépenses. The source view reads the same saved expense capture, including accounts without canonical mapping. It works without a canonical ledger. Twelve month tiles, year/account/currency and capture selection, signed bars, daily values, categories and source operation detail all use one immutable capture at a time. Original historical editing remains available in Registre historique; source category facts are not rewritten.
+
+Reference averages use only whole covered prior months within the preceding six months in that same capture and scope. Partial targets compare the same elapsed days. Missing starts, incomplete query coverage, missing included evidence and ambiguous movements prevent a reference; no unknown month is filled with zero. A full short month retains the extra days needed to show its historical reference curve. Pending and excluded movements stay separate. Source categories remain provisional even when query coverage is attested.
+
+The collection receipt timestamp retains its timezone and is separate from nullable bank source-as-of. A page refresh never replaces that timestamp. Unavailable reads clear source values and do not substitute canonical totals. No new collection, API, store mutation, account mapping, runtime change or deployment is performed by this continuation.
+
+### Local continuation verification
+
+Web and worker TypeScript checks, worker build and production PWA build pass. All 137 finance model/API/client/view tests pass through equivalent direct Node/tsx commands (npm is not on this machine's PATH). The new projection contributes 10 tests. Source Trends and retained historical Trends pass synthetic Edge browser checks at 320/390/768/1440px, including source/canonical separation, refresh, capture/account/currency/category changes, daily detail, keyboard return, no-ledger, missing data and no horizontal overflow. Browser inspection corrected explicit select names and a default-mode refresh transition that could otherwise close the historical monthly drilldown. Screenshots contain synthetic fixtures only and were visually inspected. .NET is unavailable locally and remains a CI gate. Linux Chromium, combined integration, public release and physical-phone acceptance remain separate gates.
