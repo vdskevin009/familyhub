@@ -1,6 +1,6 @@
 import { validateFinanceSourceInventory, type SourceAccount, type SourceDatedMoney } from "./finance-source-inventory-model.js";
 export const ACCOUNT_CAPTURES_CAPABILITY = "finance-account-captures-v1" as const;
-export const ACCOUNT_CAPTURES_LIMITS = { bytes: 250_000, historyBytes: 8_000_000, captures: 240 } as const;
+export const ACCOUNT_CAPTURES_LIMITS = { bytes: 250_000, historyBytes: 32_000_000, captures: 2400 } as const;
 export const PLAID_CURRENT_CONVENTION = "plaid-current-v1" as const;
 export type FinanceCaptureAccount = Omit<SourceAccount, "reconciliation"> & {
   provider: "plaid" | "unknown";
@@ -71,14 +71,12 @@ export function validateFinanceAccountCapturesState(value: unknown, now = new Da
     return {id:c.id,origin:c.origin,snapshot} as FinanceAccountCapture;
   });
   if (new Set(captures.map(c=>c.id)).size !== captures.length || ((row.revision === "empty") !== !captures.length)) return accountCapturesFail();
-  for (const capture of captures) {
-    const priorId = capture.snapshot.supersedesCaptureId;
-    if (priorId !== null) {
-      const prior = captures.find(c=>c.id===priorId);
-      if (!prior || prior.id===capture.id || prior.origin!=="source-capture" || prior.snapshot.collectedAt!==capture.snapshot.collectedAt || captures.filter(c=>c.snapshot.supersedesCaptureId===priorId).length!==1) return accountCapturesFail();
-      const seen = new Set([capture.id]); let cursor: FinanceAccountCapture | undefined = prior;
-      while (cursor) { if (seen.has(cursor.id)) return accountCapturesFail(); seen.add(cursor.id); cursor=captures.find(c=>c.id===cursor!.snapshot.supersedesCaptureId); }
-    }
+  const byId=new Map(captures.map(c=>[c.id,c])), replaced=new Set<string>(), checked=new Set<string>();
+  for(const capture of captures){const id=capture.snapshot.supersedesCaptureId;if(id===null)continue;const prior=byId.get(id);
+    if(!prior||prior.id===capture.id||prior.origin!=="source-capture"||prior.snapshot.collectedAt!==capture.snapshot.collectedAt||replaced.has(id))return accountCapturesFail();replaced.add(id);
+  }
+  for(const capture of captures){const path=new Set<string>();let cursor:FinanceAccountCapture|undefined=capture;
+    while(cursor&&!checked.has(cursor.id)){if(path.has(cursor.id))return accountCapturesFail();path.add(cursor.id);cursor=byId.get(cursor.snapshot.supersedesCaptureId??"");}for(const id of path)checked.add(id);
   }
   if (new TextEncoder().encode(JSON.stringify({revision:row.revision,captures})).byteLength>ACCOUNT_CAPTURES_LIMITS.historyBytes) return accountCapturesFail();
   return {revision:row.revision as string,captures};
