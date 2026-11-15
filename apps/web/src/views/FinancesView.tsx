@@ -31,6 +31,9 @@ import FinanceScope from "./FinanceScope";
 import ReceivedBalanceEvolution from "./ReceivedBalanceEvolution";
 import { latestBalanceObservation } from "../../../worker/src/finance-observations";
 import { displayFinanceCapture, FinanceCollectionNote } from "./FinanceCollectionNote";
+import FinanceSourceInventory from "./FinanceSourceInventory";
+import { useFinanceSourceInventory } from "../use-finance-source-inventory";
+import "../finance-source-inventory.css";
 import InfoPopover from "../ui/InfoPopover";
 import "../compact-finances.css";
 import "../finance-journeys.css";
@@ -261,6 +264,7 @@ export default function FinancesView({
     hub: HubState;
     onNavigate: (view: AppView) => void;
 }) {
+    const sourceInventory = useFinanceSourceInventory(hub.worker);
     const [state, setState] = useState<FinanceState | null>(null),
         [tab, setTab] = useState<"expenses" | "investments" | "trends">("expenses");
     const [trendMonth, setTrendMonth] = useState("");
@@ -378,6 +382,7 @@ export default function FinancesView({
     async function refresh() {
         setLoading(true);
         setError("");
+        void sourceInventory.reload();
         try {
             initialize(await fetchFinances(hub.worker));
             setMessage("Données enregistrées sur le PC rechargées. Aucune nouvelle connexion bancaire.");
@@ -1360,6 +1365,11 @@ export default function FinancesView({
             )}
             <CategoryPayments category={categoryPayments} open={Boolean(categoryPayments) && !editing} summary={tab === "trends" ? trend?.summary ?? null : summary} state={state} onSave={saveInline} onReload={reloadInline} onUndo={id => undoChange(id, true)} accounts={data?.accounts ?? []} account={account} currency={currency} from={tab === "trends" ? trend?.from ?? "" : from} to={tab === "trends" ? trend?.to ?? "" : to} onClose={closeCategory} onEdit={(id, queueIds) => openDecision(id, state, queueIds)} />
             {paired && state && data && <FinanceCollectionNote state={state} />}
+            {paired && <details className="surface finance-source-panel">
+                <summary>{sourceInventory.status === "ready" && sourceInventory.snapshot ? `${sourceInventory.snapshot.accounts.length} comptes non rapprochés et autres données` : "Comptes et autres données de la source"}</summary>
+                <div role="status">{sourceInventory.status === "loading" ? "Chargement de l'inventaire enregistré sur le PC…" : sourceInventory.status === "unsupported" ? "L'inventaire source nécessite une mise à jour du worker PC. Le registre existant reste disponible." : sourceInventory.status === "error" ? "Inventaire source indisponible. Actualisez pour relire le PC; le registre existant est conservé." : ""}</div>
+                {sourceInventory.status === "ready" && <FinanceSourceInventory snapshot={sourceInventory.snapshot} />}
+            </details>}
             {paired && (
                 <details id="finance-source-details" className="surface finance-import">
                     <summary>
