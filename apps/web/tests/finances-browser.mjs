@@ -314,6 +314,9 @@ try {
         await page.getByLabel("Rechercher", { exact: true }).fill("SPOTIFY");
         await page.locator(".finance-check input").check();
         await page.getByRole("button", { name: "Retour aux dépenses", exact: true }).click();
+        // Finish and verify the return-focus frame before starting another keyboard action.
+        // Otherwise it can steal foodBar.focus(), so Enter reopens Operations instead of the category.
+        await page.waitForFunction(() => document.activeElement?.id === "finance-open-operations");
         const categoryBars = page.locator(".finance-expense-charts > section").first();
         const foodBar = categoryBars.getByRole("button", { name: /^Courses alimentaires/ });
         await foodBar.focus(); await page.keyboard.press("Enter");
