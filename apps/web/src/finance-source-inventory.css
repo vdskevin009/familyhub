@@ -1,0 +1,18 @@
+.finance-source-inventory { min-width: 0; overflow-wrap: anywhere; }
+.finance-source-inventory h2, .finance-source-inventory h3, .finance-source-inventory p { margin: 0 0 .6rem; }
+.finance-source-inventory > header, .finance-source-inventory > details { margin-block: 1rem; }
+.finance-source-inventory ul { padding-inline-start: 1.3rem; }
+.finance-source-inventory .finance-source-accounts { list-style: none; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 21rem), 1fr)); gap: 1rem; }
+.finance-source-accounts > li { min-width: 0; border: 1px solid var(--border, currentColor); border-radius: .7rem; padding: 1rem; }
+.finance-source-inventory dl { margin: .8rem 0; }
+.finance-source-inventory dl > div { display: grid; gap: .2rem; margin-block: .8rem; }
+.finance-source-inventory dt { font-weight: 600; }
+.finance-source-inventory dd { margin: 0; }
+.finance-source-money dd > * { display: block; }
+.finance-source-money strong { font-variant-numeric: tabular-nums; }
+.finance-source-inventory small { font-size: .875rem; line-height: 1.5; }
+.finance-source-inventory summary { cursor: pointer; min-height: 2.75rem; padding-block: .6rem; box-sizing: border-box; }
+.finance-source-inventory summary:focus-visible { outline: 2px solid currentColor; outline-offset: 3px; }
+.finance-source-inventory .finance-source-status { display: block; font-size: .875rem; }
+.finance-source-coverage li, .finance-source-forecasts li { margin-block: .6rem; }
+.finance-source-note { max-width: 75ch; }
