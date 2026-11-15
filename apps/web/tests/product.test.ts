@@ -219,3 +219,4 @@ test("missing service date still shows nearby insurer records using a labeled do
   assert.doesNotMatch(html, /Choose a search date to compare/);
 });
 import "../../../tests/finance-register.test";
+import "../../../tests/finance-trend-attribution.test";

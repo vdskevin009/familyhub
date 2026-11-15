@@ -1,5 +1,28 @@
 # FamilyHub - Canonical Requirements
 
+## FH-FIN-032 - Monthly Trends overview and signed difference explanation
+
+Accepted A+B; **partial local calculation groundwork only, no UI integration or
+deployment**. Open the selected month or current month directly. Keep compact monthly
+navigation and account/currency filters. Show observed net spending, the signed
+available reference difference, and the daily observed/reference curve. Rank the
+categories that explain the difference. Open the full signed category attribution in
+an accessible panel with a shared axis around zero and category-operation access.
+All categories, or a reconciled Autres, must sum to the displayed headline difference.
+
+Preserve `finance-trends` comparable days, indicative references, exclusions, refund
+signs, account/currency scope, and unknown values. An absent comparison is not zero;
+a favorable difference is not guaranteed savings. Keep collection and bank freshness
+distinct and method/coverage in a compact information control. C/watchlists is outside
+this approval. The annual-first entry in FH-FIN-018 is superseded as target presentation
+only; current production behavior remains until complete verification.
+
+`finance-trend-attribution.ts` derives category deltas without changing existing
+financial calculations, apportions only display rounding, and retains all category
+membership in its compact remainder. FH-FIN-031 remains the prerequisite for the
+unified register. See `docs/FINANCE-TRENDS-AB-WORK-IN-PROGRESS.md` for unimplemented
+UI, release gates and the approved-reference transfer failure.
+
 ## FH-FIN-031 - One Finances destination and reconciled expense register
 
 Accepted; **local integration and regression checks in progress; not published or deployed**.
