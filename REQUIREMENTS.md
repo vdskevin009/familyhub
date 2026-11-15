@@ -1,5 +1,29 @@
 # FamilyHub - Canonical Requirements
 
+## FH-FIN-031 - One Finances destination and reconciled expense register
+
+Accepted; **partial local groundwork only, not integrated, published or deployed**.
+Finances becomes a primary navigation destination; Récurrent remains in Plus.
+Its first-level tabs are Comptes (first/default), Dépenses, Tendances and Contributions.
+Contributions retains its existing widgets, targets and calculations. A category opens
+its operations in a panel for the current period and filters. Recent and historical
+expenses share one register and the existing financial rules, with explicit identity
+reconciliation, original provenance and collection dates separate from bank dates.
+Missing evidence never establishes zero. No scheduled import or source rewrite is
+authorized by this presentation change.
+
+The separation of recent/historical expenses in FH-FIN-025 and the standalone Plus
+entry in FH-FIN-021 are superseded as target presentation by this decision; their
+currently deployed behavior remains in place until the complete replacement passes
+verification. The original records, classifications, conservative identity rules and
+unknown-data safeguards remain authoritative. FH-FIN-030 was a separate closed,
+unmerged proposal and is not part of this implementation.
+
+Local `finance-register.ts` provides read-only reconciliation and a shared filtered
+projection with synthetic regression tests. The reviewed crosswalk producer, API/UI
+integration, approved-image inspection, navigation, accessible panel, full CI and
+deployed verification remain unfinished. See `docs/FINANCE-UNIFIED-WORK-IN-PROGRESS.md`.
+
 ## Purchase-only Courses and monthly PC Express spending - FH-GROCERY-015 (#155)
 
 Testing. Courses exposes only Achats, retaining per-purchase comparisons and original source tools. A read-only monthly chart separates verified final receipts from confirmation estimates, deduplicates explicit order identities across accounts and excludes contradictory or unusable evidence. Unknown months and incomplete mailbox/refund coverage remain explicit. See [FH-GROCERY-015](docs/requirements/FH-GROCERY-015.md). This supersedes the Catalogue/Moins cher navigation, not the underlying preserved records or comparison logic.

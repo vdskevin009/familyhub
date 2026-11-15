@@ -218,3 +218,4 @@ test("missing service date still shows nearby insurer records using a labeled do
   assert.match(html, /class="mini-button primary">Link this reimbursement/);
   assert.doesNotMatch(html, /Choose a search date to compare/);
 });
+import "../../../tests/finance-register.test";
