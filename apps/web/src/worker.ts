@@ -1,3 +1,4 @@
+import { SOURCE_EXPENSES_CAPABILITY, validateSourceExpenses, validateSourceExpensesState, type SourceExpensesState, type SourceExpensesImportResult } from "../../worker/src/finance-source-expenses-model";
 import { rememberMailSources, mailSourcePolicyWarning } from "./mail-source-policy";
 import { AgentReview, CleanupSuggestion, ReconciliationCase, ReimbursementItem, ReimbursementWorkflowStatus, ResearchWatch, UnmatchedReimbursement, WorkerConfig, WorkerTask, WorkerTaskType } from "./types";
 import { workerRequestHeaders } from "./worker-transport";
@@ -175,6 +176,43 @@ export async function importFinanceSourceInventory(config: WorkerConfig, value: 
       // Independent GET verifies durable readback. Lost/invalid responses never replay POST.
       const readback = await readFinanceSourceInventory(config);
       if (readback.revision !== state.revision || JSON.stringify(readback.snapshot) !== JSON.stringify(snapshot)) throw uncertain();
+      return { ...result, snapshot, state: readback };
+    }
+    if (result.state !== null) throw uncertain();
+  } catch { throw uncertain(); }
+  return { ...result, snapshot, state: null };
+}
+async function hasSourceExpenses(config: WorkerConfig): Promise<boolean> {
+  const health = await request<{ capabilities?: string[] }>(config, "/health");
+  return Array.isArray(health.capabilities) && health.capabilities.includes(SOURCE_EXPENSES_CAPABILITY);
+}
+async function readSourceExpenses(config: WorkerConfig): Promise<SourceExpensesState> {
+  const body = await request<{ capability?: unknown; state?: unknown }>(config, "/finance/source-expenses");
+  if (!body || Object.keys(body).sort().join(",") !== "capability,state" || body.capability !== SOURCE_EXPENSES_CAPABILITY) throw new Error("Dépenses source non confirmées par le PC.");
+  return validateSourceExpensesState(body.state);
+}
+/** null means an older worker, not a known empty inventory. Never cache private evidence in the PWA. */
+export async function fetchSourceExpenses(config: WorkerConfig): Promise<SourceExpensesState | null> {
+  return await hasSourceExpenses(config) ? readSourceExpenses(config) : null;
+}
+export async function importSourceExpenses(config: WorkerConfig, value: unknown, expectedRevision: string, apply = false): Promise<SourceExpensesImportResult> {
+  if (!await hasSourceExpenses(config)) throw new Error("Mettez à jour le worker PC pour conserver les dépenses source. Aucun import effectué.");
+  const snapshot = validateSourceExpenses(value);
+  if (!(expectedRevision === "empty" || /^[a-f0-9]{64}$/.test(expectedRevision))) throw new Error("Révision des dépenses source requise.");
+  const result = await request<SourceExpensesImportResult>(config, "/finance/source-expenses", { method: "POST", body: JSON.stringify({ capability: SOURCE_EXPENSES_CAPABILITY, snapshot, expectedRevision, apply }) });
+  const uncertain = () => new Error(apply ? "Enregistrement des dépenses source non confirmé. Relisez le PC avant de réessayer; aucun import automatique." : "Aperçu des dépenses source non confirmé. Aucun import effectué.");
+  if (!result || Object.keys(result).sort().join(",") !== "alreadyImported,applied,capability,expectedRevision,proposedRevision,snapshot,state"
+    || result.capability !== SOURCE_EXPENSES_CAPABILITY || result.applied !== apply || result.expectedRevision !== expectedRevision
+    || typeof result.proposedRevision !== "string" || !/^[a-f0-9]{64}$/.test(result.proposedRevision)
+    || result.alreadyImported !== (result.proposedRevision === expectedRevision)) throw uncertain();
+  try {
+    if (JSON.stringify(validateSourceExpenses(result.snapshot)) !== JSON.stringify(snapshot)) throw uncertain();
+    if (apply) {
+      const state = validateSourceExpensesState(result.state);
+      if (state.revision !== result.proposedRevision || !state.snapshots.some(saved => JSON.stringify(saved) === JSON.stringify(snapshot))) throw uncertain();
+      // Independent GET verifies durable readback. Lost/invalid responses never replay POST.
+      const readback = await readSourceExpenses(config);
+      if (readback.revision !== state.revision || JSON.stringify(readback.snapshots) !== JSON.stringify(state.snapshots)) throw uncertain();
       return { ...result, snapshot, state: readback };
     }
     if (result.state !== null) throw uncertain();
