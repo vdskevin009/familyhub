@@ -40,7 +40,7 @@ function mergeObservations(previous: FinanceData | null, incoming: FinanceData) 
     const saved = [...(previous?.balanceObservations ?? [])];
     for (const row of incoming.balanceObservations ?? []) {
         const old = saved.find(o => o.accountId === row.accountId && Date.parse(o.capturedAt) === Date.parse(row.capturedAt));
-        if (old && (old.balanceCents !== row.balanceCents || old.currency !== row.currency || old.sourceAsOf !== row.sourceAsOf)) throw new FinanceConflict("Soldes contradictoires pour la même collecte.");
+        if (old && (old.balanceCents !== row.balanceCents || old.currency !== row.currency || old.sourceAsOf !== row.sourceAsOf || old.source.sha256 !== row.source.sha256)) throw new FinanceConflict("Soldes contradictoires pour la même collecte.");
         if (!old) saved.push(row);
     }
     if (saved.length > 50000) throw new Error("Historique des soldes trop volumineux.");

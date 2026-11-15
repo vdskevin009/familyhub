@@ -31,6 +31,8 @@ test("older observations are retained without replacing the newest value; same-t
  let state = await lib.read(); const first = observationsFixture(state); state = (await lib.import({ bundle: first, apply: true, expectedRevision: state.revision })).state;
  const older = observationsFixture(state, "2026-10-31T12:34:56Z"); older.balanceObservations[0].balanceCents = -999;
  state = (await lib.import({ bundle: older, apply: true, expectedRevision: state.revision })).state; assert.equal(state.data.balanceObservations.length, 4); assert.equal(latestBalanceObservation(state.data, "bank").balanceCents, 123456);
+ const provenanceConflict = observationsFixture(state); provenanceConflict.balanceObservations[0].source.sha256 = "c".repeat(64);
+ await assert.rejects(() => lib.import({ bundle: provenanceConflict }), /contradictoires/); assert.deepEqual(await lib.read(), state);
  const conflict = observationsFixture(state); conflict.balanceObservations[0].balanceCents++;
  await assert.rejects(() => lib.import({ bundle: conflict, apply: true, expectedRevision: state.revision }), /contradictoires/); assert.deepEqual(await lib.read(), state);
 }));
