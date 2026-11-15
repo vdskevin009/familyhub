@@ -18,7 +18,7 @@ export default function SourceCategoryChart({ totals, labels, currency, selected
         <span className="source-category-meta"><span>{total.count} opération{total.count > 1 ? "s" : ""}</span>{total.refundCents > 0 && <span>{money(total.refundCents)} de crédits{total.netCents < 0 ? " · net créditeur" : ""}</span>}</span>
       </button>
     </li>)}</ul>
-    {totals.length > 4 && <button type="button" className="text-action" aria-expanded={expanded} onClick={() => setExpanded(v => !v)}>{expanded ? "Réduire les catégories" : `Toutes les catégories (${totals.length})`}</button>}
+    {totals.length > 4 && <button type="button" className="text-action" data-source-category-toggle aria-expanded={expanded} onClick={() => setExpanded(v => !v)}>{expanded ? "Réduire les catégories" : `Toutes les catégories (${totals.length})`}</button>}
     <p className="source-category-caption">Crédits à gauche de zéro, dépenses à droite. Même périmètre que le sous-total, sans objectif de budget.</p>
   </section>;
 }

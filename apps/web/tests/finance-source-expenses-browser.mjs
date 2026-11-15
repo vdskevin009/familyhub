@@ -51,6 +51,7 @@ try {
   assert.match(await sourceView.locator('[data-source-total="net"]').innerText(),/115,00/);assert.match(await sourceView.locator('[data-source-total="refunds"]').innerText(),/20,00/);assert.match(await sourceView.innerText(),/Paiement de carte exclu|transferts et revenus/);
   assert.equal(await sourceView.locator('.source-expense-capture time').getAttribute('datetime'),collectedAt);assert.match(await sourceView.locator('.source-expense-capture').innerText(),/H[AN]P|UTC|GMT/);
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);await page.screenshot({path:join(output,'expenses-'+width+'.png'),fullPage:true});
+  assert.equal(await sourceView.locator('.source-expense-summary').getByText(/en attente, hors total/).isVisible(),true,'Pending count remains visible beside the result while coverage is collapsed');
   const groceries=sourceView.locator('[data-source-category="groceries"]');
   assert.match(await groceries.innerText(),/80,00/);
   assert.match(await groceries.innerText(),/20,00/);
@@ -79,6 +80,13 @@ try {
   assert.match(await credit.innerText(),/net créditeur/);
   assert.equal(await credit.locator('.source-category-bar > span').evaluate(el=>parseFloat(el.style.left)<50),true,'Credit is left of zero, not a positive spending bar');
   await credit.click();assert.equal(await sourceView.locator('.source-expense-rows li').count(),1);
+  await sourceView.locator('[data-source-category-toggle]').click();
+  assert.equal(await credit.count(),0,'Collapsed categories hide the selected travel trigger');
+  await sourceView.getByRole('button',{name:'Toutes les opérations',exact:true}).click();
+  await page.waitForFunction(()=>document.activeElement?.matches('[data-source-category-toggle]'),null,{timeout:3000});
+  assert.equal(await sourceView.locator('[data-source-category-toggle]').evaluate(el=>el===document.activeElement),true,'Return restores focus to expand control when original category is hidden');
+  await page.keyboard.press('Enter');
+  await credit.click();
   await sourceView.getByLabel('Opérations affichées',{exact:true}).selectOption('pending');
   assert.equal(await sourceView.getByRole('button',{name:'Toutes les opérations',exact:true}).count(),0,'Changing row scope clears category');
   await sourceView.getByRole('button',{name:'Réduire les catégories',exact:true}).click();

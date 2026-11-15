@@ -1,6 +1,6 @@
 # Une vue courte, puis la preuve
 
-Proposition du comité FamilyHub du 15 novembre 2026. Refs #162; FH-FIN-028. **Branche de travail uniquement, sans fusion ni déploiement.**
+Proposition du comité FamilyHub du 15 novembre 2026. Refs #162; FH-FIN-030. **Branche de travail uniquement, sans fusion ni déploiement.**
 
 ## Décision à prendre
 
@@ -46,3 +46,7 @@ Le poste utilise Node 24 et pnpm pour la préparation locale faute de npm dans P
 ## Confidentialité et périmètre
 
 Frontend, projections de lecture et tests seulement. Aucun accès aux comptes bancaires, aucun envoi de données personnelles, achat, négociation ou annulation. L'historique, les décisions, les classifications et le collecteur restent inchangés.
+
+## Corrections de revue indépendante
+
+L’identifiant propre est FH-FIN-030; FH-FIN-028 reste réservé à la capture cloud. Quand la catégorie sélectionnée est masquée après réduction, le retour aux opérations restaure le focus sur le bouton de développement, sans réouvrir automatiquement. Le nombre d’opérations en attente reste visible à côté du sous-total, même avec Couverture repliée. Deux régressions navigateur couvrent ces cas.
