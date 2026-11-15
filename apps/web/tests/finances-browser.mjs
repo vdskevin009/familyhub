@@ -472,7 +472,7 @@ try {
         await page.locator('[data-investment-account="rrsp"]').focus();
         await page.keyboard.press("Enter");
         await page.waitForFunction(() => document.activeElement?.id === "investment-detail-title");
-        assert.match(await page.locator(".investment-summary").innerText(), /Valeur observée.*2026-10-09/s);
+        assert.match(await page.locator(".investment-summary").innerText(), /Valeur historique.*2026-10-09/s);
         await page.getByText("Positions et montants", { exact: true }).click();
         await page
             .getByRole("heading", { name: "REER de test", exact: true })

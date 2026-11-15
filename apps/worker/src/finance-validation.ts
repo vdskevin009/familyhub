@@ -4,6 +4,7 @@ import {
     natures,
     type FinanceState,
 } from "./finance-model.js";
+import { financeTimestamp, financeCollection } from "./finance-observations.js";
 /** Fail closed before serving or editing a damaged private ledger. Never repair it on read. */
 export function validateFinanceState(value: unknown): FinanceState {
     const bad = (): never => {
@@ -55,6 +56,15 @@ export function validateFinanceState(value: unknown): FinanceState {
     const ref = (r: any) => {
         if (accounts.get(r.accountId) !== r.currency) bad();
     };
+    if (d.balanceObservations !== undefined) {
+        const seen = new Set<string>();
+        for (const o of array(d.balanceObservations, 50000)) {
+            ref(o); num(o.balanceCents); financeTimestamp(o.capturedAt);
+            if (o.sourceAsOf !== null) { if (/^\d{4}-\d{2}-\d{2}$/.test(o.sourceAsOf)) date(o.sourceAsOf); else financeTimestamp(o.sourceAsOf); if (Date.parse(o.sourceAsOf) > Date.parse(o.capturedAt)) bad(); }
+            const key = o.accountId + ":" + Date.parse(o.capturedAt); if (seen.has(key)) bad(); seen.add(key);
+            const source = object(o.source); txt(source.name, 255); if (!/^[a-f0-9]{64}$/.test(txt(source.sha256, 64))) bad();
+        }
+    }
     const ids = new Set<string>();
     for (const r of array(d.transactions)) {
         txt(r.id, 160);
@@ -168,6 +178,7 @@ export function validateFinanceState(value: unknown): FinanceState {
         if (!/^[a-f0-9]{64}$/.test(txt(i.hash, 64))) bad();
         num(i.added);
         txt(i.at, 100);
+        if (i.collection != null) financeCollection(i.collection, [...accounts.keys()]);
     });
     return value as FinanceState;
 }

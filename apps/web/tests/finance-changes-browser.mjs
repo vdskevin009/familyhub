@@ -146,7 +146,7 @@ try {
         assert.equal(await editor.getByLabel("Catégorie", { exact: true }).inputValue(), "travel");
         assert.equal(await editor.getByRole("button", { name: "Enregistrer la décision", exact: true }).isDisabled(), true);
         await editor.getByRole("button", { name: "Recharger la décision du PC et remplacer ce brouillon" }).click();
-        await page.getByText("Données du PC actualisées.", { exact: true }).waitFor({ state: "attached" });
+        await page.getByText("Données enregistrées sur le PC rechargées. Aucune nouvelle connexion bancaire.", { exact: true }).waitFor({ state: "attached" });
         assert.equal(await editor.getByLabel("Catégorie", { exact: true }).inputValue(), "pets");
         assert.equal(await editor.getByLabel("Note de décision").inputValue(), "Newer synthetic choice");
         await page.keyboard.press("Escape");
@@ -160,7 +160,7 @@ try {
             await editor.getByRole("alert").filter({ hasText: "Synthetic read unavailable" }).waitFor();
             await editor.getByRole("status").filter({ hasText: /Décision enregistrée; l’actualisation/ }).waitFor();
             await editor.getByRole("button", { name: "Recharger la décision du PC et remplacer ce brouillon" }).click();
-            await page.getByText("Données du PC actualisées.", { exact: true }).waitFor({ state: "attached" });
+            await page.getByText("Données enregistrées sur le PC rechargées. Aucune nouvelle connexion bancaire.", { exact: true }).waitFor({ state: "attached" });
             assert.equal(await editor.getByLabel("Catégorie", { exact: true }).inputValue(), "restaurants");
             mode = "old-worker"; await editor.getByRole("button", { name: "Enregistrer la décision", exact: true }).click();
             await editor.getByRole("alert").filter({ hasText: /2.25.0/ }).waitFor();

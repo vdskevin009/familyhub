@@ -28,6 +28,8 @@ import { benchmarkMeta, benchmarkProfiles } from "../finance-benchmarks";
 import { calendarPeriod, defaultPeriod } from "../finance-periods";
 import PeriodNavigator from "./PeriodNavigator";
 import FinanceScope from "./FinanceScope";
+import { latestBalanceObservation } from "../../../worker/src/finance-observations";
+import { displayFinanceCapture, FinanceCollectionNote } from "./FinanceCollectionNote";
 import InfoPopover from "../ui/InfoPopover";
 import "../compact-finances.css";
 import "../finance-journeys.css";
@@ -377,7 +379,7 @@ export default function FinancesView({
         setError("");
         try {
             initialize(await fetchFinances(hub.worker));
-            setMessage("Données du PC actualisées.");
+            setMessage("Données enregistrées sur le PC rechargées. Aucune nouvelle connexion bancaire.");
         } catch (e) {
             setError((e as Error).message);
         } finally {
@@ -424,7 +426,7 @@ export default function FinancesView({
             setMessage(
                 result.alreadyImported
                     ? "Ce fichier est déjà importé."
-                    : `${result.added} opérations ajoutées au PC. Sources originales conservées.`,
+                    : preview.balanceObservations ? `${preview.balanceObservations} soldes reçus enregistrés. Historique conservé.` : `${result.added} opérations ajoutées au PC. Sources originales conservées.`,
             );
             setBundle(null);
             setPreview(null);
@@ -565,7 +567,7 @@ export default function FinancesView({
         if (savingDecision.current || busy) return;
         setBusy(true);
         setError("");
-        try { const saved = await fetchFinances(hub.worker); setState(saved); attempt.current = null; if (editing) openDecision(editing, saved, categoryQueue.current ?? undefined); else setStaleDraft(false); setMessage("Données du PC actualisées."); }
+        try { const saved = await fetchFinances(hub.worker); setState(saved); attempt.current = null; if (editing) openDecision(editing, saved, categoryQueue.current ?? undefined); else setStaleDraft(false); setMessage("Données enregistrées sur le PC rechargées. Aucune nouvelle connexion bancaire."); }
         catch (e) { setError((e as Error).message); }
         finally { setBusy(false); }
     }
@@ -601,6 +603,7 @@ export default function FinancesView({
                 .filter((h) => h.accountId === selected?.id)
                 .sort((a, b) => b.asOf.localeCompare(a.asOf)) ?? [],
         latest = holdings[0];
+    const selectedObservation = data && selected ? latestBalanceObservation(data, selected.id) : undefined;
     const activities =
         data?.activities.filter(
             (a) =>
@@ -1013,9 +1016,10 @@ export default function FinancesView({
                         <>
                             {!investmentDetail && <>
                             <section className="surface view-stack">
-                                <p className="muted">{investmentAccounts.length} comptes observés. Valeurs datées, pas somme des cotisations.</p><div className="compact-heading"><h2>Comptes et valeurs observées</h2><InfoPopover title="Valeurs des comptes"><p>Chaque valeur conserve sa date et sa devise. Les instantanés de dates différentes ne constituent pas un patrimoine synchronisé; aucun rendement ou cours en direct n'est déduit.</p></InfoPopover></div>
+                                <p className="muted">{investmentAccounts.length} comptes observés. Valeurs datées, pas somme des cotisations.</p><div className="compact-heading"><h2>Comptes et valeurs observées</h2><InfoPopover title="Valeurs des comptes"><p>Les soldes reçus portent la date et l’heure de leur collecte, séparées de la date bancaire lorsqu’elle est connue. Les autres valeurs restent historiques. Aucun total synchronisé ni cours en direct n’est déduit.</p></InfoPopover></div>
                                 <div className="finance-register">
                                     {investmentAccounts.map((a) => {
+                                        const observation = latestBalanceObservation(data, a.id);
                                         const h = data.holdings
                                             .filter((h) => h.accountId === a.id)
                                             .sort((x, y) =>
@@ -1034,11 +1038,12 @@ export default function FinancesView({
                                                     <strong>{a.name}</strong>
                                                     <small>
                                                         {a.type} ·{" "}
-                                                        {(h?.asOf ?? a.asOf) || "Date source inconnue"}
+                                                        {observation ? `Reçu le ${displayFinanceCapture(observation.capturedAt)}` : `Observation historique · ${(h?.asOf ?? a.asOf) || "date source inconnue"}`}
+                                                        {observation && <><br />{observation.sourceAsOf ? `Date bancaire : ${displayDate(observation.sourceAsOf)}` : "Date bancaire inconnue"}</>}
                                                     </small>
                                                 </span>
                                                 <strong>
-                                                    {h
+                                                    {observation ? money(observation.balanceCents, observation.currency) : h
                                                         ? money(
                                                               h.totalCents,
                                                               h.currency,
@@ -1062,10 +1067,15 @@ export default function FinancesView({
                                 <section className="surface view-stack">
                                     <div className="compact-heading"><button type="button" className="button secondary" onClick={closeInvestment}>Retour aux comptes</button><InfoPopover title="Valeur observée"><p>La valeur conserve sa date source et sa devise. Les flux de la période sont distincts de la valeur du compte; aucun rendement ni droit de cotisation n'est estimé.</p></InfoPopover></div>
                                     <h2 id="investment-detail-title" tabIndex={-1}>{selected.name}</h2>
-                                    <div className="finance-totals investment-summary"><div><small>Valeur observée · {latest?.asOf ?? selected.asOf}</small><strong>{latest ? money(latest.totalCents, latest.currency) : selected.balanceCents === null ? "Valeur manquante" : money(selected.balanceCents, selected.currency)}</strong></div></div>
+                                    <div className="finance-totals investment-summary"><div><small>{selectedObservation ? `Solde reçu le ${displayFinanceCapture(selectedObservation.capturedAt)}` : `Valeur historique · ${latest?.asOf ?? selected.asOf}`}</small><strong>{selectedObservation ? money(selectedObservation.balanceCents, selectedObservation.currency) : latest ? money(latest.totalCents, latest.currency) : selected.balanceCents === null ? "Valeur manquante" : money(selected.balanceCents, selected.currency)}</strong></div></div>
+                                    {selectedObservation && <p>{selectedObservation.sourceAsOf ? `Date bancaire : ${displayDate(selectedObservation.sourceAsOf)}` : "Date bancaire inconnue. L’heure de réception ne prouve pas la fraîcheur bancaire."}</p>}
+                                    {data.balanceObservations?.some(o => o.accountId === selected.id) && <details className="finance-journey-disclosure"><summary>Historique des soldes reçus</summary>
+                                        <p>Valeur historique conservée : {latest ? money(latest.totalCents, latest.currency) : selected.balanceCents === null ? "inconnue" : money(selected.balanceCents, selected.currency)} · {latest?.asOf ?? selected.asOf}.</p>
+                                        {(data.balanceObservations ?? []).filter(o => o.accountId === selected.id).sort((a, b) => Date.parse(b.capturedAt) - Date.parse(a.capturedAt)).map(o => <p key={o.capturedAt}>{money(o.balanceCents, o.currency)} · reçu le {displayFinanceCapture(o.capturedAt)} · {o.sourceAsOf ? `date bancaire : ${o.sourceAsOf}` : "date bancaire inconnue"}</p>)}
+                                    </details>}
                                     <Sources
                                         sources={[
-                                            latest?.source ?? selected.source,
+                                            selectedObservation?.source ?? latest?.source ?? selected.source,
                                         ]}
                                     />
                                     <details className="finance-journey-disclosure"><summary>Positions et montants</summary>
@@ -1347,12 +1357,12 @@ export default function FinancesView({
                 </>
             )}
             <CategoryPayments category={categoryPayments} open={Boolean(categoryPayments) && !editing} summary={tab === "trends" ? trend?.summary ?? null : summary} state={state} onSave={saveInline} onReload={reloadInline} onUndo={id => undoChange(id, true)} accounts={data?.accounts ?? []} account={account} currency={currency} from={tab === "trends" ? trend?.from ?? "" : from} to={tab === "trends" ? trend?.to ?? "" : to} onClose={closeCategory} onEdit={(id, queueIds) => openDecision(id, state, queueIds)} />
-            {paired && data && <p className="finance-collection-note">Dernière collecte enregistrée : {displayDate(data.collectedOn)}. La collecte ne prouve ni la fraîcheur bancaire ni une couverture complète.</p>}
+            {paired && state && data && <FinanceCollectionNote state={state} />}
             {paired && (
                 <details id="finance-source-details" className="surface finance-import">
                     <summary>
                         Sources et import privé{" "}
-                        {data ? `· collecte du ${data.collectedOn}` : ""}
+                        {data ? "· historique conservé" : ""}
                     </summary>
                     <div className="view-stack">
                         <p>
@@ -1379,7 +1389,7 @@ export default function FinancesView({
                                 <p>
                                     {preview.alreadyImported
                                         ? "Fichier déjà importé."
-                                        : `${preview.added} nouvelles opérations · ${preview.possibleDuplicates} doublons possibles · ${preview.from} à ${preview.to}`}
+                                        : preview.balanceObservations ? `${preview.balanceObservations} soldes reçus · historique inchangé` : `${preview.added} nouvelles opérations · ${preview.possibleDuplicates} doublons possibles · ${preview.from} à ${preview.to}`}
                                 </p>
                                 {!preview.alreadyImported && (
                                     <button

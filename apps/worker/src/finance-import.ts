@@ -3,6 +3,7 @@ import type {
     FinanceData,
     FinanceTransaction,
 } from "./finance-model.js";
+import { financeTimestamp, financeCollection } from "./finance-observations.js";
 type Obj = Record<string, any>;
 function obj(v: unknown): Obj {
     if (!v || typeof v !== "object" || Array.isArray(v))
@@ -105,6 +106,20 @@ export function parseFinancePreparation(value: unknown): FinanceData {
             throw new Error("Compte source absent du registre.");
         return key;
     };
+    if (p.importMode !== undefined && p.importMode !== "balance-observations-only") throw new Error("Mode financier inconnu.");
+    const collection = p.collection === undefined ? null : financeCollection(p.collection, [...accountIds]);
+    if (collection && Date.parse(collection.retrievedAt) > Date.now() + 5 * 60_000) throw new Error("Collecte future refusée; vérifiez l’heure de la source.");
+    const balanceObservations = p.balanceObservations === undefined ? undefined : list(p.balanceObservations, 1000).map(raw => {
+        const r = obj(raw), accountId = account(r.accountId), capturedAt = financeTimestamp(r.capturedAt);
+        const sourceAsOf = r.sourceAsOf === null ? null : /^\d{4}-\d{2}-\d{2}$/.test(r.sourceAsOf) ? date(r.sourceAsOf) : financeTimestamp(r.sourceAsOf);
+        if (sourceAsOf && Date.parse(sourceAsOf) > Date.parse(capturedAt)) throw new Error("Date bancaire postérieure à la collecte.");
+        if (!collection || Date.parse(collection.retrievedAt) !== Date.parse(capturedAt) || !collection.accountIds.includes(accountId)) throw new Error("Observation sans collecte correspondante.");
+        const source = sourceEvidence(r.source);
+        if (!source.sha256) throw new Error("Provenance de solde requise.");
+        return { accountId, currency: currency(r.currency), balanceCents: cents(r.balanceCents), capturedAt, sourceAsOf, source };
+    });
+    if (balanceObservations && new Set(balanceObservations.map(o => o.accountId + ":" + Date.parse(o.capturedAt))).size !== balanceObservations.length) throw new Error("Observations de solde dupliquées.");
+    if (p.importMode === "balance-observations-only" && (!balanceObservations?.length || collection?.accountIds.length !== accountIds.size || new Set(balanceObservations.map(o => o.accountId)).size !== accountIds.size || [p.bankActivities, p.brokerageActivities, p.holdingsSnapshots, p.coverage, p.pendingActivities ?? [], p.limits ?? [], p.performanceSnapshots ?? [], p.financialDocumentFacts?.feesReports ?? []].some(rows => list(rows).length) || p.gicDetails)) throw new Error("Un import de soldes ne peut modifier les autres données.");
     const transactions: FinanceTransaction[] = list(p.bankActivities).map(
         (r) => {
             const outflowCents = cents(r.signedOutflowCents);
@@ -220,6 +235,7 @@ export function parseFinancePreparation(value: unknown): FinanceData {
         source: sourceEvidence(r.source),
     }));
     for (const row of [
+        ...(balanceObservations ?? []),
         ...transactions,
         ...activities,
         ...holdings,
@@ -241,6 +257,7 @@ export function parseFinancePreparation(value: unknown): FinanceData {
     }
     return {
         collectedOn,
+        ...(balanceObservations === undefined ? {} : { balanceObservations }),
         scope,
         accounts,
         transactions,
