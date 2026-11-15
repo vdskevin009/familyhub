@@ -35,6 +35,7 @@ import ReceivedBalanceEvolution from "./ReceivedBalanceEvolution";
 import { latestBalanceObservation } from "../../../worker/src/finance-observations";
 import { displayFinanceCapture, FinanceCollectionNote } from "./FinanceCollectionNote";
 import FinanceSourceInventory from "./FinanceSourceInventory";
+import FinanceReceivedAccounts from "./FinanceReceivedAccounts";
 import { useFinanceSourceInventory } from "../use-finance-source-inventory";
 import "../finance-source-inventory.css";
 import InfoPopover from "../ui/InfoPopover";
@@ -268,6 +269,7 @@ export default function FinancesView({
     onNavigate: (view: AppView) => void;
 }) {
     const sourceInventory = useFinanceSourceInventory(hub.worker);
+    const [historicalAccountsOpen, setHistoricalAccountsOpen] = useState<boolean | null>(null);
     const sourceExpenses = useSourceExpenses(hub.worker);
     const [expenseChoice,setExpenseChoice] = useState<"source"|"ledger"|null>(null);
     const [defaultExpenseMode, setDefaultExpenseMode] = useState<"source" | "ledger">("source");
@@ -339,6 +341,7 @@ export default function FinancesView({
         requestAnimationFrame(() => document.getElementById("investment-detail-title")?.focus());
     }
     function closeInvestment() {
+        if (data && selected && !latestBalanceObservation(data, selected.id)) setHistoricalAccountsOpen(true);
         setInvestmentDetail(false);
         requestAnimationFrame(() => [...document.querySelectorAll<HTMLButtonElement>("[data-investment-account]")].find(el => el.dataset.investmentAccount === selected?.id)?.focus());
     }
@@ -612,7 +615,7 @@ export default function FinancesView({
         } finally { savingDecision.current = false; setBusy(false); }
     }
     const investmentAccounts =
-        data?.accounts.filter((a) => a.type !== "credit-card") ?? [];
+        data?.accounts ?? [];
     const selected =
         investmentAccounts.find((a) => a.id === investmentAccount) ??
         investmentAccounts.find((a) => a.type === "brokerage") ??
@@ -704,6 +707,7 @@ export default function FinancesView({
                 </div>
             )}
             {paired && (tab === "expenses" || tab === "trends") && <><div className="source-expense-mode" role="group" aria-label={tab === "trends" ? "Jeu de données des tendances" : "Jeu de données des dépenses"}><button className="button secondary" aria-pressed={expenseMode === "source"} onClick={() => {setExpenseChoice("source");setOperationsOpen(false);}}>Source récente</button><button className="button secondary" aria-pressed={expenseMode === "ledger"} onClick={() => {setExpenseChoice("ledger");setOperationsOpen(false);}}>Registre historique</button></div>{expenseMode === "source" && (sourceExpenses.status === "ready" ? (tab === "trends" ? <FinanceSourceTrends snapshots={sourceExpenses.snapshots}/> : <FinanceSourceExpenses snapshots={sourceExpenses.snapshots}/>) : <p role="status">{sourceExpenses.status === "loading" ? "Chargement des dépenses source enregistrées sur le PC." : sourceExpenses.status === "unsupported" ? "Cette vue nécessite une mise à jour du worker PC. Le registre historique reste disponible séparément." : "Dépenses source indisponibles. Actualisez pour relire le PC; aucune ancienne valeur ne remplace cette collecte."}</p>)}</>}
+            {paired && tab === "investments" && !investmentDetail && <FinanceReceivedAccounts data={data ?? null} inventory={sourceInventory} onOpen={openInvestment} historicalOpen={historicalAccountsOpen} onHistoricalOpen={setHistoricalAccountsOpen} />}
             {data && state && summary && !((tab === "expenses" || tab === "trends") && expenseMode === "source") && (
                 <>
                     {tab === "investments" ? investmentDetail && <details className="finance-journey-controls"><summary>Période des activités : {from} au {to}</summary><PeriodNavigator range={{ from, to }} scope={data.scope} onChange={range => { setFrom(range.from); setTo(range.to); }} /></details> :
@@ -1034,55 +1038,6 @@ export default function FinancesView({
                         </>
                     ) : (
                         <>
-                            {!investmentDetail && <>
-                            <section className="surface view-stack">
-                                <p className="muted">{investmentAccounts.length} comptes observés. Valeurs datées, pas somme des cotisations.</p><div className="compact-heading"><h2>Comptes et valeurs observées</h2><InfoPopover title="Valeurs des comptes"><p>Les soldes reçus portent la date et l’heure de leur collecte, séparées de la date bancaire lorsqu’elle est connue. Les autres valeurs restent historiques. Aucun total synchronisé ni cours en direct n’est déduit.</p></InfoPopover></div>
-                                <div className="finance-register">
-                                    {investmentAccounts.map((a) => {
-                                        const observation = latestBalanceObservation(data, a.id);
-                                        const h = data.holdings
-                                            .filter((h) => h.accountId === a.id)
-                                            .sort((x, y) =>
-                                                y.asOf.localeCompare(x.asOf),
-                                            )[0];
-                                        return (
-                                            <button
-                                                key={a.id}
-                                                data-investment-account={a.id}
-                                                className="finance-service"
-                                                onClick={() =>
-                                                    openInvestment(a.id)
-                                                }
-                                            >
-                                                <span>
-                                                    <strong>{a.name}</strong>
-                                                    <small>
-                                                        {a.type} ·{" "}
-                                                        {observation ? `Reçu le ${displayFinanceCapture(observation.capturedAt)}` : `Observation historique · ${(h?.asOf ?? a.asOf) || "date source inconnue"}`}
-                                                        {observation && <><br />{observation.sourceAsOf ? `Date bancaire : ${displayDate(observation.sourceAsOf)}` : "Date bancaire inconnue"}</>}
-                                                    </small>
-                                                </span>
-                                                <strong>
-                                                    {observation ? money(observation.balanceCents, observation.currency) : h
-                                                        ? money(
-                                                              h.totalCents,
-                                                              h.currency,
-                                                          )
-                                                        : a.balanceCents ===
-                                                            null
-                                                          ? "Valeur manquante"
-                                                          : money(
-                                                                a.balanceCents,
-                                                                a.currency,
-                                                            )}
-                                                </strong>
-                                            </button>
-                                        );
-                                    })}
-                                </div>
-                            </section>
-                            <aside className="finance-observation-note"><h3>À ne pas confondre</h3><p>Cotisations : montants versés. Performance : gains et pertes. Patrimoine : actifs moins dettes.</p><p>Aucun total consolidé entre dates ou devises différentes. Positions, liquidités, flux et sources restent accessibles dans chaque compte.</p></aside>
-                            </>}
                             {selected && investmentDetail && (
                                 <section className="surface view-stack">
                                     <div className="compact-heading"><button type="button" className="button secondary" onClick={closeInvestment}>Retour aux comptes</button><InfoPopover title="Valeur observée"><p>La valeur conserve sa date source et sa devise. Les flux de la période sont distincts de la valeur du compte; aucun rendement ni droit de cotisation n'est estimé.</p></InfoPopover></div>
@@ -1378,8 +1333,8 @@ export default function FinancesView({
                 </>
             )}
             <CategoryPayments category={categoryPayments} open={Boolean(categoryPayments) && !editing} summary={tab === "trends" ? trend?.summary ?? null : summary} state={state} onSave={saveInline} onReload={reloadInline} onUndo={id => undoChange(id, true)} accounts={data?.accounts ?? []} account={account} currency={currency} from={tab === "trends" ? trend?.from ?? "" : from} to={tab === "trends" ? trend?.to ?? "" : to} onClose={closeCategory} onEdit={(id, queueIds) => openDecision(id, state, queueIds)} />
-            {paired && state && data && !((tab === "expenses" || tab === "trends") && expenseMode === "source") && <FinanceCollectionNote state={state} />}
-            {paired && <details className="surface finance-source-panel">
+            {paired && state && data && !(tab === "investments" && !investmentDetail) && !((tab === "expenses" || tab === "trends") && expenseMode === "source") && <FinanceCollectionNote state={state} />}
+            {paired && !(tab === "investments" && !investmentDetail) && <details className="surface finance-source-panel">
                 <summary>{sourceInventory.status === "ready" && sourceInventory.snapshot ? `${sourceInventory.snapshot.accounts.length} comptes non rapprochés et autres données` : "Comptes et autres données de la source"}</summary>
                 <div role="status">{sourceInventory.status === "loading" ? "Chargement de l'inventaire enregistré sur le PC…" : sourceInventory.status === "unsupported" ? "L'inventaire source nécessite une mise à jour du worker PC. Le registre existant reste disponible." : sourceInventory.status === "error" ? "Inventaire source indisponible. Actualisez pour relire le PC; le registre existant est conservé." : ""}</div>
                 {sourceInventory.status === "ready" && <FinanceSourceInventory snapshot={sourceInventory.snapshot} />}

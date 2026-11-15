@@ -58,11 +58,19 @@ try {
       const body = path === '/finances' ? state : path === '/health' ? { status: 'ok', version: '2.30.0', capabilities: supported ? [capability, 'finance-balance-observations-v1'] : ['finance-balance-observations-v1'] } : path === '/invoices' ? { items: [], reconciliations: [], unmatchedReimbursements: [], setupRequired: true, accounts: [] } : path === '/savings/contracts' ? { records: [] } : { records: [], jobs: [], items: [], state: 'idle' };
       return route.fulfill({ json: body });
     });
-    await page.goto(base); const panel = page.locator('.finance-source-panel'), summary = panel.locator(':scope > summary');
+    await page.goto(base); const panel = page.locator('.finance-received-source');
     await page.getByRole('button', { name: 'Investissements', exact: true }).click();
     const bank = page.locator('[data-investment-account="bank"]'); await bank.waitFor(); assert.match(await bank.innerText(), /1\s?234,56/);
-    await page.getByText('7 comptes non rapprochés et autres données', { exact: true }).waitFor();
-    await summary.focus(); await page.keyboard.press('Enter'); await panel.locator('.finance-source-accounts').waitFor();
+    await page.getByRole('heading', { name: 'Soldes reçus', exact: true }).waitFor();
+    await page.getByRole('heading', { name: 'Comptes source non rapprochés', exact: true }).waitFor();
+    assert.equal(await page.locator('[data-received-account]:visible').count(), 2);
+    assert.equal(await panel.locator('.finance-source-accounts > li:visible').count(), 7, 'Every source account is visible without opening a disclosure');
+    assert.equal(await page.locator('.finance-historical-accounts').getAttribute('open'), null);
+    assert.equal(await page.locator('.finance-source-panel').count(), 0, 'No duplicate source account list');
+    assert.equal(await page.locator('.finance-collection-note').count(), 0, 'No global canonical timestamp can contradict source receipts');
+    const sourceLink = page.getByRole('link', { name: 'Voir les 7 comptes source non rapprochés', exact: true });
+    await sourceLink.focus(); await page.keyboard.press('Enter');
+    assert.equal(await panel.evaluate(el => document.activeElement === el), true, 'Native source jump is keyboard-accessible');
     assert.equal(await panel.locator('.finance-source-accounts > li').count(), 7);
     assert.equal(await panel.locator('.finance-source-status').filter({ hasText: 'Non rapproché' }).count(), 7);
     assert.match(await panel.innerText(), /Collecte ancienne/); assert.match(await panel.innerText(), /Date bancaire non fournie/);
@@ -78,9 +86,16 @@ try {
     assert.match(await panel.innerText(), /Date prévue déjà passée/); assert.match(await panel.innerText(), /ni des dépenses comptabilisées ni des factures confirmées/);
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1), false);
     await panel.getByText('Prévisions récurrentes (29)', { exact: true }).click(); await page.screenshot({ path: join(output, 'inventory-' + width + '.png'), fullPage: true });
-    for (let i = 0; i < 2; i++) { await summary.focus(); await page.keyboard.press('Enter'); assert.equal(await panel.getAttribute('open'), null); await page.keyboard.press('Enter'); assert.notEqual(await panel.getAttribute('open'), null); }
+    const historical = page.locator('.finance-historical-accounts'), summary = historical.locator(':scope > summary');
+    for (let i = 0; i < 2; i++) { await summary.focus(); await page.keyboard.press('Enter'); assert.notEqual(await historical.getAttribute('open'), null); await page.keyboard.press('Enter'); assert.equal(await historical.getAttribute('open'), null); }
+    await summary.focus(); await page.keyboard.press('Enter');
+    const card = page.locator('[data-investment-account="card"]'); await card.focus(); await page.keyboard.press('Enter');
+    await page.getByRole('heading', { name: 'Carte de test', exact: true }).waitFor();
+    await page.getByRole('button', { name: 'Retour aux comptes', exact: true }).click();
+    await page.waitForFunction(() => document.activeElement?.getAttribute('data-investment-account') === 'card');
+    assert.notEqual(await historical.getAttribute('open'), null, 'Historical disclosure and return focus survive account details');
     await bank.click(); await page.getByRole('heading', { name: 'Compte courant', exact: true }).waitFor(); await page.getByRole('button', { name: 'Retour aux comptes', exact: true }).click(); assert.match(await bank.innerText(), /1\s?234,56/);
-    for (const tab of ['Dépenses', 'Tendances', 'Investissements']) { await page.getByRole('button', { name: tab, exact: true }).click(); assert.equal(await panel.locator('.finance-source-accounts > li').count(), 7); }
+    for (const tab of ['Dépenses', 'Tendances', 'Investissements']) { await page.getByRole('button', { name: tab, exact: true }).click(); assert.equal(await page.locator('.finance-source-accounts > li').count(), 7); }
     mode = 'delayed'; const delayedStarted = new Promise(resolve => { markDelayedStarted = resolve; });
     await page.getByRole('button', { name: 'Actualiser', exact: true }).click(); await delayedStarted; await panel.getByText(/Chargement de l'inventaire/).waitFor();
     await page.getByRole('button', { name: 'Actualiser', exact: true }).waitFor(); assert.match(await bank.innerText(), /1\s?234,56/, 'Canonical refresh is not delayed by the optional source request');

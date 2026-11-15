@@ -24,13 +24,13 @@ export function SourceAvailabilityNotice({ label, value }: { label: string; valu
 /** Read-only view. Import finance-source-inventory.css in the integrating screen.
  * Snapshot must be validated at the API boundary. No ledger or navigation dependency.
  */
-export default function FinanceSourceInventory({ snapshot, now = new Date() }: { snapshot: Inventory | null; now?: Date }) {
+export default function FinanceSourceInventory({ snapshot, now = new Date(), title = "Autres données de la source" }: { snapshot: Inventory | null; now?: Date; title?: string }) {
   const heading = useId();
-  if (snapshot === null) return <section className="finance-source-inventory" aria-labelledby={heading}><h2 id={heading}>Autres données de la source</h2><p>Inventaire non disponible. Aucun solde ni aucune absence de compte ne peut être déduit.</p></section>;
+  if (snapshot === null) return <section className="finance-source-inventory" aria-labelledby={heading}><h2 id={heading}>{title}</h2><p>Inventaire non disponible. Aucun solde ni aucune absence de compte ne peut être déduit.</p></section>;
   const stale = sourceInventoryIsStale(snapshot, now);
   return <section className="finance-source-inventory" aria-labelledby={heading}>
-    <header><h2 id={heading}>Autres données de la source</h2><p>Collecte du <DateValue value={snapshot.collectedAt} />{stale && <strong> · Collecte ancienne (plus de 24 h)</strong>}</p></header>
-    <p>Ces comptes ne sont pas rapprochés du registre existant. Leurs montants restent séparés des totaux de dépenses, de placements et de patrimoine.</p>
+    <header><h2 id={heading}>{title}</h2><p>Collecte du <DateValue value={snapshot.collectedAt} />{stale && <strong> · Collecte ancienne (plus de 24 h)</strong>}</p></header>
+    <p>{snapshot.accounts.length} compte{snapshot.accounts.length === 1 ? "" : "s"} source. Ces comptes ne sont pas rapprochés du registre existant. Leurs montants restent séparés des totaux de dépenses, de placements et de patrimoine.</p>
     <p className="finance-source-note">La date de collecte indique quand le montant a été récupéré, pas quand la banque l’a mis à jour.</p>
     {snapshot.accounts.length === 0 ? <p>Aucun compte dans cet inventaire. Cela ne certifie pas l’absence de comptes liés.</p> : <ul className="finance-source-accounts">{snapshot.accounts.map(account => <li key={account.sourceKey}>
       <article><header><h3>{account.name}</h3><p>{account.institution ?? "Établissement non fourni"} · {kinds[account.kind]}</p><strong className="finance-source-status">Non rapproché</strong></header>

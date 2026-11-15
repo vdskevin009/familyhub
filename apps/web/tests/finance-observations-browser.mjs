@@ -48,8 +48,10 @@ try {
   await page.getByRole("button", { name: "Investissements", exact: true }).click();
   const bank = page.locator('[data-investment-account="bank"]'), rrsp = page.locator('[data-investment-account="rrsp"]');
   assert.match(await bank.innerText(), /1\s?234,56/); assert.match(await rrsp.innerText(), /3\s?234,56/); assert.match(await bank.innerText(), /Date bancaire inconnue/); assert.match(await bank.innerText(), /Reçu le/);
+  assert.equal(await page.locator('.finance-historical-accounts').getAttribute('open'), null); await page.locator('.finance-historical-accounts > summary').click();
   assert.match(await page.locator('[data-investment-account="gic"]').innerText(), /Observation historique/);
   for (let i = 0; i < 5; i++) assert.match(await page.locator('[data-investment-account="extra' + i + '"]').innerText(), /Observation historique/);
+  await page.locator('.finance-historical-accounts > summary').click();
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1), false);
   await page.screenshot({ path: join(output, "accounts-" + width + ".png"), fullPage: true });
   for (let i = 0; i < 2; i++) {
@@ -69,15 +71,15 @@ try {
   assert.equal(await page.locator(".finance-received-evolution [data-received-point]").count(), 0); assert.equal(await page.locator(".finance-received-evolution li").count(), 1);
   await page.getByRole("button", { name: "Retour aux comptes", exact: true }).click();
   await page.getByRole("button", { name: "Actualiser", exact: true }).click(); await page.getByText("Données enregistrées sur le PC rechargées. Aucune nouvelle connexion bancaire.", { exact: true }).waitFor(); assert.equal(JSON.stringify(state), saved);
-  for (const tab of ["Dépenses", "Tendances", "Investissements"]) { await page.getByRole("button", { name: tab, exact: true }).click(); assert.match(await note.innerText(), /1 compte sur 9/); }
+  for (const tab of ["Dépenses", "Tendances", "Investissements"]) { await page.getByRole("button", { name: tab, exact: true }).click(); if (tab === "Investissements") assert.equal(await note.count(), 0); else assert.match(await note.innerText(), /1 compte sur 9/); }
   // A newer bank-dated value can supersede the observation without hiding its history.
   state = structuredClone(state); state.data.accounts.find(a => a.id === "bank").asOf = "2031-01-01";
-  await page.getByRole("button", { name: "Actualiser", exact: true }).click(); await bank.waitFor(); await bank.click(); await page.getByText("Historique des soldes reçus", { exact: true }).click(); assert.match(await page.getByText(/Valeur historique conservée/).innerText(), /2031-01-01/); assert.equal(await page.locator(".finance-received-evolution li").count(), 3);
+  await page.getByRole("button", { name: "Actualiser", exact: true }).click(); await page.waitForFunction(() => document.querySelector('[data-investment-account="bank"]')?.textContent?.includes('2031-01-01')); if (await page.locator('.finance-historical-accounts').getAttribute('open') === null) await page.locator('.finance-historical-accounts > summary').click(); await bank.waitFor(); await bank.click(); await page.getByText("Historique des soldes reçus", { exact: true }).click(); assert.match(await page.getByText(/Valeur historique conservée/).innerText(), /2031-01-01/); assert.equal(await page.locator(".finance-received-evolution li").count(), 3);
   if (width === 320) {
    // A long real receipt series is bounded visually, but every exact record remains keyboard-accessible.
    const template = state.data.balanceObservations.find(o => o.accountId === "bank");
    state = structuredClone(state); state.data.balanceObservations = Array.from({ length: 125 }, (_, i) => ({ ...template, capturedAt: new Date(Date.parse("2026-11-02T12:00:00Z") + i * 60000).toISOString(), balanceCents: 100000 + i }));
-   await page.reload(); await page.getByRole("button", { name: "Investissements", exact: true }).click(); await page.locator('[data-investment-account="bank"]').click(); await page.getByText("Historique des soldes reçus", { exact: true }).click();
+   await page.reload(); await page.getByRole("button", { name: "Investissements", exact: true }).click(); await page.waitForFunction(() => document.querySelector('[data-investment-account="bank"]')?.textContent?.includes('2031-01-01')); if (await page.locator('.finance-historical-accounts').getAttribute('open') === null) await page.locator('.finance-historical-accounts > summary').click(); await page.locator('[data-investment-account="bank"]').click(); await page.getByText("Historique des soldes reçus", { exact: true }).click();
    const longHistory = page.locator(".finance-received-evolution"); assert.equal(await longHistory.locator("[data-received-point]").count(), 100); assert.equal(await longHistory.locator("li").count(), 20);
    const more = longHistory.getByRole("button", { name: /^Voir les réceptions précédentes/ });
    await more.focus(); await page.keyboard.press("Enter"); assert.equal(await longHistory.locator("li").count(), 40);

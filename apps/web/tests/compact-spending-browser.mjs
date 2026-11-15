@@ -136,8 +136,8 @@ try {
         await page.screenshot({ path: join(output, `operations-${width}.png`) });
         await page.getByRole('button', { name: 'Retour aux dépenses', exact: true }).click();
         await page.getByRole('button', { name: 'Investissements', exact: true }).click();
-        await page.getByRole('heading', { name: 'Comptes et valeurs observées' }).waitFor();
-        assert.match(await page.locator('.finance-view').innerText(), /pas somme des cotisations/);
+        await page.getByRole('heading', { name: 'Soldes reçus' }).waitFor();
+        assert.match(await page.locator('.finance-view').innerText(), /Cotisations : montants versés/);
         await page.screenshot({ path: join(output, `investments-${width}.png`) });
 
         await page.goto(base + "?view=savings");
