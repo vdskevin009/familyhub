@@ -35,4 +35,3 @@
     "test:mortgage:browser": "node --import tsx apps/web/tests/mortgage-browser.mjs && node --import tsx apps/web/tests/mortgage-assistant-browser.mjs"
   }
 }
-

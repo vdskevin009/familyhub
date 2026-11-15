@@ -73,7 +73,7 @@ export function decideDailyFinance(state: DailyFinanceState, scopeDigest: string
   return {action: state.pending ? 'recover' : 'collect', reason: state.pending ? 'pending-readback-only' : 'due', localDate: day};
 }
 
-function validateReceipt(receipt: StageReceipt, attempt: FinanceAttempt, scope: DailyFinanceScope): boolean {
+export function validateReceipt(receipt: StageReceipt, attempt: FinanceAttempt, scope: DailyFinanceScope): boolean {
   const p = receipt.payload;
   if (!p || dailyFinanceDigest(p) !== receipt.digest || !hashPattern.test(receipt.digest) || p.schema !== 1 ||
       !financeStages.includes(p.stage) || p.attemptId !== attempt.id || p.localDate !== attempt.localDate || p.scopeDigest !== attempt.scopeDigest ||
@@ -105,7 +105,7 @@ export type FinanceGateCallbacks = {
   verifyOutcomeReadOnly: (report: StageReport, attempt: FinanceAttempt) => Promise<boolean>;
 };
 type Options = {directory: string; scope: DailyFinanceScope; clock?: () => Date; callbacks: FinanceGateCallbacks; checkpoint?: (phase: string) => Promise<void>};
-async function readState(path: string): Promise<DailyFinanceState> {
+export async function readState(path: string): Promise<DailyFinanceState> {
   let value: DailyFinanceState;
   try { value = JSON.parse(await readFile(path, 'utf8')); } catch (e) {
     if ((e as NodeJS.ErrnoException).code === 'ENOENT') return {schema: 1, revision: 0, days: {}};
@@ -126,11 +126,11 @@ async function readState(path: string): Promise<DailyFinanceState> {
   } else if (Object.values(value.days).some(r => r.status === 'pending')) throw Error('Pending record has no recovery context.');
   return value;
 }
-async function durableExclusive(path: string, bytes: string) {
+export async function durableExclusive(path: string, bytes: string) {
   const file = await open(path, 'wx', 0o600);
   try { await file.writeFile(bytes); await file.sync(); } finally { await file.close(); }
 }
-async function replace(path: string, state: DailyFinanceState) {
+export async function replace(path: string, state: DailyFinanceState) {
   const temporary = path + '.' + randomUUID() + '.tmp';
   const bytes = JSON.stringify(state); await durableExclusive(temporary, bytes); await rename(temporary, path);
   if (await readFile(path, 'utf8') !== bytes) throw Error('Completion state readback mismatch.');
