@@ -40,7 +40,7 @@ function ContributionDetails({ plan, snapshot }: { plan: ContributionCard; snaps
   </div>;
 }
 
-export default function ContributionsView({ worker }: { worker: WorkerConfig }) {
+export default function ContributionsView({ worker, embedded = false }: { worker: WorkerConfig; embedded?: boolean }) {
   const [snapshot, setSnapshot] = useState<ContributionsSnapshot | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
@@ -53,7 +53,7 @@ export default function ContributionsView({ worker }: { worker: WorkerConfig }) 
     return () => controller.abort();
   }, [worker.Endpoint, worker.ApiKey, attempt]);
   return <section className="view-stack contributions-view">
-    <PageHeader title="Contributions"><button type="button" className="button secondary" disabled={loading} onClick={() => setAttempt(n => n + 1)}>Actualiser</button></PageHeader>
+    {embedded ? <div className="compact-heading"><h2>Contributions</h2><button type="button" className="button secondary" disabled={loading} onClick={() => setAttempt(n => n + 1)}>Actualiser les contributions</button></div> : <PageHeader title="Contributions"><button type="button" className="button secondary" disabled={loading} onClick={() => setAttempt(n => n + 1)}>Actualiser</button></PageHeader>}
     <div role="status" className={loading || error ? "notice" : "sr-only"}>{loading ? "Chargement des contributions…" : error || "Contributions chargées."}</div>
     <div className="contribution-cards">{(["rrsp", "resp"] as const).map(kind => {
       const plan = snapshot?.plans.find(p => p.kind === kind);

@@ -51,7 +51,7 @@ try {
             if (path === "/invoices") return reply({ items: [], reconciliations: [], unmatchedReimbursements: [], setupRequired: true, accounts: [] });
             return reply({ state: "idle", accounts: [], jobs: [], schedule: null, daily: null });
         });
-        await page.goto(base + "?view=finances");
+        await page.goto(base + "?view=finances&tab=expenses");
         await page.getByRole("heading", { name: "Où va l’argent ?", exact: true }).waitFor();
         const scope = page.getByLabel("Opérations affichées", { exact: true });
         await openFinanceRegister(page);
@@ -60,7 +60,7 @@ try {
         assert.equal(await register.getByRole("button").count(), 2);
         assert.doesNotMatch(await register.innerText(), /PAYMENT-THANKYOU|TFR-TO/);
         assert.match(await page.locator(".finance-totals").first().innerText(), /30,00/);
-        assert.equal(await page.locator(".finance-tabs button").count(), 3);
+        assert.equal(await page.locator(".finance-tabs button").count(), 4);
         const bar = page.locator(".finance-expense-charts > section").first().getByRole("button", { name: /^À catégoriser/ });
         await page.getByRole("button", { name: "Retour aux dépenses", exact: true }).click();
         // Complete and verify the return-focus transition before starting a new keyboard action.
@@ -118,7 +118,7 @@ try {
             await scope.selectOption("expenses");
             assert.equal(await register.getByRole("button").count(), account === "card" ? 2 : 0);
             assert.doesNotMatch(await register.innerText(), /PAYMENT-THANKYOU|TFR-TO/);
-            assert.match(await page.locator(".finance-totals").first().innerText(), account === "card" ? /30,00/ : /0,00/);
+            assert.match(await page.locator(".finance-totals").first().innerText(), account === "card" ? /30,00/ : /Non établi/, "Only excluded movements cannot establish zero consumption");
             await scope.selectOption("excluded");
         }
         assert.equal(posts, 0, "Viewing, filtering and opening sources must not save decisions");

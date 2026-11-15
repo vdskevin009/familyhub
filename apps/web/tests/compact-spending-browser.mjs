@@ -73,7 +73,7 @@ try {
             await overflow(dialog);
             assert(await dialog.evaluate(el => { const r = el.getBoundingClientRect(); return r.left >= -1 && r.top >= -1 && r.right <= innerWidth + 1 && r.bottom <= innerHeight + 1; }), "Dialog stays inside viewport");
         };
-        await page.goto(base + "?view=finances");
+        await page.goto(base + "?view=finances&tab=expenses");
         await page.getByRole("heading", { name: "Où va l’argent ?", exact: true }).waitFor();
         const noBellOverlap = async () => assert(await page.locator(".shell-tools button").evaluate(el => {
             const a = el.getBoundingClientRect(), action = document.querySelector(".page-heading-actions button")?.getBoundingClientRect();

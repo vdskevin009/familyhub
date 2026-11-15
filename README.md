@@ -220,7 +220,7 @@ Manual Blue Cross email import clients must use the advertised bluecross-import-
 
 The local private-classifier candidate now validates inherited tool restrictions and narrow sandbox input access before analysis, with bounded child-process lifecycle and no unsandboxed fallback. Availability depends on the verified sandbox backend; production cutover remains a separate reviewed step.
 
-Source-native expense snapshots use a separate private store and explicitly separate UI mode. See [source expense contract and limitations](docs/FINANCE-SOURCE-EXPENSES.md); deployment and private source activation are separate from synthetic tests.
+Source-native expense snapshots keep their immutable private store. The local FH-FIN-031 candidate presents them in the expense register with archived identity proofs; unmatched records stay visibly outside its subtotal. See [source expense contract and limitations](docs/FINANCE-SOURCE-EXPENSES.md); deployment and private source activation are separate from synthetic tests.
 
 Source-native Tendances can now display the same saved expense capture independently of the historical ledger, preserving capture/date/account/currency scope and unknown bank freshness. See [source expense and trend semantics](docs/FINANCE-SOURCE-EXPENSES.md). This local continuation does not start collection or deploy the worker.
 
@@ -230,3 +230,5 @@ The approved compact Accounts view uses month arrows, one selected capture and c
 
 
 Scheduled Finances pre-operation cancellation is an isolated candidate under FH-FIN-027 (#281), not an installed recovery. Source-tool availability must be checked before admission. A new, still-unstarted live reservation may be abandoned without falsely claiming success; old pending cycles remain operator-review-only. See docs/FINANCE-DAILY-GATE.md.
+
+Local Finances navigation/register integration and its release gates are described in [the implementation checkpoint](docs/FINANCE-UNIFIED-WORK-IN-PROGRESS.md). No production data migration or scheduled collection is implied.

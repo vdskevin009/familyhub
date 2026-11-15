@@ -1,88 +1,59 @@
-# Finances unification — local checkpoint
+# Finances integration checkpoint — FH-FIN-031
 
-This is unfinished groundwork, not a release. Baseline main:
-`14e2417c4732a436889c6d6656c3029a5eb30fd6`. Isolated branch:
-`feat/finance-unified-navigation`. Requirement FH-FIN-031.
+Local candidate on `feat/finance-unified-navigation`, based on main
+`14e2417c4732a436889c6d6656c3029a5eb30fd6`. No production publication yet.
 
-## Implemented independently of the visual reference
+## Implemented
 
-`apps/web/src/finance-register.ts` reconciles already-imported transactions with
-source observations only when a caller supplies explicit reviewed account and
-transaction bindings and bank facts agree. Repeated captures corroborate one ledger
-transaction. Conflicting versions, invalid bindings and competing identities stay
-unresolved; original ledger decisions and financial facts remain unchanged.
+- Finances primary navigation, Comptes first/default, then Dépenses, Tendances,
+  Contributions. Legacy Contributions links open the existing widgets in Finances.
+  Existing Savings routes remain available. The newer proposed Projets navigation
+  is awaiting approval; this menu must not be deployed in contradiction with it.
+- Expenses has one register and no recent/historical dataset switch. The same
+  period/account/currency/search/category/review filters drive charts and details.
+- GET `/finances/register-bindings`, protected by the existing pairing/origin gate,
+  derives exact account and operation identities from bounded hash-verified successful
+  import archives. It performs no import, migration, collection or private write.
+- All original source observations, amounts, classifications and capture timestamps
+  survive. Known operations count once using the canonical ledger rules/decisions.
+  Pending, conflicting and unbound rows are labelled outside the subtotal; unknown
+  data never becomes zero. This does NOT establish complete unified data coverage.
+- A category opens a native dialog. Browser Back, Escape, keyboard focus and return
+  are covered. Back refuses to discard unsaved edits. Batch editing is available
+  explicitly; revision guards, partial progress, audit and undo remain unchanged.
+- Unknown source accounts remain selectable without inventing a canonical account,
+  currency, balance or identity. Large unmatched lists paginate by 20.
 
-Every capture retains its timestamp, nullable bank timestamp, digest, native category
-and original row. Explicit posted-to-pending links work across captures without
-counting the pending row or losing its evidence. Category, period, account, currency,
-search and review scope use the existing ledger classification and summary functions.
-An absent included amount is null; a genuinely offsetting expense/refund can be zero.
+## Reference and scope
 
-No consumer is connected to this module yet. Source-only transactions remain
-unreconciled and excluded from totals. This is deliberately **not** complete unified
-data coverage, a complete-history claim, a fresh synchronization or a migration.
+All three original approved PNGs are now readable on kevinpc and their pixels were
+opened. Finances reference SHA-256:
+`c62fc3e7148f04e47fbbaf38b23c18a740feb4d33ae94669f3892ec596a74136`.
+Comptes first overrides its older order. Mock amounts are presentation fiction only.
+The earlier Library transfer failures are no longer a visual-reference blocker.
+No GitHub issue is required or created, per the owner's later instruction.
 
-## Evidence and blockers
+The read-only runtime coverage check found genuine unmatched identities. They cannot
+be invented or added to a complete total. No private counts or records belong in this
+public document. The operator report describes the measured limitation separately.
 
-- The official Library transfer for approved `familyhub-finances-proposition.png`
-  fails on Windows: `AttributeError: module 'os' has no attribute 'setxattr'`.
-  No local image was installed. Its pixels have not been inspected. The required
-  reference inspection blocks visual implementation; no alternate downloader or
-  metadata bypass was used.
-- The automatic approval review rejected creation of a GitHub issue twice, including
-  one retry after reading the owner's implementation/deployment authorization directly.
-  Exact second reason: “This again publishes a durable GitHub issue and project scope
-  externally; the user authorized implementation/deployment, not creating or publishing
-  an issue.” No issue was created and no further retry or alternate publication was made.
-- PR #291 was read directly: closed, draft, unmerged, head
-  `dfe2aa62200953e7b957db55cff483e7b4aa7b71`. It was not changed or reopened.
-- Source expense keys and canonical ledger IDs use different hashes/identities.
-  `/finance/source-expenses` does not expose a verified canonical crosswalk.
-  Name/date/amount matching cannot safely supply it. The existing reviewed private
-  preparation/import pipeline has account and transaction resolutions; an appropriate
-  read-only, validated projection of those proofs still needs implementation.
+## Verification
 
-## Remaining implementation
+- 16 new reconciliation/archive checks, focused finance/contribution/source run 70/70,
+  product aggregate 138/138, finance aggregate 303/303 (overlapping sets).
+- Paired endpoint privacy, unsupported POST and no-write assertions passed.
+- Web/worker typechecks and Vite build passed; final checks rerun after UI refinements.
+- All 11 finance browser scripts passed at four widths (320/390/768/1440) after adapting obsolete default-tab, dataset-switch and unfiltered-chart expectations. The category overview matches the approved panel structure; existing batch editing is opt-in. Final mobile tab sizing and global notification/proactive navigation checks follow.
+- No lint script exists. Local dotnet/npm are absent; local checks use installed
+  Node/pnpm dependencies. Exact lockfile/Node22/.NET/CI remain release gates.
 
-1. Restore supported Library materialization in an environment that preserves required
-   metadata, then inspect the approved pixels. Comptes first overrides the reference order.
-2. Supply the reviewed identity crosswalk through the paired read-only API, preserving
-   private raw identifiers and existing intake pins/locks. Do not trigger collection.
-3. Integrate one register with both proven identities and clearly disclosed unresolved
-   observations. Reuse financial rules and existing revision-protected editing. Do not
-   treat source-only display rows as editable imported ledger entries.
-4. Replace mobile Récurrent with Finances; keep Récurrent in Plus. Route legacy
-   Contributions links into Finances; preserve the widgets unchanged. Implement the four
-   tabs and default Comptes, retaining investments/account deep links.
-5. Remove expense dataset sub-tabs only when the integrated register is ready. Implement
-   category panel with current filters, native dialog focus, Escape, Back and focus return.
-   The separately approved Tendances A+B lot follows on a distinct branch after this
-   checkpoint; it must not restore the split register or alter contribution calculations.
-6. Run full finance/contribution/navigation regressions, repository aggregate CI, build,
-   typechecks and .NET. Verify synthetic mobile/desktop images, repeated month/category
-   changes, keyboard, Back, loading/error/empty states, and source-only data coverage.
-7. Resolve the issue-publication blocker before completing required project tracking.
-   Publish a reviewable PR, then merge only the exact green commit and verify actual
-   Pages release/runtime health. Do not deploy this incomplete checkpoint.
+## Remaining gates
 
-No production data, installed worker, scheduled intake, pins, locks, secrets or
-permissions were modified. No screenshots of household finances were produced.
+Finish source/archived identity presentation and screenshot comparison, complete all
+browser regression scripts and exact-commit CI, obtain the pending navigation decision,
+then merge/deploy through the normal workflow only when ready. Trends A+B is a distinct
+following branch. Récurrents is separately authorized for implementation only.
 
-## Checks actually run at this checkpoint
-
-- Web and worker TypeScript checks passed; worker compilation and Vite production
-  build passed. The first Vite command used the repository root and failed to find
-  `index.html`; running from `apps/web` passed.
-- 12 new reconciliation tests passed. The focused register/trends/edits/contributions
-  run passed all 61 tests. The product aggregate passed all 138 tests (includes these
-  12 register checks; these totals must not be added as disjoint coverage).
-- Existing finance import/change/source model suites passed 32 tests. Two HTTP worker
-  tests initially failed to reach their synthetic loopback servers inside the sandbox;
-  rerunning those two with approved execution outside it passed 2/2. They used temporary
-  test directories and random ports, not the installed worker.
-- `git diff --check` passed. No lint script or local `dotnet` command was available.
-  Full repository/remote CI, browser acceptance, visual review and deployed-runtime
-  verification have not run; the UI is unchanged and the module is not yet integrated.
-- Local dependency preparation used pnpm/Node 24 because npm is absent from PATH.
-  Temporary pnpm manifests/locks are not part of the implementation commit; exact npm
-  lockfile/Node 22 verification remains for normal CI.
+The installed worker, private ledgers, scheduled-intake checkout, controller, pins,
+locks, secrets and permissions are unchanged. No collection was triggered. No fresh
+bank synchronization, full history, CI success or deployment is claimed.

@@ -119,7 +119,7 @@ export function filterFinanceRegister(register: ReturnType<typeof reconcileFinan
   const matches = (item: RegisterObservation) => {
     const row = item.row;
     return row.date >= filter.from && row.date <= filter.to && row.currency === filter.currency &&
-      (!filter.accountId || register.accountBindings[row.accountSourceKey] === filter.accountId) &&
+      (!filter.accountId || register.accountBindings[row.accountSourceKey] === filter.accountId || `source:${row.accountSourceKey}` === filter.accountId) &&
       (!search || row.description.toLocaleLowerCase("fr").includes(search));
   };
   // Unreconciled observations cannot be assigned a canonical category by guesswork.

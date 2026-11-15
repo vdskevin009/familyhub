@@ -55,12 +55,13 @@ try {
             if (path === "/health") return reply({ status: "ok", version: "2.25.2", codex: "available" });
             return reply({ items: [], accounts: [], jobs: [], state: "idle", schedule: null, daily: null });
         });
-        await page.goto(base + "?view=finances"); await page.getByRole("heading", { name: "Où va l’argent ?", exact: true }).waitFor();
+        await page.goto(base + "?view=finances&tab=expenses"); await page.getByRole("heading", { name: "Où va l’argent ?", exact: true }).waitFor();
         const filters = await openFinanceFilters(page); await filters.getByLabel("Vue", { exact: true }).selectOption("custom"); await filters.getByLabel("Du", { exact: true }).fill("2026-04-01"); await filters.getByLabel("Au", { exact: true }).fill("2026-10-09"); await filters.getByRole("button", { name: "Voir les résultats" }).click();
         await page.locator('[data-finance-bar="groceries"]').click();
         const sheet = page.getByRole("dialog", { name: "Paiements · Courses alimentaires", exact: true }), toolbar = sheet.locator(".finance-inline-toolbar");
         const row = id => sheet.locator(`[data-inline-payment="${id}"]`), select = id => sheet.locator(`[data-payment-select="${id}"]`);
-        await sheet.waitFor(); assert.equal(await sheet.locator(".finance-category-payments > :first-child input[type=search]").count(), 1);
+        await sheet.waitFor(); assert.equal(await sheet.getByLabel("Rechercher dans cette catégorie",{exact:true}).count(), 1);
+        await sheet.getByRole("button",{name:"Modifier les catégories",exact:true}).click();
         assert.equal(await sheet.getByLabel("Note de décision").count(), 0);
         const order = await sheet.locator('.finance-register[aria-label="Opérations de dépenses"] [data-inline-payment]').evaluateAll(rows => rows.map(r => r.dataset.inlinePayment));
         assert.deepEqual(order, ["c", "b", "accent", "punctuation", "a", "number", "confirmed", "later", "refund"]);
@@ -70,6 +71,9 @@ try {
         assert.equal(await row("a").getByLabel("Nature", { exact: true }).locator('option[value="refund"]').count(), 0);
         // A two-row lot leaves the category; focus advances to the next two original visible rows.
         await select("c").check(); await select("b").check(); await toolbar.getByLabel("Catégorie du lot").selectOption("restaurants");
+        await page.goBack();
+        await sheet.getByRole("alert").filter({hasText:"annulez le brouillon"}).waitFor();
+        assert.equal(await row("c").getByLabel("Catégorie",{exact:true}).inputValue(),"restaurants","Back preserves unsaved edits and keeps the panel open");
         assert.equal(await sheet.evaluate(el => el.scrollWidth > el.clientWidth), false, "Selected edit state must fit the sheet");
         assert.equal(await toolbar.evaluate(el => el.scrollWidth > el.clientWidth), false, "Lot controls must not overflow");
         await sheet.locator(".sheet-content").evaluate(el => { el.scrollTop = 0; });

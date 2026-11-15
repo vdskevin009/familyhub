@@ -37,6 +37,13 @@ test('paired source expenses API protects privacy, read-only preview, revision, 
   async function stop() { if (child) { child.kill(); await stopped; child = null; } }
   try {
     await start();
+    const bindingsPath='/finances/register-bindings';
+    assert.equal((await call(bindingsPath)).status,401);
+    assert.equal((await call(bindingsPath,{headers:{...headers,Origin:'https://untrusted.invalid'}})).status,403);
+    const bindings=await call(bindingsPath,{headers});assert.equal(bindings.status,200);
+    assert.deepEqual(await bindings.json(),{capability:'finance-register-bindings-v1',ledgerRevision:original.revision,bindings:{accounts:{},transactions:{}},unavailableArchiveCount:0});
+    assert.equal((await call(bindingsPath,{method:'POST',headers,body:'{}'})).status,404);
+    assert.equal(await readFile(canonicalPath,'utf8'),before);
     assert((await (await call('/health', { headers })).json()).capabilities.includes(capability));
     for (const method of ['GET', 'POST']) {
       const denied = await call(url, { method, ...(method === 'POST' ? { body: '{}' } : {}) });
