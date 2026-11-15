@@ -65,3 +65,24 @@
 .finance-operations-panel .finance-filters label:last-child { order: -1; }
 .finance-operations-panel .finance-check { display: flex; align-items: center; gap: 8px; min-height: 44px; }
 .finance-operations-panel .finance-check input { width: 20px; height: 20px; }
+
+/* Actual receipt chronology, separate from bank-dated values and investment performance. */
+.finance-received-evolution { min-width: 0; display: grid; gap: 12px; }
+.finance-received-evolution h3, .finance-received-evolution p { margin: 0; }
+.finance-received-change strong { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.finance-received-chart { min-width: 0; margin: 0; }
+.finance-received-scale { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; color: var(--muted); }
+.finance-received-chart svg { display: block; width: 100%; max-height: 240px; overflow: visible; }
+.finance-received-chart circle { fill: var(--accent); stroke: var(--surface); stroke-width: 1.5; }
+.finance-received-axis { stroke: var(--line); stroke-width: 1; }
+.finance-received-chart figcaption { color: var(--muted); font-size: 13px; line-height: 1.5; }
+.finance-received-history { list-style: none; padding: 0; margin: 0; }
+.finance-received-history li { display: grid; gap: 5px; padding-block: 12px; border-top: 1px solid var(--line); }
+.finance-received-history li > div { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 16px; }
+.finance-received-history strong { font-variant-numeric: tabular-nums; }
+.finance-received-history span, .finance-received-history small { overflow-wrap: anywhere; }
+.finance-received-history small { color: var(--muted); }
+
+.finance-received-extent { display: flex; justify-content: space-between; gap: 16px; margin-bottom: 8px; font-size: 12px; color: var(--muted); }
+.finance-received-extent time { max-width: 48%; overflow-wrap: anywhere; }
+.finance-received-extent time:last-child { text-align: right; }
