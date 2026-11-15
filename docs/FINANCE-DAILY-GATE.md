@@ -1,6 +1,6 @@
-# Private daily Finances completion gate (FH-FIN-025)
+# Private daily Finances completion gate (FH-FIN-027)
 
-Local, synthetic-tested candidate only. No automation, provider call, production API route, worker deployment or real private state is activated by this change. The runtime adapter is intentionally NOT supplied: an integrator must connect actual collection/import/reconciliation evidence and verify it before enabling this gate.
+Local, synthetic-tested candidate only. No automation, provider call, production API route, worker deployment or real private state is activated by this change. A separate preview-default four-target intake controller is implemented and synthetically tested (see FINANCE-INTAKE-CONTROLLER.md). The authentic cloud collection pipeline and next real admission remain unproven and must be verified before activation.
 
 ## Schedule and early gate
 - Run at most hourly from 08:00 through **20:59**, America/Vancouver. The 20:00 scheduled slot may arrive later within that hour; 21:00 and later cannot start a source/API callback. The external scheduler must use that IANA timezone, not a fixed UTC offset.
