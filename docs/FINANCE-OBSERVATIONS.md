@@ -1,6 +1,8 @@
 # Received balance observations (FH-FIN-023)
 
-A received provider amount is a separate observation, not a rewrite of a historical bank-dated balance. The UI associates the amount with capturedAt and an explicit local timezone. sourceAsOf stays null when unknown. Historical accounts, source dates, holdings, transactions, performance, scope, coverage, pending counts, limits and decisions remain intact. All three finance tabs share the capture note with its account count; it never asserts every dataset was refreshed.
+Base observations were published in PR #284 (4fb833ccb38b737fa65a69de7893bf211f917317); installed-worker activation and private import readback are verified. The received-date evolution extension below remains Testing until its own publication and acceptance.
+
+A received provider amount is a separate observation, not a rewrite of a historical bank-dated balance. The UI associates the amount with capturedAt and an explicit local timezone. sourceAsOf stays null when unknown. Historical accounts, source dates, holdings, transactions, performance, scope, coverage, pending counts, limits and decisions remain intact. Canonical finance views share the capture note with its account count; it never asserts every dataset was refreshed. The separate source-expense mode has its own capture note.
 
 ## Private paired import
 
@@ -21,3 +23,15 @@ The latest eligible capture drives the displayed received amount only until a la
 Synthetic tests cover partial 2-of-9 account updates, preservation, preview, replay, restart, contradictions, timestamps, malformed input, archived hash verification, missing evidence, old-worker capability refusal and exact response verification. Browser checks cover 320/390/768/1440px, timezone presentation, all three tabs, repeated detail/back, historical visibility and honest read-only reload. Source private values are never test fixtures.
 
 Exact CI, Pages, installed-worker capability, private two-account import/readback, and the broader unmapped-account inventory are separate acceptance gates. No live runtime or private import is changed by these files.
+
+## Received-date evolution follow-up
+
+Testing, not yet published. The base received-balance release is PR #284 / 4fb833c. The follow-up is frontend-only and uses existing immutable balanceObservations; no worker installation, new import schema, source retrieval, mapping, schedule or private data mutation is required.
+
+Within each account's received-balance history, every plotted point is dated by its actual capturedAt and labeled Reçu le with an explicit timezone. Points are discrete, with no interpolated line, invented date, missing-value zero or source-date substitution. Bank-dated historical amounts remain separate and never become a fabricated first receipt.
+
+Two or more compatible captures show the absolute first-to-last change and the change since the previous receipt. These differences are not returns: deposits, withdrawals and other movements can contribute. A single receipt explicitly lacks enough history. Known zeroes, negative balances and unchanged later receipts are retained. Currencies/accounts never mix; same-instant replays (including equivalent timezone offsets) collapse, while same-time amount/source-date/provenance contradictions block comparison. Invalid, future or unsupported receipts are excluded with a visible caveat, not converted.
+
+The chart shows up to 100 actual recent points; all exact timestamped amounts remain available in the keyboard-accessible history in pages of 20. Original source-as-of, including unknown, is retained beside each receipt. No financial outcome, performance, interpolation or zero position is inferred.
+
+Synthetic calculation tests cover zero/one/multiple captures, chronology, positive/negative/unchanged deltas, equivalent-instant replay, conflicting provenance, currency/account boundaries, invalid timestamps and input immutability. Four-width browser acceptance covers the multi-point plot, one-receipt state, repeated detail/back, preserved bank history, source-date replacement and no mutation.

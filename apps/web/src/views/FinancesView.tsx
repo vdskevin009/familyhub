@@ -30,6 +30,7 @@ import { benchmarkMeta, benchmarkProfiles } from "../finance-benchmarks";
 import { calendarPeriod, defaultPeriod } from "../finance-periods";
 import PeriodNavigator from "./PeriodNavigator";
 import FinanceScope from "./FinanceScope";
+import ReceivedBalanceEvolution from "./ReceivedBalanceEvolution";
 import { latestBalanceObservation } from "../../../worker/src/finance-observations";
 import { displayFinanceCapture, FinanceCollectionNote } from "./FinanceCollectionNote";
 import FinanceSourceInventory from "./FinanceSourceInventory";
@@ -1083,7 +1084,8 @@ export default function FinancesView({
                                     {selectedObservation && <p>{selectedObservation.sourceAsOf ? `Date bancaire : ${displayDate(selectedObservation.sourceAsOf)}` : "Date bancaire inconnue. L’heure de réception ne prouve pas la fraîcheur bancaire."}</p>}
                                     {data.balanceObservations?.some(o => o.accountId === selected.id) && <details className="finance-journey-disclosure"><summary>Historique des soldes reçus</summary>
                                         <p>Valeur historique conservée : {latest ? money(latest.totalCents, latest.currency) : selected.balanceCents === null ? "inconnue" : money(selected.balanceCents, selected.currency)} · {latest?.asOf ?? selected.asOf}.</p>
-                                        {(data.balanceObservations ?? []).filter(o => o.accountId === selected.id).sort((a, b) => Date.parse(b.capturedAt) - Date.parse(a.capturedAt)).map(o => <p key={o.capturedAt}>{money(o.balanceCents, o.currency)} · reçu le {displayFinanceCapture(o.capturedAt)} · {o.sourceAsOf ? `date bancaire : ${o.sourceAsOf}` : "date bancaire inconnue"}</p>)}
+                                        <p className="muted">Cette valeur bancaire historique reste distincte des réceptions ci-dessous.</p>
+                                        <ReceivedBalanceEvolution key={selected.id + ":" + selected.currency} observations={data.balanceObservations ?? []} accountId={selected.id} currency={selected.currency} />
                                     </details>}
                                     <Sources
                                         sources={[

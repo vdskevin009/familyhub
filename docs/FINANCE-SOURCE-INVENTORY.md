@@ -1,6 +1,6 @@
 # Private source inventory (FH-FIN-024; complements FH-FIN-022/023)
 
-Locally integrated and synthetically tested, not activated or published. This additive inventory extends the distinction between source collection time and bank as-of dates to accounts without an attested canonical identity, credit metadata and recurring forecasts. It adds a paired API and read-only panel but does not collect sources, modify the canonical ledger or change any deployed worker.
+Published in PR #285 (f915f582950adaeebcd527d969fa148d905d4b79); installed-worker activation and private import readback are verified. This additive inventory extends the distinction between source collection time and bank as-of dates to accounts without an attested canonical identity, credit metadata and recurring forecasts. It adds a paired API and read-only panel but does not collect sources, modify the canonical ledger or initiate a bank action.
 
 ## Contract
 
