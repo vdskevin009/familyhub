@@ -331,3 +331,7 @@ Source-native spending (FH-FIN-025) is a separate paired, no-store /finance/sour
 ## Source-native trend projection (FH-FIN-025 continuation)
 
 The web-only finance-source-trends projection consumes one validated immutable SourceExpensesSnapshot via the existing read lifecycle. It reuses source classification and pending-identity exclusion; it does not adapt provider accounts into FinanceState or union historical/capture records. FinanceSourceTrends and the canonical FinanceTrends are mutually exclusive. Compatible comparisons require source-attested coverage and compatible elapsed-day periods. No route, worker store, runtime or persistence is added.
+
+## Monthly account versions
+
+The paired account-captures store preserves immutable received snapshots independently of the canonical ledger and legacy inventory. The read-only account-history projection verifies archived import hashes and preserves original source dates and recorded signs. The client selects exactly one version and currency: documented provider conventions support observed net totals, while older recorded sums are labelled separately. Neither source is merged through inferred account identity. See FINANCE-ACCOUNT-CAPTURES.md and FINANCE-MONTHLY-ACCOUNTS-UI.md for contracts, retention and activation gates.
