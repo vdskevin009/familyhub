@@ -4,6 +4,15 @@ import { emptyPlan, emptyEvidence } from '../apps/worker/src/grocery-planning.ts
 import { blankItem, emptyReceipt } from '../apps/worker/src/grocery-model.ts';
 import { purchaseScenarioStores } from '../apps/web/src/grocery-purchase-scenarios.ts';
 import { purchaseLineKey } from '../apps/worker/src/grocery-purchase-evidence.ts';
+import { purchasePriceKey } from '../apps/worker/src/grocery-purchase-evidence.ts';
+import { derivePurchaseScenarios, scenarioLineDiagnostics } from '../apps/worker/src/grocery-purchase-scenarios.ts';
+import { emptyPurchaseResolution } from '../apps/worker/src/grocery-purchase-resolution.ts';
+import { explicitScenarioFormat, wholeScenarioPacks } from '../apps/worker/src/grocery-scenario-evidence.ts';
+import { mkdtemp, readFile, writeFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 const today='2026-11-14';
 function fixture(){
  const record={id:'synthetic',revision:'r',status:'saved',extraction:'complete',reviewedAt:null,createdAt:today+'T00:00:00.000Z',duplicateOf:null,sources:[],receipt:{...emptyReceipt(),sourceType:'confirmation',store:'PC Express',date:today,currency:'CAD',total:112,items:[{...blankItem(),name:'Tofu Extra Firm',product:'Tofu Extra Firm',quantity:3,size:400,unit:'g',evidence:'Synthetic source',uncertain:true},{...blankItem(),name:'Unknown product',product:'Unknown product',quantity:1,evidence:'Synthetic source'}]}};
@@ -35,4 +44,127 @@ test('repeated identical references round whole packs once for combined quantity
 test('known club format normalizes rather than assuming competitor package quantity',()=>{
  const {record,plan}=fixture();Object.assign(record.receipt.items[0],{name:'Plain Greek Yogurt 2% Club Size',product:'Plain Greek Yogurt 2% Club Size',quantity:2,size:1,unit:'kg'});Object.assign(plan.prices[0],{product:'Plain Greek Yogurt 2%',price:6,size:750,unit:'g'});
  const s=purchaseScenarioStores(plan,record,today).find(s=>s.name==='Walmart');assert.equal(s.normalized,16);assert.equal(s.outlay,18);assert.equal(s.lines[0].scenario.quantity,2);
+});
+
+function onlyLine(f){ f.record.receipt.items=[f.record.receipt.items[0]];return f; }
+function secondStore(plan,overrides={}){
+ plan.retailers.push({...plan.retailers[0],id:'co',name:'Costco',membershipStatus:'existing'});
+ plan.prices.push({...plan.prices[0],id:'p2',retailerId:'co',size:1000,price:8,...overrides});
+}
+const wm=f=>purchaseScenarioStores(f.plan,f.record,today,f.state,f.records).find(s=>s.name==='Walmart');
+test('an uncertain selling unit uses the same inferred physical target at every retailer',()=>{
+ const f=onlyLine(fixture());Object.assign(f.record.receipt.items[0],{quantity:2,size:null,unit:null});secondStore(f.plan);
+ const state=emptyPurchaseResolution();state.scenarioHints=[{id:'source',purpose:'source-format',product:'Tofu Extra Firm',productId:'',priceId:'',priceKey:'',size:1,unit:'each',packagePrice:null,sourceUrl:'https://example.com/source',observedAt:today+'T00:00:00.000Z',note:'Selling unit only'}];
+ const rows=derivePurchaseScenarios([f.record],f.plan,state,today);
+ assert.equal(rows.length,2);assert.deepEqual(rows.map(r=>[r.quantity,r.size,r.unit]),[[2,500,'g'],[2,500,'g']]);assert.deepEqual(rows.map(r=>r.normalized),[10,8]);
+ f.plan.prices.reverse();assert.deepEqual(derivePurchaseScenarios([f.record],f.plan,state,today).map(r=>[r.size,r.unit]),[[500,'g'],[500,'g']]);
+});
+test('known count cannot silently turn into a Walmart mass package',()=>{
+ const f=onlyLine(fixture());Object.assign(f.record.receipt.items[0],{product:'Mini Cucumbers',quantity:1,size:4,unit:'each'});Object.assign(f.plan.prices[0],{product:'Mini Cucumbers'});secondStore(f.plan);
+ assert.equal(derivePurchaseScenarios([f.record],f.plan,undefined,today).length,0);
+ const state=emptyPurchaseResolution();state.scenarioHints=[{id:'mass',purpose:'count-equivalent',product:'Mini Cucumbers',productId:'',priceId:'p',priceKey:purchasePriceKey(f.plan.prices[0]),size:600,unit:'g',sourceCount:4,packagePrice:null,sourceUrl:'https://example.com/mass',observedAt:today+'T00:00:00.000Z',note:'Explicit synthetic common assumption'}];
+ const rows=derivePurchaseScenarios([f.record],f.plan,state,today);assert.equal(rows.length,2);assert.deepEqual(rows.map(r=>[r.size,r.unit]),[[600,'g'],[600,'g']]);
+ state.scenarioHints.push({...state.scenarioHints[0],id:'conflict',size:800});assert.equal(derivePurchaseScenarios([f.record],f.plan,state,today).length,0);
+});
+test('g/kg and ml/l normalize; mass and volume never mix',()=>{
+ for(const [source,reference,expected] of [[['kg',1.25],['g',500],12.5],[['l',1.5],['ml',500],15]]){
+  const f=onlyLine(fixture());Object.assign(f.record.receipt.items[0],{quantity:1,size:source[1],unit:source[0]});Object.assign(f.plan.prices[0],{size:reference[1],unit:reference[0]});assert.equal(wm(f).normalized,expected);
+ }
+ const f=onlyLine(fixture());f.record.receipt.items[0].unit='l';assert.equal(wm(f).covered,0);
+});
+test('explicit multipack label multiplies pack contents once and retains fractional source quantity',()=>{
+ const f=onlyLine(fixture());Object.assign(f.record.receipt.items[0],{product:'Tofu Extra Firm 3 × 250 g',quantity:1.5,size:null,unit:null});
+ const s=wm(f);assert.equal(s.normalized,11.25);assert.equal(s.outlay,15);assert.equal(s.lines[0].scenario.size,750);
+});
+test('format extraction rejects nutrition, ranges, and ambiguous declarations',()=>{
+ assert.deepEqual(explicitScenarioFormat('Synthetic food 2 x 400 g'),{size:800,unit:'g'});
+ assert.deepEqual(explicitScenarioFormat('Synthetic food 2 lb'),{size:907.18474,unit:'g'});
+ for(const title of ['Protein food 10g per serving','Synthetic 400-600 g','Synthetic 400 g / 500 g','Synthetic 6 pack'])assert.equal(explicitScenarioFormat(title),null);
+});
+test('positive tiny needs still require a package and exact floating point multiples stay exact',()=>{
+ assert.equal(wholeScenarioPacks(1e-12),1);assert.equal(wholeScenarioPacks(3.0000000000000004),3);assert.equal(wholeScenarioPacks(3.000001),4);
+});
+test('an unrecognized product with exact source text can use an independent price',()=>{
+ const f=onlyLine(fixture());f.record.receipt.items[0].product='Synthetic pantry item';f.plan.prices[0].product='Synthetic pantry item';assert.equal(wm(f).covered,1);assert.equal(wm(f).lines[0].scenario.family,'exact-name');
+ f.plan.prices[0].product='Other synthetic pantry item';assert.equal(wm(f).covered,0);assert.deepEqual(wm(f).lines[0].diagnostic.reasons,['family-unrecognized']);
+});
+test('bounded new families preserve cheese type, salted butter and dry lasagne distinctions',()=>{
+ for(const [source,ref,covered] of [['Medium Cheddar Cheese Slices','Example Medium Cheddar Cheese Slices',1],['Medium Cheddar Cheese Slices','Example Marble Cheddar Cheese Slices',0],['Salted Butter','Example Salted Butter',1],['Salted Butter','Example Unsalted Butter',0],['Salted Butter','Example Salted Butter with Canola Oil',0],['Lasagne Pasta','Example Classic Lasagne Pasta',1],['Lasagne Pasta','Example Oven-Ready Lasagne Pasta',0]]){
+  const f=onlyLine(fixture());f.record.receipt.items[0].product=source;f.plan.prices[0].product=ref;assert.equal(wm(f).covered,covered,source+' / '+ref);
+ }
+});
+test('dietary and preservation constraints survive estimated alternatives',()=>{
+ for(const [source,ref] of [['Organic Tofu Extra Firm','Tofu Extra Firm'],['Gluten Free Spaghetti','Spaghetti'],['Frozen Strawberries','Fresh Strawberries'],['Smoked Salmon','Salmon'],['Plain Greek 2%','Plain Greek 0%'],['Plant Based Plain Greek 2%','Plain Greek 2%']]){
+  const f=onlyLine(fixture());f.record.receipt.items[0].product=source;f.plan.prices[0].product=ref;assert.equal(wm(f).covered,0,source);
+ }
+});
+test('missing price does not become zero; an evidenced zero remains zero',()=>{
+ for(const value of [null,undefined,NaN,Infinity,-1]){const f=onlyLine(fixture());f.plan.prices[0].price=value;assert.equal(wm(f).normalized,null);assert.deepEqual(wm(f).lines[0].diagnostic.reasons,['missing-price']);}
+ const f=onlyLine(fixture());f.plan.prices[0].price=0;assert.equal(wm(f).normalized,0);assert.equal(wm(f).covered,1);
+});
+test('search and category pages stay leads even when a stored price is present',()=>{
+ for(const url of ['https://example.com/results?q=tofu','https://example.com/categories/food','https://example.com/store/s?k=tofu']){
+  const f=onlyLine(fixture());f.plan.prices[0].evidence.url=url;assert.equal(wm(f).covered,0);assert.deepEqual(wm(f).lines[0].diagnostic.reasons,['source-unverified']);
+ }
+});
+test('invalid and old dates block; recent expired price stays explicitly historical',()=>{
+ for(const [date,reason] of [['','invalid-date'],['2026-02-30','invalid-date'],['2027-01-01','invalid-date'],['2026-01-01','stale-price']]){
+  const f=onlyLine(fixture());f.plan.prices[0].evidence.date=date;assert.equal(wm(f).covered,0);assert.deepEqual(wm(f).lines[0].diagnostic.reasons,[reason]);
+ }
+ const f=onlyLine(fixture());Object.assign(f.plan.prices[0].evidence,{date:'2026-11-10',until:'2026-11-12'});assert.equal(wm(f).covered,1);assert.equal(wm(f).historical,true);assert.equal(wm(f).limited,true);
+});
+test('nonlocal and unavailable references never become verified current offers',()=>{
+ const f=onlyLine(fixture());Object.assign(f.plan.prices[0],{localityConfirmed:false,available:'no',mode:'unknown'});const s=wm(f);assert.equal(s.estimated,1);assert.equal(s.verified,0);assert.equal(s.nonlocal,true);assert.equal(s.limited,true);assert.match(s.lines[0].scenario.limits.join(' '),/Indisponible.*Canal|Canal.*Indisponible/);
+});
+test('separate localities cannot manufacture a complete basket',()=>{
+ const f=fixture();f.record.receipt.items[1]={...f.record.receipt.items[0],product:'Plain Greek 2%'};
+ f.plan.prices.push({...f.plan.prices[0],id:'other',product:'Plain Greek 2%',locality:'Another branch'});
+ const s=wm(f);assert.equal(s.covered,1);assert.equal(s.complete,false);assert.equal(s.multiContext,false);assert.match(s.lines.find(l=>l.normalized===null).reason,/autre localité/);
+ assert.equal(derivePurchaseScenarios([f.record],f.plan,undefined,today).length,1);
+});
+test('a coherent context covering more rows wins over isolated newer prices',()=>{
+ const f=fixture();f.record.receipt.items[1]={...f.record.receipt.items[0],product:'Plain Greek 2%'};
+ f.plan.prices.push({...f.plan.prices[0],id:'y',product:'Plain Greek 2%'},{...f.plan.prices[0],id:'new',locality:'Another branch',evidence:{...f.plan.prices[0].evidence,date:today}});
+ const s=wm(f);assert.equal(s.covered,2);assert.equal(s.complete,true);assert.deepEqual(s.lines.map(l=>l.price.locality),['Fictional','Fictional']);
+});
+test('receipt reference must be final, independent, exact-id bound, and unambiguous',()=>{
+ const f=onlyLine(fixture());const other=structuredClone(f.record);other.id='other';other.receipt.sourceType='final-receipt';other.reviewedAt=today;Object.assign(other.receipt.items[0],{amount:10,quantity:2,size:500});
+ Object.assign(f.plan.prices[0],{kind:'receipt',price:10,evidence:{title:'Receipt other',url:'',date:today,until:null}});f.records=[f.record,other];
+ assert.equal(wm(f).normalized,12); // 3 * 400 g / 500 g * (10 / 2)
+ other.duplicateOf=f.record.id;assert.equal(wm(f).covered,0);other.duplicateOf=null;
+ other.receipt.sourceType='confirmation';assert.equal(wm(f).covered,0);other.receipt.sourceType='final-receipt';
+ f.plan.prices[0].evidence.title='Receipt other-extra';assert.equal(wm(f).covered,0);f.plan.prices[0].evidence.title='Receipt other';
+ other.receipt.items.push({...other.receipt.items[0]});assert.equal(wm(f).covered,0);
+});
+test('future hints and product-id-specific hints never leak into another purchase',()=>{
+ const f=onlyLine(fixture());Object.assign(f.record.receipt.items[0],{size:null,unit:null});const state=emptyPurchaseResolution();
+ const hint={id:'h',purpose:'source-format',product:'Tofu Extra Firm',productId:'',priceId:'',priceKey:'',size:999,unit:'g',packagePrice:null,sourceUrl:'https://example.com/tofu',observedAt:'2030-01-01T00:00:00.000Z',note:'Future'};
+ state.scenarioHints=[hint];assert.equal(derivePurchaseScenarios([f.record],f.plan,state,today)[0].size,500);
+ hint.observedAt=today+'T00:00:00.000Z';hint.productId='other-sku';assert.equal(derivePurchaseScenarios([f.record],f.plan,state,today)[0].size,500);
+});
+test('duplicate purchases never receive calculated coverage',()=>{
+ const f=onlyLine(fixture());f.record.duplicateOf='original';assert.equal(wm(f).covered,0);assert.equal(wm(f).complete,false);
+});
+test('a source-bound format hint resolves an unknown reference without being discarded by its old note',()=>{
+ const f=onlyLine(fixture());Object.assign(f.plan.prices[0],{size:1,unit:'each',matchNote:'Format non confirmé'});const state=emptyPurchaseResolution();
+ const h={id:'format',purpose:'reference-format',product:f.plan.prices[0].product,productId:'',priceId:'p',priceKey:purchasePriceKey(f.plan.prices[0]),size:500,unit:'g',packagePrice:null,sourceUrl:'https://example.com/format',observedAt:today+'T00:00:00.000Z',note:'Independent matching format source'};
+ state.scenarioHints=[h];f.state=state;assert.equal(wm(f).normalized,12);assert.equal(wm(f).outlay,15);assert.equal(wm(f).packEstimated,true);
+ state.scenarioHints.push({...h,id:'contradiction',size:1000});assert.equal(wm(f).covered,0);
+});
+test('conflicting common source hypotheses remain unresolved',()=>{
+ const f=onlyLine(fixture());Object.assign(f.record.receipt.items[0],{size:null,unit:null});const state=emptyPurchaseResolution();
+ const h={id:'format',purpose:'source-format',product:'Tofu Extra Firm',productId:'',priceId:'',priceKey:'',size:500,unit:'g',packagePrice:null,sourceUrl:'https://example.com/format',observedAt:today+'T00:00:00.000Z',note:'Synthetic assumption'};
+ state.scenarioHints=[h,{...h,id:'conflict',size:1000}];f.state=state;assert.equal(wm(f).covered,0);
+});
+test('the coverage CLI replays synthetic files and public overlays without changing source bytes',async()=>{
+ const dir=await mkdtemp(join(tmpdir(),'grocery-coverage-'));try{
+  const f=onlyLine(fixture()),state=emptyPurchaseResolution(),originals={purchases:JSON.stringify({records:[f.record]}),planning:JSON.stringify(f.plan),'purchase-resolution':JSON.stringify(state)};
+  for(const [name,bytes]of Object.entries(originals))await writeFile(join(dir,name+'.json'),bytes);
+  const run=(...args)=>promisify(execFile)(process.execPath,[...process.execArgv,'scripts/grocery-coverage-report.mjs',dir,today,...args],{maxBuffer:1000000});
+  const report=JSON.parse((await run()).stdout);assert.equal(report.purchases[0].stores[0].covered,1);assert.equal(report.referenceOverlay,false);assert.ok(!JSON.stringify(report).includes('Tofu'));
+  const overlay=emptyPlan();overlay.items=[{id:'extra-item',name:'Synthetic unmatched item',quantity:null,size:null,unit:null,preference:'',substitutions:false,active:false,origin:'synthetic'}];overlay.retailers=[{...f.plan.retailers[0],id:'extra-store',membershipStatus:'unknown'}];overlay.prices=[{...f.plan.prices[0],id:'extra-price',itemId:'extra-item',retailerId:'extra-store'}];
+  const file=join(dir,'overlay.json');await writeFile(file,JSON.stringify(overlay));assert.equal(JSON.parse((await run(file)).stdout).referenceOverlay,true);
+  overlay.prices[0].kind='receipt';await writeFile(file,JSON.stringify(overlay));await assert.rejects(run(file),/Only public product references/);
+  for(const [name,bytes]of Object.entries(originals))assert.equal(await readFile(join(dir,name+'.json'),'utf8'),bytes);
+ }finally{await rm(dir,{recursive:true,force:true});}
 });
