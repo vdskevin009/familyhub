@@ -1,6 +1,7 @@
 import { rememberMailSources, mailSourcePolicyWarning } from "./mail-source-policy";
 import { AgentReview, CleanupSuggestion, ReconciliationCase, ReimbursementItem, ReimbursementWorkflowStatus, ResearchWatch, UnmatchedReimbursement, WorkerConfig, WorkerTask, WorkerTaskType } from "./types";
 import { workerRequestHeaders } from "./worker-transport";
+import { SOURCE_INVENTORY_CAPABILITY, validateFinanceSourceInventory, validateFinanceSourceInventoryState, type FinanceSourceInventoryState, type SourceInventoryImportResult } from "../../worker/src/finance-source-inventory-model";
 import type { PublicBaseline, SavingsJob } from "./savings";
 import type { SavingsContract } from "./savings";
 import type { SharedLibrary, SharedDocument } from "../../worker/src/savings-sharing-model";
@@ -143,6 +144,43 @@ async function request<T>(config: WorkerConfig, path: string, init: RequestInit 
 }
 
 export const fetchFinances = (config: WorkerConfig) => request<import("../../worker/src/finance-model").FinanceState>(config,"/finances");
+async function hasFinanceSourceInventory(config: WorkerConfig): Promise<boolean> {
+  const health = await request<{ capabilities?: string[] }>(config, "/health");
+  return Array.isArray(health.capabilities) && health.capabilities.includes(SOURCE_INVENTORY_CAPABILITY);
+}
+async function readFinanceSourceInventory(config: WorkerConfig): Promise<FinanceSourceInventoryState> {
+  const body = await request<{ capability?: unknown; state?: unknown }>(config, "/finance/source-inventory");
+  if (!body || Object.keys(body).sort().join(",") !== "capability,state" || body.capability !== SOURCE_INVENTORY_CAPABILITY) throw new Error("Inventaire source non confirmé par le PC.");
+  return validateFinanceSourceInventoryState(body.state);
+}
+/** null means an older worker, not a known empty inventory. Never cache private evidence in the PWA. */
+export async function fetchFinanceSourceInventory(config: WorkerConfig): Promise<FinanceSourceInventoryState | null> {
+  return await hasFinanceSourceInventory(config) ? readFinanceSourceInventory(config) : null;
+}
+export async function importFinanceSourceInventory(config: WorkerConfig, value: unknown, expectedRevision: string, apply = false): Promise<SourceInventoryImportResult> {
+  if (!await hasFinanceSourceInventory(config)) throw new Error("Mettez à jour le worker PC pour conserver l'inventaire source. Aucun import effectué.");
+  const snapshot = validateFinanceSourceInventory(value);
+  if (!(expectedRevision === "empty" || /^[a-f0-9]{64}$/.test(expectedRevision))) throw new Error("Révision de l'inventaire requise.");
+  const result = await request<SourceInventoryImportResult>(config, "/finance/source-inventory", { method: "POST", body: JSON.stringify({ capability: SOURCE_INVENTORY_CAPABILITY, snapshot, expectedRevision, apply }) });
+  const uncertain = () => new Error(apply ? "Enregistrement de l'inventaire non confirmé. Relisez le PC avant de réessayer; aucun import automatique." : "Aperçu de l'inventaire non confirmé. Aucun import effectué.");
+  if (!result || Object.keys(result).sort().join(",") !== "alreadyImported,applied,capability,expectedRevision,proposedRevision,snapshot,state"
+    || result.capability !== SOURCE_INVENTORY_CAPABILITY || result.applied !== apply || result.expectedRevision !== expectedRevision
+    || typeof result.proposedRevision !== "string" || !/^[a-f0-9]{64}$/.test(result.proposedRevision)
+    || result.alreadyImported !== (result.proposedRevision === expectedRevision)) throw uncertain();
+  try {
+    if (JSON.stringify(validateFinanceSourceInventory(result.snapshot)) !== JSON.stringify(snapshot)) throw uncertain();
+    if (apply) {
+      const state = validateFinanceSourceInventoryState(result.state);
+      if (state.revision !== result.proposedRevision || JSON.stringify(state.snapshot) !== JSON.stringify(snapshot)) throw uncertain();
+      // Independent GET verifies durable readback. Lost/invalid responses never replay POST.
+      const readback = await readFinanceSourceInventory(config);
+      if (readback.revision !== state.revision || JSON.stringify(readback.snapshot) !== JSON.stringify(snapshot)) throw uncertain();
+      return { ...result, snapshot, state: readback };
+    }
+    if (result.state !== null) throw uncertain();
+  } catch { throw uncertain(); }
+  return { ...result, snapshot, state: null };
+}
 export async function saveFinanceChange(config: WorkerConfig, body: object) {
   try { return await request<import("../../worker/src/finance-model").FinanceChangeResult>(config, "/finances/changes", { method: "POST", body: JSON.stringify(body) }); }
   catch (error) {

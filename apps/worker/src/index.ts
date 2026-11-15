@@ -14,6 +14,9 @@ import { SavingsLibrary, SavingsConflict } from "./savings-library.js";
 import { MortgageDailyRunner } from "./mortgage-runner.js";
 import { MortgageStore, MortgageConflict } from "./mortgage-store.js";
 import { FinanceLibrary, FinanceConflict } from "./finance-library.js";
+import { FinanceSourceInventoryStore, SourceInventoryConflict } from "./finance-source-inventory-store.js";
+import { SOURCE_INVENTORY_CAPABILITY, SOURCE_INVENTORY_LIMITS, SourceInventoryError } from "./finance-source-inventory-model.js";
+import { importFinanceSourceInventory } from "./finance-source-inventory-api.js";
 import { readContributionsView } from "./contributions-view.js";
 import { NotificationLibrary, NotificationConflict } from "./notification-library.js";
 import { OpportunityActions, OpportunityActionsConflict } from "./opportunity-actions.js";
@@ -87,6 +90,7 @@ const savingsLibrary = new SavingsLibrary(join(savingsDirectory, "household-cont
 const mortgageStore = new MortgageStore(join(stateDir, "mortgage", "evidence"));
 const mortgageDaily = new MortgageDailyRunner(mortgageStore);
 const financeLibrary = new FinanceLibrary(join(stateDir, "finances"));
+const financeSourceInventory = new FinanceSourceInventoryStore(stateDir);
 const pushConfiguration = new PushConfiguration(stateDir);
 const opportunityActions = new OpportunityActions(join(stateDir, "opportunities", "actions.json"));
 const notifications = new NotificationLibrary(join(stateDir, "notifications", "history.json"), () => pushConfiguration.read(), sendPush, () => opportunityActions.read());
@@ -385,6 +389,10 @@ const server = createServer(async (request, response) => {
     if (parts.length === 2 && parts[0] === "contributions" && parts[1] === "progress" && request.method === "GET") {
       json(response, 200, await readContributionsView(stateDir, await financeLibrary.read()), origin); return;
     }
+    if (parts.length === 2 && parts[0] === "finance" && parts[1] === "source-inventory") {
+      if (request.method === "GET") { json(response, 200, { capability: SOURCE_INVENTORY_CAPABILITY, state: await financeSourceInventory.read() }, origin); return; }
+      if (request.method === "POST") { json(response, 200, await importFinanceSourceInventory(financeSourceInventory, await readJson(request, SOURCE_INVENTORY_LIMITS.bytes + 2_000)), origin); return; }
+    }
     if (parts[0] === "finances") {
       if (parts.length === 2 && parts[1] === "changes" && request.method === "POST") { json(response, 200, await financeLibrary.change(await readJson(request)), origin); return; }
       if (parts.length === 1 && request.method === "GET") { json(response, 200, await financeLibrary.read(), origin); return; }
@@ -662,7 +670,7 @@ const server = createServer(async (request, response) => {
       }
     }
     if (request.method === "GET" && parts.length === 1 && parts[0] === "health") {
-      json(response, 200, { status: "ok", codex: "sdk-ready", version, capabilities: ["finance-balance-observations-v1", "contribution-progress-v1", "bluecross-import-jobs-v1", "attachment-preparation-v1", "grocery-purchase-four-retailers-v1", "grocery-purchase-estimates-v1", "grocery-purchase-resolution-v1", "household-events-v1", "opportunity-actions-v1", "notification-lifecycle-v1", "insurance-reference-v1", "mortgage-evidence-v1", "mortgage-contacts-v1", "mortgage-assistant-v1", "grocery-collection-v1", "grocery-source-type-v1", "grocery-fulfillment-v1", "grocery-comparison-evidence-v1", "grocery-source-estimates-v1", "grocery-receipts-v1", "grocery-planning-v1", "grocery-weekly-v1", groceryExpandedListCapability] }, origin);
+      json(response, 200, { status: "ok", codex: "sdk-ready", version, capabilities: [SOURCE_INVENTORY_CAPABILITY, "finance-balance-observations-v1", "contribution-progress-v1", "bluecross-import-jobs-v1", "attachment-preparation-v1", "grocery-purchase-four-retailers-v1", "grocery-purchase-estimates-v1", "grocery-purchase-resolution-v1", "household-events-v1", "opportunity-actions-v1", "notification-lifecycle-v1", "insurance-reference-v1", "mortgage-evidence-v1", "mortgage-contacts-v1", "mortgage-assistant-v1", "grocery-collection-v1", "grocery-source-type-v1", "grocery-fulfillment-v1", "grocery-comparison-evidence-v1", "grocery-source-estimates-v1", "grocery-receipts-v1", "grocery-planning-v1", "grocery-weekly-v1", groceryExpandedListCapability] }, origin);
       return;
     }
 
@@ -730,7 +738,8 @@ const server = createServer(async (request, response) => {
     json(response, 404, { error: "Endpoint not found." }, origin);
   } catch (error) {
     const grocery = parts[0] === "groceries";
-    json(response, error instanceof MortgageConflict || error instanceof SavingsConflict || error instanceof FinanceConflict || error instanceof NotificationConflict || error instanceof OpportunityActionsConflict || error instanceof GroceryConflict ? 409 : 400, { error: grocery && !(error instanceof GroceryError) ? "Action Courses indisponible. Les données restent conservées ; actualisez avant de réessayer." : error instanceof Error ? error.message : "Request failed." }, origin);
+    const sourceInventory = parts[0] === "finance" && parts[1] === "source-inventory";
+    json(response, error instanceof MortgageConflict || error instanceof SavingsConflict || error instanceof FinanceConflict || error instanceof SourceInventoryConflict || error instanceof NotificationConflict || error instanceof OpportunityActionsConflict || error instanceof GroceryConflict ? 409 : 400, { error: sourceInventory && !(error instanceof SourceInventoryError) ? "Inventaire source indisponible. Les données restent conservées." : grocery && !(error instanceof GroceryError) ? "Action Courses indisponible. Les données restent conservées ; actualisez avant de réessayer." : error instanceof Error ? error.message : "Request failed." }, origin);
   }
 });
 
