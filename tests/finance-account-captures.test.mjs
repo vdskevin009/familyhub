@@ -28,12 +28,17 @@ test('strict capture allowlists, genuine dates, size, counts and derived sign ev
 });
 test('exact all-source preparer includes mapped and unmapped source keys once without canonical inference',()=>{
   const s=accountCaptureFixture(),i=inventoryFixture();i.collectedAt=s.collectedAt;i.accounts=s.accounts.map(({provider,netBalance,...a})=>({...a,reconciliation:'not-reconciled'}));i.predictions=[];i.availability.accounts={status:'available',coverage:'complete',observedCount:9};i.availability.recurring={status:'unavailable',coverage:'unknown',observedCount:0};
-  const options={expectedSourceKeys:s.accounts.map(a=>a.sourceKey),providerBySourceKey:Object.fromEntries(s.accounts.map(a=>[a.sourceKey,a.provider])),sourceSha256:s.sourceSha256,manualAccountCount:0};
+  const options={expectedSourceKeys:s.accounts.map(a=>a.sourceKey),providerBySourceKey:Object.fromEntries(s.accounts.map(a=>[a.sourceKey,a.provider])),sourceSha256:s.sourceSha256,accountScope:'returned-institution-accounts',returnedManualAccountCount:0};
   assert.equal(prepareFinanceAccountCapture(i,options,captureNow).accounts.length,9);
   assert.throws(()=>prepareFinanceAccountCapture(i,{...options,expectedSourceKeys:options.expectedSourceKeys.slice(2)},captureNow));
   assert.throws(()=>prepareFinanceAccountCapture(i,{...options,providerBySourceKey:{}},captureNow));
-  assert.throws(()=>prepareFinanceAccountCapture(i,{...options,manualAccountCount:1},captureNow));
-  assert.throws(()=>prepareFinanceAccountCapture(i,{...options,manualAccountCount:undefined},captureNow));
+  assert.throws(()=>prepareFinanceAccountCapture(i,{...options,returnedManualAccountCount:1},captureNow));
+  assert.throws(()=>prepareFinanceAccountCapture(i,{...options,returnedManualAccountCount:undefined},captureNow));
+  const before=JSON.stringify(i),notReturned=prepareFinanceAccountCapture(i,{...options,returnedManualAccountCount:null},captureNow);
+  assert.equal(notReturned.coverage,'complete');assert.equal(notReturned.sourceAccountCount,9);assert.equal(notReturned.sourceSha256,s.sourceSha256);assert.equal(notReturned.accounts.length,9);assert.equal(JSON.stringify(i),before);
+  assert.throws(()=>prepareFinanceAccountCapture(i,{...options,accountScope:'all-household-accounts'},captureNow));
+  assert.throws(()=>prepareFinanceAccountCapture(i,{...options,accountScope:undefined},captureNow));
+  for(const count of [-1,0.5,false,'0',NaN])assert.throws(()=>prepareFinanceAccountCapture(i,{...options,returnedManualAccountCount:count},captureNow));
   const newProvider=prepareFinanceAccountCapture(i,{...options,providerBySourceKey:{...options.providerBySourceKey,[options.expectedSourceKeys[0]]:'unknown'}},captureNow);assert.equal(newProvider.accounts.find(a=>a.sourceKey===options.expectedSourceKeys[0]).netBalance,null);assert.equal(summarizeFinanceAccountCapture(newProvider).currencies.find(c=>c.currency==='CAD').complete,false);
   i.availability.accounts={status:'partial',coverage:'partial',observedCount:9};assert.throws(()=>prepareFinanceAccountCapture(i,options,captureNow));
 });
