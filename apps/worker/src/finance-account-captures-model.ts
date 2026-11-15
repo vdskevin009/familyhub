@@ -55,7 +55,7 @@ export function validateFinanceAccountCaptureSnapshot(value: unknown, now = new 
     return account;
   }).sort((a,b) => a.sourceKey.localeCompare(b.sourceKey));
   if (v.sourceAccountCount !== null && (!Number.isSafeInteger(v.sourceAccountCount) || (v.sourceAccountCount as number) < accounts.length || (v.sourceAccountCount as number) > 100)) return accountCapturesFail();
-  if (v.coverage === "complete" && (v.sourceAccountCount !== accounts.length || !accounts.length)) return accountCapturesFail();
+  if (v.coverage === "complete" && (v.sourceAccountCount !== accounts.length || !accounts.length || v.sourceSha256 === null)) return accountCapturesFail();
   const result: FinanceAccountCaptureSnapshot = {schemaVersion:1,source:"finances-plugin",collectedAt:source.collectedAt,coverage:v.coverage as FinanceAccountCaptureSnapshot["coverage"],sourceAccountCount:v.sourceAccountCount as number|null,sourceSha256:v.sourceSha256 as string|null,supersedesCaptureId:v.supersedesCaptureId as string|null,accounts};
   if (new TextEncoder().encode(JSON.stringify(result)).byteLength > ACCOUNT_CAPTURES_LIMITS.bytes) return accountCapturesFail();
   return result;
@@ -89,8 +89,10 @@ export function summarizeFinanceAccountCapture(snapshot: FinanceAccountCaptureSn
     const rows=snapshot.accounts.filter(a=>(a.balance?.currency??a.netBalance?.currency)===currency);
     const included=rows.filter(a=>a.netBalance!==null && !["unknown","other"].includes(a.kind));
     const unknownCurrencyAccountCount=snapshot.accounts.filter(a=>!a.balance&&!a.netBalance).length;
-    return {currency,netAmountCents:included.length?included.reduce((sum,a)=>sum+a.netBalance!.amountCents,0):null,includedAccountCount:included.length,excludedAccountCount:rows.length-included.length,
-      complete:snapshot.coverage==="complete" && included.length===rows.length && !unknownCurrencyAccountCount};
+    const total = included.reduce((sum,a)=>sum+BigInt(a.netBalance!.amountCents),0n);
+    const arithmeticUnavailable = total > BigInt(Number.MAX_SAFE_INTEGER) || total < BigInt(Number.MIN_SAFE_INTEGER);
+    return {currency,netAmountCents:included.length && !arithmeticUnavailable ? Number(total) : null,includedAccountCount:included.length,excludedAccountCount:rows.length-included.length,arithmeticUnavailable,
+      complete:!arithmeticUnavailable && snapshot.coverage==="complete" && included.length===rows.length && !unknownCurrencyAccountCount};
   });
   return {coverage:snapshot.coverage,currencies,unknownCurrencyAccountCount:snapshot.accounts.filter(a=>!a.balance&&!a.netBalance).length};
 }
