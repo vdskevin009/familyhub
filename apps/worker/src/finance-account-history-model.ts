@@ -1,4 +1,3 @@
-import {financeTimestamp} from "./finance-observations.js";
 import {accountCapturesFail,captureObject,captureHash} from "./finance-account-captures-model.js";
 export const ACCOUNT_HISTORY_CAPABILITY = "finance-account-history-v1" as const;
 export type FinanceHistoricalAccount = {sourceKey:string;canonicalAccountId:string;name:string;kind:string;currency:string;balanceCents:number|null};
@@ -11,7 +10,9 @@ export function historicalDay(value:unknown):value is string {
   if(typeof value!=="string"||!/^\d{4}-\d{2}-\d{2}$/.test(value))return false;
   const time=Date.parse(value+"T00:00:00Z");return Number.isFinite(time)&&new Date(time).toISOString().slice(0,10)===value;
 }
-export function historicalSourceDate(value:unknown):value is string {if(historicalDay(value))return true;try{financeTimestamp(value);return true;}catch{return false;}}
+export function historicalSourceDate(value:unknown):value is string {
+  return historicalDay(value) || (typeof value==="string" && historicalDay(value.slice(0,10)) && /^\d{4}-\d{2}-\d{2}T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d{1,9})?(?:Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)$/.test(value) && Number.isFinite(Date.parse(value)));
+}
 const label=(value:unknown,max:number):value is string=>typeof value==="string"&&!!value.trim()&&value.length<=max&&!/[\u0000-\u001f\u007f]/.test(value);
 export function validateFinanceAccountHistory(value:unknown):FinanceAccountHistory {
   const r=captureObject(value,["capability","versions","unavailableArchiveCount"]);
