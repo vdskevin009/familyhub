@@ -839,7 +839,7 @@ Published in PR #287 (5f45ca2cfce23133b029725cd00494a340536828); its visible gro
 
 ## FH-FIN-026 - Monthly account versions and observed totals
 
-Testing, not deployed. The approved compact Accounts screen replaces duplicate visible account groups with a month navigator, one selected version, a prominent observed total and its account list. Month arrows, Filters, account/currency filters and small provenance details preserve the existing app navigation and investment details. No synthetic data belongs in production.
+Published in PR #288 (main 7f7e3c3). The approved compact Accounts screen replaces duplicate visible account groups with a month navigator, one selected version, a prominent observed total and its account list. Month arrows, Filters, account/currency filters and small provenance details preserve the existing app navigation and investment details. No synthetic data belongs in production.
 
 A recent version contains exactly the accounts in one attested source capture. Preserve immutable versions, real collection timestamps, nullable bank dates and independent currencies. Never union earlier and later captures, infer identities from account names or suffixes, add historical balances to current balances, convert currencies implicitly or fill absent months with zero. The documented Plaid current-balance convention may produce an observed net for supported provider/account types; missing amounts or conventions qualify a subtotal instead of fabricating a balance. An observed net is neither available cash nor proof of complete wealth or bank freshness.
 
@@ -847,8 +847,13 @@ Historical versions are separate, read-only projections of hash-verified archive
 
 Validation gates: model/store/API and archive safety, replay and concurrent revisions, exact currency arithmetic, missing/corrupt evidence, keyboard/refresh/stale-response behavior and four responsive widths; then exact-head CI, authorized worker activation if needed, real private import/readback and public acceptance. No new account mapping, bank movement or security setting change is implied by this interface.
 ## FH-FIN-025 ΓÇö Private daily finance completion gate (local candidate)
+## FH-FIN-027 ΓÇö Private daily finance completion gate (local candidate)
 
 Retry the intended Finances scope hourly between 08:00 and 20:59 in America/Vancouver, only until verified complete success for that local date. The gate binds scope periods/accounts/sections and all five stage receipts, accepts only complete verified persistence (including explicitly retained unassigned source-native evidence), rejects missing/withheld/uncertain results, suppresses all collector/API callbacks after success, and recovers pending writes through authoritative reads only. Isolated synthetic tests cover timezone/day rollover, concurrency and replay. No real adapter, schedule or production activation is included. See [contract and precise time boundary](docs/FINANCE-DAILY-GATE.md). Existing work item #281; no new external issue.
 
 ### FH-FIN-026 — Two-phase cloud admission
 Scheduled collection must admit locally before any cloud Finances calls, retain a cross-process token-bound lease, journal private mutation intent, and finalize only against independent authoritative readback. Complete-day repeats and lost-response replays must use local proof without source/API calls. Expired or abandoned leases fail closed pending operator review and read-only recovery. Manual updates must not reset scheduled completion. See docs/FINANCE-DAILY-GATE.md.
+
+## FH-FIN-028 - Cloud capture read-only verification (local candidate)
+
+Bind scheduled receipts to post-admission native cloud captures, full private source archives and independent existing FamilyHub GET/store readback. All-linked policy admits newly linked accounts without inferred canonical attribution; unavailable coverage stays partial. Contributions may remain an independently verified no-op with complete unassigned source retained separately. No collector, real intake, deployment or scheduler is activated by this implementation. See docs/FINANCE-CLOUD-READBACK.md.
