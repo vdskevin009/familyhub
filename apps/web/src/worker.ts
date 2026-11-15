@@ -1,3 +1,5 @@
+import { ACCOUNT_HISTORY_CAPABILITY, validateFinanceAccountHistory, type FinanceAccountHistory } from "../../worker/src/finance-account-history-model";
+import { validateFinanceAccountCapturesState, type FinanceAccountCapturesState } from "../../worker/src/finance-account-captures-model";
 import { SOURCE_EXPENSES_CAPABILITY, validateSourceExpenses, validateSourceExpensesState, type SourceExpensesState, type SourceExpensesImportResult } from "../../worker/src/finance-source-expenses-model";
 import { rememberMailSources, mailSourcePolicyWarning } from "./mail-source-policy";
 import { AgentReview, CleanupSuggestion, ReconciliationCase, ReimbursementItem, ReimbursementWorkflowStatus, ResearchWatch, UnmatchedReimbursement, WorkerConfig, WorkerTask, WorkerTaskType } from "./types";
@@ -535,4 +537,20 @@ export async function runResearchWatch(config: WorkerConfig, watch: ResearchWatc
 export async function fetchResearchWatch(config: WorkerConfig, id: string): Promise<ResearchWatch | null> {
   try { return await request<ResearchWatch>(config, `/watches/${encodeURIComponent(id)}`); }
   catch { return null; }
+}
+
+/** Read-only account versions. No inferred fallback or mutation on missing capability. */
+export async function fetchFinanceAccountCaptures(config: WorkerConfig): Promise<FinanceAccountCapturesState | null> {
+    const capability = "finance-account-captures-v1";
+    const health = await request<{ capabilities?: string[] }>(config, "/health");
+    if (!health.capabilities?.includes(capability)) return null;
+    const result = await request<{ capability: string; state: unknown }>(config, "/finance/account-captures");
+    if (!result || result.capability !== capability || Object.keys(result).sort().join(",") !== "capability,state") throw new Error("Versions des comptes non confirmées.");
+    return validateFinanceAccountCapturesState(result.state);
+}
+
+export async function fetchFinanceAccountHistory(config: WorkerConfig): Promise<FinanceAccountHistory | null> {
+    const health = await request<{ capabilities?: string[] }>(config, "/health");
+    if (!health.capabilities?.includes(ACCOUNT_HISTORY_CAPABILITY)) return null;
+    return validateFinanceAccountHistory(await request(config, "/finance/account-history"));
 }

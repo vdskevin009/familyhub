@@ -1,0 +1,36 @@
+.finance-monthly-accounts { --accounts-accent: #2963cb; color: var(--ink); }
+.accounts-period-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.accounts-month-switcher { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.accounts-month-switcher .icon-button { width: 44px; height: 44px; flex-shrink: 0; border: 0; border-radius: 10px; background: #eaf0f7; color: var(--accounts-accent); }
+.accounts-month-switcher strong { font-size: 18px; white-space: nowrap; font-weight: 750; }
+.accounts-filter-button { display: flex; align-items: center; justify-content: center; gap: 7px; min-height: 44px; color: var(--accounts-accent); font-weight: 700; white-space: nowrap; }
+.accounts-scope { display: block; margin-top: 9px; font-size: 13px; color: var(--muted); }
+.accounts-summary { padding: 18px 20px; }
+.accounts-total-heading { display: flex; justify-content: space-between; align-items: center; gap: 8px; color: var(--muted); font-size: 13px; }
+.accounts-net { margin: 2px 0 0; font-size: clamp(28px, 6vw, 38px); line-height: 1.2; font-weight: 750; font-variant-numeric: tabular-nums; letter-spacing: -.035em; overflow-wrap: anywhere; }
+.accounts-net small { font-size: 14px; font-weight: 600; color: var(--muted); letter-spacing: normal; }
+.accounts-equation { margin: 10px 0 0; font-size: 13px; color: var(--muted); }
+.accounts-equation strong { font-weight: 650; color: var(--ink); }
+.accounts-received { font-size: 11px; color: var(--muted); margin: -5px 2px 0; overflow-wrap: anywhere; }
+.accounts-list-heading { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+.accounts-list-heading h2 { font-size: 16px; margin: 0; }
+.accounts-list-heading small { color: var(--muted); font-size: 12px; }
+.accounts-month-list { display: grid; gap: 7px; }
+.accounts-month-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; min-width: 0; min-height: 65px; padding: 12px 14px; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; text-align: left; }
+.accounts-month-row:hover { border-color: #a4b9db; background: #f8faff; }
+.accounts-row-title { display: flex; align-items: center; gap: 11px; min-width: 0; }
+.accounts-row-icon { width: 34px; height: 34px; display: grid; place-items: center; flex-shrink: 0; border-radius: 9px; background: #f0f4fb; color: var(--accounts-accent); }
+.accounts-row-title strong { font-size: 14px; display: block; overflow-wrap: anywhere; }
+.accounts-row-title small { font-size: 11px; color: var(--muted); display: block; margin-top: 2px; }
+.accounts-row-money { font-size: 15px; font-weight: 700; text-align: right; font-variant-numeric: tabular-nums; flex-shrink: 0; }
+.accounts-row-money small { font-size: 10px; font-weight: 500; color: var(--muted); display: block; }
+.accounts-month-row[data-liability=true] .accounts-row-money { color: #87562d; }
+.accounts-status { margin: 0; padding: 14px; background: var(--soft); border-radius: 9px; line-height: 1.5; }
+.accounts-history-link { border: 0; background: transparent; text-align: left; color: var(--accounts-accent); padding: 8px 0; font-size: 13px; }
+.accounts-filter-content { display: grid; gap: 14px; }
+.accounts-filter-content label { display: grid; gap: 5px; }
+.accounts-filter-content select, .accounts-filter-content input { width: 100%; min-width: 0; }
+.finance-monthly-accounts :is(button,select,input,summary):focus-visible { outline: 3px solid var(--accounts-accent); outline-offset: 3px; }
+@media(min-width: 900px) { .accounts-month-list { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media(max-width: 420px) { .accounts-period-row { gap: 8px; } .accounts-month-switcher { gap: 8px; } .accounts-month-switcher strong { font-size: 16px; } .accounts-filter-button { padding-inline: 10px; } .accounts-month-row { padding: 10px; gap: 8px; } .accounts-row-title { gap: 8px; } .accounts-row-title strong { font-size: 13px; } .accounts-row-money { font-size: 14px; } }
+@media(max-width: 350px) { .accounts-month-switcher { gap: 5px; } .accounts-month-switcher strong { font-size: 14px; } .accounts-filter-button { font-size: 12px; gap: 4px; padding-inline: 7px; } .accounts-month-switcher .icon-button { width: 38px; } .accounts-row-icon { width: 26px; height: 30px; } .accounts-row-money { max-width: 42%; overflow-wrap: anywhere; } .accounts-summary { padding: 14px; } }
