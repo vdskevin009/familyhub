@@ -40,7 +40,7 @@ try {
    if(url.hostname!=='synthetic-worker.invalid')return route.abort();
    if(req.method()==='OPTIONS')return route.fulfill({json:{}});if(req.method()!=='GET'){writes.push(path);return route.fulfill({status:403,json:{}});}
    if(path==='/finance/source-expenses'){reads++;if(mode==='delayed'){let finish;delayedFinished=new Promise(r=>{finish=r;});const gate=new Promise(r=>{releaseDelayed=r;});markDelayedStarted();await gate;await route.fulfill({json:{capability,state:saved}});finish();return;}if(mode==='large')return route.fulfill({json:{capability,state:large}});if(mode==='error')return route.fulfill({status:503,json:{error:'synthetic failure'}});if(mode==='empty')return route.fulfill({json:{capability,state:{revision:'empty',snapshots:[]}}});return route.fulfill({json:{capability,state:saved}});}
-   const body=path==='/finances'?state:path==='/health'?{status:'ok',version:'2.30.0',capabilities:supported?[capability]:[]}:path==='/invoices'?{items:[],reconciliations:[],unmatchedReimbursements:[],setupRequired:true,accounts:[]}:path==='/savings/contracts'?{records:[]}:{records:[],jobs:[],items:[],state:'idle'};return route.fulfill({json:body});
+   const body=path==='/finances'?(mode==='no-ledger'?{...state,data:null}:state):path==='/health'?{status:'ok',version:'2.30.0',capabilities:supported?[capability]:[]}:path==='/invoices'?{items:[],reconciliations:[],unmatchedReimbursements:[],setupRequired:true,accounts:[]}:path==='/savings/contracts'?{records:[]}:{records:[],jobs:[],items:[],state:'idle'};return route.fulfill({json:body});
   });
   await page.goto(base);const sourceView=page.locator('.source-expenses');await sourceView.waitFor();
   assert.equal(await page.locator('.finance-expense-charts:visible').count(),0,'No old total underneath source mode');assert.equal(await page.locator('.finance-collection-note').count(),0,'Canonical unknown capture notice cannot contradict the known source timestamp');
@@ -49,6 +49,52 @@ try {
   assert.match(await sourceView.locator('[data-source-total="net"]').innerText(),/115,00/);assert.match(await sourceView.locator('[data-source-total="refunds"]').innerText(),/20,00/);assert.match(await sourceView.innerText(),/Paiement de carte exclu|transferts et revenus/);
   assert.equal(await sourceView.locator('.source-expense-capture time').getAttribute('datetime'),collectedAt);assert.match(await sourceView.locator('.source-expense-capture').innerText(),/H[AN]P|UTC|GMT/);
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);await page.screenshot({path:join(output,'expenses-'+width+'.png'),fullPage:true});
+  await page.getByRole('button',{name:'Tendances',exact:true}).click();
+  const trends=page.locator('.source-trends');await trends.waitFor();
+  assert.equal(await trends.locator('[data-source-trend-month]').count(),12);
+  assert.equal(await page.locator('.trend-annual').count(),0,'Canonical annual trends are not mixed into source mode');
+  assert.equal(await page.locator('.finance-collection-note').count(),0);
+  assert.match(await trends.locator('.source-expense-capture').innerText(),/Date de mise à jour bancaire inconnue/);
+  for(let i=0;i<3;i++){
+    await trends.locator('[data-source-trend-month="2026-11"]').click();
+    await page.waitForFunction(()=>document.activeElement?.id==='source-trend-month-title');
+    assert.match(await trends.locator('[data-source-trend-total]').innerText(),/115,00/);
+    assert.match(await trends.innerText(),/Mois incomplet/);
+    await trends.getByRole('button',{name:"Retour à l'année",exact:true}).click();
+    await page.waitForFunction(()=>document.activeElement?.getAttribute('data-source-trend-month')==='2026-11');
+  }
+  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);
+  await page.screenshot({path:join(output,'trends-annual-'+width+'.png'),fullPage:true});
+  await trends.locator('[data-source-trend-month="2026-11"]').click();
+  await trends.getByText('Cumul quotidien',{exact:true}).click();
+  await trends.getByText('Valeurs jour par jour',{exact:true}).click();
+  assert.equal(await trends.locator('.trend-table tbody tr').count(),14);
+  await trends.getByLabel('Catégorie source',{exact:true}).selectOption('groceries');
+  assert.equal(await trends.locator('.source-expense-rows li').count(),2);
+  await trends.getByLabel('Devise',{exact:true}).selectOption('USD');
+  assert.match(await trends.locator('[data-source-trend-total]').innerText(),/9,00/);
+  await trends.getByLabel('Devise',{exact:true}).selectOption('CAD');
+  const sourceAccount=source.accounts.find(a=>a.name==='Compte source fictif').sourceKey;
+  await trends.getByLabel('Compte source',{exact:true}).selectOption(sourceAccount);
+  assert.match(await trends.locator('[data-source-trend-total]').innerText(),/Non établi/);
+  await trends.getByLabel('Compte source',{exact:true}).selectOption('');
+  assert.match(await trends.locator('[data-source-trend-total]').innerText(),/115,00/);
+  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);
+  await page.screenshot({path:join(output,'trends-month-'+width+'.png'),fullPage:true});
+  await trends.getByText('Changer de collecte (2)',{exact:true}).click();
+  await trends.getByLabel('Collecte des tendances').selectOption(previous.collectedAt);
+  await trends.locator('[data-source-trend-month="2026-11"]').click();
+  assert.match(await trends.locator('[data-source-trend-total]').innerText(),/135,00/);
+  await page.getByRole('button',{name:'Registre historique',exact:true}).click();
+  await page.locator('.trend-annual').waitFor();assert.equal(await trends.count(),0);
+  await page.getByRole('button',{name:'Source récente',exact:true}).click();await trends.waitFor();
+  mode='no-ledger';await page.getByRole('button',{name:'Actualiser',exact:true}).click();
+  await trends.locator('[data-source-trend-month="2026-11"]').click();assert.match(await trends.locator('[data-source-trend-total]').innerText(),/115,00/);
+  assert.equal(await page.getByRole('heading',{name:'Aucun historique importé',exact:true}).count(),0,'Source trends work without canonical ledger');
+  mode='error';await page.getByRole('button',{name:'Actualiser',exact:true}).click();await page.getByText(/Dépenses source indisponibles/).waitFor();assert.equal(await trends.count(),0);assert.equal(await page.locator('.trend-annual').count(),0);
+  mode='empty';await page.getByRole('button',{name:'Actualiser',exact:true}).click();await page.getByText(/Aucune collecte enregistrée/).waitFor();assert.equal(await trends.locator('[data-source-trend-total]').count(),0);
+  mode='ready';await page.getByRole('button',{name:'Actualiser',exact:true}).click();
+  await page.getByRole('button',{name:'Dépenses',exact:true}).click();await sourceView.locator('[data-source-total="net"]').waitFor();
   await sourceView.locator('.source-expense-controls > summary').click();
   await sourceView.getByLabel('Devise',{exact:true}).selectOption('USD');assert.match(await sourceView.locator('[data-source-total="net"]').innerText(),/9,00/);assert.equal(await sourceView.locator('.source-expense-rows li').count(),1);
   await sourceView.getByLabel('Devise',{exact:true}).selectOption('CAD');await sourceView.getByLabel('Opérations affichées').selectOption('pending');assert.equal(await sourceView.locator('.source-expense-rows li').count(),1);assert.match(await sourceView.innerText(),/En attente, hors total/);assert.match(await sourceView.locator('[data-source-total="net"]').innerText(),/115,00/);

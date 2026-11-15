@@ -1,3 +1,4 @@
+import FinanceSourceTrends from "./FinanceSourceTrends";
 import FinanceSourceExpenses from "./FinanceSourceExpenses";
 import {useSourceExpenses} from "../use-source-expenses";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -269,7 +270,13 @@ export default function FinancesView({
     const sourceInventory = useFinanceSourceInventory(hub.worker);
     const sourceExpenses = useSourceExpenses(hub.worker);
     const [expenseChoice,setExpenseChoice] = useState<"source"|"ledger"|null>(null);
-    const expenseMode = expenseChoice ?? (sourceExpenses.status === "unsupported" || sourceExpenses.status === "ready" && !sourceExpenses.snapshots.length ? "ledger" : "source");
+    const [defaultExpenseMode, setDefaultExpenseMode] = useState<"source" | "ledger">("source");
+    // A refresh must not unmount the historical drilldown while capability is being reread.
+    useEffect(() => {
+        if (sourceExpenses.status === "unsupported") setDefaultExpenseMode("ledger");
+        else if (sourceExpenses.status === "ready") setDefaultExpenseMode(sourceExpenses.snapshots.length ? "source" : "ledger");
+    }, [sourceExpenses.status, sourceExpenses.snapshots.length]);
+    const expenseMode = expenseChoice ?? defaultExpenseMode;
     const [state, setState] = useState<FinanceState | null>(null),
         [tab, setTab] = useState<"expenses" | "investments" | "trends">("expenses");
     const [trendMonth, setTrendMonth] = useState("");
@@ -686,7 +693,7 @@ export default function FinancesView({
                     </button>
                 </div>
             )}
-            {paired && !loading && !data && !error && !(tab === "expenses" && expenseMode === "source") && (
+            {paired && !loading && !data && !error && !((tab === "expenses" || tab === "trends") && expenseMode === "source") && (
                 <div className="surface">
                     <h2>Aucun historique importé</h2>
                     <p>
@@ -696,8 +703,8 @@ export default function FinancesView({
                     </p>
                 </div>
             )}
-            {paired && tab === "expenses" && <><div className="source-expense-mode" role="group" aria-label="Jeu de données des dépenses"><button className="button secondary" aria-pressed={expenseMode === "source"} onClick={() => {setExpenseChoice("source");setOperationsOpen(false);}}>Source récente</button><button className="button secondary" aria-pressed={expenseMode === "ledger"} onClick={() => {setExpenseChoice("ledger");setOperationsOpen(false);}}>Registre historique</button></div>{expenseMode === "source" && (sourceExpenses.status === "ready" ? <FinanceSourceExpenses snapshots={sourceExpenses.snapshots}/> : <p role="status">{sourceExpenses.status === "loading" ? "Chargement des dépenses source enregistrées sur le PC." : sourceExpenses.status === "unsupported" ? "Cette vue nécessite une mise à jour du worker PC. Le registre historique reste disponible séparément." : "Dépenses source indisponibles. Actualisez pour relire le PC; aucune ancienne valeur ne remplace cette collecte."}</p>)}</>}
-            {data && state && summary && !(tab === "expenses" && expenseMode === "source") && (
+            {paired && (tab === "expenses" || tab === "trends") && <><div className="source-expense-mode" role="group" aria-label={tab === "trends" ? "Jeu de données des tendances" : "Jeu de données des dépenses"}><button className="button secondary" aria-pressed={expenseMode === "source"} onClick={() => {setExpenseChoice("source");setOperationsOpen(false);}}>Source récente</button><button className="button secondary" aria-pressed={expenseMode === "ledger"} onClick={() => {setExpenseChoice("ledger");setOperationsOpen(false);}}>Registre historique</button></div>{expenseMode === "source" && (sourceExpenses.status === "ready" ? (tab === "trends" ? <FinanceSourceTrends snapshots={sourceExpenses.snapshots}/> : <FinanceSourceExpenses snapshots={sourceExpenses.snapshots}/>) : <p role="status">{sourceExpenses.status === "loading" ? "Chargement des dépenses source enregistrées sur le PC." : sourceExpenses.status === "unsupported" ? "Cette vue nécessite une mise à jour du worker PC. Le registre historique reste disponible séparément." : "Dépenses source indisponibles. Actualisez pour relire le PC; aucune ancienne valeur ne remplace cette collecte."}</p>)}</>}
+            {data && state && summary && !((tab === "expenses" || tab === "trends") && expenseMode === "source") && (
                 <>
                     {tab === "investments" ? investmentDetail && <details className="finance-journey-controls"><summary>Période des activités : {from} au {to}</summary><PeriodNavigator range={{ from, to }} scope={data.scope} onChange={range => { setFrom(range.from); setTo(range.to); }} /></details> :
                         <FinanceScope data={data} range={tab === "expenses" ? { from, to } : undefined} onPeriod={range => { setFrom(range.from); setTo(range.to); }} account={account} currency={currency} onAccount={setAccount} onCurrency={setCurrency} />}
@@ -1371,7 +1378,7 @@ export default function FinancesView({
                 </>
             )}
             <CategoryPayments category={categoryPayments} open={Boolean(categoryPayments) && !editing} summary={tab === "trends" ? trend?.summary ?? null : summary} state={state} onSave={saveInline} onReload={reloadInline} onUndo={id => undoChange(id, true)} accounts={data?.accounts ?? []} account={account} currency={currency} from={tab === "trends" ? trend?.from ?? "" : from} to={tab === "trends" ? trend?.to ?? "" : to} onClose={closeCategory} onEdit={(id, queueIds) => openDecision(id, state, queueIds)} />
-            {paired && state && data && !(tab === "expenses" && expenseMode === "source") && <FinanceCollectionNote state={state} />}
+            {paired && state && data && !((tab === "expenses" || tab === "trends") && expenseMode === "source") && <FinanceCollectionNote state={state} />}
             {paired && <details className="surface finance-source-panel">
                 <summary>{sourceInventory.status === "ready" && sourceInventory.snapshot ? `${sourceInventory.snapshot.accounts.length} comptes non rapprochés et autres données` : "Comptes et autres données de la source"}</summary>
                 <div role="status">{sourceInventory.status === "loading" ? "Chargement de l'inventaire enregistré sur le PC…" : sourceInventory.status === "unsupported" ? "L'inventaire source nécessite une mise à jour du worker PC. Le registre existant reste disponible." : sourceInventory.status === "error" ? "Inventaire source indisponible. Actualisez pour relire le PC; le registre existant est conservé." : ""}</div>
