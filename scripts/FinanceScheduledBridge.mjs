@@ -1,9 +1,9 @@
 import {readFile} from 'node:fs/promises';
 import {resolve,join} from 'node:path';
 import {pathToFileURL} from 'node:url';
-import {beginScheduledFinance,assertScheduledAdmission,finalizeScheduledFinance,journalScheduledIntent} from '../apps/worker/src/finance-scheduled-bridge.ts';
+import {beginScheduledFinance,assertScheduledAdmission,finalizeScheduledFinance,journalScheduledIntent,abandonUnstartedReservation} from '../apps/worker/src/finance-scheduled-bridge.ts';
 const [command,dir,tokenFile,reportFile,verifierFile]=process.argv.slice(2);
-if(!dir||!['scheduled-begin','scheduled-check-collect','scheduled-check-readback','scheduled-finalize','scheduled-intent'].includes(command))throw Error('Explicit scheduled operation and private directory required.');
+if(!dir||!['scheduled-abandon-unstarted','scheduled-begin','scheduled-check-collect','scheduled-check-readback','scheduled-finalize','scheduled-intent'].includes(command))throw Error('Explicit scheduled operation and private directory required.');
 const directory=resolve(dir),scope=JSON.parse(await readFile(join(directory,'finance-feed/daily-scope.json'),'utf8'));
 let result;
 if(command==='scheduled-begin'){
@@ -13,7 +13,9 @@ if(command==='scheduled-begin'){
 }else{
  if(!tokenFile)throw Error('Private admission file required.');
  const admission=JSON.parse(await readFile(resolve(tokenFile),'utf8'));
- if(command==='scheduled-intent'){
+ if(command==='scheduled-abandon-unstarted'){
+  result=await abandonUnstartedReservation({directory,scope},admission);
+ }else if(command==='scheduled-intent'){
   if(!reportFile)throw Error('Private intent file required.');
   result=await journalScheduledIntent({directory,scope},admission,JSON.parse(await readFile(resolve(reportFile),'utf8')));
  }else if(command==='scheduled-finalize'){

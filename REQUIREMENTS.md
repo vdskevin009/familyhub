@@ -865,3 +865,7 @@ A stable preview-default controller locally derives the four bound intake payloa
 
 ### FH-FIN-028 / FH-FIN-027 local preparation follow-up
 An explicit reviewed private policy initializes the next Vancouver day scope locally before admission, pinning exact mapping and Contributions configuration hashes. Completed days skip, pending/lease/unknown state requires review, and existing day scopes never change silently. Native cloud packet assembly validates immutable producer hashes, archives, full query chains, current returned-account universe and the fourth account-capture wrapper before exposing a controller manifest. No policy, collection, schedule or production intake is activated by this candidate. See docs/FINANCE-CLOUD-PREPARATION.md.
+
+
+### FH-FIN-027 pre-operation reservation prevention (isolated candidate; #281)
+Before admission, orchestration must discover required source tools without invoking them and coordinate ownership. New admissions journal the first source/API authorization under an exclusive phase lock. Only their unchanged live owner may cancel a still-unstarted reservation, preserving immutable evidence, incomplete status and hourly timing. Old, expired, started or recovery admissions fail closed. No automatic stale-lock cleanup or retroactive no-write proof is introduced. See docs/FINANCE-DAILY-GATE.md. Implemented in isolated branch only; production and existing pending admission unchanged.

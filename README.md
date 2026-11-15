@@ -227,3 +227,6 @@ Source-native Tendances can now display the same saved expense capture independe
 ## Monthly account versions
 
 The approved compact Accounts view uses month arrows, one selected capture and currency-qualified observed totals. New source accounts remain independent from hash-verified historical register versions, and unknown bank freshness stays explicit. Implementation and activation gates: [monthly account captures](docs/FINANCE-ACCOUNT-CAPTURES.md) and [UI acceptance](docs/FINANCE-MONTHLY-ACCOUNTS-UI.md). No scheduled collection or installed runtime is activated by the source change alone.
+
+
+Scheduled Finances pre-operation cancellation is an isolated candidate under FH-FIN-027 (#281), not an installed recovery. Source-tool availability must be checked before admission. A new, still-unstarted live reservation may be abandoned without falsely claiming success; old pending cycles remain operator-review-only. See docs/FINANCE-DAILY-GATE.md.
