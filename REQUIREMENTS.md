@@ -1,5 +1,16 @@
 # FamilyHub - Canonical Requirements
 
+## Interrupted insurer sign-in - FH-REIMB-040 / FH-REIMB-045
+
+Issue #299, related #159. An interrupted sign-in or missing diagnostic must not
+assert session expiration, rejected credentials or require another login without
+evidence. Explain the uncertain history outcome and paused automatic retries;
+retain account-profile selection as a separate operator action. The web contract
+includes the worker's existing `login-incomplete` and `profile-selection-required`
+reasons. Existing durable retry stops and single-use recovery acknowledgement
+remain unchanged. Local regression validation is in progress; CI, publication,
+installed activation and live/scheduled acceptance remain distinct gates.
+
 ## FH-VEHICLE-001 - Sourced vehicle shortlist
 
 Accepted, local implementation in progress. Projets > Voiture uses sourced compact cards, owner follow/unfollow, observed price/status history and comparison. Used family SUV, Greater Vancouver, CAD 23–30k before taxes, AWD preferred and no invented mileage cutoff. No fabricated accident-free, valuation or savings claims. Existing search automation handoff only after verified deployment. See docs/VEHICLE-PROJECT.md.

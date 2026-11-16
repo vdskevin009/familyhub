@@ -81,19 +81,19 @@ try {
   await scaling.getByRole('button',{name:'Review nearby Desjardins records'}).click();
   await scaling.getByText('Linked to this claim',{exact:true}).waitFor();
   await page.screenshot({path:join(output,`insurer-pair-${width}.png`),fullPage:true});
-  for (const state of ['legacy-layout','history-error']) {
+  for (const state of ['legacy-layout','history-error','interrupted-signin']) {
     const lastSuccess='2026-08-01T12:00:00Z';
-    blueCrossSyncStatus=state==='legacy-layout'
-      ? {state:'login-required',authReason:'layout-changed',lastSuccess}
+    blueCrossSyncStatus=state!=='history-error'
+      ? {state:'login-required',authReason:state==='legacy-layout'?'layout-changed':'login-incomplete',lastSuccess}
       : {state:'error',error:'Blue Cross claims history could not be opened from the member page. No complete collection was made. Saved claims remain unchanged. Review the history on the PC before trying again.',lastSuccess};
     await page.reload();
     const coverage=page.getByRole('region',{name:'Insurer collection coverage'});
-    await coverage.getByText(state==='legacy-layout'?/Insurer history unavailable/:/Collection incomplete/).waitFor();
+    await coverage.getByText(state!=='history-error'?/Insurer history unavailable/:/Collection incomplete/).waitFor();
     assert.doesNotMatch(await coverage.innerText(),/sign.in required|session expired|reconnect/i);
     await coverage.getByRole('button',{name:'Review Sources'}).first().click();
     const sync=page.getByRole('region',{name:'Blue Cross portal sync'});
-    await sync.getByText(state==='legacy-layout'?/insurer page was not recognized/:/claims history could not be opened/).waitFor();
-    assert.doesNotMatch(await sync.getByRole('status').innerText(),/sign.in|session expired|reconnect/i);
+    await sync.getByText(state==='legacy-layout'?/insurer page was not recognized/:state==='interrupted-signin'?/outcome is uncertain/:/claims history could not be opened/).waitFor();
+    assert.doesNotMatch(await sync.getByRole('status').innerText(),/session expired|reconnect|credentials.*refused/i);
     assert.equal(await sync.getByRole('button',{name:'Appliquer Blue Cross'}).count(),0);
     await sync.getByText(/Last complete read:/).waitFor();
     assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));

@@ -1,5 +1,12 @@
 # Blue Cross history failure classification
 
+Integration follow-up (#299): rebased candidate `cf92bc5` is based on merged
+Vehicle PR #298 (`6c76bf2`). The shared insurer UI now also preserves the meaning
+of interrupted sign-in and account-profile selection. Unknown outcomes never
+assert expired sessions or rejected passwords. No authentication guard is reset.
+Historical portal failures still require live evidence; a later successful read
+alone does not establish the original failure's cause.
+
 Issue #159; FH-REIMB-032, FH-REIMB-040, FH-REIMB-045. Release candidate.
 
 The synthetic regression reaches the member home, finds one visible history
