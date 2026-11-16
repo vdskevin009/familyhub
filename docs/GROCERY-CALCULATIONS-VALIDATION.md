@@ -2,6 +2,8 @@
 
 Status: local Testing; no release, deployment, production import or live-offer acceptance implied.
 
+Independent review follow-up: reviewed equivalences are now checked against the common physical target before taking priority over estimates. With no scenario, an explicit source label still controls the target; contradictory reviewed targets abstain. Nested numeric multipacks and `packs of` prefixes use the full quantity, while unsupported postfix declarations abstain rather than losing a multiplier. Whole liquid eggs, whites, shell eggs and substitutes remain separate. Synthetic regressions reproduce each review finding; no visual component or production data change is involved.
+
 The former selling-unit fallback could price a different physical quantity at each retailer. For example, two unknown selling units could become two 500 g packs at one retailer and two 1 kg packs at another. The corrected projection chooses one dated reference hypothesis for the source quantity and applies it to every retailer. Explicit source quantities remain authoritative; known counts never become mass without a scoped common hint.
 
 The comparison also previously accepted search/category URLs as prices, mixed localities/channels to fill rows, and used substring receipt IDs and ambiguous historical lines as price provenance. These paths now retain missing coverage with reasons. Exact text references can cover products outside the substitution families, while new bounded families preserve cheese type, salted butter and dry pasta distinctions. Frozen/fresh, smoked, dietary, production and explicit quality constraints are preserved. A source label can provide an explicit unambiguous mass/volume multipack; this is a derived comparison format, never a receipt edit.

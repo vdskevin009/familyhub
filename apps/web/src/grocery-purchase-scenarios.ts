@@ -1,9 +1,10 @@
 import type { GroceryRecord } from "../../worker/src/grocery-model";
 import type { GroceryPlan } from "../../worker/src/grocery-planning";
+import { normalizedSize } from "../../worker/src/grocery-planning";
 import type { PurchaseResolution } from "../../worker/src/grocery-purchase-resolution";
 import type { PurchaseScenario } from "../../worker/src/grocery-purchase-scenario-model";
 import { derivePurchaseScenarios, scenarioStore, scenarioLineDiagnostics, scenarioPriceContext, scenarioReferenceReason, scenarioWithdrawn } from "../../worker/src/grocery-purchase-scenarios";
-import { wholeScenarioPacks } from "../../worker/src/grocery-scenario-evidence";
+import { explicitScenarioFormat, wholeScenarioPacks } from "../../worker/src/grocery-scenario-evidence";
 import { estimatedSourceLine } from "../../worker/src/grocery-purchase-evidence";
 import { purchaseScenarioRetailers } from "../../worker/src/grocery-purchase-retailers";
 import { purchaseLocalDate, purchaseComparison, purchaseStoreComparisons, type PurchaseLineComparison } from "./grocery-purchases";
@@ -15,6 +16,20 @@ export function purchaseScenarioStores(plan: GroceryPlan, record: GroceryRecord,
   const templates = purchaseStoreComparisons(plan,record,today,resolution,purchaseScenarioRetailers);
   const scenarios = derivePurchaseScenarios([record],plan,resolution,today,10000,records,true);
   const active = record.status === "saved" && !record.duplicateOf;
+  const sameTarget = (a: {size:number;unit:string}, b: {size:number;unit:string}) => a.unit === b.unit && Math.abs(a.size-b.size) <= 1e-9*Math.max(a.size,b.size);
+  // Reviewed equivalences establish a relationship, not a different basket quantity per store.
+  const commonTargets = record.receipt.items.map((line,index) => {
+    const scenario = scenarios.find(s => s.lineIndex === index);
+    if (scenario) return normalizedSize(scenario.quantity*scenario.size,scenario.unit);
+    const source = line.size !== null && line.unit ? {size:line.size,unit:line.unit} : explicitScenarioFormat(line.product || line.name);
+    if (source) return normalizedSize((line.quantity??1)*source.size,source.unit);
+    const targets = strict.flatMap(c => {
+      const l=c.lines[index];
+      return l.normalized !== null && l.price && l.ratio !== null && !scenarioReferenceReason(l.price,plan,record,index,today,records,false)
+        ? [normalizedSize(l.ratio*l.price.size,l.price.unit)] : [];
+    });
+    return targets.length && targets.every(t => sameTarget(t,targets[0])) ? targets[0] : null;
+  });
   return templates.map(store => {
     const candidates = strict.filter(c => scenarioStore(c.retailer.name) === store.name);
     const estimates = scenarios.filter(s => scenarioStore(plan.retailers.find(r => r.id === plan.prices.find(p => p.id === s.priceId)?.retailerId)?.name ?? "") === store.name);
@@ -25,6 +40,7 @@ export function purchaseScenarioStores(plan: GroceryPlan, record: GroceryRecord,
       const missing: ScenarioLineComparison = { ...base, price:null, normalized:null, outlay:null, packs:null, ratio:null, confidence:"missing", reason:diagnostic.message, diagnostic };
       if (!active || scenarioWithdrawn(resolution,record,index)) return missing;
       const verified = candidates.map(c => c.lines[index]).find(l => l.normalized !== null && l.price && scenarioPriceContext(l.price) === context
+        && l.ratio !== null && commonTargets[index] && sameTarget(normalizedSize(l.ratio*l.price.size,l.price.unit),commonTargets[index]!)
         && !scenarioReferenceReason(l.price,plan,record,index,today,records,false));
       if (verified) return {...verified, confidence:verified.comparisonEvidence || verified.formatEvidence?.formatBasis === "household-assumption" ? "estimated" : "verified"};
       const scenario = estimates.find(s => s.lineIndex === index && scenarioPriceContext(plan.prices.find(p => p.id === s.priceId)!) === context);

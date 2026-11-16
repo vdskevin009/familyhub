@@ -61,6 +61,8 @@ Testing. Show only qualified amount, coverage/estimated count and incomplete sta
 
 ## Estimated purchase scenarios - FH-GROCERY-013 (#155)
 
+Independent calculation review follow-up in Testing: reviewed equivalences cannot override the common source quantity, including explicit source labels outside the family catalogue. Full nested multipacks are counted, unsupported pack declarations abstain, and egg subtypes remain distinct. See the calculation validation notes and synthetic regression tests.
+
 Local correction in Testing: use one common quantity across retailers, preserve explicit source multipacks, retain exact-name references outside substitution families, validate independent receipt evidence, exclude search-only price leads and choose a single store/locality/channel per basket. A read-only coverage replay supports optional public-reference rehearsals without importing data. Source files, UI layout and production remain unchanged. See [calculation validation](docs/GROCERY-CALCULATIONS-VALIDATION.md).
 
 Testing. Explicitly authorized estimates complement verified current-local comparisons for existing purchases and future imports. Show coverage and estimated count, sourced prices, quantities/format hypotheses, normalization formulas, whole-pack outlay and source age/locality. Preserve receipts, withdrawals and dietary constraints; missing evidence remains unavailable and estimated scenarios never feed certain-savings alerts. This supersedes the earlier no-inference/no-unconfirmed-substitution rule only for the labeled scenario. See `docs/requirements/FH-GROCERY-013.md`.

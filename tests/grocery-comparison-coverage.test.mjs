@@ -84,6 +84,50 @@ test('format extraction rejects nutrition, ranges, and ambiguous declarations',(
 test('positive tiny needs still require a package and exact floating point multiples stay exact',()=>{
  assert.equal(wholeScenarioPacks(1e-12),1);assert.equal(wholeScenarioPacks(3.0000000000000004),3);assert.equal(wholeScenarioPacks(3.000001),4);
 });
+
+test('nested and written multipacks use their entire quantity, never only a suffix',()=>{
+ for(const [label,size] of [['2 x 3 x 100 g',600],['2 × 3 × 100 g',600],['2 packs of 500 g',1000]]){
+  assert.deepEqual(explicitScenarioFormat('Tofu Extra Firm '+label),{size,unit:'g'});
+  const f=onlyLine(fixture());Object.assign(f.record.receipt.items[0],{product:'Tofu Extra Firm '+label,quantity:1,size:null,unit:null});
+  assert.equal(wm(f).lines[0].scenario.size,size);assert.equal(wm(f).normalized,size/500*5);
+ }
+ const f=onlyLine(fixture());Object.assign(f.record.receipt.items[0],{product:'Tofu Extra Firm 2 packs containing 500 g',quantity:1,size:null,unit:null});
+ assert.equal(explicitScenarioFormat(f.record.receipt.items[0].product),null);assert.equal(wm(f).covered,0);
+ f.record.receipt.items[0].product='Tofu Extra Firm 500 g (Pack of 2)';
+ assert.equal(explicitScenarioFormat(f.record.receipt.items[0].product),null);assert.equal(wm(f).covered,0);
+});
+
+test('liquid whole eggs, whites, shell eggs and substitutes remain distinct',()=>{
+ for(const source of ['Liquid Whole Eggs','Liquid Egg Whites','Large Eggs','Liquid Egg Substitute']){
+  for(const reference of ['Liquid Whole Eggs','Liquid Egg Whites','Large Eggs','Liquid Egg Substitute']){
+   const f=onlyLine(fixture());f.record.receipt.items[0].product=source;f.plan.prices[0].product=reference;
+   assert.equal(wm(f).covered,Number(source===reference),source+' / '+reference);
+  }
+ }
+});
+
+function reviewedFormats(f){
+ f.plan.purchaseComparisons=f.plan.prices.map((p,i)=>({id:'comparison'+i,recordId:f.record.id,lineIndex:0,lineKey:purchaseLineKey(f.record.receipt.items[0]),priceId:p.id,priceKey:purchasePriceKey(p),purpose:'comparison-only',relation:'equivalent-same-format',quantity:1,size:p.size,unit:p.unit,formatLabel:p.size+' '+p.unit,referenceFormatLabel:p.size+' '+p.unit,sourceEstimate:null,sourceEstimateEvidence:'Synthetic',provenance:'Synthetic review',reviewedAt:today+'T00:00:00.000Z'}));
+}
+test('reviewed equivalences cannot override the common target with each retailer pack',()=>{
+ const f=onlyLine(fixture());Object.assign(f.record.receipt.items[0],{quantity:1,size:null,unit:null});secondStore(f.plan);reviewedFormats(f);
+ const stores=purchaseScenarioStores(f.plan,f.record,today).filter(s=>s.covered);
+ assert.deepEqual(stores.map(s=>s.normalized),[5,4]);assert.deepEqual(stores.map(s=>s.outlay),[5,8]);
+ assert.deepEqual(stores.map(s=>s.lines[0].ratio*s.lines[0].price.size),[500,500]);
+ assert.ok(stores.every(s=>s.estimated===1));
+});
+test('reviewed unknown-family equivalents with contradictory source formats abstain',()=>{
+ const f=onlyLine(fixture());Object.assign(f.record.receipt.items[0],{product:'Unmapped source',quantity:1,size:null,unit:null});secondStore(f.plan);reviewedFormats(f);
+ assert.ok(purchaseScenarioStores(f.plan,f.record,today).every(s=>s.covered===0));
+ f.plan.prices[1].size=500;reviewedFormats(f);
+ assert.equal(purchaseScenarioStores(f.plan,f.record,today).filter(s=>s.covered).length,2);
+});
+
+test('reviewed unknown-family equivalents cannot contradict an explicit source label',()=>{
+ const f=onlyLine(fixture());Object.assign(f.record.receipt.items[0],{product:'Brand Alpha Quinoa 500 g',quantity:1,size:null,unit:null});
+ Object.assign(f.plan.prices[0],{product:'Brand Beta Quinoa',size:1000});secondStore(f.plan);reviewedFormats(f);
+ assert.ok(purchaseScenarioStores(f.plan,f.record,today).every(s=>s.covered===0));
+});
 test('an unrecognized product with exact source text can use an independent price',()=>{
  const f=onlyLine(fixture());f.record.receipt.items[0].product='Synthetic pantry item';f.plan.prices[0].product='Synthetic pantry item';assert.equal(wm(f).covered,1);assert.equal(wm(f).lines[0].scenario.family,'exact-name');
  f.plan.prices[0].product='Other synthetic pantry item';assert.equal(wm(f).covered,0);assert.deepEqual(wm(f).lines[0].diagnostic.reasons,['family-unrecognized']);

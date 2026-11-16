@@ -35,10 +35,14 @@ export function independentReceiptPrice(price: GroceryPrice, record: GroceryReco
 export function explicitScenarioFormat(title: string): { size: number; unit: GroceryUnit } | null {
   const s = title.toLowerCase().replace(/,/g, ".");
   if (/\bper\b|\bpar\b|\d\s*[-–]\s*\d|\d\s*(?:g|kg|ml|l|oz|lb)\s*[-–]|\d\s*g\s*(?:of\s+)?(?:protein|fibre|fiber|sugar|fat)/.test(s)) return null;
-  const rows = [...s.matchAll(/(?<![\w.])(?:(\d+)\s*[x×]\s*)?(\d+(?:\.\d+)?)\s*(kg|g|ml|l|lbs?|oz)\b/g)];
+  const rows = [...s.matchAll(/(?<![\w.])((?:\d+\s*(?:[x×]|packs?\s+of)\s*)*)(\d+(?:\.\d+)?)\s*(kg|g|ml|l|lbs?|oz)\b/g)];
   if (rows.length !== 1) return null;
-  const [, count, amount, rawUnit] = rows[0];
-  const size = Number(count ?? 1) * Number(amount) * (/^lb/.test(rawUnit) ? 453.59237 : rawUnit === "oz" ? 28.349523125 : 1);
+  const [, multipliers, amount, rawUnit] = rows[0];
+  const remainder = s.slice(0,rows[0].index) + s.slice(rows[0].index!+rows[0][0].length);
+  // Never interpret just the suffix of an unsupported multipack declaration.
+  if (/\d+\s*(?:[- ]?packs?\b|pk\b|[x×])|[x×]\s*\d+|packs?\s+of\s+\d+/.test(remainder)) return null;
+  const count = [...multipliers.matchAll(/\d+/g)].reduce((n,m) => n*Number(m[0]),1);
+  const size = count * Number(amount) * (/^lb/.test(rawUnit) ? 453.59237 : rawUnit === "oz" ? 28.349523125 : 1);
   return size > 0 && size <= 100000 ? {size,unit:/^lb|^oz/.test(rawUnit)?"g":rawUnit as GroceryUnit} : null;
 }
 
