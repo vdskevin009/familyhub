@@ -71,7 +71,17 @@ try {
   assert.equal(await page.locator(".finance-received-evolution [data-received-point]").count(), 0); assert.equal(await page.locator(".finance-received-evolution li").count(), 1);
   await page.getByRole("button", { name: "Retour aux comptes", exact: true }).click();
   await page.getByRole("button", { name: "Actualiser", exact: true }).click(); await page.getByText("Données enregistrées sur le PC rechargées. Aucune nouvelle connexion bancaire.", { exact: true }).waitFor(); assert.equal(JSON.stringify(state), saved);
-  for (const tab of ["Dépenses", "Tendances", "Comptes"]) { await page.getByRole("button", { name: tab, exact: true }).click(); if (tab === "Comptes") assert.equal(await note.count(), 0); else assert.match(await note.innerText(), /1 compte sur 9/); }
+  for (const tab of ["Dépenses", "Tendances", "Comptes"]) {
+   await page.getByRole("button", { name: tab, exact: true }).click();
+   if (tab === "Comptes") assert.equal(await note.count(), 0);
+   else if(tab === "Tendances") {
+    assert.match(await page.locator('.trend-collection').innerText(),/Collecté le/);
+    await page.getByRole('button',{name:'Informations : Lecture des tendances',exact:true}).click();
+    const method=page.getByRole('dialog',{name:'Lecture des tendances',exact:true});
+    assert.match(await method.innerText(),/1 compte sur 9/);assert.match(await method.innerText(),/fraîcheur bancaire/);
+    await page.keyboard.press('Escape');
+   } else assert.match(await note.innerText(), /1 compte sur 9/);
+  }
   // A newer bank-dated value can supersede the observation without hiding its history.
   state = structuredClone(state); state.data.accounts.find(a => a.id === "bank").asOf = "2031-01-01";
   await page.getByRole("button", { name: "Actualiser", exact: true }).click(); await page.waitForFunction(() => document.querySelector('[data-investment-account="bank"]')?.textContent?.includes('2031-01-01')); if (await page.locator('.finance-historical-accounts').getAttribute('open') === null) await page.locator('.finance-historical-accounts > summary').click(); await bank.waitFor(); await bank.click(); await page.getByText("Historique des soldes reçus", { exact: true }).click(); assert.match(await page.getByText(/Valeur historique conservée/).innerText(), /2031-01-01/); assert.equal(await page.locator(".finance-received-evolution li").count(), 3);
