@@ -2,7 +2,7 @@
 
 ## FH-FIN-032 - Monthly Trends overview and signed difference explanation
 
-Accepted A+B; **local UI integrated and tested, not published or deployed**.
+Accepted A+B; **implemented in draft PR #294; complete CI and release verification pending**.
 Open the selected month or current month directly. Keep compact monthly
 navigation and account/currency filters. Show observed net spending, the signed
 available reference difference, and the daily observed/reference curve. Rank the
@@ -22,7 +22,7 @@ financial calculations, apportions only display rounding, and retains all catego
 membership in its compact remainder. FH-FIN-031 remains the prerequisite for the
 unified register. The original approved reference is now locally verified and its
 pixels reviewed. See `docs/FINANCE-TRENDS-AB-WORK-IN-PROGRESS.md` for UI checks and
-the pending navigation publication gate.
+the remaining CI and publication gates. The new Projets proposal is not implemented.
 
 ## FH-FIN-031 - One Finances destination and reconciled expense register
 

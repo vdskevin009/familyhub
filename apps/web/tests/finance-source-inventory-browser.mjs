@@ -95,7 +95,16 @@ try {
     await page.waitForFunction(() => document.activeElement?.getAttribute('data-investment-account') === 'card');
     assert.notEqual(await historical.getAttribute('open'), null, 'Historical disclosure and return focus survive account details');
     await bank.click(); await page.getByRole('heading', { name: 'Compte courant', exact: true }).waitFor(); await page.getByRole('button', { name: 'Retour aux comptes', exact: true }).click(); assert.match(await bank.innerText(), /1\s?234,56/);
-    for (const tab of ['Dépenses', 'Tendances', 'Comptes']) { await page.getByRole('button', { name: tab, exact: true }).click(); assert.equal(await page.locator('.finance-source-accounts > li').count(), 7); }
+    for (const tab of ['Dépenses', 'Tendances', 'Comptes']) {
+      await page.getByRole('button', { name: tab, exact: true }).click();
+      const accounts = page.locator('.finance-source-accounts > li');
+      if (tab === 'Tendances') {
+        assert.equal(await accounts.count(), 0, 'Monthly Trends does not duplicate the account inventory below its chart');
+      } else {
+        await accounts.nth(6).waitFor({ state: 'attached' });
+        assert.equal(await accounts.count(), 7, 'All source accounts survive switching through the monthly Trends view');
+      }
+    }
     mode = 'delayed'; const delayedStarted = new Promise(resolve => { markDelayedStarted = resolve; });
     await page.getByRole('button', { name: 'Actualiser', exact: true }).click(); await delayedStarted; await panel.getByText(/Chargement de l'inventaire/).waitFor();
     await page.getByRole('button', { name: 'Actualiser', exact: true }).waitFor(); assert.match(await bank.innerText(), /1\s?234,56/, 'Canonical refresh is not delayed by the optional source request');

@@ -64,3 +64,15 @@ Complete exact-commit npm/Node 22 CI, merge, Pages publication and installed-wor
 verification remain release gates. .NET regressions passed on the initial remote
 commit. Local tests use Node 24/pnpm; dotnet is unavailable locally. No deployment
 or newly synchronized bank data is claimed.
+
+The second CI run also exposed the old inventory test's expectation that all seven
+source accounts remain rendered beneath Trends. The approved monthly screen omits
+that duplicate inventory, while Comptes and Dépenses retain all seven. The test now
+verifies the compact view and verifies every account again after returning; the
+four-width source-inventory suite passes, including stale responses and keyboard.
+
+Finances head `e7c6a46e3eb24e615a2fe4386c8c98a7b507dfad` passed all CI gates in
+run 43781125437. Moving #293 from draft to ready was rejected by automatic approval
+twice, including after checking the owner's later deployment instructions. No merge,
+runtime update or indirect publication was attempted. Draft publication and CI remain
+authorized; release needs that workflow block resolved.
