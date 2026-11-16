@@ -2,6 +2,8 @@
 
 ## Interrupted insurer sign-in - FH-REIMB-040 / FH-REIMB-045
 
+The scheduled insurer runner retains the existing installed HTTP transport with an explicit total deadline (15 minutes for collection, including response headers), no redirects and no request replay. This brings the already-installed local safeguard into the maintained source, without changing its schedule, automatic intake policy or credential controls. Synthetic regressions cover delayed headers, interrupted bodies, deadlines and redirects; they do not attest a future scheduled portal read. Tracked in issue #299 and PR #300.
+
 Issue #299, related #159. An interrupted sign-in or missing diagnostic must not
 assert session expiration, rejected credentials or require another login without
 evidence. Explain the uncertain history outcome and paused automatic retries;
