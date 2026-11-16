@@ -45,6 +45,30 @@ test("compact paid totals retain real zero, negative refunds and separate curren
   assert.deepEqual(recurringPaidTotals([],result.summaries),{});
   assert.equal(JSON.stringify([contracts,state]),before);
 });
+test("recurring review periods retain ambiguous evidence without paid totals or source mutation", () => {
+  const first = { ...newContract("telecom", "first"), provider: "TELUS" };
+  const second = { ...first, id: "second" };
+  const state = paymentState();
+  state.data!.transactions = [
+    payment("september", "TELUS AMBIGUOUS", "2026-09-04", 9500),
+    payment("october", "TELUS AMBIGUOUS", "2026-10-04", 9800),
+    payment("pending", "TELUS PENDING", "2026-09-05", 3000, { status: "pending" }),
+  ];
+  const contracts = [first, second], before = JSON.stringify([contracts, state]);
+  for (const month of [9, 10, 9, 10, 9]) {
+    const range = calendarPeriod(2026, month);
+    const result = reconcilePayments(contracts, state, range.from, range.to);
+    assert.deepEqual(result.reviews.map(review => review.row.id), [month === 9 ? "september" : "october"]);
+    assert.deepEqual(result.reviews[0].contractIds, [first.id, second.id]);
+    assert.deepEqual(result.reviews[0].row.sources, state.data!.transactions[month === 9 ? 0 : 1].sources);
+    assert.deepEqual(recurringPaidTotals(contracts, result.summaries), { CAD: { cents: null, matched: 0, missing: 2 } });
+    assert.ok(result.summaries.every(summary => summary.rows.length === 0));
+    assert.equal(JSON.stringify([contracts, state]), before, "Neither month navigation nor review allocates or removes evidence");
+  }
+  const empty = reconcilePayments(contracts, state, "2026-11-01", "2026-11-30");
+  assert.equal(empty.reviews.length, 0);
+  assert.equal(recurringPaidTotals(contracts, empty.summaries).CAD.cents, null);
+});
 test("calendar filters navigate leap months, year boundaries and incomplete source windows", () => {
   assert.deepEqual(calendarPeriod(2024, 2), { from: "2024-02-01", to: "2024-02-29" });
   assert.deepEqual(shiftPeriod(calendarPeriod(2026, 12), 1), calendarPeriod(2027, 1));

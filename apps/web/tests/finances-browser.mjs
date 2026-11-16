@@ -594,7 +594,20 @@ try {
         await observations.locator(".payment-reviews > summary").click();
         assert.equal(await page.locator(".savings-contracts").count(), 0);
         assert.match(await observations.locator(".payment-reviews").innerText(), /6,00.*service cité comme inclus/s);
-        await page.goBack();await page.getByRole('dialog',{name:'Éléments à vérifier',exact:true}).waitFor({state:'hidden'});
+        const reviewPanel = page.getByRole('dialog', { name: 'Éléments à vérifier', exact: true });
+        const ledgerBeforeReview = JSON.stringify(await finance.read());
+        const paidBeforeReview = await paid.locator('.finance-totals').innerText();
+        await reviewPanel.screenshot({path:join(screenshots, `recurring-review-${width}.png`)});
+        await page.goBack();await reviewPanel.waitFor({state:'hidden'});
+        await page.waitForFunction(()=>document.activeElement?.classList.contains('recurring-review-banner'));
+        for (let repeat = 0; repeat < 3; repeat++) {
+          await page.keyboard.press('Enter');await reviewPanel.waitFor();
+          assert.match(await reviewPanel.innerText(), /exclus des totaux rapprochés/);
+          await page.keyboard.press('Escape');await reviewPanel.waitFor({state:'hidden'});
+          await page.waitForFunction(()=>document.activeElement?.classList.contains('recurring-review-banner'));
+          assert.equal(await paid.locator('.finance-totals').innerText(), paidBeforeReview);
+          assert.equal(JSON.stringify(await finance.read()), ledgerBeforeReview);
+        }
         await page.getByRole('button',{name:'Choisir la période des paiements',exact:true}).click();
         await page.getByRole('dialog',{name:'Période des paiements',exact:true}).getByLabel('Vue',{exact:true}).selectOption('year');
         await page.getByRole('button',{name:'Voir les paiements',exact:true}).click();

@@ -23,7 +23,7 @@ Provider-label grouping keeps its existing limitations visible in the history pa
 
 ## Completed checks
 
-- Savings aggregate 34/34, including two new tests for amount bases, months, refunds,
+- Savings aggregate 35/35, including three new tests for amount bases, months, refunds,
   real zero, unknowns, independent currencies, bundle totals and source immutability.
 - Product aggregate 147/147; web TypeScript and production Vite build passed.
   Product aggregate, web typecheck/build and compact browser acceptance passed again
@@ -40,6 +40,31 @@ Provider-label grouping keeps its existing limitations visible in the history pa
   from shared costs and included services.
 - Synthetic screenshots are under `output/playwright/compact/` and
   `output/playwright/finance/`, not public financial records.
+
+## Final regression review (2026-11-16 UTC)
+
+The original PNG was reopened and its SHA-256 rechecked. The 390px overview,
+320px contract panel and 1440px overview were inspected against the approved
+reference: compact month navigation, blue paid-only summary, one contract row,
+paid/reference/unknown distinction and details inside panels. The existing Plus
+entry is retained as instructed instead of copying the mockup's Finances backlink.
+Comparison results are collapsed initially and remain available through disclosure.
+
+An additional regression changes months repeatedly around an ambiguous payment:
+the correct month's review retains its exact source evidence, no contract receives
+the amount, the paid total stays unavailable rather than zero, and the original
+ledger remains byte-for-byte equivalent. Pending payments remain excluded without
+deleting their records. Browser regression also repeats keyboard opening and
+Escape/Back closing of the review panel, verifies focus restoration and checks that
+neither the paid total nor the source ledger changes. Synthetic review-panel
+captures are `output/playwright/finance/recurring-review-{width}.png`.
+
+Initial browser attempts could not reach loopback inside the sandbox; the approved
+local-test escalation uses existing Chrome and isolated synthetic fixtures. No
+provider or household runtime is contacted by these tests. Web typecheck passed
+again. Finances and compact-spending browser suites both passed again at
+320/390/768/1440, including the strengthened review-panel checks. No application
+or calculation change was needed for this final review.
 
 ## Limits
 

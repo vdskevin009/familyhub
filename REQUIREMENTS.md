@@ -17,7 +17,9 @@ research, import or provider action occurs on mount. The existing savings route 
 available through Plus pending a separately approved navigation change; Projets is not
 implemented. Original source records and historical workflows stay available.
 
-Local implementation and synthetic acceptance: `docs/RECURRING-ACCEPTANCE.md`.
+Local implementation `2c2531e`, integrated with deployed main `844f991` through
+`a40fedd`; final synthetic regression acceptance: `docs/RECURRING-ACCEPTANCE.md`.
+Savings 35/35 and repeated browser acceptance at 320/390/768/1440 passed.
 The main overview/new panels use French; legacy editor and public-research forms
 still retain existing English strings. Full localization is not yet verified.
 
