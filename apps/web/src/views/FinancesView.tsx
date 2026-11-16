@@ -3,7 +3,10 @@ import FinanceMonthlyAccounts from "./FinanceMonthlyAccounts";
 import { useFinanceAccountCaptures } from "../use-finance-account-captures";
 import { initialAccountSelection, type MonthlyAccountSelection } from "../finance-monthly-accounts";
 import FinanceSourceTrends from "./FinanceSourceTrends";
-import FinanceSourceExpenses from "./FinanceSourceExpenses";
+import ContributionsView from "./ContributionsView";
+import FinanceRegisterSources, { RegisterProvenance } from "./FinanceRegisterSources";
+import { reconcileFinanceRegister, filterFinanceRegister } from "../finance-register";
+import { useFinanceRegisterBindings } from "../use-finance-register-bindings";
 import {useSourceExpenses} from "../use-source-expenses";
 import { useEffect, useMemo, useRef, useState } from "react";
 import CategoryPayments, { type InlineEntry, type InlineResult } from "./CategoryPayments";
@@ -268,8 +271,10 @@ function Benchmarks({
 export default function FinancesView({
     hub,
     onNavigate,
+    initialTab,
 }: {
     hub: HubState;
+    initialTab?: "contributions";
     onNavigate: (view: AppView) => void;
 }) {
     const sourceInventory = useFinanceSourceInventory(hub.worker);
@@ -288,7 +293,7 @@ export default function FinancesView({
     }, [sourceExpenses.status, sourceExpenses.snapshots.length]);
     const expenseMode = expenseChoice ?? defaultExpenseMode;
     const [state, setState] = useState<FinanceState | null>(null),
-        [tab, setTab] = useState<"expenses" | "investments" | "trends">("expenses");
+        [tab, setTab] = useState<"expenses" | "investments" | "trends" | "contributions">(() => initialTab ?? (new URLSearchParams(location.search).get("tab") === "expenses" || new URLSearchParams(location.search).has("record") || new URLSearchParams(location.search).has("from") ? "expenses" : "investments"));
     const [trendMonth, setTrendMonth] = useState("");
     const [operationsOpen, setOperationsOpen] = useState(false);
     const [operationSort, setOperationSort] = useState<"date" | "amount">("date");
@@ -370,6 +375,8 @@ export default function FinancesView({
                 if (row) { const period = calendarPeriod(Number(row.date.slice(0, 4)), Number(row.date.slice(5, 7))); setFrom(period.from); setTo(period.to); setCurrency(row.currency); openDecision(record, s); }
                 else setMessage("L’opération liée n’est pas présente dans les sources chargées.");
             }
+            if (query.get("tab") === "trends") setTab("trends");
+            if (query.get("tab") === "contributions") setTab("contributions");
             if (query.get("tab") === "investments") { setTab("investments"); setInvestmentAccount(query.get("account") ?? ""); setInvestmentDetail(Boolean(query.get("account"))); }
             const start = query.get("from"), end = query.get("to");
             if (start && end && /^\d{4}-\d{2}-\d{2}$/.test(start) && /^\d{4}-\d{2}-\d{2}$/.test(end) && start <= end && Date.parse(end) - Date.parse(start) < 366 * 86400000) { setFrom(start); setTo(end); }
@@ -409,6 +416,7 @@ export default function FinancesView({
         void accountCaptures.reload();
         void accountHistory.reload();
         void sourceExpenses.reload();
+        bindingRead.reload();
         try {
             initialize(await fetchFinances(hub.worker));
             setMessage("Données enregistrées sur le PC rechargées. Aucune nouvelle connexion bancaire.");
@@ -563,6 +571,18 @@ export default function FinancesView({
         setState(saved); inlineAttempt.current = null; attempt.current = null; setStaleDraft(false);
     }
     const data = state?.data;
+    const bindingRead = useFinanceRegisterBindings(hub.worker, state?.revision);
+    const emptyState = useMemo<FinanceState>(()=>({schema:1,revision:"empty",data:null,importedAt:null,decisions:{},decisionHistory:[],imports:[]}),[]);
+    const unified = useMemo(()=>reconcileFinanceRegister(state ?? emptyState, sourceExpenses.snapshots, bindingRead.value?.bindings),[state,emptyState,sourceExpenses.snapshots,bindingRead.value]);
+    const unifiedResult = useMemo(()=>filterFinanceRegister(unified,{from,to,currency,accountId:account,search,category:category as ExpenseCategory || undefined,reviewOnly}),[unified,from,to,currency,account,search,category,reviewOnly]);
+    const sourceThrough = sourceExpenses.snapshots.at(-1)?.query.through;
+    const sourceAccountOptions = useMemo(()=>[...new Map(sourceExpenses.snapshots.flatMap(s=>s.accounts.map(a=>[a.sourceKey,a] as const))).values()].filter(a=>!unified.accountBindings[a.sourceKey]).map(a=>({id:`source:${a.sourceKey}`,name:`${a.name} · à rapprocher`})),[sourceExpenses.snapshots,unified.accountBindings]);
+    const filterData = useMemo(() => {
+        const starts=[...(data ? [data.scope.from]:[]),...sourceExpenses.snapshots.map(s=>s.query.from)].sort();
+        const ends=[...(data ? [data.scope.to]:[]),...sourceExpenses.snapshots.map(s=>s.query.through)].sort();
+        return {...(data ?? {collectedOn:"",transactions:[],activities:[],pendingCount:0,holdings:[],performance:[],gics:[],feeReports:[],coverage:[],limits:[]}),accounts:data?.accounts ?? [],scope:{from:starts[0] ?? from,to:ends.at(-1) ?? to}};
+    },[data,sourceExpenses.snapshots,unified.accountBindings,from,to]);
+    useEffect(()=>{if(!from && sourceThrough){const p=calendarPeriod(Number(sourceThrough.slice(0,4)),Number(sourceThrough.slice(5,7)));setFrom(p.from);setTo(p.to);}},[sourceThrough,from]);
     const classified = useMemo(() => state ? classifiedRows(state) : [], [state]);
     const trendToday = localToday();
     const trend = useMemo(() => tab === "trends" && state?.data && trendMonth ? spendingTrend(state, trendMonth, account, currency, trendToday) : null, [tab, state, trendMonth, account, currency, trendToday]);
@@ -571,9 +591,9 @@ export default function FinancesView({
     const summary = useMemo(
         () =>
             state
-                ? summarizeSpending(state, from, to, account, currency, classified)
+                ? summarizeSpending(state, from, to, account, currency, classified.filter(r => (!category || r.category === category) && (!reviewOnly || !r.reviewed) && r.description.toLowerCase().includes(search.toLowerCase())))
                 : null,
-        [state, from, to, account, currency, classified],
+        [state, from, to, account, currency, classified, category, reviewOnly, search],
     );
     const includedIds = new Set(summary?.included.map(r => r.id));
     const rows =
@@ -667,24 +687,10 @@ export default function FinancesView({
                 </button>
             </PageHeader>
             <nav className="segment-tabs finance-tabs" aria-label="Finances">
-                <button
-                    aria-current={tab === "expenses" ? "page" : undefined}
-                    className={tab === "expenses" ? "active" : ""}
-                    onClick={() => { setTab("expenses"); setOperationsOpen(false); }}
-                >
-                    Dépenses
-                </button>
-                <button
-                    aria-current={tab === "investments" ? "page" : undefined}
-                    className={tab === "investments" ? "active" : ""}
-                    onClick={() => setTab("investments")}
-                >
-                    Comptes
-                </button>
-                <button aria-current={tab === "trends" ? "page" : undefined} className={tab === "trends" ? "active" : ""} onClick={() => setTab("trends")}>
-                    Tendances
-                </button>
+                {([["investments", "Comptes"], ["expenses", "Dépenses"], ["trends", "Tendances"], ["contributions", "Contributions"]] as const).map(([id,label]) => <button type="button" key={id} aria-current={tab===id ? "page" : undefined} className={tab===id ? "active" : ""} onClick={()=>{setTab(id);setOperationsOpen(false);setCategoryPayments(null);}}>{label}</button>)}
             </nav>
+            {tab === "contributions" && <ContributionsView worker={hub.worker} embedded />}
+
             {error && <Notice error>{error}</Notice>}
             {message && (
                 <Notice onDismiss={() => setMessage("")}>{message}</Notice>
@@ -706,7 +712,7 @@ export default function FinancesView({
                     </button>
                 </div>
             )}
-            {paired && !loading && !data && !error && !((tab === "expenses" || tab === "trends") && expenseMode === "source") && (
+            {paired && tab !== "contributions" && !loading && !data && !error && !(tab === "trends" && expenseMode === "source") && (
                 <div className="surface">
                     <h2>Aucun historique importé</h2>
                     <p>
@@ -716,12 +722,20 @@ export default function FinancesView({
                     </p>
                 </div>
             )}
-            {paired && (tab === "expenses" || tab === "trends") && <><div className="source-expense-mode" role="group" aria-label={tab === "trends" ? "Jeu de données des tendances" : "Jeu de données des dépenses"}><button className="button secondary" aria-pressed={expenseMode === "source"} onClick={() => {setExpenseChoice("source");setOperationsOpen(false);}}>Source récente</button><button className="button secondary" aria-pressed={expenseMode === "ledger"} onClick={() => {setExpenseChoice("ledger");setOperationsOpen(false);}}>Registre historique</button></div>{expenseMode === "source" && (sourceExpenses.status === "ready" ? (tab === "trends" ? <FinanceSourceTrends snapshots={sourceExpenses.snapshots}/> : <FinanceSourceExpenses snapshots={sourceExpenses.snapshots}/>) : <p role="status">{sourceExpenses.status === "loading" ? "Chargement des dépenses source enregistrées sur le PC." : sourceExpenses.status === "unsupported" ? "Cette vue nécessite une mise à jour du worker PC. Le registre historique reste disponible séparément." : "Dépenses source indisponibles. Actualisez pour relire le PC; aucune ancienne valeur ne remplace cette collecte."}</p>)}</>}
+            {paired && tab === "trends" && <><div className="source-expense-mode" role="group" aria-label={tab === "trends" ? "Jeu de données des tendances" : "Jeu de données des dépenses"}><button className="button secondary" aria-pressed={expenseMode === "source"} onClick={() => {setExpenseChoice("source");setOperationsOpen(false);}}>Source récente</button><button className="button secondary" aria-pressed={expenseMode === "ledger"} onClick={() => {setExpenseChoice("ledger");setOperationsOpen(false);}}>Registre historique</button></div>{expenseMode === "source" && (sourceExpenses.status === "ready" ? <FinanceSourceTrends snapshots={sourceExpenses.snapshots}/> : <p role="status">{sourceExpenses.status === "loading" ? "Chargement des dépenses source enregistrées sur le PC." : sourceExpenses.status === "unsupported" ? "Cette vue nécessite une mise à jour du worker PC. Le registre historique reste disponible séparément." : "Dépenses source indisponibles. Actualisez pour relire le PC; aucune ancienne valeur ne remplace cette collecte."}</p>)}</>}
+            {paired && tab === "expenses" && <div className="finance-register-status" role="status">
+                {sourceExpenses.status === "error" ? "Collectes indisponibles : le registre affiché est partiel." : sourceExpenses.status === "loading" ? "Chargement des collectes enregistrées." : ""}
+                {unifiedResult.hasUnreconciledSources && <p>{unifiedResult.unresolved.length} opération(s) à rapprocher dans cette période, hors sous-total. Les collectes et le registre historique sont présentés ensemble, sans cumul de doublons.</p>}
+                {bindingRead.status === "unsupported" && sourceExpenses.snapshots.length>0 && <p>Le worker doit être mis à jour pour reconnaître les correspondances archivées. Les opérations source restent à rapprocher.</p>}
+                {bindingRead.status === "error" && <p>Correspondances indisponibles ; aucune identité n’est supposée.</p>}
+                {!!bindingRead.value?.unavailableArchiveCount && <p>Certaines preuves archivées sont indisponibles ; le rapprochement est partiel.</p>}
+            </div>}
+            {paired && tab === "expenses" && !data && sourceExpenses.snapshots.length>0 && <section className="surface view-stack"><h2>Registre des opérations</h2><p>Sous-total non établi : aucune opération rapprochée dans le registre historique.</p><FinanceScope data={filterData} additionalAccounts={sourceAccountOptions} currencies={sourceExpenses.snapshots.flatMap(s=>s.rows.map(r=>r.currency))} range={{from,to}} onPeriod={range=>{setFrom(range.from);setTo(range.to);}} account={account} currency={currency} onAccount={setAccount} onCurrency={setCurrency}/><label>Rechercher une opération<input type="search" value={search} onChange={e=>setSearch(e.target.value)}/></label><FinanceRegisterSources result={unifiedResult}/></section>}
             {paired && tab === "investments" && !investmentDetail && <FinanceMonthlyAccounts read={accountCaptures} history={accountHistory} historicalAccountIds={data?.accounts.filter(a => a.type !== "credit-card").map(a => a.id) ?? []} selection={accountSelection} onSelection={setAccountSelection} onOpenHistorical={openInvestment} legacy={<FinanceReceivedAccounts data={data ?? null} inventory={sourceInventory} onOpen={openInvestment} historicalOpen={historicalAccountsOpen} onHistoricalOpen={setHistoricalAccountsOpen} />} />}
-            {data && state && summary && !((tab === "expenses" || tab === "trends") && expenseMode === "source") && (
+            {tab !== "contributions" && data && state && summary && !(tab === "trends" && expenseMode === "source") && (
                 <>
                     {tab === "investments" ? investmentDetail && <details className="finance-journey-controls"><summary>Période des activités : {from} au {to}</summary><PeriodNavigator range={{ from, to }} scope={data.scope} onChange={range => { setFrom(range.from); setTo(range.to); }} /></details> :
-                        <FinanceScope data={data} range={tab === "expenses" ? { from, to } : undefined} onPeriod={range => { setFrom(range.from); setTo(range.to); }} account={account} currency={currency} onAccount={setAccount} onCurrency={setCurrency} />}
+                        <FinanceScope data={filterData} additionalAccounts={sourceAccountOptions} currencies={sourceExpenses.snapshots.flatMap(s=>s.rows.map(r=>r.currency))} range={tab === "expenses" ? { from, to } : undefined} onPeriod={range => { setFrom(range.from); setTo(range.to); }} account={account} currency={currency} onAccount={setAccount} onCurrency={setCurrency} />}
                     {tab !== "trends" && from > to && (
                         <Notice error>
                             La date de début doit précéder la date de fin.
@@ -732,7 +746,7 @@ export default function FinancesView({
                             <div className="finance-chart-grid finance-expense-charts">
                                 <section className="surface view-stack">
                                     <div className="finance-totals compact-finance-totals finance-category-total"><div>
-                                        <span>Dépenses nettes · {currency}</span><strong>{money(summary.totalCents, currency)}</strong><InfoPopover title="Calcul des dépenses">
+                                        <span>Dépenses nettes · {currency}</span><strong>{summary.included.length ? money(summary.totalCents, currency) : "Non établi"}</strong><InfoPopover title="Calcul des dépenses">
                                         <p className="muted">
                                 Transferts, paiements de cartes, revenus et
                                 placements sont exclus selon leur nature
@@ -744,7 +758,7 @@ export default function FinancesView({
                                         <p>Remboursements déduits. Totaux par date d’opération. La vue annuelle conserve les mois partiels et les lacunes; elle n’extrapole pas une année complète.</p>
                                         <p>{summary.reviewCount} opérations à revoir · {summary.unreviewedCount} suggestions non confirmées.</p>
                                     </InfoPopover></div></div>
-                                    <p className="finance-total-formula">{money(summary.included.filter(r => r.outflowCents > 0).reduce((sum, r) => sum + r.outflowCents, 0), currency)} de dépenses − {money(-summary.included.filter(r => r.outflowCents < 0).reduce((sum, r) => sum + r.outflowCents, 0), currency)} remboursés</p>
+                                    {summary.included.length>0 && <p className="finance-total-formula">{money(summary.included.filter(r => r.outflowCents > 0).reduce((sum, r) => sum + r.outflowCents, 0), currency)} de dépenses − {money(-summary.included.filter(r => r.outflowCents < 0).reduce((sum, r) => sum + r.outflowCents, 0), currency)} remboursés</p>}
                                     <p className="muted">Mouvements de la période, pas un solde bancaire disponible.</p>
                                     <button id="finance-open-operations" className="button secondary finance-operations-link" onClick={showOperations}>Voir les opérations</button>
                                     <h2>Où va l’argent ?</h2>
@@ -904,6 +918,7 @@ export default function FinancesView({
                                             </button>
                                         ))}
                                 </div>
+                                <FinanceRegisterSources result={unifiedResult} />
                                 {!rows.length && (
                                     <p>
                                         Aucune opération ne correspond aux
@@ -1343,13 +1358,13 @@ export default function FinancesView({
                 </>
             )}
             <CategoryPayments category={categoryPayments} open={Boolean(categoryPayments) && !editing} summary={tab === "trends" ? trend?.summary ?? null : summary} state={state} onSave={saveInline} onReload={reloadInline} onUndo={id => undoChange(id, true)} accounts={data?.accounts ?? []} account={account} currency={currency} from={tab === "trends" ? trend?.from ?? "" : from} to={tab === "trends" ? trend?.to ?? "" : to} onClose={closeCategory} onEdit={(id, queueIds) => openDecision(id, state, queueIds)} />
-            {paired && state && data && !(tab === "investments" && !investmentDetail) && !((tab === "expenses" || tab === "trends") && expenseMode === "source") && <FinanceCollectionNote state={state} />}
-            {paired && !(tab === "investments" && !investmentDetail) && <details className="surface finance-source-panel">
+            {paired && tab !== "contributions" && state && data && !(tab === "investments" && !investmentDetail) && !(tab === "trends" && expenseMode === "source") && <FinanceCollectionNote state={state} />}
+            {paired && tab !== "contributions" && !(tab === "investments" && !investmentDetail) && <details className="surface finance-source-panel">
                 <summary>{sourceInventory.status === "ready" && sourceInventory.snapshot ? `${sourceInventory.snapshot.accounts.length} comptes non rapprochés et autres données` : "Comptes et autres données de la source"}</summary>
                 <div role="status">{sourceInventory.status === "loading" ? "Chargement de l'inventaire enregistré sur le PC…" : sourceInventory.status === "unsupported" ? "L'inventaire source nécessite une mise à jour du worker PC. Le registre existant reste disponible." : sourceInventory.status === "error" ? "Inventaire source indisponible. Actualisez pour relire le PC; le registre existant est conservé." : ""}</div>
                 {sourceInventory.status === "ready" && <FinanceSourceInventory snapshot={sourceInventory.snapshot} />}
             </details>}
-            {paired && (
+            {paired && tab !== "contributions" && (
                 <details id="finance-source-details" className="surface finance-import">
                     <summary>
                         Sources et import privé{" "}
@@ -1549,6 +1564,7 @@ export default function FinancesView({
                             />
                         </label></details>
                         <Sources sources={editRow.sources} />
+                        <RegisterProvenance observations={unified.provenance.get(editRow.id) ?? []}/>
                         <div className="finance-decision-actions">
                             <button className="button" type="submit" disabled={busy || staleDraft} aria-describedby={allSameName ? "finance-bulk-scope" : undefined}>
                                 {busy

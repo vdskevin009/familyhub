@@ -57,7 +57,7 @@ try {
             if (path === "/invoices") return reply({ items: [], reconciliations: [], unmatchedReimbursements: [], setupRequired: true, accounts: [] });
             return reply({ state: "idle", accounts: [], jobs: [], schedule: null, daily: null });
         });
-        await page.goto(base + "?view=finances");
+        await page.goto(base + "?view=finances&tab=expenses");
         await page.getByRole("heading", { name: "Où va l’argent ?", exact: true }).waitFor();
         const total = page.locator(".compact-finance-totals"), box = await total.boundingBox();
         assert.ok(box.height <= 120, `Total too tall: ${box.height}px at ${width}`);

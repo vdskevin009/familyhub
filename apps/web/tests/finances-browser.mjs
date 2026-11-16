@@ -49,7 +49,7 @@ await mkdir(screenshots, { recursive: true });
 let browser;
 try {
     browser = await chromium.launch({ ...(process.env.FAMILYHUB_TEST_BROWSER_CHANNEL ? { channel: process.env.FAMILYHUB_TEST_BROWSER_CHANNEL } : {}), headless: true, args: ["--no-sandbox"] });
-    for (const width of [320, 390, 768, 1440]) {
+    for (const width of (process.env.FAMILYHUB_TEST_WIDTHS?.split(",").map(Number) ?? [320, 390, 768, 1440])) {
         const finance = new FinanceLibrary(
             join(temp, String(width), "finances"),
         );
@@ -147,12 +147,12 @@ try {
                 }
             },
         );
-        await page.goto(base + "?view=finances");
+        await page.goto(base + "?view=finances&tab=expenses");
         await page
             .getByRole("heading", { name: "Aucun historique importé" })
             .waitFor();
         assert.equal(await page.locator(".bottom-nav button").count(), 5);
-        assert.equal(await page.locator(".finance-tabs button").count(), 3);
+        assert.equal(await page.locator(".finance-tabs button").count(), 4);
         assert.equal(posts, 0);
         await page.locator(".finance-import > summary").click();
         const file = page.locator(".finance-import input[type=file]");
@@ -309,7 +309,7 @@ try {
             /Période partielle/,
         );
         await fillFinanceFilter(page, "Du", "2026-04-01");
-        // A chart opens the full category even when the register is filtered to unreviewed Spotify rows.
+        // The chart and category details inherit the register's search/review filters.
         await openFinanceRegister(page);
         await page.getByLabel("Rechercher", { exact: true }).fill("SPOTIFY");
         await page.locator(".finance-check input").check();
@@ -318,7 +318,17 @@ try {
         // Otherwise it can steal foodBar.focus(), so Enter reopens Operations instead of the category.
         await page.waitForFunction(() => document.activeElement?.id === "finance-open-operations");
         const categoryBars = page.locator(".finance-expense-charts > section").first();
-        const foodBar = categoryBars.getByRole("button", { name: /^Courses alimentaires/ });
+        assert.equal(await categoryBars.getByRole("button", { name: /^Courses alimentaires/ }).count(),0);
+        await openFinanceRegister(page);
+        await page.getByLabel("Rechercher", { exact: true }).fill("");
+        await page.locator(".finance-check input").uncheck();
+        // Wait for the filtered register to reflect the reset before changing screens.
+        await page.locator('.finance-operations-panel .finance-register button').filter({hasText:'SAFEWAY SYNTHETIC'}).first().waitFor();
+        await page.getByRole("button", { name: "Retour aux dépenses", exact: true }).click();
+        await page.waitForFunction(() => document.activeElement?.id === "finance-open-operations");
+        const foodBar = categoryBars.locator('[data-finance-bar="groceries"]');
+        await foodBar.waitFor({state:'attached'}).catch(async error=>{console.error('Synthetic category scope',await page.locator('.finance-view').innerText());await page.screenshot({path:join(screenshots,'failure-'+width+'.png'),fullPage:true});throw error;});
+        if (!await foodBar.isVisible()) await categoryBars.locator('.finance-more-categories > summary').click();
         await foodBar.focus(); await page.keyboard.press("Enter");
         const foodSheet = page.getByRole("dialog", { name: "Paiements · Courses alimentaires", exact: true });
         await foodSheet.waitFor();
@@ -369,8 +379,8 @@ try {
         await foodSheet.getByRole("button", { name: "Fermer la catégorie", exact: true }).click();
         await page.waitForFunction(() => document.activeElement?.textContent?.startsWith("Courses alimentaires"));
         assert.equal(await page.locator(".finance-more-categories").getAttribute("open"), "", "Category moved into the remainder is reopened for focus return");
-        assert.equal(await page.getByLabel("Rechercher", { exact: true }).inputValue(), "SPOTIFY");
-        assert.equal(await page.locator(".finance-check input").isChecked(), true);
+        assert.equal(await page.getByLabel("Rechercher", { exact: true }).inputValue(), "");
+        assert.equal(await page.locator(".finance-check input").isChecked(), false);
         assert.equal(await page.getByLabel("Du", { exact: true }).inputValue(), "2026-04-01");
         assert.equal(await page.getByLabel("Au", { exact: true }).inputValue(), "2026-09-30");
         assert.match(await categoryBars.innerText(), /Voyages.*124,50/s);
@@ -417,7 +427,7 @@ try {
         await openFinanceSection(page, "Épargne / Investissements classés");
         assert.match(await flows.locator(".finance-totals").innerText(), /Sorties classées.*500,00.*Entrées classées.*500,00/s);
         assert.match(await page.locator(".finance-totals").first().innerText(), /2\s?852/);
-        assert.equal(await page.locator(".finance-tabs button").count(), 3);
+        assert.equal(await page.locator(".finance-tabs button").count(), 4);
         await selectFinanceFilter(page, "Vue", "year");
         await flows.getByText("Flux mois par mois", { exact: true }).click();
         assert.equal(await flows.locator(".finance-bars li").count(), 24);
@@ -662,8 +672,7 @@ try {
             fullPage: true,
         });
         // A newly available category uses the existing persistent editor, filter and all-row drill-down.
-        await page.goto(base + "?view=finances");
-        await page.getByRole("button", { name: "Registre historique", exact: true }).click();
+        await page.goto(base + "?view=finances&tab=expenses");
         await selectFinanceFilter(page, "Vue", "year");
         await openFinanceRegister(page);
         await page.locator(".finance-register button").filter({ hasText: "SYNTHETIC RESTAURANT" }).first().click();

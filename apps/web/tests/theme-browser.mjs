@@ -54,7 +54,9 @@ try {
       if (overflow) console.log('OVERFLOW', JSON.stringify(await page.evaluate(() => [...document.querySelectorAll('body *')].map(e => ({ tag: e.tagName, cls: e.className, right: e.getBoundingClientRect().right, width: e.getBoundingClientRect().width, position: getComputedStyle(e).position, overflow: getComputedStyle(e).overflowX })).filter(e => e.width && e.right > innerWidth + 1))));
       assert.equal(overflow, false, `${view} ${width} overflow`);
       const titleSize = await page.locator('main h1').first().evaluate(e => parseFloat(getComputedStyle(e).fontSize));
-      if (view === 'today') assert.ok(titleSize >= 23 && titleSize <= 30); else assert.equal(titleSize, 20);
+      if (view === 'today') assert.ok(titleSize >= 23 && titleSize <= 30);
+      else if (view === 'finances') assert.ok(titleSize >= 26 && titleSize <= 34, 'Approved finance title remains legible across viewport sizes');
+      else assert.equal(titleSize, 20);
       if (['invoices', 'desjardins', 'blue-cross'].includes(view)) {
         const bell = await page.getByRole('button', { name: 'Ouvrir les notifications', exact: true }).boundingBox();
         const tabs = page.getByRole('navigation', { name: 'Sources documentaires', exact: true });
@@ -91,7 +93,7 @@ try {
     assert.equal(await page.getByRole('button', { name: 'Catalogue', exact: true }).count(), 0);
     assert.equal(await page.getByRole('button', { name: 'Moins cher ailleurs', exact: true }).count(), 0);
     await nav.getByRole('button', { name: 'Plus', exact: true }).click();
-    await page.locator('.other-link').filter({ hasText: 'Finances' }).click();
+    await nav.getByRole('button', { name: 'Finances', exact: true }).click();
     await page.goBack(); await page.getByRole('heading', { name: 'Plus', exact: true }).waitFor();
     await page.goBack(); await page.getByRole('heading', { name: 'Courses', exact: true }).waitFor();
     await page.goForward(); await page.getByRole('heading', { name: 'Plus', exact: true }).waitFor();

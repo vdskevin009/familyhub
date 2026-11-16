@@ -1,6 +1,23 @@
 /* Existing FamilyHub tokens; compact controls keep figures and source details distinct. */
 /* Keep wide system-font tabs inside the available grid track instead of widening the page. */
 .finance-view { grid-template-columns: minmax(0, 1fr); }
+.finance-view > .page-heading h1 { font-size:clamp(26px,4vw,34px); letter-spacing:-.025em; }
+.finance-view .finance-tabs button { font-family:inherit; }
+.finance-category-overview { display:grid; gap:8px; }
+.finance-category-overview p { color:var(--muted); margin:0; }
+.finance-category-overview > strong { font-size:clamp(30px,6vw,42px); font-variant-numeric:tabular-nums; line-height:1.2; }
+.finance-category-payments[data-editing="false"] .finance-payment-choice,
+.finance-category-payments[data-editing="false"] .finance-payment-edit,
+.finance-category-payments[data-editing="false"] .finance-inline-toolbar { display:none; }
+.finance-category-payments[data-editing="false"] .finance-inline-payment { display:block; }
+.finance-category-payments[data-editing="false"] .finance-service { width:100%; padding-block:18px; }
+.finance-source-register { list-style:none; padding:0; margin:0; }
+.finance-source-register > li { display:flex; justify-content:space-between; align-items:start; gap:1rem; padding-block:1rem; border-bottom:1px solid var(--line); }
+.finance-source-register > li > div { min-width:0; display:grid; gap:.35rem; overflow-wrap:anywhere; }
+.finance-source-register > li > strong { white-space:nowrap; font-variant-numeric:tabular-nums; }
+.finance-source-register span, .finance-register-status, .finance-unresolved > p { color:var(--muted); font-size:.875rem; }
+.finance-source-register summary { min-height:44px; cursor:pointer; }
+@media (max-width:400px) { .finance-source-register > li { flex-direction:column; gap:.5rem; } .finance-source-register > li > strong { align-self:end; } }
 .finance-view > .finance-tabs { width: max-content; max-width: 100%; min-width: 0; display: flex; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: thin; }
 .finance-view > .finance-tabs button { flex: 0 0 auto; white-space: nowrap; min-height: 44px; padding-inline: 14px; }
 .finance-scope { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-width: 0; }
@@ -64,9 +81,12 @@
 .finance-view .finance-refresh-label { white-space: nowrap; }
 .finance-view .page-heading-actions, .savings-view .page-heading-actions { align-self: flex-start; }
 @media (max-width: 520px) {
+  .finance-view > .finance-tabs { width:100%; }
+  .finance-view > .finance-tabs button { flex:1 0 auto; padding-inline:4px; font-size:12px; }
   .finance-view .finance-refresh-label, .savings-view .savings-add-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
   .finance-view .page-heading-actions > button, .savings-view .page-heading-actions > button { min-width: 44px; padding-inline: 12px; }
 }
+@media (max-width:360px) { .finance-view > .finance-tabs button { font-size:11px; } }
 .savings-comparison-dialog .toggle-label { display: flex; }
 @media (max-width: 420px) {
   .finance-scope { align-items: flex-start; gap: 6px; }

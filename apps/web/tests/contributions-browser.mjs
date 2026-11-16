@@ -24,7 +24,12 @@ try {
     const page = await context.newPage(); const errors=[]; page.on("pageerror", e=>errors.push(e.message));
     await page.addInitScript(()=>localStorage.setItem("familyhub.worker.v1",JSON.stringify({Endpoint:"https://synthetic-worker.invalid",ApiKey:"synthetic-key"})));
     let mode="ready";
-    await page.route("https://synthetic-worker.invalid/**",route=>route.fulfill({status:mode==="offline"?503:200,contentType:"application/json",body:JSON.stringify(mode==="invalid"?{schema:0}:mode==="empty"?{...snapshot,plans:[]}:snapshot)}));
+    await page.route("https://synthetic-worker.invalid/**",route=>{
+      const path=new URL(route.request().url()).pathname;
+      if(path==='/health')return route.fulfill({json:{status:'ok',capabilities:[]}});
+      if(path==='/finances')return route.fulfill({json:{schema:1,revision:'empty',data:null,imports:[],decisions:{},decisionHistory:[]}});
+      if(path!=='/contributions/progress')return route.fulfill({json:{items:[],records:[],jobs:[],state:'idle'}});
+      return route.fulfill({status:mode==="offline"?503:200,contentType:"application/json",body:JSON.stringify(mode==="invalid"?{schema:0}:mode==="empty"?{...snapshot,plans:[]}:snapshot)});});
     await page.goto(base+"?view=contributions");
     const trigger = page.getByRole("button",{name:"Voir les versements REER",exact:true}); await trigger.waitFor();
     if (process.env.CONTRIBUTIONS_TEST_FONT) await page.addStyleTag({content:`body { font-family: ${process.env.CONTRIBUTIONS_TEST_FONT} !important; }`});
@@ -50,14 +55,14 @@ try {
     await mkdir("output/playwright/contributions",{recursive:true});
     await page.screenshot({path:`output/playwright/contributions/cards-${width}${process.env.CONTRIBUTIONS_TEST_FONT ? "-fallback" : ""}.png`,fullPage:true});
     for(const next of ["empty","invalid","offline","ready"]) {
-      mode=next; await page.getByRole("button",{name:"Actualiser",exact:true}).click();
+      mode=next; await page.getByRole("button",{name:"Actualiser les contributions",exact:true}).click();
       if(next==="ready") await trigger.waitFor();
       else { await page.getByText(next==="empty"?"Objectif privé non configuré":"Données indisponibles",{exact:true}).first().waitFor(); assert.equal(await page.getByRole("progressbar").count(),0); }
     }
     const more = page.getByRole("button",{name: "Plus",exact:true}); await more.last().click();
-    await page.getByRole("button",{name:/Contributions Objectifs personnels/}).click(); await trigger.waitFor();
+    await page.getByRole("button",{name:"Finances",exact:true}).last().click(); await page.getByRole("button",{name:"Contributions",exact:true}).click(); await trigger.waitFor();
     await page.goBack(); await page.getByRole("heading",{name:"Plus",exact:true}).waitFor();
-    await page.goForward(); await trigger.waitFor();
+    await page.goForward(); await page.getByRole("button",{name:"Contributions",exact:true}).click(); await trigger.waitFor();
     assert.deepEqual(errors,[]); await context.close();
     console.log(`Contributions ${width}px: cards, modal keyboard/focus, error/empty, history passed.`);
   }

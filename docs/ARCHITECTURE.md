@@ -326,7 +326,7 @@ Private classification is now guarded by effective-configuration discovery, expl
 
 The optional pure full-feed adapter and guarded paired API orchestration are documented in [Finances full feed](FINANCES-FULL-FEED.md). They preserve explicit account identity, pagination, unknown freshness and existing source/manual history. No collector or schedule is activated by importing this module. Presentation and validation gates are in [Finance review](FINANCE-REVIEW.md).
 
-Source-native spending (FH-FIN-025) is a separate paired, no-store /finance/source-expenses API and append-only private finance/source-expenses.json store. Exact query-scoped captures use hashed source identities and conservative provider classification without canonical mappings. The PWA shows source and historical-register modes separately, never combining their totals. See [Source expenses](FINANCE-SOURCE-EXPENSES.md).
+Source-native spending (FH-FIN-025) is a separate paired, no-store /finance/source-expenses API and append-only private finance/source-expenses.json store. Exact query-scoped captures use hashed source identities and conservative provider classification without canonical mappings. The FH-FIN-031 candidate removes the expense dataset switch. Its paired GET /finances/register-bindings reads bounded hash-verified import archives and returns hashed source-to-canonical identities, never raw provider identifiers. One canonical operation contributes once through existing classifiers; every source version remains traceable, while unmapped/conflicting/pending observations stay outside the subtotal. No private write occurs on read. See [Source expenses](FINANCE-SOURCE-EXPENSES.md).
 
 ## Source-native trend projection (FH-FIN-025 continuation)
 

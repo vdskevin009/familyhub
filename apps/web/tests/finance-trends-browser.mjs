@@ -65,9 +65,9 @@ try {
             if (path === "/invoices") return reply({ items: [], reconciliations: [], unmatchedReimbursements: [], setupRequired: true, accounts: [] });
             return reply({ state: "idle", accounts: [], jobs: [], schedule: null, daily: null });
         });
-        await page.goto(base + "?view=finances");
+        await page.goto(base + "?view=finances&tab=expenses");
         await page.getByRole("heading", { name: "Où va l’argent ?", exact: true }).waitFor();
-        assert.equal(await page.locator(".finance-tabs button").count(), 3);
+        assert.equal(await page.locator(".finance-tabs button").count(), 4);
         await page.getByRole("button", { name: "Tendances", exact: true }).click();
         const view = page.locator(".finance-trends");
         const openMonth = async month => {

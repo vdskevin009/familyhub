@@ -237,8 +237,13 @@ try {
       state.snapshot.lastSuccess = new Date().toISOString();
     }
 
-    // Every previous main or secondary section remains reachable through the Plus menu.
-    for (const [label, route] of [["Finances", "finances"], ["Hypothèque", "mortgage"], ["Documents", "documents"], ["Notifications", "notifications"], ["Courrier important", "inbox"], ["Planifier", "plan"], ["Money · outils locaux", "money"], ["Réglages et outils", "more"]]) {
+    await nav.getByRole("button", {name:"Finances",exact:true}).click();
+    assert.equal(new URL(page.url()).searchParams.get("view"),"finances");
+    assert.equal(await nav.getByRole("button", {name:"Finances",exact:true}).getAttribute("aria-current"),"page");
+    await page.locator('.finance-tabs button[aria-current="page"]').waitFor();
+    assert.equal(await page.locator('.finance-tabs button[aria-current="page"]').innerText(),"Comptes");
+    // Former primary and secondary sections remain reachable through Plus.
+    for (const [label, route] of [["Dépenses récurrentes", "savings"], ["Hypothèque", "mortgage"], ["Documents", "documents"], ["Notifications", "notifications"], ["Courrier important", "inbox"], ["Planifier", "plan"], ["Money · outils locaux", "money"], ["Réglages et outils", "more"]]) {
       await nav.getByRole("button", { name: "Plus", exact: true }).click();
       await page.locator(".other-link").filter({ hasText: label }).click();
       assert.equal(new URL(page.url()).searchParams.get("view"), route);
@@ -326,7 +331,7 @@ try {
     state.blockFinancesChunk = true;
     const nav = page.locator(".bottom-nav:visible, .app-rail nav:visible");
     await nav.getByRole("button", { name: "Plus", exact: true }).click();
-    await page.locator(".other-link").filter({ hasText: "Finances" }).click();
+    await page.locator(".bottom-nav:visible, .app-rail nav:visible").getByRole("button", {name:"Finances",exact:true}).click();
     await page.getByRole("heading", { name: "Section indisponible", exact: true }).waitFor();
     assert.ok(state.blockedChunks >= 1, "The synthetic request failure must reach the unloaded Finances chunk");
     assert.equal(await nav.getByRole("button").count(), 5);
@@ -336,11 +341,11 @@ try {
     assert.ok(retryBox.width >= 48 && retryBox.height >= 48);
     await nav.getByRole("button", { name: "Aujourd’hui", exact: true }).click(); await waitReady(page);
     await nav.getByRole("button", { name: "Plus", exact: true }).click();
-    await page.locator(".other-link").filter({ hasText: "Finances" }).click();
+    await page.locator(".bottom-nav:visible, .app-rail nav:visible").getByRole("button", {name:"Finances",exact:true}).click();
     await page.getByRole("heading", { name: "Section indisponible", exact: true }).waitFor();
     await page.getByRole("button", { name: "Retour à l’accueil", exact: true }).click(); await waitReady(page);
     await nav.getByRole("button", { name: "Plus", exact: true }).click();
-    await page.locator(".other-link").filter({ hasText: "Finances" }).click();
+    await page.locator(".bottom-nav:visible, .app-rail nav:visible").getByRole("button", {name:"Finances",exact:true}).click();
     await page.getByRole("heading", { name: "Section indisponible", exact: true }).waitFor();
     state.blockFinancesChunk = false;
     await page.getByRole("button", { name: "Réessayer", exact: true }).click();

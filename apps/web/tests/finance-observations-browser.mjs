@@ -16,7 +16,7 @@ const server = createServer(async (req, res) => {
  if (file !== root && !file.startsWith(root + sep)) return res.writeHead(403).end();
  try { res.setHeader("Content-Type", ({ ".js": "text/javascript", ".css": "text/css", ".svg": "image/svg+xml", ".png": "image/png" })[extname(file)] ?? "text/html"); res.end(await readFile(file === root || pathname.endsWith("/") ? join(root, "index.html") : file)); } catch { res.writeHead(404).end(); }
 });
-server.listen(0, "127.0.0.1"); await once(server, "listening"); const base = "http://127.0.0.1:" + server.address().port + "/familyhub/?view=finances";
+server.listen(0, "127.0.0.1"); await once(server, "listening"); const base = "http://127.0.0.1:" + server.address().port + "/familyhub/?view=finances&tab=expenses";
 let browser;
 try {
  browser = await chromium.launch({ ...(process.env.FAMILYHUB_TEST_BROWSER_CHANNEL ? { channel: process.env.FAMILYHUB_TEST_BROWSER_CHANNEL } : {}), headless: true });

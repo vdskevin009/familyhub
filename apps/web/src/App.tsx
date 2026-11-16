@@ -13,7 +13,6 @@ const DocumentLibraryView = lazy(() => import("./views/DocumentLibraryView"));
 const SavingsView = lazy(() => import("./views/SavingsView"));
 const MortgageView = lazy(() => import("./views/MortgageView"));
 const FinancesView = lazy(() => import("./views/FinancesView"));
-const ContributionsView = lazy(() => import("./views/ContributionsView"));
 const CoursesView = lazy(() => import("./views/CoursesView"));
 const NotificationsView = lazy(() => import("./views/NotificationsView"));
 import { PageHeader } from "./ui/primitives";
@@ -35,12 +34,11 @@ const nav: Array<{ id: AppView; label: string; shortLabel?: string; icon: typeof
   { id: "today", label: "Aujourd’hui", icon: Home },
   { id: "reimbursements", label: "Remboursements", shortLabel: "Rembours.", icon: HeartHandshake },
   { id: "groceries", label: "Courses", icon: ShoppingBasket },
-  { id: "savings", label: "Dépenses récurrentes", shortLabel: "Récurrent", icon: TrendingDown },
+  { id: "finances", label: "Finances", icon: CircleDollarSign },
   { id: "other", label: "Plus", icon: MoreHorizontal }
 ];
 const otherViews: Array<{ id: AppView; label: string; description: string; icon: typeof Home }> = [
-  { id: "contributions", label: "Contributions", description: "Objectifs personnels REER et REEE", icon: CircleDollarSign },
-  { id: "finances", label: "Finances", description: "Dépenses, comptes et abonnements détectés", icon: CircleDollarSign },
+  { id: "savings", label: "Dépenses récurrentes", description: "Services, contrats et abonnements", icon: TrendingDown },
   { id: "mortgage", label: "Hypothèque", description: "Dossier, échéances et taux de référence", icon: Home },
   { id: "documents", label: "Documents", description: "Factures et décomptes des assureurs", icon: FileText },
   { id: "notifications", label: "Notifications", description: "Alertes, historique et préférences", icon: Bell },
@@ -62,8 +60,8 @@ export default function App() {
   const mainRef = useRef<HTMLElement>(null);
   const documentViews = [{ id: "invoices", label: "Factures" }, { id: "desjardins", label: "Desjardins" }, { id: "blue-cross", label: "Blue Cross" }] as const;
   const documentKind = view === "documents" || view === "invoices" ? "invoices" : view === "desjardins" ? "desjardins" : view === "blue-cross" ? "blue-cross" : null;
-  const navigationActive = (id: AppView) => view === id || id === "other" && (Boolean(documentKind) || otherViews.some(other => other.id === view));
-  const pageName = nav.find(item => item.id === view)?.label || documentViews.find(item => item.id === view)?.label || otherViews.find(item => item.id === view)?.label || "FamilyHub";
+  const navigationActive = (id: AppView) => view === id || id === "finances" && view === "contributions" || id === "other" && (Boolean(documentKind) || otherViews.some(other => other.id === view));
+  const pageName = view === "contributions" ? "Finances — Contributions" : nav.find(item => item.id === view)?.label || documentViews.find(item => item.id === view)?.label || otherViews.find(item => item.id === view)?.label || "FamilyHub";
   useEffect(() => {
     document.title = `${pageName} · FamilyHub`;
     const frame = requestAnimationFrame(() => window.scrollTo({ top: scrollPositions.current[view] || 0, behavior: "instant" }));
@@ -143,9 +141,8 @@ export default function App() {
         {view === "reimbursements" && <ReimbursementsView key={routeKey} hub={state} />}
         {documentKind && <div className="view-stack"><nav className="segment-tabs document-tabs" aria-label="Sources documentaires">{documentViews.map(item => <button type="button" key={item.id} className={documentKind === item.id ? "active" : ""} aria-current={documentKind === item.id ? "page" : undefined} onClick={() => navigate(item.id)}>{item.label}</button>)}</nav><DocumentLibraryView key={documentKind} hub={state} kind={documentKind} /></div>}
         {view === "savings" && <SavingsView key={routeKey} hub={state} onNavigate={navigate} />}
-        {view === "contributions" && <ContributionsView worker={state.worker} />}
         {view === "mortgage" && <MortgageView worker={state.worker} />}
-        {view === "finances" && <FinancesView key={routeKey} hub={state} onNavigate={navigate} />}
+        {(view === "finances" || view === "contributions") && <FinancesView key={routeKey} hub={state} onNavigate={navigate} initialTab={view === "contributions" ? "contributions" : undefined} />}
         {view === "groceries" && <CoursesView key={routeKey} config={state.worker} plannerItems={state.planner.GroceryItems} />}
         {view === "other" && <section className="view-stack more-hub"><PageHeader title="Plus" subtitle="Tous vos outils, toujours accessibles">{!installed && installPrompt && <button type="button" className="button secondary" onClick={() => void installApp()}><Download size={15} aria-hidden="true" />Installer</button>}</PageHeader><div className="other-grid">{otherViews.map(item => { const Icon = item.icon; return <button type="button" key={item.id} className="other-link" onClick={() => navigate(item.id)}><span className="other-icon"><Icon size={22} aria-hidden="true" /></span><span><strong>{item.label}</strong><small>{item.description}</small></span><ChevronRight size={18} aria-hidden="true" /></button>; })}</div></section>}
         {view === "plan" && <PlanView hub={state} />}

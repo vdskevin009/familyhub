@@ -147,6 +147,17 @@ async function request<T>(config: WorkerConfig, path: string, init: RequestInit 
 }
 
 export const fetchFinances = (config: WorkerConfig) => request<import("../../worker/src/finance-model").FinanceState>(config,"/finances");
+export async function fetchFinanceRegisterBindings(config: WorkerConfig): Promise<import("../../worker/src/finance-register-bindings").FinanceRegisterProof | null> {
+  const health = await request<{ capabilities?: string[] }>(config, "/health");
+  if (!health.capabilities?.includes("finance-register-bindings-v1")) return null;
+  const result = await request<import("../../worker/src/finance-register-bindings").FinanceRegisterProof>(config, "/finances/register-bindings");
+  if (!result || result.capability !== "finance-register-bindings-v1" || typeof result.ledgerRevision !== "string" || !Number.isSafeInteger(result.unavailableArchiveCount) || result.unavailableArchiveCount < 0 || !result.bindings) throw new Error("Rapprochement non confirmé.");
+  for (const kind of ["accounts", "transactions"] as const) {
+    const map = result.bindings[kind];
+    if (!map || typeof map !== "object" || Array.isArray(map) || Object.keys(map).length > 30000 || Object.entries(map).some(([key, value]) => !/^fsi_[a-f0-9]{64}$/.test(key) || typeof value !== "string" || !/^[a-zA-Z0-9:_-]{1,160}$/.test(value))) throw new Error("Identités de rapprochement invalides.");
+  }
+  return result;
+}
 async function hasFinanceSourceInventory(config: WorkerConfig): Promise<boolean> {
   const health = await request<{ capabilities?: string[] }>(config, "/health");
   return Array.isArray(health.capabilities) && health.capabilities.includes(SOURCE_INVENTORY_CAPABILITY);
