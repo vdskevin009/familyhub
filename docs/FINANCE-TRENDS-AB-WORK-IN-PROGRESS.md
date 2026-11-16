@@ -1,9 +1,9 @@
 # Tendances A+B — local checkpoint
 
 Local implementation on `feat/finance-trends-monthly-ui`, based on the tested
-Finances lot `2387c97e054fc413d246570832416ab7d47c0867`. Neither lot is
-merged or deployed at this checkpoint. Draft PR #294 is now published on top of
-Finances #293. Récurrents is a separate implementation-only lot.
+Finances lot, now merged via #293 at `c92d5d0d73ec3c508e601a18522fad5a7cbc174b`.
+Draft PR #294 is retargeted to main and includes that exact base. Its complete CI and
+production verification remain pending. Récurrents is a separate implementation-only lot.
 
 ## Implemented and reviewed
 
@@ -73,6 +73,7 @@ four-width source-inventory suite passes, including stale responses and keyboard
 
 Finances head `e7c6a46e3eb24e615a2fe4386c8c98a7b507dfad` passed all CI gates in
 run 43781125437. Moving #293 from draft to ready was rejected by automatic approval
-twice, including after checking the owner's later deployment instructions. No merge,
-runtime update or indirect publication was attempted. Draft publication and CI remain
-authorized; release needs that workflow block resolved.
+twice, including after checking the owner's later deployment instructions. The owner
+then explicitly requested fusion and deployment of the ready lot. The next permitted
+attempt succeeded and #293 merged normally. No indirect publication route was used.
+Its main CI/Pages run is 43782857654; production is not yet claimed verified.
