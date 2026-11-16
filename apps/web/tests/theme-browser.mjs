@@ -86,7 +86,8 @@ try {
     // Use actual navigation controls and browser history; no storage/route hacks.
     page = await context.newPage(); await page.goto(base + '?view=other');
     const nav = page.locator('.bottom-nav:visible, .app-rail nav:visible');
-    await nav.getByRole('button', { name: 'Courses', exact: true }).click();
+    await nav.getByRole('button', { name: 'Projets', exact: true }).click();
+    await page.locator('.project-tiles').getByRole('button', { name: 'Courses', exact: true }).click();
     await page.getByRole('button', { name: 'Achats', exact: true }).click();
     assert.equal(await page.evaluate(() => getComputedStyle(document.body).backgroundColor), 'rgb(245, 246, 248)');
     assert.equal(await page.locator('main h1').first().evaluate(e => getComputedStyle(e).fontSize), '20px');

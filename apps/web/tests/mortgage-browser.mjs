@@ -41,9 +41,12 @@ try {
     const navigate=async name=>{
       const nav=page.locator('.bottom-nav:visible, .app-rail nav:visible');
       if(name==='Hypothèque') {
-        await nav.getByRole('button',{name:'Plus',exact:true}).click();
-        await page.locator('.other-link').filter({hasText:'Hypothèque'}).click();
+        await nav.getByRole('button',{name:'Projets',exact:true}).click();
+        await page.locator('.project-tiles').getByRole('button',{name:'Hypothèque',exact:true}).click();
         await page.getByRole('tab',{name:'Offres et contacts',exact:true}).click();await page.locator('.mortgage-compact').getByRole('tab',{name:'Taux',exact:true}).click();
+      } else if(name==='Courses') {
+        await nav.getByRole('button',{name:'Projets',exact:true}).click();
+        await page.locator('.project-tiles').getByRole('button',{name,exact:true}).click();
       } else await nav.getByRole('button',{name,exact:true}).click();
     };
     await page.goto(base+'?view=mortgage');await page.getByRole('tab',{name:'Offres et contacts',exact:true}).click();await mortgage().getByRole('tab',{name:'Contacts',exact:true}).waitFor();
