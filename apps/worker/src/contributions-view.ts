@@ -1,3 +1,6 @@
+import {readFinanceRegisterBindings} from './finance-register-bindings.js';
+import { readInferencePolicy, inferenceView } from './contribution-inference-readback.js';
+import { FinanceSourceExpensesStore } from './finance-source-expenses-store.js';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { FinanceState } from './finance-model.js';
@@ -38,5 +41,10 @@ export async function readContributionsView(directory:string,state:FinanceState,
  catch(error){if((error as NodeJS.ErrnoException).code==='ENOENT')return {schema:1,evaluatedOn:dateOnly(now),daysPerMonth:30,plans:[]};throw error}
  const config=JSON.parse(content) as ContributionsConfig;
  const today=new Intl.DateTimeFormat('en-CA',{timeZone:config.timezone,year:'numeric',month:'2-digit',day:'2-digit'}).format(now);
- return contributionsView(state,config,today);
+  const view=contributionsView(state,config,today);
+ try{
+  const policy=await readInferencePolicy(directory);
+  if(!policy)return view;
+  return inferenceView(view,state,config,await new FinanceSourceExpensesStore(directory).read(now),policy,today,(await readFinanceRegisterBindings(join(directory,'finances'),state)).bindings);
+ }catch{return {...view,plans:view.plans.map(p=>({...p,inferredCents:null,inferredPayments:[],inferenceStatus:'source-unavailable'}))};}
 }

@@ -70,3 +70,10 @@ test('new reservation version is rejected by the original schema-1 validator',as
  const oldValidator=(a)=>{if(a.schema!==1)throw Error('Invalid scheduled admission.');};
  assert.throws(()=>oldValidator(b.admission),/Invalid/);
 });
+
+test('reviewed inference policy hash binds admission and every operation; legacy admission cannot adopt policy',async()=>{
+ const {mkdir}=await import('node:fs/promises');const {createHash}=await import('node:crypto');
+ const h=await setup();await mkdir(join(h.directory,'contributions'));const file=join(h.directory,'contributions/inference-policy.json'),bytes=JSON.stringify({schema:1,rules:[]});await writeFile(file,bytes);
+ await assert.rejects(h.b(),/policy/);h.scope.inferencePolicySha256=createHash('sha256').update(bytes).digest('hex');const b=await h.b();assert.equal(b.action,'collect');await assertScheduledAdmission(h.input(),b.admission,'collect');
+ await writeFile(file,bytes+' ');await assert.rejects(assertScheduledAdmission(h.input(),b.admission,'collect'),/policy/);await assert.rejects(assertScheduledAdmission(h.input(),b.admission,'readback'),/policy/);await assert.rejects(h.finish(b.admission,h.report(b.admission)),/policy/);assert.equal(h.loads(),0);
+});

@@ -15,6 +15,8 @@ const server = createServer(async (req, res) => {
 server.listen(0, "127.0.0.1"); await once(server, "listening");
 const base = `http://127.0.0.1:${server.address().port}/familyhub/`;
 const plan = {id:"synthetic-plan",kind:"rrsp",currency:"CAD",personalGoalCents:600000,identifiedCents:100000,deadline:"2030-03-01",attribution:"confirmed",beneficiaryConfirmed:false,payments:[{id:"synthetic-row",date:"2030-01-01",amountCents:100000,kind:"weekly"}],unassigned:[{id:"excluded",date:"2030-01-01",amountCents:12300,currency:"CAD"}],warnings:[],sourceFreshness:"unknown",weeklyProjection:{amountCents:25000,remainingOccurrences:4,futureCents:100000,assumption:"Hypothèse fictive : rythme hebdomadaire maintenu."}};
+plan.inferredCents=12345;
+plan.inferredPayments=[{id:"inferred-source",date:"2030-01-01",amountCents:12345,attribution:"inferred",rationale:"Même référence que des virements précédents.",evidenceTransactionIds:["historic-1","historic-2"],sourceKey:"fsi_"+"a".repeat(64),collectedAt:"2030-01-01T12:00:00Z",bankReceiptConfirmed:false}];
 const snapshot = {schema:1,evaluatedOn:"2030-01-01",daysPerMonth:30,plans:[plan,{...plan,id:"synthetic-resp",kind:"resp",beneficiaryName:"Enfant fictif",attribution:"unconfirmed",personalGoalCents:100000,weeklyProjection:null}]};
 let browser;
 try {
@@ -38,6 +40,8 @@ try {
     assert.equal(await page.locator(".contribution-card.effort").count(),1);
     assert.equal(await page.locator(".contribution-card time").count(),0);
     assert.equal(await page.getByRole("progressbar").count(),2);
+    assert.equal(await page.locator(".contribution-inferred-summary").count(),2);
+    assert.match(await page.getByRole("progressbar").first().getAttribute("aria-valuetext"), /1.?000/);
     if (!(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1))) console.error(await page.evaluate(()=>({width:innerWidth,scrollWidth:document.documentElement.scrollWidth,font:getComputedStyle(document.body).fontFamily,overflow:[...document.querySelectorAll("body *")].map(el=>({tag:el.tagName,class:el.className,rect:el.getBoundingClientRect().toJSON(),minWidth:getComputedStyle(el).minWidth})).filter(item=>item.rect.right>innerWidth+1)})));
     assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
     if (process.env.CONTRIBUTIONS_TEST_FONT && width === 320) console.log("Fallback heading geometry", JSON.stringify(await page.evaluate(()=>({viewport:innerWidth,scrollWidth:document.documentElement.scrollWidth,items:[".page-heading h1", ".page-heading-actions button", ".shell-tools button"].map(selector=>({selector,rect:document.querySelector(selector).getBoundingClientRect().toJSON()}))}))));
@@ -46,6 +50,9 @@ try {
       const dialog=page.getByRole("dialog"); await dialog.waitFor();
       assert.ok(await dialog.getByText("Hebdomadaires réalisés",{exact:true}).isVisible());
       assert.ok(await dialog.getByText("Virements non attribués · exclus",{exact:true}).isVisible());
+      assert.ok(await dialog.getByRole("heading",{name:/Attribution déduite/}).isVisible());
+      assert.ok(await dialog.getByText("Même référence que des virements précédents.",{exact:true}).isVisible());
+      assert.ok(await dialog.getByText(/Réception bancaire non confirmée/).isVisible());
       for(let j=0;j<5;j++) await page.keyboard.press("Tab");
       assert.ok(await page.evaluate(()=>document.querySelector("dialog[open]").contains(document.activeElement)));
       await page.keyboard.press("Escape");

@@ -976,3 +976,7 @@ An explicit reviewed private policy initializes the next Vancouver day scope loc
 
 ### FH-FIN-027 pre-operation reservation prevention (isolated candidate; #281)
 Before admission, orchestration must discover required source tools without invoking them and coordinate ownership. New admissions journal the first source/API authorization under an exclusive phase lock. Only their unchanged live owner may cancel a still-unstarted reservation, preserving immutable evidence, incomplete status and hourly timing. Old, expired, started or recovery admissions fail closed. No automatic stale-lock cleanup or retroactive no-write proof is introduced. See docs/FINANCE-DAILY-GATE.md. Implemented in isolated branch only; production and existing pending admission unchanged.
+
+## FH-FIN-029 - Explicit inferred contribution observations (#281)
+
+In progress. An optional private exact-reference policy may project source-native posted debits as inferred destinations, supported by multiple earlier explicitly attributed canonical rows. Keep inferred subtotal and per-payment rationale separate from existing identified progress, forecast, verified-ID semantics and unknown receiving-bank confirmation. Stable source keys deduplicate capture replay; conflicting facts, manual exclusions, unknown policy/source, and possible canonical overlap abstain. A same-amount/date legacy candidate is not an identity binding. No canonical ledger or scheduled configuration migration is authorized by this read-only projection. Release and installed acceptance remain separate gates.

@@ -1,3 +1,4 @@
+import {assertInferencePolicyPin} from './finance-inference-pin.js';
 import {randomBytes} from 'node:crypto';
 import {mkdir,readFile,unlink,access} from 'node:fs/promises';
 import {join} from 'node:path';
@@ -8,6 +9,7 @@ type Input={directory:string;scope:DailyFinanceScope;now?:Date};
 const paths=(directory:string)=>{const dir=join(directory,'finance-feed','daily-gate');return {dir,state:join(dir,'state.json'),lease:join(dir,'lease.lock'),finalizer:join(dir,'finalize.lock')}};
 /** LOCAL ONLY. No adapter imports, provider calls, health checks or manual reset. */
 export async function beginScheduledFinance(input:Input){
+ await assertInferencePolicyPin(input.directory,input.scope.inferencePolicySha256);
  const p=paths(input.directory),scope=structuredClone(input.scope),digest=financeScopeDigest(scope),now=input.now??new Date();
  await mkdir(p.dir,{recursive:true});
  const token=randomBytes(32).toString('hex');
@@ -32,6 +34,7 @@ export async function beginScheduledFinance(input:Input){
 }
 /** Call immediately before EACH cloud source call or intake mutation. Does not enforce external tool behavior. */
 async function validateScheduledAdmission(input:Input,admission:ScheduledAdmission,operation:'collect'|'readback'){
+ await assertInferencePolicyPin(input.directory,input.scope.inferencePolicySha256);
  const p=paths(input.directory),a=structuredClone(admission),now=input.now??new Date(),local=vancouverFinanceTime(now);
  if((a.schema!==1&&a.schema!==2)||(a.schema===2&&a.reservationProtocol!=='preoperation-v1')||(a.schema===1&&a.reservationProtocol!==undefined)||a.mode!=='scheduled'||!['collect','recover'].includes(a.action)||!/^[a-f0-9]{64}$/.test(a.token)||financeScopeDigest(input.scope)!==a.scopeDigest)throw Error('Invalid scheduled admission.');
  const stored=JSON.parse(await readFile(join(p.dir,'admission-'+dailyFinanceDigest(a.token)+'.json'),'utf8'));

@@ -21,6 +21,14 @@ const warningLabel = (warning: string) => ({
   "excluded-observations": "Certaines opérations ont été exclues après vérification.",
 }[warning] || warning);
 
+const inferenceLabel = (status: ContributionCard["inferenceStatus"]) => ({
+  "not-configured": "Attributions déduites non configurées.",
+  "requires-review": "Attributions déduites à revoir.",
+  "source-unavailable": "Attributions déduites indisponibles : source manquante.",
+  "partial-conflict": "Attributions déduites partielles : données contradictoires exclues.",
+  "partial-canonical-overlap": "Attributions déduites partielles : doublons potentiels exclus.",
+  "available": "",
+}[status ?? "available"]);
 function Payments({ heading, rows, currency }: { heading: string; rows: ContributionPayment[]; currency: string }) {
   return <section className="contribution-payments"><h3>{heading}</h3>{rows.length ? <ul>{rows.map(row => <li key={row.id}><time dateTime={row.date}>{date(row.date)}</time><strong>{money(row.amountCents, currency)}</strong></li>)}</ul> : <p>Aucun versement identifié.</p>}</section>;
 }
@@ -34,6 +42,8 @@ function ContributionDetails({ plan, snapshot }: { plan: ContributionCard; snaps
     {plan.attribution !== "confirmed" && <p className="contribution-caution">Attribution des versements à confirmer.</p>}
     {plan.kind === "rrsp" && <><Payments heading="Hebdomadaires réalisés" rows={plan.weeklyPaid} currency={plan.currency} /><section className="contribution-forecast"><h3>Hebdomadaires à venir · estimation</h3>{plan.weeklyForecast ? <><p><strong>{money(m.forecastCents, plan.currency)}</strong> prévus{m.remainingDays > 0 ? ` (${plan.weeklyForecast.count} × ${money(plan.weeklyForecast.amountCents, plan.currency)})` : " : échéance atteinte"}.</p><p>{plan.weeklyForecast.assumption}</p><p>Non réalisés, exclus du pourcentage et de l’état « objectif atteint ».</p></> : <p>Prévision non configurée. Aucun versement futur n’est supposé.</p>}</section></>}
     <Payments heading={plan.kind === "rrsp" ? "Versements ponctuels" : "Versements identifiés"} rows={plan.kind === "rrsp" ? plan.oneOffPaid : [...plan.weeklyPaid, ...plan.oneOffPaid].sort((a, b) => b.date.localeCompare(a.date))} currency={plan.currency} />
+    {inferenceLabel(plan.inferenceStatus) && <p className="contribution-caution">{inferenceLabel(plan.inferenceStatus)} Aucun montant inconnu n’est supposé nul.</p>}
+    {(plan.inferredPayments?.length ?? 0) > 0 && <section className="contribution-inferred"><h3>Attribution déduite : {money(plan.inferredCents ?? 0, plan.currency)}</h3><p>Destination déduite de virements antérieurs. Réception bancaire non confirmée. Ces montants restent séparés du total identifié, du pourcentage et de l'effort restant.</p><ul>{plan.inferredPayments!.map(row => <li key={row.id}><div><time dateTime={row.date}>{date(row.date)}</time><strong>{money(row.amountCents, plan.currency)}</strong></div><p>{row.rationale}</p><p>{row.evidenceTransactionIds.length} référence(s) historique(s). Collecte : {date(row.collectedAt.slice(0, 10))}, pas une date de réception bancaire.</p></li>)}</ul></section>}
     <section><h3>Effort restant</h3><p>{money(m.remainingCents, plan.currency)}{plan.kind === "rrsp" ? " après la prévision hebdomadaire" : " à verser"}.</p><p>{m.monthlyCents === null ? "Échéance atteinte : aucun calcul mensuel." : `Environ ${money(Math.round(m.monthlyCents), plan.currency)} par mois.`} Convention : un mois = {snapshot.daysPerMonth} jours, à confirmer. Orange au-delà de 1 000 $ par mois.</p></section>
     <section><h3>Virements non attribués · exclus</h3><p>Ces mouvements ne sont pas ajoutés au montant identifié ni à la prévision.</p>{plan.unassigned.length > 0 && <Payments heading="À vérifier" rows={plan.unassigned} currency={plan.currency} />}{!plan.unassigned.length && <p>Aucun mouvement non attribué dans les données reçues.</p>}</section>
     {plan.warnings.length > 0 && <section><h3>Limites des données</h3><ul>{[...new Set(plan.warnings.map(warningLabel))].map((warning, i) => <li key={i}>{warning}</li>)}</ul></section>}
@@ -66,6 +76,8 @@ export default function ContributionsView({ worker, embedded = false }: { worker
         <div className="contribution-goal"><span>Objectif personnel</span><strong>{money(plan.goalCents, plan.currency)}</strong></div>
         <div className="contribution-progress-label"><span><strong>{money(plan.identifiedCents, plan.currency)}</strong> identifiés</span><strong>{new Intl.NumberFormat("fr-CA", {maximumFractionDigits: 1}).format(m.percent)} %</strong></div>
         <progress max={100} value={Math.min(100, m.percent)} aria-label={`${title(kind)} : versements identifiés par rapport à l’objectif personnel`} aria-valuetext={`${money(plan.identifiedCents, plan.currency)} identifiés sur ${money(plan.goalCents, plan.currency)}`} />
+        {inferenceLabel(plan.inferenceStatus) && <p className="contribution-inferred-summary">{inferenceLabel(plan.inferenceStatus)}</p>}
+        {(plan.inferredCents ?? 0) > 0 && <p className="contribution-inferred-summary"><strong>{money(plan.inferredCents!, plan.currency)}</strong> à attribution déduite<br /><span>Séparés du total identifié · réception non confirmée</span></p>}
         <div className="contribution-bottom"><div><span>{kind === "rrsp" ? "Restant après prévision" : "Restant"}</span><strong>{money(m.remainingCents, plan.currency)}</strong></div><div><span>Temps restant</span><strong>{m.remainingDays === 0 ? "Échéance atteinte" : `${m.months} mois ${m.days} j`}</strong></div></div>
         <div className="contribution-state">{uncertain ? <span><CircleAlert size={16} aria-hidden="true" />{kind === "resp" && !plan.beneficiaryConfirmed ? "Bénéficiaire à confirmer" : "Attribution à confirmer"}</span> : null}{m.effort && <span><CircleAlert size={16} aria-hidden="true" />{m.remainingDays === 0 ? "Effort restant après échéance" : "Effort supérieur à 1 000 $/mois"}</span>}{plan.warnings.length > 0 && <span>Données partielles · voir les versements</span>}</div>
         <button type="button" className="contribution-open" aria-label={`Voir les versements ${title(kind)}`} onClick={() => setSelected(plan)}>Voir les versements<ChevronRight size={18} aria-hidden="true" /></button>
