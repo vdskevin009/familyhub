@@ -9,11 +9,42 @@ import { effectiveContracts } from "../apps/web/src/savings";
 import { BillingCycle, type SavingsState } from "../apps/web/src/types";
 import { calendarPeriod, periodMode, shiftPeriod, defaultPeriod } from "../apps/web/src/finance-periods";
 import { reconcilePayments, providerMatches } from "../apps/web/src/savings-payments";
+import { recurringAmount, recurringPaidTotals } from "../apps/web/src/recurring-presentation";
 import { parseFinancePreparation } from "../apps/worker/src/finance-import";
 import type { FinanceState, FinanceTransaction, Nature } from "../apps/worker/src/finance-model";
 import { financeFixture } from "./finance-fixture.mjs";
 const paymentState = (): FinanceState => ({ schema: 1, revision: "synthetic", importedAt: null, data: { ...parseFinancePreparation(financeFixture()), transactions: [] }, decisions: {}, decisionHistory: [], imports: [] });
 const payment = (id: string, description: string, date: string, outflowCents: number, extra: Partial<FinanceTransaction> = {}): FinanceTransaction => ({ id, description, date, outflowCents, accountId: "card", status: "posted", currency: "CAD", occurrence: 1, fingerprint: id, hints: [], sources: [{ name: "synthetic.csv", sha256: "a".repeat(64), record: 2 }], ...extra });
+
+test("compact recurring amounts keep paid, reference and unknown bases separate across months", () => {
+  const c={...newContract("telecom","monthly"),provider:"TELUS",price:80,taxesIncluded:true};
+  const state=paymentState();state.data!.transactions=[payment("paid","TELUS SYNTHETIC","2026-09-04",9500)];
+  const current=reconcilePayments([c],state,"2026-09-01","2026-09-30");
+  assert.deepEqual(recurringAmount(c,current.summaries[0]),{basis:"paid",cents:9500,currency:"CAD",date:"2026-09-04"});
+  const next=reconcilePayments([c],state,"2026-10-01","2026-10-31");
+  assert.equal(next.summaries[0].latest?.outflowCents,9500);
+  assert.deepEqual(recurringAmount(c,next.summaries[0]),{basis:"reference",cents:8000,currency:"CAD",date:null});
+  assert.deepEqual(recurringPaidTotals([c],next.summaries).CAD,{cents:null,matched:0,missing:1});
+  const unknown={...c,taxesIncluded:null,price:null};
+  const result=reconcilePayments([unknown],state,"2026-10-01","2026-10-31");
+  assert.equal(recurringAmount(unknown,result.summaries[0]).basis,"unknown","An old debit is never a current price");
+  assert.equal(recurringAmount(unknown).cents,null);
+});
+test("compact paid totals retain real zero, negative refunds and separate currencies without bundle double counting", () => {
+  const cad={...newContract("telecom","cad"),provider:"TELUS",services:[{id:"extra",name:"Included synthetic",pricing:"included" as const,monthlyAmount:null,taxesIncluded:null,source:"Synthetic"}]};
+  const usd={...newContract("subscription","usd"),provider:"EXAMPLE",billing:{amount:null,currency:"USD",count:1,unit:"months" as const,asOf:"",source:"Synthetic",taxesIncluded:null}};
+  const unknown={...newContract("other","unknown"),provider:"UNCONFIRMED"};
+  const state=paymentState();state.data!.transactions=[payment("debit","TELUS SYNTHETIC","2026-09-04",9500),payment("refund","TELUS REFUND","2026-09-05",-9500),payment("usd","EXAMPLE SYNTHETIC","2026-09-05",1500,{currency:"USD"})];
+  state.decisions.refund={nature:"refund",category:"communications",note:"Synthetic",updatedAt:""};
+  const contracts=[cad,usd,unknown],before=JSON.stringify([contracts,state]);
+  const result=reconcilePayments(contracts,state,"2026-09-01","2026-09-30");
+  assert.deepEqual(recurringPaidTotals(contracts,result.summaries),{CAD:{cents:0,matched:1,missing:1},USD:{cents:1500,matched:1,missing:0}});
+  const refundOnly=reconcilePayments(contracts,state,"2026-09-05","2026-09-05");
+  assert.equal(recurringPaidTotals([cad],refundOnly.summaries).CAD.cents,-9500);
+  assert.deepEqual(recurringPaidTotals([unknown],result.summaries).CAD,{cents:null,matched:0,missing:1});
+  assert.deepEqual(recurringPaidTotals([],result.summaries),{});
+  assert.equal(JSON.stringify([contracts,state]),before);
+});
 test("calendar filters navigate leap months, year boundaries and incomplete source windows", () => {
   assert.deepEqual(calendarPeriod(2024, 2), { from: "2024-02-01", to: "2024-02-29" });
   assert.deepEqual(shiftPeriod(calendarPeriod(2026, 12), 1), calendarPeriod(2027, 1));

@@ -37,7 +37,7 @@ try {
     await new Promise(resolve => setTimeout(resolve, 100));
   }
   assert.ok(ready, logs);
-  browser = await chromium.launch({ headless: true });
+  browser = await chromium.launch({ ...(process.env.FAMILYHUB_TEST_BROWSER_CHANNEL ? { channel: process.env.FAMILYHUB_TEST_BROWSER_CHANNEL } : {}), headless: true });
   const headers={"x-familyhub-key":key,"Content-Type":"application/json"};
   const contract={...newContract('home-insurance','synthetic-insurance-ui'),name:'Synthetic insurance reference',provider:'Synthetic insurer',updatedAt:new Date().toISOString(),insuranceReference:syntheticInsuranceReference()};
   contract.insuranceReference.records[2].status='awaiting_quote';contract.insuranceReference.records[2].requestedOn='2026-01-02';
@@ -48,6 +48,7 @@ try {
     await context.addInitScript(({Endpoint,ApiKey})=>localStorage.setItem('familyhub.worker.v1',JSON.stringify({Endpoint,ApiKey})),{Endpoint:endpoint,ApiKey:key});
     const page=await context.newPage(),errors=[];page.on('pageerror',e=>errors.push(e.message));
     await page.goto(base);await page.getByRole('button',{name:/Ouvrir le contrat Synthetic insurance reference/}).click();
+    await page.locator('.recurring-source-details > summary').click();
     const panel=page.getByRole('region',{name:'Référentiel assurances'});await panel.waitFor();
     const policySummary=panel.locator('summary').filter({hasText:'Synthetic policy'}).first();await policySummary.focus();await page.keyboard.press('Enter');await panel.getByText('Inconnu',{exact:true}).first().waitFor();
     await panel.locator('summary').filter({hasText:'Synthetic pending request'}).first().click();await panel.getByText(/Aucun devis reçu ni tarif confirmé/).waitFor();
@@ -56,7 +57,7 @@ try {
     const downloaded=page.waitForEvent('download');await panel.getByRole('button',{name:/Exporter le référentiel privé/}).click();
     const exported=JSON.parse(await readFile(await(await downloaded).path(),'utf8'));assert.deepEqual(exported.reference,contract.insuranceReference);assert.ok(!JSON.stringify(exported).includes(key));
     await page.getByRole('button',{name:'Retour aux services',exact:true}).click();await page.getByRole('button',{name:/Ouvrir le contrat Synthetic insurance reference/}).click();
-    await page.route(endpoint+'/**',route=>route.abort());await page.reload();await page.getByRole('button',{name:/Ouvrir le contrat Synthetic insurance reference/}).click();await page.getByRole('region',{name:'Référentiel assurances'}).waitFor();assert.deepEqual(errors,[]);
+    await page.route(endpoint+'/**',route=>route.abort());await page.reload();await page.getByRole('button',{name:/Ouvrir le contrat Synthetic insurance reference/}).click();await page.locator('.recurring-source-details > summary').click();await page.getByRole('region',{name:'Référentiel assurances'}).waitFor();assert.deepEqual(errors,[]);
     await context.close();
   }
   assert.ok(!logs.includes(key));console.log('PASS: private insurance reference, mobile/desktop, unknowns, request/quote separation, export, repeated navigation and offline cache');

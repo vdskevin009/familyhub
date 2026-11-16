@@ -143,16 +143,42 @@ try {
         await page.goto(base + "?view=savings");
         await page.getByRole("button", { name: /Ouvrir le contrat Synthetic internet package/ }).waitFor();
         await noBellOverlap();
+        await page.getByRole("button",{name:"Mois précédent",exact:true}).click();
         const disclosure = page.locator(".saved-comparisons > summary"), paid = page.getByRole("region", { name: "Paiements TTC de la période" });
         await page.waitForFunction(() => document.querySelector(".saved-comparisons .count-badge")?.textContent === "3");
         const paidBefore = await paid.innerText(); assert.match(paidBefore, /120,00/);
-        assert.equal(await page.locator(".recurring-package-service").filter({ hasText: "Inclus" }).count(), 1);
+        assert.equal(await page.locator(".recurring-package-service").count(), 0);
+        const contractButton=page.getByRole("button",{name:"Ouvrir le contrat Synthetic internet package",exact:true});
+        for(let repeat=0;repeat<3;repeat++){
+          await contractButton.focus();await page.keyboard.press("Enter");
+          const contractPanel=page.getByRole("dialog",{name:"Contrat · Synthetic internet package",exact:true});await contractPanel.waitFor();
+          assert.equal(await contractPanel.locator('[data-service-id="network-included"]').count(),1);
+            assert.match(await contractPanel.locator('[data-service-id="network-main"]').innerText(),/120,00.*montant documenté/);
+            assert.match(await contractPanel.innerText(),/Téléphone et Internet/);
+            if(repeat===0){
+              await contractPanel.getByRole('button',{name:'Modifier',exact:true}).click();
+              await page.getByRole('dialog',{name:'Edit contract',exact:true}).waitFor();
+              await page.keyboard.press('Escape');await contractPanel.waitFor();
+              await page.waitForFunction(()=>document.activeElement?.hasAttribute('data-savings-edit'));
+              assert.equal(await contractPanel.getByRole('button',{name:'Modifier',exact:true}).evaluate(el=>el===document.activeElement),true,'Closing the editor returns focus to its contract action');
+              await contractPanel.screenshot({path:join(output,`contract-${width}.png`)});
+            }
+            if(repeat===1){
+              await contractPanel.getByRole('button',{name:'Comparer les offres publiques',exact:true}).click();
+              await page.getByRole('dialog',{name:'Compare public offers',exact:true}).waitFor();
+              await page.goBack();await contractPanel.waitFor();
+              await page.waitForFunction(()=>document.activeElement?.hasAttribute('data-savings-research'));
+            }
+          if(repeat===1)await page.goBack();else await page.keyboard.press("Escape");
+          await contractPanel.waitFor({state:"hidden"});await page.waitForFunction(()=>document.activeElement?.classList.contains("recurring-package"));
+        }
         await click(disclosure); assert.equal(await page.locator(".saved-comparison-list > button").count(), 3);
         await page.keyboard.press("Escape"); assert(await disclosure.evaluate(el => el === document.activeElement));
         await page.locator(".savings-toolbar select").selectOption("telecom"); assert.equal(await page.locator(".count-badge").filter({ hasText: /^1$/ }).count(), 1);
         await page.locator(".savings-toolbar select").selectOption("all"); assert.equal(await paid.innerText(), paidBefore);
-        const lead = page.getByRole("button", { name: "Économie possible pour Synthetic internet package, ouvrir la comparaison", exact: true });
-        await lead.waitFor(); assert.match(await lead.innerText(), /À vérifier/); assert.doesNotMatch(await lead.innerText(), /\$/);
+        await click(disclosure);
+        const lead = page.getByRole("button", { name: "Comparaison pour Synthetic internet package", exact: true });
+        await lead.waitFor(); assert.match(await lead.innerText(), /2 offre/); assert.doesNotMatch(await lead.innerText(), /\$/);
         const result = page.getByRole("dialog", { name: "Synthetic internet package : comparaison", exact: true });
         for (let i = 0; i < 3; i++) {
             await click(lead); await bounded(result);
@@ -174,12 +200,12 @@ try {
         assert.equal(await result.locator(".saved-offer").count(), 1); assert.match(await result.locator(".saved-offer > summary").innerText(), /Synthetic old offer/);
         await result.getByLabel("Result history").selectOption("new-network"); await result.locator(".saved-offer > summary").nth(1).click();
         await result.screenshot({ path: join(output, `comparison-${width}.png`) }); await page.keyboard.press("Escape");
-        await page.getByRole("button", { name: /Économie possible pour Synthetic music/ }).click();
+        await page.getByRole("button", { name: /Comparaison pour Synthetic music/ }).click();
         assert.equal(await page.getByRole("dialog", { name: "Synthetic music : comparaison" }).getByLabel("Result history").inputValue(), "music-job"); await page.keyboard.press("Escape");
-        await page.getByRole("button", { name: /Ouvrir le contrat Synthetic internet package/ }).click(); await page.getByRole("button", { name: "Results", exact: true }).click();
+        await page.getByRole("button", { name: /Ouvrir le contrat Synthetic internet package/ }).click(); await page.getByRole("button", { name: "Voir la comparaison", exact: true }).click();
         await page.keyboard.press("Escape"); await page.getByRole("dialog", { name: "Contrat · Synthetic internet package", exact: true }).waitFor();
         await page.waitForFunction(() => document.activeElement?.hasAttribute("data-savings-results"));
-        assert.equal(await page.getByRole("button", { name: "Results", exact: true }).evaluate(el => el === document.activeElement), true, "Contract result link regains focus");
+        assert.equal(await page.getByRole("button", { name: "Voir la comparaison", exact: true }).evaluate(el => el === document.activeElement), true, "Contract result link regains focus");
         await page.keyboard.press("Escape");
         await page.waitForFunction(() => document.activeElement?.classList.contains("recurring-package"));
         await page.evaluate(() => scrollTo(0, 0));

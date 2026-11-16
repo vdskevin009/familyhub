@@ -30,7 +30,7 @@ const report = { summary: "Synthetic comparison; no providers contacted.", missi
   termMonths: null, amortizationYears: null, rateType: "fixed", affectedContractIds: ["synthetic"]
 }] };
 try {
-  browser = await chromium.launch({ headless: true, args: ["--no-sandbox"] });
+  browser = await chromium.launch({ ...(process.env.FAMILYHUB_TEST_BROWSER_CHANNEL ? {channel:process.env.FAMILYHUB_TEST_BROWSER_CHANNEL} : {}), headless: true, args: ["--no-sandbox"] });
   for (const width of [320, 390, 768, 1440]) {
     const context = await browser.newContext({ viewport: { width, height: 900 }, serviceWorkers: "block" });
     const page = await context.newPage(), errors = [], posts = [];
@@ -57,10 +57,10 @@ try {
       return reply({ state: "idle", accounts: [] });
     });
     await page.goto(base + "?view=savings");
-    await page.getByRole("heading", { name: "Dépenses récurrentes", exact: true }).waitFor();
+    await page.getByRole("heading", { name: "Récurrents", exact: true }).waitFor();
     assert.equal(await page.locator(".bottom-nav button").count(), 5);
     assert.equal(posts.length, 0, "Mount must not start research");
-    await page.getByRole("button", { name: "Add contract", exact: true }).click();
+    await page.getByRole("button", { name: "Ajouter un contrat", exact: true }).click();
     const form = page.getByRole("dialog", { name: "Add contract", exact: true });
     await form.getByLabel("Name", { exact: true }).fill("Synthetic internet");
     await form.getByLabel("Current provider", { exact: true }).fill("TELUS");
@@ -93,6 +93,7 @@ try {
     const bundle = { kind: "familyhub.savings-contract-import", schemaVersion: 1,
       contract: historical, documents: [{ id: docId, type: "text/plain", data: Buffer.from(historicalDocument).toString("base64") }] };
     page.on("dialog", dialog => dialog.accept());
+    await page.getByRole("button",{name:"Options des récurrents",exact:true}).click();
     const importer = page.locator('.savings-view .savings-import-actions .file-button input[type="file"]');
     // The header hosts the additive import control; its JSON never goes to a provider or GitHub.
     await importer.setInputFiles({ name: "test-import.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(bundle)) });
@@ -105,7 +106,7 @@ try {
     await page.reload(); await page.getByRole("button", { name: /Ouvrir le contrat Synthetic internet/ }).waitFor();
     await page.getByRole("button", { name: /Ouvrir le contrat Synthetic internet/ }).click();
     const details = page.getByRole("dialog", { name: "Contrat · Synthetic internet", exact: true });
-    await details.getByRole("button", { name: "Compare public offers", exact: true }).click();
+    await details.getByRole("button", { name: "Comparer les offres publiques", exact: true }).click();
     const research = page.getByRole("dialog", { name: "Compare public offers", exact: true });
     assert.ok(!(await research.innerText()).includes("PRIVATE-LOCAL"));
     await research.getByRole("button", { name: "Start public comparison", exact: true }).click();
@@ -116,18 +117,18 @@ try {
     await results.getByLabel("I reviewed my saved requirements: service, coverage and benefits match.").check();
     await results.getByRole("button", { name: "Shortlist estimate", exact: true }).click();
     await results.getByRole("button", { name: "Close Synthetic internet : comparaison", exact: true }).click();
-    assert.match(await page.locator(".savings-summary").innerText(), /290/);
+    assert.match(await page.locator(".savings-summary").textContent(), /290/);
     await page.screenshot({ path: join(output, "savings-" + width + ".png"), fullPage: true });
-    await page.getByRole("button", { name: "Results", exact: true }).click();
+    await page.getByRole("button", { name: "Voir la comparaison", exact: true }).click();
     await results.getByRole("button", { name: "Edit details", exact: true }).click();
     const edit = page.getByRole("dialog", { name: "Edit contract", exact: true });
     assert.match(await edit.innerText(), /synthetic-policy.txt/);
     await edit.getByLabel("Current price (CAD, all-in)", { exact: true }).fill("110");
     await edit.getByRole("button", { name: "Save contract", exact: true }).click();
-    await page.getByRole("button", { name: "Results", exact: true }).click();
+    await page.getByRole("button", { name: "Voir la comparaison", exact: true }).click();
     assert.match(await results.innerText(), /contract changed/);
     await results.getByRole("button", { name: "Close Synthetic internet : comparaison", exact: true }).click();
-    assert.match(await page.locator(".savings-summary").innerText(), /0 compatible/);
+    assert.match(await page.locator(".savings-summary").textContent(), /0 compatible/);
     await details.getByRole("button", { name: "Retour aux services", exact: true }).click();
     await page.locator(".bottom-nav:visible, .app-rail nav:visible").getByRole("button", { name: "Plus", exact: true }).click();
     await page.locator(".other-link").filter({ hasText: "Documents" }).click();

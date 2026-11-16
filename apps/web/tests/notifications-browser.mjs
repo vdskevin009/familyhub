@@ -26,7 +26,7 @@ source.unmatchedReimbursements = [{ DocumentId: "unmatched-synthetic", Reason: "
 Object.assign(source, { ignoredUnmatchedReimbursements: [], ignoredExpenses: [], cleanupSuggestions: [], importantMail: [], agentReviews: [], learning: { decisions: 0 }, busy: false, lastSuccess: now.toISOString() });
 let browser, diagnosticPage;
 try {
-  browser = await chromium.launch({ headless: true, args: ["--no-sandbox"] });
+  browser = await chromium.launch({ ...(process.env.FAMILYHUB_TEST_BROWSER_CHANNEL ? {channel:process.env.FAMILYHUB_TEST_BROWSER_CHANNEL} : {}), headless: true, args: ["--no-sandbox"] });
   for (const width of [320, 390, 768, 1440]) {
     const push = pushFixture(String(width)), sent = [], lib = new NotificationLibrary(join(temp, String(width), "notifications.json"), async () => push.config, async (_subscription, id) => { sent.push(id); return "accepted"; });
     const savings = new SavingsLibrary(join(temp, String(width), "contracts.json")), contract = contractEvidence(), finance = financeEvidence();
@@ -73,7 +73,7 @@ try {
       const titles = {
         notifications: "Notifications",
         finances: "Finances",
-        savings: "Dépenses récurrentes",
+        savings: "Récurrents",
         reimbursements: params.has("record") ? "Remboursement" : "Claims",
       };
       await page.goto(base + "?" + query);
@@ -115,7 +115,7 @@ try {
     await page.keyboard.press("Escape"); await page.getByRole("button", { name: "Actualiser", exact: true }).click(); await page.getByRole("button", { name: "Préférences", exact: true }).click(); await settings.getByLabel("Renouvellements et échéances GIC", { exact: true }).click(); await page.waitForFunction(() => !document.querySelector('fieldset')?.disabled); assert.equal((await lib.read()).preferences.deadline, true);
     await page.keyboard.press("Escape"); const notice = (await lib.read()).events.find(e => e.kind === "deadline"); await open(`view=notifications&notice=${notice.id}`); await page.waitForFunction(id => document.activeElement?.id === `notice-${id}`, notice.id); await page.locator(`#notice-${notice.id}`).getByRole("link", { name: "Ouvrir le dossier" }).click();
     await page.getByRole("dialog").filter({ has: page.getByText("Prix contractuel source conservé", { exact: false }) }).waitFor();
-    const visibleDetails = page.locator("dialog[open]"); await visibleDetails.getByRole("button", { name: /Complete details|Edit/, exact: true }).click(); const form = page.getByRole("dialog", { name: "Edit contract", exact: true }); await form.getByText("Promotions, discounts and notes", { exact: true }).click(); await form.getByLabel("Fin de promotion confirmée", { exact: true }).fill("2026-11-01"); await form.getByLabel("Source de cette date", { exact: true }).fill("Synthetic contract page 4"); await form.getByRole("button", { name: "Save contract", exact: true }).click(); await page.getByText("Contract saved on this device and your paired PC.", { exact: true }).waitFor(); assert.equal((await savings.list()).records[0].contract.promotionEnd.date, "2026-11-01");
+    const visibleDetails = page.locator("dialog[open]"); await visibleDetails.getByRole("button", { name: "Modifier", exact: true }).click(); const form = page.getByRole("dialog", { name: "Edit contract", exact: true }); await form.getByText("Promotions, discounts and notes", { exact: true }).click(); await form.getByLabel("Fin de promotion confirmée", { exact: true }).fill("2026-11-01"); await form.getByLabel("Source de cette date", { exact: true }).fill("Synthetic contract page 4"); await form.getByRole("button", { name: "Save contract", exact: true }).click(); await page.getByText("Contract saved on this device and your paired PC.", { exact: true }).waitFor(); assert.equal((await savings.list()).records[0].contract.promotionEnd.date, "2026-11-01");
     await open("view=finances&record=subscription2"); await page.getByRole("dialog", { name: /Vérifier l.opération/ }).waitFor(); await page.keyboard.press("Escape"); assert.equal(await page.locator(".finance-tabs button").count(), 4); await page.getByRole("button", { name: "Tendances", exact: true }).waitFor();
     await open("view=finances&from=2026-10-05&to=2026-10-11&currency=USD"); await openFinanceFilters(page); await page.getByLabel("Du", { exact: true }).waitFor(); assert.equal(await page.getByLabel("Du", { exact: true }).inputValue(), "2026-10-05"); assert.equal(await page.getByLabel("Au", { exact: true }).inputValue(), "2026-10-11"); assert.equal(await page.getByLabel("Devise", { exact: true }).inputValue(), "USD"); await noOverflow();
     await page.evaluate(() => { sessionStorage.setItem("familyhub.ui.claims.query", JSON.stringify("Saved unrelated query")); sessionStorage.setItem("familyhub.ui.claims.person", JSON.stringify("Jasmine")); });

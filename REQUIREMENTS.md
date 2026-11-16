@@ -1,5 +1,26 @@
 # FamilyHub - Canonical Requirements
 
+## FH-SAV-013 - Compact recurring-contract overview
+
+Implementation authorized; publication and deployment not authorized for this lot.
+The original approved recurring PNG defines a single monthly page with a blue
+paid-only card, one filtered row per contract, one review banner, and detail panels.
+Paid amounts, normalized tax-confirmed references and unknown prices remain distinct.
+Only existing reconciled payments in the selected period enter totals, separately
+by currency; missing evidence is not zero. Included/shared services do not create
+extra contract totals. Refund signs, bank dates, evidence, duplicate protections and
+existing financial calculators remain unchanged.
+
+Contract panels retain services, payment history, documents, editing and saved public
+comparisons. Import, sharing and daily research remain in the options dialog. No
+research, import or provider action occurs on mount. The existing savings route stays
+available through Plus pending a separately approved navigation change; Projets is not
+implemented. Original source records and historical workflows stay available.
+
+Local implementation and synthetic acceptance: `docs/RECURRING-ACCEPTANCE.md`.
+The main overview/new panels use French; legacy editor and public-research forms
+still retain existing English strings. Full localization is not yet verified.
+
 ## FH-FIN-032 - Monthly Trends overview and signed difference explanation
 
 Accepted A+B; **local UI integrated and tested, not published or deployed**.
