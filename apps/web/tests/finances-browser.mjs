@@ -322,6 +322,8 @@ try {
         await openFinanceRegister(page);
         await page.getByLabel("Rechercher", { exact: true }).fill("");
         await page.locator(".finance-check input").uncheck();
+        // Wait for the filtered register to reflect the reset before changing screens.
+        await page.locator('.finance-operations-panel .finance-register button').filter({hasText:'SAFEWAY SYNTHETIC'}).first().waitFor();
         await page.getByRole("button", { name: "Retour aux dépenses", exact: true }).click();
         await page.waitForFunction(() => document.activeElement?.id === "finance-open-operations");
         const foodBar = categoryBars.locator('[data-finance-bar="groceries"]');

@@ -49,10 +49,14 @@ public document. The operator report describes the measured limitation separatel
 
 ## Remaining gates
 
-Finish source/archived identity presentation and screenshot comparison, complete all
-browser regression scripts and exact-commit CI, obtain the pending navigation decision,
-then merge/deploy through the normal workflow only when ready. Trends A+B is a distinct
-following branch. Récurrents is separately authorized for implementation only.
+Source/archive presentation and original-reference screenshot review are complete
+locally. Draft PR #293 is published after explicit owner authorization; Trends A+B
+is the separate stacked PR #294. The first remote run passed compilation, .NET and
+financial calculations, but found old theme/navigation and worker-version test
+expectations. Those are updated without changing financial rules or weakening gates.
+Exact-commit complete CI and runtime verification remain required before release.
+The later Projets proposal is not implemented. Récurrents remains a separate,
+implementation-only local branch and is excluded from these PRs.
 
 The installed worker, private ledgers, scheduled-intake checkout, controller, pins,
 locks, secrets and permissions are unchanged. No collection was triggered. No fresh
