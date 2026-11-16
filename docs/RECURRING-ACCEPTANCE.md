@@ -67,9 +67,32 @@ again. Finances and compact-spending browser suites both passed again at
 320/390/768/1440, including the strengthened review-panel checks. No application
 or calculation change was needed for this final review.
 
+## Verified publication
+
+PR #295 head `8ae397ffeb0e9fa29506d3cbb9a55e6720d84479` passed complete CI
+43786830916, then merged normally at `6a1f6e77faa2e4e549efd92bdfab6f6c1f33fe6d`.
+Main CI and Pages run 43787611404 passed compile, domain, unit, all four browser
+shards, build and deployment. Main and the PR branch were read back remotely.
+No required check was bypassed.
+
+The official main artifact passed its ZIP digest and all 209 manifest checks.
+At 2026-11-16T01:48:42.574Z the published release metadata and 31 JS/CSS/metadata
+files matched that artifact exactly. Finances and compact-spending acceptance
+then passed against the public site at 320/390/768/1440, including review exclusions,
+source preservation, focus recovery, repeated interactions and direct navigation.
+The resulting synthetic screenshots were inspected; no household records were used.
+
+This release changes no worker code. Installed index.js and register-bindings.js
+hashes match the main artifact; no worker restart or replacement was necessary.
+An attempted authenticated HTTPS health recheck was denied before execution by
+automatic approval review because it would send the pairing key to a configured
+domain. It was not retried or routed around. Therefore this release does not claim
+a new authenticated worker health observation; the earlier Finances/Trends health
+result remains historical. No secret was sent by the denied check.
+
 ## Limits
 
-At this checkpoint, remote CI, PR, merge and deployment are pending. The main overview and new panel
+Publication and deployment are verified above. The main overview and new panel
 labels are French; the retained editor/research forms still contain English text.
 No real physical-phone verification or fresh bank synchronization is claimed.
 Temporary scripts and the private aggregate diagnostic under `output/` are untracked

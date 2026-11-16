@@ -2,7 +2,8 @@
 
 Verified 2026-11-16 UTC. This final record supersedes the publication-pending notes
 in the earlier finance work-in-progress documents. No private account data or
-financial amounts are included here. Récurrents remains local and unpublished.
+financial amounts are included here. Récurrents was local and unpublished at that
+checkpoint; its subsequent PR #295 release is recorded in RECURRING-ACCEPTANCE.md.
 
 | Lot | PR | Exact tested PR head | Main release | PR CI | Main CI and Pages |
 | --- | --- | --- | --- | --- | --- |

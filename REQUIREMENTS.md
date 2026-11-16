@@ -1,9 +1,14 @@
 # FamilyHub - Canonical Requirements
 
+## FH-PROPERTY-001 - Sourced property project shortlist
+
+Accepted. Backend and property UI implemented and verified locally; not deployed. Existing daily collector handoff prepared but not activated. Lower Lonsdale, at least three bedrooms, two separate entrances and maximum CAD 1.7M. Dated sources, unknown facts, match coverage, immutable history and private authenticated intake. Airbnb remains evidence-qualified; opportunity score is withheld without sold comparables. Address, direct listing link and optional attributed source photo support square cards. Owner followed/non-followed decisions persist independently from sourced market states (active/sold/withdrawn/unavailable/unknown); refresh preserves decisions and absence never implies sold. Optimistic revision checks protect concurrent owner choices. Approved Tous/Suivis/Non suivis views and two-to-three-listing comparison distinguish asking price, sourced monthly fees, budget headroom, observed price reductions and unknown negotiated/realized savings. See docs/PROPERTY-PROJECT.md for exact contract and remaining acceptance.
+
+
 ## FH-SAV-013 - Compact recurring-contract overview
 
-Implementation completed locally; publication, merge and deployment explicitly
-authorized on 2026-11-16, conditional on successful CI. Release verification pending.
+Implemented and deployed in PR #295 at `6a1f6e7` on 2026-11-16. Exact PR-head and
+main CI passed; public release bytes and synthetic browser acceptance verified.
 The original approved recurring PNG defines a single monthly page with a blue
 paid-only card, one filtered row per contract, one review banner, and detail panels.
 Paid amounts, normalized tax-confirmed references and unknown prices remain distinct.
@@ -18,8 +23,8 @@ research, import or provider action occurs on mount. The existing savings route 
 available through Plus pending a separately approved navigation change; Projets is not
 implemented. Original source records and historical workflows stay available.
 
-Local implementation `2c2531e`, integrated with deployed main `844f991` through
-`a40fedd`; final synthetic regression acceptance: `docs/RECURRING-ACCEPTANCE.md`.
+Implementation `2c2531e`, integrated with Finances/Trends main `844f991` through
+`a40fedd`, released as `6a1f6e7`; final acceptance: `docs/RECURRING-ACCEPTANCE.md`.
 Savings 35/35 and repeated browser acceptance at 320/390/768/1440 passed.
 The main overview/new panels use French; legacy editor and public-research forms
 still retain existing English strings. Full localization is not yet verified.

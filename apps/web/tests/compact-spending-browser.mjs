@@ -210,7 +210,7 @@ try {
         await page.waitForFunction(() => document.activeElement?.classList.contains("recurring-package"));
         await page.evaluate(() => scrollTo(0, 0));
         await page.screenshot({ path: join(output, `services-${width}.png`), fullPage: true });
-        await page.getByRole("button", { name: "Courses", exact: true }).filter({ visible: true }).click(); await page.getByRole("heading", { name: "Courses", exact: true }).waitFor(); assert.match(page.url(), /view=groceries/);
+        await page.getByRole("button", { name: "Projets", exact: true }).filter({ visible: true }).click(); await page.locator(".project-tiles").getByRole("button", { name: "Courses", exact: true }).click(); await page.getByRole("heading", { name: "Courses", exact: true }).waitFor(); assert.match(page.url(), /view=groceries/);
         await page.getByRole("button", { name: "Plus", exact: true }).filter({ visible: true }).click(); assert.equal(await page.locator(".other-link strong").filter({ hasText: /^Courses$/ }).count(), 0);
         const bell = page.getByRole("button", { name: "Ouvrir les notifications", exact: true }); assert.equal((await bell.innerText()).trim(), ""); await click(bell); assert.match(page.url(), /view=notifications/);
         assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
