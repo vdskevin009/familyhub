@@ -1,5 +1,10 @@
 # FamilyHub - Canonical Requirements
 
+## FH-PROPERTY-001 - Sourced property project shortlist
+
+Accepted. Backend foundation implemented locally; not deployed, daily collector and UI not integrated. Lower Lonsdale, at least three bedrooms, two separate entrances and maximum CAD 1.7M. Dated sources, unknown facts, match coverage, immutable history and private authenticated intake. Airbnb remains evidence-qualified; opportunity score is withheld without sold comparables. Address, direct listing link and optional attributed source photo support square cards. Owner followed/non-followed decisions persist independently from sourced market states (active/sold/withdrawn/unavailable/unknown); refresh preserves decisions and absence never implies sold. Optimistic revision checks protect concurrent owner choices. See docs/PROPERTY-PROJECT.md for exact contract and remaining acceptance.
+
+
 ## FH-SAV-013 - Compact recurring-contract overview
 
 Implemented and deployed in PR #295 at `6a1f6e7` on 2026-11-16. Exact PR-head and

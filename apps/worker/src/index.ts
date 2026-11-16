@@ -1,3 +1,4 @@
+import { PropertyStore, PropertyConflict } from "./property-project.js";
 import { FINANCE_REGISTER_CAPABILITY, readFinanceRegisterBindings } from "./finance-register-bindings.js";
 import { FinanceSourceExpensesStore, SourceExpensesConflict } from "./finance-source-expenses-store.js";
 import { SOURCE_EXPENSES_CAPABILITY, SOURCE_EXPENSES_LIMITS, SourceExpensesError } from "./finance-source-expenses-model.js";
@@ -96,6 +97,7 @@ const tasks = new Map<string, WorkerTask>();
 const codex = new Codex({ codexPathOverride: process.env.FAMILYHUB_CODEX_PATH || undefined });
 const savingsDirectory = join(stateDir, "savings");
 const savingsLibrary = new SavingsLibrary(join(savingsDirectory, "household-contracts.json"));
+const propertyStore = new PropertyStore(join(stateDir, "property-project", "evidence"));
 const mortgageStore = new MortgageStore(join(stateDir, "mortgage", "evidence"));
 const mortgageDaily = new MortgageDailyRunner(mortgageStore);
 const financeLibrary = new FinanceLibrary(join(stateDir, "finances"));
@@ -338,6 +340,11 @@ const server = createServer(async (request, response) => {
 
   const parts = pathParts(request.url);
   try {
+    if (parts[0] === "property-project") {
+      if (parts.length === 2 && parts[1] === "following" && request.method === "POST") { json(response,200,await propertyStore.setFollowing(await readJson(request,2_000)),origin);return; }
+      if (parts.length === 1 && request.method === "GET") { json(response,200,await propertyStore.read(),origin);return; }
+      if (parts.length === 2 && parts[1] === "observations" && request.method === "POST") { json(response,200,await propertyStore.ingest(await readJson(request,32_000)),origin);return; }
+    }
     if (parts[0] === "mortgage") {
       if (parts.length === 1 && request.method === "GET") { json(response, 200, await mortgageStore.read(), origin); return; }
       if (parts.length === 2 && parts[1] === "run-daily" && request.method === "POST") {
@@ -766,7 +773,7 @@ const server = createServer(async (request, response) => {
   } catch (error) {
     const grocery = parts[0] === "groceries";
     const sourceInventory = parts[0] === "finance" && parts[1] === "source-inventory";
-    json(response, error instanceof MortgageConflict || error instanceof SavingsConflict || error instanceof FinanceConflict || error instanceof SourceExpensesConflict || error instanceof SourceInventoryConflict || error instanceof AccountCapturesConflict || error instanceof NotificationConflict || error instanceof OpportunityActionsConflict || error instanceof GroceryConflict ? 409 : 400, { error: parts[0] === "finance" && ["account-captures", "account-history"].includes(parts[1]) && !(error instanceof AccountCapturesError) ? "Captures de comptes indisponibles. Les données restent conservées." : parts[0] === "finance" && parts[1] === "source-expenses" && !(error instanceof SourceExpensesError) ? "Dépenses source indisponibles. Les données restent conservées." : sourceInventory && !(error instanceof SourceInventoryError) ? "Inventaire source indisponible. Les données restent conservées." : grocery && !(error instanceof GroceryError) ? "Action Courses indisponible. Les données restent conservées ; actualisez avant de réessayer." : error instanceof Error ? error.message : "Request failed." }, origin);
+    json(response, error instanceof PropertyConflict || error instanceof MortgageConflict || error instanceof SavingsConflict || error instanceof FinanceConflict || error instanceof SourceExpensesConflict || error instanceof SourceInventoryConflict || error instanceof AccountCapturesConflict || error instanceof NotificationConflict || error instanceof OpportunityActionsConflict || error instanceof GroceryConflict ? 409 : 400, { error: parts[0] === "finance" && ["account-captures", "account-history"].includes(parts[1]) && !(error instanceof AccountCapturesError) ? "Captures de comptes indisponibles. Les données restent conservées." : parts[0] === "finance" && parts[1] === "source-expenses" && !(error instanceof SourceExpensesError) ? "Dépenses source indisponibles. Les données restent conservées." : sourceInventory && !(error instanceof SourceInventoryError) ? "Inventaire source indisponible. Les données restent conservées." : grocery && !(error instanceof GroceryError) ? "Action Courses indisponible. Les données restent conservées ; actualisez avant de réessayer." : error instanceof Error ? error.message : "Request failed." }, origin);
   }
 });
 
