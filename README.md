@@ -232,3 +232,7 @@ The approved compact Accounts view uses month arrows, one selected capture and c
 Scheduled Finances pre-operation cancellation is an isolated candidate under FH-FIN-027 (#281), not an installed recovery. Source-tool availability must be checked before admission. A new, still-unstarted live reservation may be abandoned without falsely claiming success; old pending cycles remain operator-review-only. See docs/FINANCE-DAILY-GATE.md.
 
 Local Finances navigation/register integration and its release gates are described in [the implementation checkpoint](docs/FINANCE-UNIFIED-WORK-IN-PROGRESS.md). No production data migration or scheduled collection is implied.
+
+## Vehicle shortlist foundation
+
+FH-VEHICLE-001 adds separate private vehicle evidence and owner decisions through vehicle-project-v1, with a compact project view and guarded intake helper. No live collector or schedule is claimed until verified. See docs/VEHICLE-PROJECT.md.

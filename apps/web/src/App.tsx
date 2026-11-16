@@ -12,6 +12,7 @@ const MoreView = lazy(() => import("./views/MoreView"));
 const DocumentLibraryView = lazy(() => import("./views/DocumentLibraryView"));
 const SavingsView = lazy(() => import("./views/SavingsView"));
 const ProjectsView = lazy(() => import("./views/ProjectsView"));
+const VehicleProjectView = lazy(() => import("./views/VehicleProjectView"));
 const PropertyProjectView = lazy(() => import("./views/PropertyProjectView"));
 const MortgageView = lazy(() => import("./views/MortgageView"));
 const FinancesView = lazy(() => import("./views/FinancesView"));
@@ -62,8 +63,8 @@ export default function App() {
   const mainRef = useRef<HTMLElement>(null);
   const documentViews = [{ id: "invoices", label: "Factures" }, { id: "desjardins", label: "Desjardins" }, { id: "blue-cross", label: "Blue Cross" }] as const;
   const documentKind = view === "documents" || view === "invoices" ? "invoices" : view === "desjardins" ? "desjardins" : view === "blue-cross" ? "blue-cross" : null;
-  const navigationActive = (id: AppView) => id === "projects" && ["property","groceries","mortgage"].includes(view) || view === id || id === "finances" && view === "contributions" || id === "other" && (Boolean(documentKind) || otherViews.some(other => other.id === view));
-  const pageName = view === "property" ? "Nouveau bien" : view === "contributions" ? "Finances — Contributions" : nav.find(item => item.id === view)?.label || documentViews.find(item => item.id === view)?.label || otherViews.find(item => item.id === view)?.label || "FamilyHub";
+  const navigationActive = (id: AppView) => id === "projects" && ["property","vehicle","groceries","mortgage"].includes(view) || view === id || id === "finances" && view === "contributions" || id === "other" && (Boolean(documentKind) || otherViews.some(other => other.id === view));
+  const pageName = view === "vehicle" ? "Voiture" : view === "property" ? "Nouveau bien" : view === "contributions" ? "Finances — Contributions" : nav.find(item => item.id === view)?.label || documentViews.find(item => item.id === view)?.label || otherViews.find(item => item.id === view)?.label || "FamilyHub";
   useEffect(() => {
     document.title = `${pageName} · FamilyHub`;
     const frame = requestAnimationFrame(() => window.scrollTo({ top: scrollPositions.current[view] || 0, behavior: "instant" }));
@@ -144,6 +145,7 @@ export default function App() {
         {documentKind && <div className="view-stack"><nav className="segment-tabs document-tabs" aria-label="Sources documentaires">{documentViews.map(item => <button type="button" key={item.id} className={documentKind === item.id ? "active" : ""} aria-current={documentKind === item.id ? "page" : undefined} onClick={() => navigate(item.id)}>{item.label}</button>)}</nav><DocumentLibraryView key={documentKind} hub={state} kind={documentKind} /></div>}
         {view === "savings" && <SavingsView key={routeKey} hub={state} onNavigate={navigate} />}
         {view === "projects" && <ProjectsView onNavigate={navigate} />}
+        {view === "vehicle" && <VehicleProjectView config={state.worker} onBack={() => navigate("projects")} />}
         {view === "property" && <PropertyProjectView config={state.worker} onBack={() => navigate("projects")} />}
         {view === "mortgage" && <MortgageView worker={state.worker} />}
         {(view === "finances" || view === "contributions") && <FinancesView key={routeKey} hub={state} onNavigate={navigate} initialTab={view === "contributions" ? "contributions" : undefined} />}

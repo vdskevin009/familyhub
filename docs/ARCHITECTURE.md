@@ -338,3 +338,7 @@ The paired account-captures store preserves immutable received snapshots indepen
 
 
 The candidate preoperation-v1 scheduled bridge journals first operation authorization before returning its guard. A serialized live-owner cancellation can release only an unstarted reservation, recording incomplete state and preserving hourly throttling. It cannot recover old admissions or replace operator-established crash evidence. See FINANCE-DAILY-GATE.md; no production activation is implied.
+
+## Vehicle shortlist foundation
+
+FH-VEHICLE-001 adds separate private vehicle evidence and owner decisions through vehicle-project-v1, with a compact project view and guarded intake helper. No live collector or schedule is claimed until verified. See VEHICLE-PROJECT.md.

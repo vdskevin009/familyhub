@@ -1,5 +1,10 @@
 # FamilyHub - Canonical Requirements
 
+## FH-VEHICLE-001 - Sourced vehicle shortlist
+
+Accepted, local implementation in progress. Projets > Voiture uses sourced compact cards, owner follow/unfollow, observed price/status history and comparison. Used family SUV, Greater Vancouver, CAD 23–30k before taxes, AWD preferred and no invented mileage cutoff. No fabricated accident-free, valuation or savings claims. Existing search automation handoff only after verified deployment. See docs/VEHICLE-PROJECT.md.
+
+
 ## FH-PROPERTY-001 - Sourced property project shortlist
 
 Accepted. Backend and property UI implemented and verified locally; not deployed. Existing daily collector handoff prepared but not activated. Lower Lonsdale, at least three bedrooms, two separate entrances and maximum CAD 1.7M. Dated sources, unknown facts, match coverage, immutable history and private authenticated intake. Airbnb remains evidence-qualified; opportunity score is withheld without sold comparables. Address, direct listing link and optional attributed source photo support square cards. Owner followed/non-followed decisions persist independently from sourced market states (active/sold/withdrawn/unavailable/unknown); refresh preserves decisions and absence never implies sold. Optimistic revision checks protect concurrent owner choices. Approved Tous/Suivis/Non suivis views and two-to-three-listing comparison distinguish asking price, sourced monthly fees, budget headroom, observed price reductions and unknown negotiated/realized savings. See docs/PROPERTY-PROJECT.md for exact contract and remaining acceptance.
