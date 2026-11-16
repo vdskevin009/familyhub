@@ -1,8 +1,9 @@
-# Récurrents — implementation-only acceptance
+# Récurrents - release acceptance
 
 Branch `feat/recurrents-approved-layout`, feature commit `2c2531e`, integrated with
 deployed main `844f991` in local merge `a40fedd`.
-Requirement FH-SAV-013. No publication or deployment is authorized for this lot.
+Requirement FH-SAV-013. Publication, merge and deployment were explicitly authorized
+on 2026-11-16 after local acceptance, conditional on successful CI.
 No private data, imports, worker controller, secrets or permissions changed.
 
 The original approved PNG was opened locally before UI changes and compared with
@@ -68,7 +69,7 @@ or calculation change was needed for this final review.
 
 ## Limits
 
-This lot has no remote CI, PR, merge or deployment. The main overview and new panel
+At this checkpoint, remote CI, PR, merge and deployment are pending. The main overview and new panel
 labels are French; the retained editor/research forms still contain English text.
 No real physical-phone verification or fresh bank synchronization is claimed.
 Temporary scripts and the private aggregate diagnostic under `output/` are untracked

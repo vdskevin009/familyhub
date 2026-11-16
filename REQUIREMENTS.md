@@ -2,7 +2,8 @@
 
 ## FH-SAV-013 - Compact recurring-contract overview
 
-Implementation authorized; publication and deployment not authorized for this lot.
+Implementation completed locally; publication, merge and deployment explicitly
+authorized on 2026-11-16, conditional on successful CI. Release verification pending.
 The original approved recurring PNG defines a single monthly page with a blue
 paid-only card, one filtered row per contract, one review banner, and detail panels.
 Paid amounts, normalized tax-confirmed references and unknown prices remain distinct.
