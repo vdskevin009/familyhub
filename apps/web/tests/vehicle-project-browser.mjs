@@ -20,17 +20,17 @@ try {
   const context=await browser.newContext({viewport:{width,height:844}}),page=await context.newPage();const errors=[];page.on('pageerror',e=>errors.push(e.message));
   await page.addInitScript(()=>localStorage.setItem('familyhub.worker.v1',JSON.stringify({Endpoint:'https://synthetic-worker.invalid',ApiKey:'synthetic-key'})));
   const at=new Date().toISOString(),fact=value=>({value,sourceUrl:value===null?null:'https://example.com/listing',checkedAt:value===null?null:at,note:'Synthetic evidence'});
-  const card=(id)=>({id,listingId:id,observedAt:at,title:'Véhicule fictif '+id,url:'https://example.com/listing',status:'active',statusEvidence:fact('active'),priceBasis:'before-tax',priceCad:fact(27000),year:fact(2021),mileageKm:fact(65000),make:fact('Honda'),model:fact('CR-V'),trim:fact(null),location:fact('Vancouver'),familySuv:fact(true),used:fact(true),greaterVancouver:fact(true),awd:fact(id==='a'?true:null),accidentHistory:fact(null),followed:false,changes:[]});
-  const cards=[card('a'),card('b')];let revision=0,mode='ready',writes=0;
+  const card=(id)=>({id,listingId:id,observedAt:at,title:'Véhicule fictif '+id,url:'https://example.com/listing',status:'active',statusEvidence:fact('active'),priceBasis:'before-tax',priceCad:fact(27000),year:fact(2021),mileageKm:fact(65000),make:fact('Honda'),model:fact('CR-V'),trim:fact(null),location:fact('Vancouver'),familySuv:fact(true),used:fact(true),greaterVancouver:fact(true),awd:fact(id==='a'?true:false),accidentHistory:fact(null),followed:false,changes:[]});
+  const cards=[card('a'),card('b')];let revision=0,mode='ready',writes=0,reads=0; let releaseInitial; const initialGate=new Promise(resolve=>releaseInitial=resolve);
   await page.route('https://synthetic-worker.invalid/**',async route=>{
    const path=new URL(route.request().url()).pathname;
    if(path==='/vehicle-project/following'){writes++;const input=route.request().postDataJSON();if(input.expectedRevision!==revision)return route.fulfill({status:409,json:{error:'Conflict'}});cards.find(c=>c.listingId===input.listingId).followed=input.followed;revision++;return route.fulfill({json:{revision}});}
    if(path==='/vehicle-project/comparison')return route.fulfill({json:{items:cards.map(c=>({...c,budgetHeadroomCad:3000,askingPriceReductionCad:0}))}});
-   if(path==='/vehicle-project')return route.fulfill({status:mode==='offline'?503:200,json:{cards:mode==='empty'?[]:cards,followingRevision:revision}});
+   if(path==='/vehicle-project'){reads++;if(reads===1)await initialGate;return route.fulfill({status:mode==='offline'?503:200,json:{cards:mode==='empty'?[]:cards,followingRevision:revision}});}
    return route.fulfill({json:{status:'ok',capabilities:[],items:[],records:[],jobs:[],state:'idle'}});
   });
-  await page.goto(base+'?view=vehicle');await page.locator('.vehicle-project .property-card').first().waitFor();assert.equal(await page.locator('.vehicle-project .property-card').count(),2);assert.equal(writes,0);
-  assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
+  await page.goto(base+'?view=vehicle');const refresh=page.locator('.property-heading button');await refresh.waitFor();assert.equal(await refresh.isDisabled(),true);await refresh.evaluate(el=>el.click());assert.equal(reads,1);assert.equal(writes,0);releaseInitial();await page.locator('.vehicle-project .property-card').first().waitFor();assert.equal(await page.locator('.vehicle-project .property-card').count(),2);assert.equal(writes,0);
+  assert.ok(await page.getByText(/Non AWD/).isVisible());assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
   await page.getByRole('button',{name:'Suivre Véhicule fictif a',exact:true}).click();await page.getByRole('button',{name:'Ne plus suivre Véhicule fictif a',exact:true}).waitFor();assert.equal(writes,1);
   await page.getByRole('button',{name:'Suivis',exact:true}).click();assert.equal(await page.locator('.vehicle-project .property-card').count(),1);await page.getByRole('button',{name:'Tous',exact:true}).click();
   await page.getByRole('button',{name:'Véhicule fictif a',exact:true}).click();await page.getByRole('dialog').waitFor();assert.ok(await page.getByRole('dialog').getByText("Les déclarations du vendeur ne remplacent ni un rapport d'historique complet ni une inspection. Fiabilité et bonne affaire restent à évaluer.").isVisible());await page.keyboard.press('Escape');assert.equal(await page.locator('dialog[open]').count(),0);

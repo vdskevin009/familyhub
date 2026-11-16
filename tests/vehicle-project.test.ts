@@ -74,3 +74,5 @@ test('comparison separates budget room, listing price reduction, fees and realiz
  await assert.rejects(s.compare({listingIds:['synthetic-listing','synthetic-listing']}));await assert.rejects(s.compare({listingIds:['synthetic-listing','missing']}));
 });
 
+
+test('fresh collection does not make stale status evidence current',()=>{const p=fixture();p.statusEvidence.checkedAt='2026-11-01T10:00:00Z';const c=vehicleCard(p,new Date(at));assert.equal(c.stale,true);assert.equal(c.available,false);});

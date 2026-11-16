@@ -35,7 +35,7 @@ export function vehicleCard(input:unknown,now=new Date()){
  {id:'used',evidence:p.used,pass:p.used.value},
  {id:'area',evidence:p.greaterVancouver,pass:p.greaterVancouver.value}
  ].map(c=>({...c,status:c.pass===null?'unknown':c.pass?'pass':'fail'}));
- const known=checks.filter(c=>c.pass!==null).length,age=now.getTime()-Date.parse(p.observedAt),stale=age<0||age>48*60*60*1000;
+ const known=checks.filter(c=>c.pass!==null).length,age=now.getTime()-Date.parse(p.observedAt),statusAge=p.statusEvidence.checkedAt===null?Infinity:now.getTime()-Date.parse(p.statusEvidence.checkedAt),stale=age<0||age>48*60*60*1000||statusAge<0||statusAge>48*60*60*1000;
  return {...p,criteria:checks,evidenceCoveragePercent:known*25,matchPercent:known===4?checks.filter(c=>c.pass).length*25:null,eligibility:checks.some(c=>c.pass===false)?'does-not-match':known<4?'needs-verification':'matches',stale,available:p.status==='active'&&!stale,
  preferences:{budgetTargetCad:[23000,30000],awdPreferred:true,mileageLimitKm:null},opportunity:{status:'insufficient-evidence',score:null,reason:'Dated comparable vehicles, mileage, condition and history required; asking price is not a valuation.'}};
 }
