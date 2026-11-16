@@ -18,16 +18,18 @@ export function insurerSyncMessage(status: BlueCrossSyncStatus | null, result: B
     switch (status.authReason) {
       case "credentials-rejected": return "Sign-in was refused. Automatic retries are paused. Replace the saved login on the PC or use Reconnect.";
       case "human-required": return "Sign-in needs your attention. Use Reconnect on PC to complete verification; collection then resumes.";
-      case "not-configured": return "Session expired. Set up automatic login on the PC, or use Reconnect to sign in.";
+      case "not-configured": return "Claims history is unavailable and no automatic login is configured. Review sign-in options on the PC. Saved claims remain available.";
       case "credentials-unavailable": return "Saved login cannot be unlocked. Configure it again as the Windows user running the worker, or use Reconnect.";
-      case "layout-changed": return "The sign-in page was not recognized. Use Reconnect on PC to continue manually.";
+      case "layout-changed": return "The insurer page was not recognized, so claims history could not be collected. Review the insurer page on the PC. Saved claims remain available.";
+      case "login-incomplete": return "The previous sign-in did not reach verified claims history. Its outcome is uncertain, so automatic sign-in retries are paused. Review the insurer page and recovery options on the PC. Saved claims remain available.";
+      case "profile-selection-required": return "The insurer needs an account profile selection on the PC before claims history can be read. Saved claims remain available.";
       case "cooldown": return "Automatic sign-in is cooling down for 30 minutes. You can use Reconnect on PC now.";
       case "profile-busy": return "This insurer is already open in another collection. Wait for it to finish; recover an interrupted lock on the PC if needed.";
-      default: return "Session expired. Reconnect on PC to sign in again.";
+      default: return "Claims history could not be verified. Review the insurer state in Sources on the PC. Saved claims remain available.";
     }
   }
   const current = status?.latestResult ?? result;
-  if (current?.status === "login-required") return "Session expired. Reconnect on PC to sign in again.";
+  if (current?.status === "login-required") return insurerSyncMessage({ state: "login-required" }, null, false);
   if (current?.status === "success") {
     const counts = `${current.new ?? 0} new · ${current.changed ?? 0} changed · ${current.unchanged ?? 0} unchanged`;
     if (current.autoImported != null) {
@@ -63,7 +65,12 @@ export function insurerCollectionNeedsRefresh(result: BlueCrossSyncResult, expli
 export function insurerCoverageNotice(status: BlueCrossSyncStatus | null, now = Date.now()): string | null {
   if (!status) return "Collection status unavailable. Saved claims may be missing recent payments.";
   if (status.state === "syncing") return insurerSyncMessage(status, null, true);
-  if (status.state === "login-required") return "Sign-in required. Recent payments may be missing; reconnect on PC.";
+  if (status.state === "login-required") {
+    if (status.authReason === "layout-changed" || status.authReason === "login-incomplete" || !status.authReason)
+      return "Insurer history unavailable. Recent payments may be missing; review Sources on the PC.";
+    if (status.authReason === "profile-selection-required") return "Account profile selection required on the PC. Recent payments may be missing.";
+    return "Sign-in required. Recent payments may be missing; review Sources on the PC.";
+  }
   const completeWithReview = !!status.latestResult?.complete && !!status.latestResult.ambiguous && !status.latestResult.errors;
   if (status.state === "error" && !completeWithReview || status.latestResult && (!status.latestResult.complete || status.latestResult.errors))
     return status.retry?.state === "exhausted" ? `Collection stopped after ${status.retry.maximum} attempts. Recent payments may be missing; review Sources and retry.` : "Collection incomplete. Recent payments may be missing; review Sources.";

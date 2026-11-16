@@ -7,6 +7,44 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
+import { workerJsonRequest } from '../scripts/worker-json-request.mjs';
+
+async function withWorkerServer(handler, check) {
+  const server = createServer(handler);
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  try { await check(server.address().port); }
+  finally { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); }
+}
+
+test('scheduled transport permits delayed response headers within its explicit total deadline', async () => {
+  await withWorkerServer((request, response) => {
+    assert.equal(request.headers['x-familyhub-key'], 'synthetic-key');
+    setTimeout(() => response.end(JSON.stringify({ complete: true })), 60);
+  }, async port => {
+    assert.deepEqual(await workerJsonRequest(port, 'synthetic-key', '/bluecross/sync', { apply: false }, 1000), { complete: true });
+  });
+});
+
+for (const phase of ['headers', 'body']) test(`total deadline stops uncertain ${phase} without replaying a POST`, async () => {
+  const paths = [];
+  await withWorkerServer((request, response) => {
+    paths.push(request.url);
+    if (phase === 'body') { response.writeHead(200, { 'content-type': 'application/json' }); response.write('{'); }
+  }, async port => {
+    await assert.rejects(workerJsonRequest(port, 'synthetic-key', '/bluecross/sync', { apply: false }, 60), /timed out/);
+    assert.deepEqual(paths, ['/bluecross/sync']);
+  });
+});
+
+test('scheduled transport refuses redirects without forwarding pairing credentials', async () => {
+  const paths = [];
+  await withWorkerServer((request, response) => {
+    paths.push(request.url); response.writeHead(302, { location: '/desjardins/sync' }); response.end();
+  }, async port => {
+    await assert.rejects(workerJsonRequest(port, 'synthetic-key', '/bluecross/sync', { apply: false }), /Worker request failed/);
+    assert.deepEqual(paths, ['/bluecross/sync']);
+  });
+});
 
 function fake({ busy = false, fail = false, attention = false } = {}) {
   const posts = [];

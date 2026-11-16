@@ -164,6 +164,12 @@ For phone access, the worker needs a **private HTTPS route** from the phone to t
 
 The local worker's Playwright collector uses a private persistent Chromium profile for user-managed Pacific Blue Cross login. It reads Claims History pages, validates each page through the existing `bluecross.ts` parser, writes an immutable minimal-fact snapshot, then previews or explicitly upserts into the existing `invoices.json` ledger. Existing reconciliation, unmatched projection and manual decisions remain authoritative. The authenticated worker exposes `POST /bluecross/sync` (`{ "apply": false | true }`) and `GET /bluecross/status`. Only summary counts and status reach the PWA; browser storage, credentials and private paths do not. No automatic collection task is registered.
 
+Blue Cross history-access failures after a reserved click are collection errors
+when the known member/history page has no visible login/challenge and the only
+authentication result was an unrecognized layout. They do not establish an expired
+session or allow retries. Existing stored layout failures use neutral insurer-page
+copy. See [classification and acceptance](BLUECROSS-HISTORY-CLASSIFICATION.md).
+
 ### Manual Desjardins collector
 
 The Desjardins Playwright collector uses a separate private Edge profile on Windows. The user completes login, MFA and dossier selection. Only Desjardins-domain cookies and portal-origin session storage are saved under user-scoped Windows DPAPI for attempted later headless previews; session reuse is subject to live validation and an expired session still needs manual login. It reads processed-claim list pages and each claim's service detail, verifies line payments against list totals, and saves an immutable minimal-fact snapshot in the worker DataDirectory. The optional repeat mode compares two full passes in the same browser session and blocks apply if they differ. The preview planner compares claim lines with existing Desjardins portal and historical Excel/report source records conservatively. A partial or ambiguous preview cannot be applied. Explicit apply runs only in the authenticated localhost worker against a complete private preview less than 24 hours old, backs up the ledger and preserves existing evidence and manual decisions. `GET /desjardins/status` and `POST /desjardins/sync` expose only counts and status to the paired PWA; snapshot paths and browser data stay private. No automatic collection task is registered.

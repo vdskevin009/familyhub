@@ -2,6 +2,30 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { insurerSyncMessage, insurerCollectionNeedsRefresh, applicableInsurerPreview, insurerCoverageNotice, invoiceCollectionNotice } from '../apps/web/src/insurer-sync';
 
+test('interrupted sign-in and missing diagnostic do not assert expiration or credential rejection', () => {
+  for (const authReason of ['login-incomplete', undefined] as const) {
+    const status = { state: 'login-required' as const, authReason };
+    const detail = insurerSyncMessage(status, null, false);
+    const fallback = insurerSyncMessage(null, { status: 'login-required' }, false);
+    assert.doesNotMatch(fallback, /expired|reconnect|incorrect|refused/i);
+    assert.doesNotMatch(detail + insurerCoverageNotice(status), /expired|reconnect|incorrect|refused/i);
+    assert.match(detail, /Saved claims remain available/);
+    assert.equal(applicableInsurerPreview(status, { status: 'success', complete: true, new: 1 }), false);
+  }
+  assert.match(insurerSyncMessage({ state: 'login-required', authReason: 'login-incomplete' }, null, false), /outcome is uncertain.*retries are paused/);
+});
+
+test('legacy unknown-layout status does not assert an expired session or request a new sign-in', () => {
+  const status = { state: 'login-required' as const, authReason: 'layout-changed' as const, lastSuccess: '2026-07-01T12:00:00Z' };
+  const detail = insurerSyncMessage(status, null, false);
+  const coverage = insurerCoverageNotice(status)!;
+  assert.match(detail, /insurer page was not recognized.*history could not be collected/i);
+  assert.match(detail, /Saved claims remain available/);
+  assert.match(coverage, /history unavailable.*payments may be missing/i);
+  assert.doesNotMatch(detail + coverage, /sign.in|session expired|reconnect/i);
+  assert.equal(applicableInsurerPreview(status, { status: 'success', new: 1, complete: true }), false);
+});
+
 test('a complete ambiguous collection is reviewable evidence, not a failed or incomplete read', () => {
   const status = { state: 'idle' as const, lastSuccess: '2026-07-09T11:00:00Z', latestResult: { status: 'success' as const, applied: false, complete: true, autoImported: 0, pendingNew: 0, pendingChanged: 0, ambiguous: 1, errors: 0 } };
   const notice = insurerCoverageNotice(status, Date.parse('2026-07-09T12:00:00Z'))!;
@@ -53,7 +77,7 @@ test('an ambiguous automatic collection never displays Up to date', () => {
 test('saved claims expose failed, stale, auth-required and unavailable coverage with bounded retry progress', () => {
   const now=Date.parse('2026-07-09T12:00:00Z');
   assert.match(insurerCoverageNotice(null,now)!, /unavailable.*missing/);
-  assert.match(insurerCoverageNotice({state:'login-required',lastSuccess:'2026-07-01T12:00:00Z'},now)!, /Sign-in required/);
+  assert.match(insurerCoverageNotice({state:'login-required',lastSuccess:'2026-07-01T12:00:00Z'},now)!, /history unavailable/);
   assert.match(insurerCoverageNotice({state:'up-to-date',lastSuccess:'2026-07-01T12:00:00Z'},now)!, /out of date/);
   assert.equal(insurerCoverageNotice({state:'up-to-date',lastSuccess:'2026-07-09T11:00:00Z'},now),null);
   assert.match(insurerCoverageNotice({state:'error',retry:{attempt:3,maximum:3,state:'exhausted'}},now)!,/3 attempts/);

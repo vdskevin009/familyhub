@@ -698,7 +698,10 @@ test("current insurer status replaces stale reconnect previews after apply and r
   assert.match(insurerSyncMessage({ state: "syncing" }, preview, false), /Reading insurer history/);
   assert.equal(applicableInsurerPreview({ state: "syncing" }, preview), false);
   assert.match(insurerSyncMessage({ state: "error", error: "Unavailable" }, preview, false), /Unavailable/);
-  assert.match(insurerSyncMessage({ state: "login-required" }, preview, false), /Session expired/);
+  const unclassified = insurerSyncMessage({ state: "login-required" }, preview, false);
+  assert.match(unclassified, /history could not be verified/);
+  assert.doesNotMatch(unclassified, /session expired|sign-in was refused|reconnect/i);
+  assert.equal(applicableInsurerPreview({ state: "login-required" }, preview), false);
   assert.equal(applicableInsurerPreview({ state: "idle", latestResult: preview }, null), true);
   const unchanged = { ...preview, new: 0, unchanged: 5 };
   assert.match(insurerSyncMessage({ state: "up-to-date", latestResult: unchanged }, preview, false), /already saved/);
@@ -706,10 +709,19 @@ test("current insurer status replaces stale reconnect previews after apply and r
 });
 
 test("insurer authentication failures give recovery guidance and never expose Apply", () => {
-  const checks = { "human-required": /verification/, "credentials-rejected": /retries are paused/, "not-configured": /Set up automatic login/, "credentials-unavailable": /cannot be unlocked/, "layout-changed": /not recognized/, "cooldown": /30 minutes/, "profile-busy": /another collection/ } as const;
+  const checks = { "human-required": /verification/, "credentials-rejected": /retries are paused/, "not-configured": /no automatic login is configured/, "credentials-unavailable": /cannot be unlocked/, "layout-changed": /not recognized/, "login-incomplete": /outcome is uncertain/, "profile-selection-required": /account profile selection/, "cooldown": /30 minutes/, "profile-busy": /another collection/ } as const;
   for (const [authReason, expected] of Object.entries(checks)) {
     const status = { state: "login-required" as const, authReason: authReason as keyof typeof checks };
     assert.match(insurerSyncMessage(status, null, false), expected);
     assert.equal(applicableInsurerPreview(status, null), false);
+    if (["not-configured", "layout-changed", "login-incomplete", "profile-selection-required"].includes(authReason))
+      assert.doesNotMatch(insurerSyncMessage(status, null, false), /session expired|sign-in was refused|reconnect/i);
   }
+});
+
+test("history collection errors supersede a stale successful preview without implying expired login", () => {
+  const preview = { status: "success" as const, new: 2, complete: true, applied: false };
+  const status = { state: "error" as const, error: "Blue Cross claims history could not be opened from the member page.", lastSuccess: "2026-01-01T00:00:00Z" };
+  assert.equal(insurerSyncMessage(status, preview, false), status.error);
+  assert.equal(applicableInsurerPreview(status, preview), false);
 });

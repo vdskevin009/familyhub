@@ -1,6 +1,7 @@
 import type { LoginRecoveryRequest } from "./portal-login-recovery.js";
 import { createBlueCrossHistoryNavigation } from "./bluecross-history-navigation.js";
 import { blueCrossPageCategory } from "./bluecross-page-category.js";
+import { blueCrossHistoryFailure } from "./bluecross-history-failure.js";
 import { findPortalHistoryPage, isInsurerPortalPage } from "./portal-history-page.js";
 import { acquirePortalLock, authenticatedPortal, tryPortalLogin, type LoginReason } from "./portal-login.js";
 import { mkdir, open } from "node:fs/promises";
@@ -146,9 +147,12 @@ async function collectBlueCrossPortalLocked(interactive = false, recovery?: Logi
       while (!await ready() && Date.now() < deadline) await page.waitForTimeout(2000).catch(() => new Promise(resolve => setTimeout(resolve, 2000)));
     }
     if (!await ready()) {
+      const historyFailure = await blueCrossHistoryFailure(page, authReason, openHistory.diagnostic());
       await atomicJson(join(blueCrossPrivateDirectory, "history-navigation-failure.json"), {
-        version: 1, observedAt: new Date().toISOString(), pageCategory: blueCrossPageCategory(page.url()), navigation: openHistory.diagnostic()
+        version: 1, observedAt: new Date().toISOString(), pageCategory: blueCrossPageCategory(page.url()), navigation: openHistory.diagnostic(),
+        failureKind: historyFailure ? "history-unavailable" : "authentication-required"
       }).catch(() => {});
+      if (historyFailure) throw historyFailure;
       return { status: "login-required", authReason: authReason || "human-required" };
     }
     await authenticatedPortal("bluecross");

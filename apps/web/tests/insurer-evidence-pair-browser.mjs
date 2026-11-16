@@ -30,6 +30,7 @@ try {
  for(const width of [390,1440]) {
   await writeFile(join(dir,'invoices.json'),JSON.stringify({items:rows,accounts:{}}));await api.initializeInvoices();
   const context=await browser.newContext({viewport:{width,height:1000},serviceWorkers:'block'}),page=await context.newPage(),posts=[],errors=[];
+  let blueCrossSyncStatus={state:'idle',lastSuccess:new Date().toISOString(),latestResult:{status:'success',applied:false,complete:true,autoImported:0,ambiguous:1,errors:0,pendingNew:0,pendingChanged:0}};
   page.on('pageerror',e=>errors.push(e.message));
   await page.addInitScript(()=>localStorage.setItem('familyhub.worker.v1',JSON.stringify({Endpoint:'https://synthetic-worker.invalid',ApiKey:'synthetic-key'})));
   await page.route('https://synthetic-worker.invalid/**',async route=>{
@@ -38,7 +39,7 @@ try {
    if(req.method()==='OPTIONS')return reply({});
    if(path==='/health')return reply({status:'ok',version:'2.26.19'});
    if(path==='/invoices')return reply({...await api.invoiceSnapshot(), error:'Some accounts are incomplete.', lastSuccess:'2026-08-01T12:00:00Z', progress:{'synthetic@example.test':{error:'Gmail authorization expired or was rejected. Reconnect this account on the PC.'}}});
-   if(path==='/bluecross/status')return reply({state:'idle',lastSuccess:new Date().toISOString(),latestResult:{status:'success',applied:false,complete:true,autoImported:0,ambiguous:1,errors:0,pendingNew:0,pendingChanged:0}});
+   if(path==='/bluecross/status')return reply(blueCrossSyncStatus);
    if(req.method()==='POST'){
     const body=req.postDataJSON();posts.push({path,body});
     assert.equal(path,'/invoices/workflow/status');
@@ -80,6 +81,26 @@ try {
   await scaling.getByRole('button',{name:'Review nearby Desjardins records'}).click();
   await scaling.getByText('Linked to this claim',{exact:true}).waitFor();
   await page.screenshot({path:join(output,`insurer-pair-${width}.png`),fullPage:true});
+  for (const state of ['legacy-layout','history-error','interrupted-signin']) {
+    const lastSuccess='2026-08-01T12:00:00Z';
+    blueCrossSyncStatus=state!=='history-error'
+      ? {state:'login-required',authReason:state==='legacy-layout'?'layout-changed':'login-incomplete',lastSuccess}
+      : {state:'error',error:'Blue Cross claims history could not be opened from the member page. No complete collection was made. Saved claims remain unchanged. Review the history on the PC before trying again.',lastSuccess};
+    await page.reload();
+    const coverage=page.getByRole('region',{name:'Insurer collection coverage'});
+    await coverage.getByText(state!=='history-error'?/Insurer history unavailable/:/Collection incomplete/).waitFor();
+    assert.doesNotMatch(await coverage.innerText(),/sign.in required|session expired|reconnect/i);
+    await coverage.getByRole('button',{name:'Review Sources'}).first().click();
+    const sync=page.getByRole('region',{name:'Blue Cross portal sync'});
+    await sync.getByText(state==='legacy-layout'?/insurer page was not recognized/:state==='interrupted-signin'?/outcome is uncertain/:/claims history could not be opened/).waitFor();
+    assert.doesNotMatch(await sync.getByRole('status').innerText(),/session expired|reconnect|credentials.*refused/i);
+    assert.equal(await sync.getByRole('button',{name:'Appliquer Blue Cross'}).count(),0);
+    await sync.getByText(/Last complete read:/).waitFor();
+    assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
+    await page.screenshot({path:join(output,`bluecross-${state}-${width}.png`),fullPage:true,animations:'disabled'});
+    assert.equal(posts.length,3,'Viewing an error must not trigger login, collection or apply');
+    assert.deepEqual(errors,[]);
+  }
   await context.close();console.log(`PASS paired evidence ${width}px: two closed cards, atomic workflow, restore, reload and sources`);
  }
 } finally {await browser?.close();server.close();await rm(dir,{recursive:true,force:true});}
