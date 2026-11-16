@@ -1,6 +1,10 @@
 import { useMemo, useRef, useState } from "react";
 import { expenseCategories, type ExpenseCategory, type FinanceState } from "../../../worker/src/finance-model";
-import { baselineWindowMonths, shiftMonth, spendingTrend, type SpendingTrend } from "../finance-trends";
+import { baselineWindowMonths, shiftMonth, type SpendingTrend } from "../finance-trends";
+import { Sheet } from "../ui/primitives";
+import { useFinanceDialogHistory } from "../use-finance-dialog-history";
+import { attributeSpendingDifference, leadingSpendingDifferences } from "../finance-trend-attribution";
+import { displayFinanceCapture, FinanceCollectionNote } from "./FinanceCollectionNote";
 import InfoPopover from "../ui/InfoPopover";
 import "../finance-trends.css";
 
@@ -46,74 +50,59 @@ export function DailyCurve({ trend, currency }: { trend: Pick<SpendingTrend, "da
     </>;
 }
 
-export default function FinanceTrends({ state, trend, account, currency, onMonth, onCategory }: {
+export default function FinanceTrends({ state, trend, account, currency, onMonth, onCategory, unresolvedCount = 0 }: {
     state: FinanceState; trend: SpendingTrend; account: string; currency: string;
-    onMonth: (month: string) => void; onCategory: (category: ExpenseCategory) => void;
+    onMonth: (month: string) => void; onCategory: (category: ExpenseCategory) => void; unresolvedCount?: number;
 }) {
-    const [category, setCategory] = useState("");
-    const [detail, setDetail] = useState(false);
-    const root = useRef<HTMLDivElement>(null);
-    const today = trend.today, year = trend.month.slice(0, 4);
-    const yearMonths = useMemo(() => Array.from({ length: 12 }, (_, i) => spendingTrend(state, `${year}-${String(i + 1).padStart(2, "0")}`, account, currency, today)), [state, year, account, currency, today]);
-    const annualScale = Math.max(1, ...yearMonths.flatMap(m => [Math.abs(m.actualCents ?? 0), Math.abs(m.baselineCents ?? 0)]));
-    const earliest = Number(state.data!.scope.from.slice(0, 4)), latest = Math.max(Number(today.slice(0, 4)), Number(state.data!.scope.to.slice(0, 4)), Number(year));
-    const years = Array.from({ length: Math.min(50, latest - Math.min(earliest, Number(year)) + 1) }, (_, i) => latest - i);
-    const categories = trend.categories.filter(c => !category || c.key === category).sort((a, b) => Math.abs(b.actualCents ?? b.baselineCents ?? 0) - Math.abs(a.actualCents ?? a.baselineCents ?? 0));
-    const amounts = categories.flatMap(c => [c.actualCents, c.baselineCents]).filter((v): v is number => v !== null);
-    const low = Math.min(0, ...amounts), high = Math.max(1, ...amounts), position = (v: number) => (v - low) / (high - low) * 300 + 5;
-    const difference = trend.baselineReady && trend.actualCents !== null && trend.baselineCents !== null ? trend.actualCents - trend.baselineCents : null;
-    const focus = (selector: string) => requestAnimationFrame(() => root.current?.querySelector<HTMLElement>(selector)?.focus());
-    const openMonth = (month: string) => { onMonth(month); setDetail(true); setCategory(""); focus("#trends-month-title"); };
-    const back = () => { setDetail(false); focus(`[data-trend-month="${trend.month}"]`); };
+    const [detail,setDetail] = useState(false), trigger = useRef<HTMLButtonElement>(null);
+    const attribution = useMemo(()=>attributeSpendingDifference(trend),[trend]);
+    const leaders = leadingSpendingDifferences(attribution);
+    const signed = (cents:number)=>`${cents>0?"+":""}${money(cents,currency)}`;
+    const collection = state.imports.at(-1)?.collection;
+    const close = ()=>{setDetail(false);requestAnimationFrame(()=>trigger.current?.focus());};
+    useFinanceDialogHistory(detail,close);
+    const openMonth = (month:string)=>{if(/^\d{4}-(0[1-9]|1[0-2])$/.test(month))onMonth(month);};
     const method = <div className="view-stack trend-method">
-        <p>La barre pleine montre le montant net observé, même sans comparaison. La barre en pointillés montre la référence historique lorsqu'elle existe. Les douze mois et leur détail partagent la même échelle annuelle, avec le zéro au centre. Les remboursements nets apparaissent à gauche du zéro. Ces montants ne sont pas des objectifs de budget.</p>
-        <p>La référence est la moyenne des périodes réellement observées parmi les {baselineWindowMonths} mois précédents, sans le mois cible ni les mois encore incomplets. Les mois absents sont exclus, jamais remplacés par zéro. Pour un mois partiel, les mêmes {trend.elapsedDays} premières journées sont retenues. Aucune extrapolation.</p>
-        <p>Les bornes de mouvements ne prouvent pas un historique exhaustif. Les montants et écarts indicatifs restent visibles lorsque la couverture est partielle; ils ne certifient pas un historique complet. Aucun compte incomplet n'est supposé nul.</p>
-        <p>Les paiements de carte, transferts, placements, doublons confirmés et natures à vérifier restent exclus. Les remboursements conservent leur signe. {trend.summary.included.filter(r => !r.reviewed).length} classifications sont encore suggérées dans ce mois.</p>
+        <p>{trend.from} au {trend.to}{trend.partial ? ` · ${trend.elapsedDays} premiers jours` : ""}. {trend.referenceIndicative ? "Référence indicative." : ""}</p>
+        <p>La référence est la moyenne des périodes observées parmi les {baselineWindowMonths} mois précédents, sans le mois cible ni les mois encore incomplets. Pour un mois partiel, les mêmes {trend.elapsedDays} premières journées sont retenues. Les mois absents sont exclus, jamais remplacés par zéro. Aucune extrapolation.</p>
+        <p>Les bornes des mouvements ne prouvent pas un historique exhaustif. Les comptes incomplets ne sont pas supposés nuls. Un écart favorable n'est pas une économie garantie.</p>
+        <p>Transferts, paiements de carte, placements, doublons confirmés et natures à vérifier restent exclus. Les remboursements conservent leur signe. {trend.summary.included.filter(r=>!r.reviewed).length} classifications restent suggérées.</p>
+        {unresolvedCount>0 && <p>{unresolvedCount} opérations source sans rapprochement vérifié dans ce périmètre restent hors sous-total. Retrouvez-les dans Dépenses.</p>}
+        <FinanceCollectionNote state={state}/>
         <details><summary>Méthode et couverture des sources</summary>
-            <ul>{trend.candidates.map(c => <li key={c.month}>{c.month} : {c.reasons.length ? c.reasons.join("; ") : `admissible, comparaison du ${c.from} au ${c.comparisonTo}`}</li>)}</ul>
-            <ul>{trend.coverage.map(c => <li key={c.account}><strong>{c.account}</strong>{c.rows.length ? c.rows.map((r, i) => <p key={i}>{r.earliest ?? "Début inconnu"} au {r.latest ?? "Fin inconnue"}{r.warning ? ` · ${r.warning}` : ""}</p>) : <p>Bornes absentes</p>}</li>)}</ul>
-            {!!state.data?.limits.length && <details><summary>Notes de préparation des sources</summary><p>Notes conservées à l'import; les décisions peuvent avoir changé depuis.</p><ul>{state.data.limits.map((limit, i) => <li key={i}>{limit}</li>)}</ul></details>}
+            <ul>{trend.candidates.map(c=><li key={c.month}>{c.month} : {c.reasons.length ? c.reasons.join("; ") : `admissible, comparaison du ${c.from} au ${c.comparisonTo}`}</li>)}</ul>
+            <ul>{trend.coverage.map(c=><li key={c.account}><strong>{c.account}</strong>{c.rows.length ? c.rows.map((r,i)=><p key={i}>{r.earliest ?? "Début inconnu"} au {r.latest ?? "Fin inconnue"}{r.warning ? ` · ${r.warning}` : ""}</p>) : <p>Bornes absentes</p>}</li>)}</ul>
+            {!!state.data?.limits.length && <details><summary>Notes de préparation des sources</summary><ul>{state.data.limits.map((limit,i)=><li key={i}>{limit}</li>)}</ul></details>}
+            {trend.pendingCount>0 && <p>{trend.pendingCount} élément(s) en attente dans l'import complet, hors dépenses. {trend.pendingRows.length ? `${trend.pendingRows.length} dans la sélection.` : "Leurs dates et comptes ne sont pas disponibles pour cette sélection."}</p>}
         </details>
     </div>;
-    return <div ref={root} className="finance-trends view-stack">
-        {!detail ? <section className="surface view-stack trend-annual" aria-labelledby="trends-year-title">
-            <div className="trend-heading"><div><p className="trend-eyebrow">Votre historique</p><h2 id="trends-year-title">Dépenses au fil des mois</h2></div><div className="trend-controls"><label><select aria-label="Année analysée" value={year} onChange={e => onMonth(e.target.value + trend.month.slice(4))}>{years.map(y => <option key={y}>{y}</option>)}</select></label><InfoPopover title="Lecture des tendances">{method}</InfoPopover></div></div>
-            <p className="trend-intro">Votre année, mois par mois, sans objectif de budget. Ouvrez un mois pour retrouver ses catégories et ses opérations.</p><div className="trend-months">{yearMonths.map(m => <button type="button" data-trend-month={m.month} key={m.month} className={m.month === trend.month ? "selected" : ""} aria-current={m.month === trend.month ? "date" : undefined} onClick={() => openMonth(m.month)} aria-label={`Ouvrir ${monthName(m.month)}. ${m.partial ? "Mois incomplet. " : ""}Observé : ${money(m.actualCents, currency)}. Référence : ${money(m.baselineCents, currency)}. ${m.future ? "Mois à venir" : m.referenceIndicative ? `Référence indicative sur ${m.referenceMonths.length} mois observé(s)` : !m.baselineReady ? "Référence indisponible" : m.partial ? "Mois partiel" : "Mois terminé"}`}>
-                <strong>{monthName(m.month, true)}</strong><Gauge actual={m.actualCents} baseline={m.baselineCents} scale={annualScale} />
-                <span>{m.actualCents === null ? "—" : money(m.actualCents, currency)}</span>
-                <small>{m.future ? "À venir" : !m.available ? "Sans données" : m.actualCents === null ? "Bornes à vérifier" : m.partial ? `Partiel · au ${Number(m.to.slice(8))}${m.actualCents < 0 ? " · net remboursé" : ""}` : m.actualCents < 0 ? "Net remboursé" : "Observé"}</small>
-                <small className="trend-tile-reference">{m.baselineReady ? `Réf. ${m.referenceIndicative ? "indicative" : "observée"} : ${money(m.baselineCents, currency)}` : "Réf. indisponible"}</small>
-            </button>)}</div>
-            <div className="trend-legend"><span className="trend-key actual">Observé</span><span className="trend-key typical">Référence historique</span><span>Échelle annuelle commune · remboursements à gauche de 0</span></div>
-        </section> : <>
-            <div className="trend-detail-nav"><button type="button" className="button secondary" onClick={back}>Retour à l'année</button><InfoPopover title="Lecture des tendances">{method}</InfoPopover></div>
-            <section className="surface view-stack" aria-labelledby="trends-month-title">
-                <div className="trend-navigation"><button className="icon-button" aria-label="Mois analysé précédent" onClick={() => openMonth(shiftMonth(trend.month, -1))}>‹</button><h2 tabIndex={-1} id="trends-month-title">{monthName(trend.month)}</h2><button className="icon-button" aria-label="Mois analysé suivant" onClick={() => openMonth(shiftMonth(trend.month, 1))}>›</button></div>
-                <div className="trend-headline"><Gauge actual={trend.actualCents} baseline={trend.baselineCents} scale={annualScale} /><div className="trend-month-summary">
-                    <div className="trend-month-total"><small>Dépenses nettes · {currency}</small><strong className="trend-total">{money(trend.actualCents, currency)}</strong><InfoPopover title="Couverture de ce mois">
-                    <p>{trend.from} au {trend.to}{trend.partial ? ` · ${trend.elapsedDays} premiers jours` : ""}.</p>
-                    {!trend.comparable && <ul>{trend.reasons.map(reason => <li key={reason}>{reason}</li>)}</ul>}
-                    <p>{trend.baselineReady ? `Mois observés retenus : ${trend.referenceMonths.join(", ")}. ${trend.partial ? `Moyenne des ${trend.elapsedDays} premiers jours de ces mois.` : "Moyenne de ces mois entiers."}` : "Aucune période antérieure observée pour ce filtre. Les mois absents ne valent pas zéro."}</p>
-                    <p>Fenêtre : {trend.candidates[0]?.month} à {trend.candidates.at(-1)?.month}. Mêmes comptes et devise que le mois consulté. {trend.referenceMonths.length} mois observé(s) sur {baselineWindowMonths}.</p>
-                    {trend.referenceIndicative && <p>Référence et écart indicatifs : couverture partielle, moins de six mois observés ou classifications provisoires. Les dernières transactions ne prouvent pas une couverture exhaustive; les comptes sans données ne sont pas supposés nuls.</p>}
-                    <ul>{trend.candidates.filter(c => !c.observed || c.reasons.length).map(c => <li key={c.month}>{c.month} : {c.observed ? "retenu à titre indicatif" : "non retenu, période sans observation comparable"}{c.reasons.length ? ` — ${c.reasons.join("; ")}` : ""}</li>)}</ul>
-                                    {difference !== null && <p>{trend.referenceIndicative ? "Écart indicatif : " : "Écart observé : "}{money(Math.abs(difference), currency)} {difference > 0 ? "au-dessus" : difference < 0 ? "en dessous" : "au niveau"} de la référence.</p>}
-                </InfoPopover></div>
-                    <small className="trend-reference-caption">Référence {trend.referenceIndicative ? "indicative" : "observée"} ({trend.baselineReady ? trend.referenceMonths.length : 0} mois) : <strong>{money(trend.baselineCents, currency)}</strong></small>
-                </div></div>
-                <small className="trend-period">{trend.partial && <strong>Mois incomplet · </strong>}{trend.available ? `${trend.from} au ${trend.to}${trend.partial ? ` · ${trend.elapsedDays} premiers jours` : ""}` : "Aucune période disponible"}</small>
-                {!trend.baselineReady && <small className="trend-coverage" role="status">Référence indisponible · aucune période antérieure observée</small>}
-                {trend.referenceIndicative && <small className="trend-coverage" role="status">Référence indicative · {trend.referenceMonths.length} mois observé(s). Couverture ou classifications à vérifier.</small>}
-                <div className="trend-heading"><h2>Catégories</h2><details className="trend-category-filter"><summary>Filtrer</summary><label>Afficher une catégorie<select aria-label="Afficher une catégorie" value={category} onChange={e => setCategory(e.target.value)}><option value="">Toutes les catégories</option>{Object.entries(expenseCategories).filter(([key]) => key !== "savings-investments").map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label></details></div>
-                <div className="trend-categories">{categories.map(c => <button type="button" key={c.key} className="trend-category" onClick={() => onCategory(c.key)}>
-                    <span className="trend-category-line"><strong>{c.label}</strong><b>{money(c.actualCents, currency)}</b></span>
-                    <svg viewBox="0 0 310 26" preserveAspectRatio="none" aria-hidden="true"><line x1={position(0)} x2={position(0)} y1="0" y2="26" stroke="var(--muted)" />{c.actualCents !== null && <rect x={Math.min(position(0), position(c.actualCents))} y="2" width={Math.abs(position(c.actualCents) - position(0))} height="8" fill="var(--green)" />}{c.baselineCents !== null && <rect x={Math.min(position(0), position(c.baselineCents))} y="15" width={Math.abs(position(c.baselineCents) - position(0))} height="8" fill="none" stroke="var(--muted)" strokeDasharray="4 2" />}</svg>
-                    <small>{c.count} opérations · Référence {trend.referenceIndicative ? "indicative " : ""}{money(c.baselineCents, currency)} · Voir les opérations</small>
-                </button>)}</div>{!categories.length && <p>Aucune dépense pour ce filtre. Changez de catégorie ou de mois.</p>}
-            </section>
-            <details className="surface trend-daily"><summary>Cumul quotidien</summary><DailyCurve trend={trend} currency={currency} /></details>
-            {(trend.pendingCount > 0 || trend.pendingRows.length > 0) && <details className="surface"><summary>Opérations en attente</summary>{trend.pendingCount > 0 && <p>{trend.pendingCount} élément(s) signalé(s) dans l'import complet, sans ventilation par mois ou compte.</p>}<p>Hors totaux. Le décompte global et les lignes ci-dessous ne s'additionnent pas.</p>{trend.pendingRows.length ? <ul>{trend.pendingRows.map(r => <li key={r.id}>{r.date} · {r.description} · {money(r.outflowCents, r.currency)}</li>)}</ul> : <p>Les dates et montants détaillés ne sont pas disponibles pour cette sélection.</p>}</details>}
-        </>}
+    return <div className="finance-trends view-stack">
+        <div className="trend-month-navigation" aria-label="Navigation mensuelle">
+            <button type="button" className="icon-button" aria-label="Mois analysé précédent" onClick={()=>openMonth(shiftMonth(trend.month,-1))}>‹</button>
+            {[-2,-1,0,1].map(offset=>{const month=shiftMonth(trend.month,offset);return <button type="button" key={month} data-trend-month={month} className={month===trend.month?"selected":""} aria-current={month===trend.month?"date":undefined} aria-label={monthName(month)} onClick={()=>openMonth(month)}>{monthName(month,true)}</button>;})}
+            <button type="button" className="icon-button" aria-label="Mois analysé suivant" onClick={()=>openMonth(shiftMonth(trend.month,1))}>›</button>
+        </div>
+        <div className="compact-heading trend-period-heading"><h2 id="trends-month-title" tabIndex={-1}>{monthName(trend.month)}</h2><label><span className="sr-only">Mois analysé</span><input type="month" aria-label="Mois analysé" value={trend.month} onChange={e=>openMonth(e.target.value)}/></label></div>
+        <section className="surface view-stack trend-overview" aria-label="Résumé du mois">
+            <div className="trend-headline"><span>Dépenses nettes · {currency}</span><strong className="trend-total" data-trend-actual={trend.actualCents ?? "unknown"}>{money(trend.actualCents,currency)}</strong>
+                {attribution.available ? <button type="button" ref={trigger} className={`trend-difference ${attribution.displayDifferenceCents!<0?"favorable":attribution.displayDifferenceCents!>0?"higher":"equal"}`} data-trend-delta={attribution.displayDifferenceCents} aria-haspopup="dialog" aria-expanded={detail} onClick={()=>setDetail(true)}>{signed(attribution.displayDifferenceCents!)} vs référence <span aria-hidden="true">›</span></button> : <p className="trend-no-reference">{attribution.unavailableReason==="observed-unavailable" ? "Écart non établi : montant observé indisponible." : attribution.unavailableReason==="inconsistent-categories" ? "Détail de l'écart non établi." : "Référence indisponible"}</p>}
+                <p className="trend-reference-status" role="status">{trend.baselineReady ? `${trend.referenceIndicative ? "Référence indicative" : "Référence observée"} : ${money(trend.baselineCents,currency)} · même période` : "Aucun montant de référence supposé."}{trend.partial ? ` · ${trend.elapsedDays} premiers jours` : ""}</p>
+            </div>
+            <DailyCurve trend={trend} currency={currency}/>
+        </section>
+        <section className="surface view-stack trend-explanation" aria-label="Explication de l'écart"><h2>Ce qui explique l'écart</h2>
+            {attribution.available ? <ul>{leaders.map(c=><li key={c.key}><button type="button" className="trend-category" data-trend-leading={c.key} onClick={()=>c.categoryKeys.length===1 ? onCategory(c.categoryKeys[0] as ExpenseCategory) : setDetail(true)}><span>{c.label}</span><strong className={c.displayDifferenceCents<0?"favorable":"higher"}>{signed(c.displayDifferenceCents)}</strong></button></li>)}</ul> : <p>Les différences par catégorie apparaîtront lorsqu'une référence comparable sera disponible. Le montant observé reste affiché sans économie supposée.</p>}
+        </section>
+        <div className="trend-collection compact-heading"><small>{collection ? <>Collecté le <time dateTime={collection.retrievedAt}>{displayFinanceCapture(collection.retrievedAt)}</time></> : "Date de collecte non disponible"}{unresolvedCount>0 ? ` · ${unresolvedCount} opérations à rapprocher` : ""}</small><InfoPopover title="Lecture des tendances">{method}</InfoPopover></div>
+        <Sheet open={detail} onClose={close} title="Écart à la référence" wide className="trend-attribution-dialog">
+            <div className="view-stack"><p>{monthName(trend.month)} · {account ? state.data?.accounts.find(a=>a.id===account)?.name ?? "Compte sélectionné" : "Tous les comptes"} · {currency}</p>
+                <strong className={`trend-attribution-total ${attribution.displayDifferenceCents!==null&&attribution.displayDifferenceCents<0?"favorable":"higher"}`}>{attribution.displayDifferenceCents===null ? "Non établi" : signed(attribution.displayDifferenceCents)}</strong>
+                <p>{money(trend.actualCents,currency)} observés / {money(trend.baselineCents,currency)} de référence. {trend.referenceIndicative ? "Référence indicative." : ""}</p>
+                <h3>Où ça a changé</h3><p className="trend-axis-legend">Moins ← 0 → Plus</p>
+                <ul className="trend-attribution-list">{attribution.categories.map(c=>{const width=Math.abs(c.displayDifferenceCents)/attribution.scaleCents!*50;return <li key={c.key}><button type="button" data-trend-category={c.key} data-difference-cents={c.displayDifferenceCents} aria-label={`${c.label} : écart ${signed(c.displayDifferenceCents)}. Observé ${money(c.actualCents,currency)}, référence ${money(c.displayBaselineCents,currency)}. Voir les opérations.`} onClick={()=>onCategory(c.key as ExpenseCategory)}><span><strong>{expenseCategories[c.key as ExpenseCategory] ?? c.label}</strong><small>{money(c.actualCents,currency)} observés</small></span><span><span className="trend-attribution-track" aria-hidden="true"><span className={c.displayDifferenceCents<0?"favorable":"higher"} style={{left:`${c.displayDifferenceCents<0?50-width:50}%`,width:`${width}%`}}/></span><strong className={c.displayDifferenceCents<0?"favorable":"higher"}>{signed(c.displayDifferenceCents)}</strong></span></button></li>;})}</ul>
+                <p>Toutes les catégories sont incluses : leurs écarts affichés expliquent le total. Un écart favorable n'est pas une économie garantie.</p>
+                <button type="button" className="button secondary" onClick={close}>Fermer le détail de l'écart</button>
+            </div>
+        </Sheet>
     </div>;
 }

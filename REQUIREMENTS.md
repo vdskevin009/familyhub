@@ -1,9 +1,33 @@
 # FamilyHub - Canonical Requirements
 
+## FH-FIN-032 - Monthly Trends overview and signed difference explanation
+
+Accepted A+B; **implemented in draft PR #294; complete CI and release verification pending**.
+Open the selected month or current month directly. Keep compact monthly
+navigation and account/currency filters. Show observed net spending, the signed
+available reference difference, and the daily observed/reference curve. Rank the
+categories that explain the difference. Open the full signed category attribution in
+an accessible panel with a shared axis around zero and category-operation access.
+All categories, or a reconciled Autres, must sum to the displayed headline difference.
+
+Preserve `finance-trends` comparable days, indicative references, exclusions, refund
+signs, account/currency scope, and unknown values. An absent comparison is not zero;
+a favorable difference is not guaranteed savings. Keep collection and bank freshness
+distinct and method/coverage in a compact information control. C/watchlists is outside
+this approval. The annual-first entry in FH-FIN-018 is superseded as target presentation
+only; current production behavior remains until complete verification.
+
+`finance-trend-attribution.ts` derives category deltas without changing existing
+financial calculations, apportions only display rounding, and retains all category
+membership in its compact remainder. FH-FIN-031 remains the prerequisite for the
+unified register. The original approved reference is now locally verified and its
+pixels reviewed. See `docs/FINANCE-TRENDS-AB-WORK-IN-PROGRESS.md` for UI checks and
+the remaining CI and publication gates. The new Projets proposal is not implemented.
+
 ## FH-FIN-031 - One Finances destination and reconciled expense register
 
-Accepted; **local integration and regression checks in progress; not published or deployed**.
-Finances becomes a primary navigation destination. The initially approved Récurrent-in-Plus placement is superseded as a target by a pending navigation proposal placing Récurrents inside Finances and grouping Courses, Hypothèque, Voiture and Nouveau bien under Projets. Do not publish a contradictory navigation before that proposal is validated. Existing routes remain available.
+Accepted; **PR #293 merged at c92d5d0 after complete CI; production verification pending**.
+Finances becomes a primary navigation destination. The later proposal placing Récurrents inside Finances and grouping Courses, Hypothèque, Voiture and Nouveau bien under Projets is not implemented. The owner explicitly authorized merging and deploying the ready Finances lot independently on 2026-11-16; existing routes remain available while that later proposal awaits validation.
 Its first-level tabs are Comptes (first/default), Dépenses, Tendances and Contributions.
 Contributions retains its existing widgets, targets and calculations. A category opens
 its operations in a panel for the current period and filters. Recent and historical
@@ -20,7 +44,7 @@ unknown-data safeguards remain authoritative. FH-FIN-030 was a separate closed,
 unmerged proposal and is not part of this implementation.
 
 The paired read-only `/finances/register-bindings` endpoint derives verified identities from hash-checked successful import archives. `finance-register.ts` provides read-only reconciliation and a shared filtered
-projection with synthetic regression tests. API/UI integration, approved-image inspection and the accessible panel are locally implemented. Complete real-data identity coverage, pending navigation approval, exact-commit CI and deployed verification remain unfinished. See `docs/FINANCE-UNIFIED-WORK-IN-PROGRESS.md`.
+projection with synthetic regression tests. API/UI integration, approved-image inspection and the accessible panel are implemented. Exact head e7c6a46 passed CI run 43781125437. Complete real-data identity coverage and deployed verification remain unfinished. See `docs/FINANCE-UNIFIED-WORK-IN-PROGRESS.md`.
 
 ## Purchase-only Courses and monthly PC Express spending - FH-GROCERY-015 (#155)
 

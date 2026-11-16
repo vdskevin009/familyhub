@@ -222,7 +222,7 @@ The local private-classifier candidate now validates inherited tool restrictions
 
 Source-native expense snapshots keep their immutable private store. The local FH-FIN-031 candidate presents them in the expense register with archived identity proofs; unmatched records stay visibly outside its subtotal. See [source expense contract and limitations](docs/FINANCE-SOURCE-EXPENSES.md); deployment and private source activation are separate from synthetic tests.
 
-Source-native Tendances can now display the same saved expense capture independently of the historical ledger, preserving capture/date/account/currency scope and unknown bank freshness. See [source expense and trend semantics](docs/FINANCE-SOURCE-EXPENSES.md). This local continuation does not start collection or deploy the worker.
+Tendances uses the unified historical register for comparable monthly calculations. Uncorroborated source rows remain visible in Dépenses, outside calculated subtotals, with their scoped count in the coverage information. The approved monthly overview opens a reconciled category-difference panel; collection remains distinct from unknown bank freshness. See [Tendances implementation and release gates](docs/FINANCE-TRENDS-AB-WORK-IN-PROGRESS.md). No collection is triggered by this UI.
 
 ## Monthly account versions
 
