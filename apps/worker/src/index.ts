@@ -1,3 +1,4 @@
+import { VehicleStore, VehicleConflict } from "./vehicle-project.js";
 import { PropertyStore, PropertyConflict } from "./property-project.js";
 import { FINANCE_REGISTER_CAPABILITY, readFinanceRegisterBindings } from "./finance-register-bindings.js";
 import { FinanceSourceExpensesStore, SourceExpensesConflict } from "./finance-source-expenses-store.js";
@@ -97,6 +98,7 @@ const tasks = new Map<string, WorkerTask>();
 const codex = new Codex({ codexPathOverride: process.env.FAMILYHUB_CODEX_PATH || undefined });
 const savingsDirectory = join(stateDir, "savings");
 const savingsLibrary = new SavingsLibrary(join(savingsDirectory, "household-contracts.json"));
+const vehicleStore = new VehicleStore(join(stateDir, "vehicle-project", "evidence"));
 const propertyStore = new PropertyStore(join(stateDir, "property-project", "evidence"));
 const mortgageStore = new MortgageStore(join(stateDir, "mortgage", "evidence"));
 const mortgageDaily = new MortgageDailyRunner(mortgageStore);
@@ -340,6 +342,12 @@ const server = createServer(async (request, response) => {
 
   const parts = pathParts(request.url);
   try {
+    if (parts[0] === "vehicle-project") {
+      if (parts.length === 2 && parts[1] === "comparison" && request.method === "POST") { json(response,200,await vehicleStore.compare(await readJson(request,2_000)),origin);return; }
+      if (parts.length === 2 && parts[1] === "following" && request.method === "POST") { json(response,200,await vehicleStore.setFollowing(await readJson(request,2_000)),origin);return; }
+      if (parts.length === 1 && request.method === "GET") { json(response,200,await vehicleStore.read(),origin);return; }
+      if (parts.length === 2 && parts[1] === "observations" && request.method === "POST") { json(response,200,await vehicleStore.ingest(await readJson(request,32_000)),origin);return; }
+    }
     if (parts[0] === "property-project") {
       if (parts.length === 2 && parts[1] === "comparison" && request.method === "POST") { json(response,200,await propertyStore.compare(await readJson(request,2_000)),origin);return; }
       if (parts.length === 2 && parts[1] === "following" && request.method === "POST") { json(response,200,await propertyStore.setFollowing(await readJson(request,2_000)),origin);return; }
@@ -705,7 +713,7 @@ const server = createServer(async (request, response) => {
       }
     }
     if (request.method === "GET" && parts.length === 1 && parts[0] === "health") {
-      json(response, 200, { status: "ok", codex: "sdk-ready", version, capabilities: [FINANCE_REGISTER_CAPABILITY, ACCOUNT_HISTORY_CAPABILITY, ACCOUNT_CAPTURES_CAPABILITY, SOURCE_EXPENSES_CAPABILITY, SOURCE_INVENTORY_CAPABILITY, "finance-balance-observations-v1", "contribution-progress-v1", "bluecross-import-jobs-v1", "attachment-preparation-v1", "grocery-purchase-four-retailers-v1", "grocery-purchase-estimates-v1", "grocery-purchase-resolution-v1", "household-events-v1", "opportunity-actions-v1", "notification-lifecycle-v1", "insurance-reference-v1", "property-project-v1", "mortgage-evidence-v1", "mortgage-contacts-v1", "mortgage-assistant-v1", "grocery-collection-v1", "grocery-source-type-v1", "grocery-fulfillment-v1", "grocery-comparison-evidence-v1", "grocery-source-estimates-v1", "grocery-receipts-v1", "grocery-planning-v1", "grocery-weekly-v1", groceryExpandedListCapability] }, origin);
+      json(response, 200, { status: "ok", codex: "sdk-ready", version, capabilities: [FINANCE_REGISTER_CAPABILITY, ACCOUNT_HISTORY_CAPABILITY, ACCOUNT_CAPTURES_CAPABILITY, SOURCE_EXPENSES_CAPABILITY, SOURCE_INVENTORY_CAPABILITY, "finance-balance-observations-v1", "contribution-progress-v1", "bluecross-import-jobs-v1", "attachment-preparation-v1", "grocery-purchase-four-retailers-v1", "grocery-purchase-estimates-v1", "grocery-purchase-resolution-v1", "household-events-v1", "opportunity-actions-v1", "notification-lifecycle-v1", "insurance-reference-v1", "vehicle-project-v1", "property-project-v1", "mortgage-evidence-v1", "mortgage-contacts-v1", "mortgage-assistant-v1", "grocery-collection-v1", "grocery-source-type-v1", "grocery-fulfillment-v1", "grocery-comparison-evidence-v1", "grocery-source-estimates-v1", "grocery-receipts-v1", "grocery-planning-v1", "grocery-weekly-v1", groceryExpandedListCapability] }, origin);
       return;
     }
 
@@ -774,7 +782,7 @@ const server = createServer(async (request, response) => {
   } catch (error) {
     const grocery = parts[0] === "groceries";
     const sourceInventory = parts[0] === "finance" && parts[1] === "source-inventory";
-    json(response, error instanceof PropertyConflict || error instanceof MortgageConflict || error instanceof SavingsConflict || error instanceof FinanceConflict || error instanceof SourceExpensesConflict || error instanceof SourceInventoryConflict || error instanceof AccountCapturesConflict || error instanceof NotificationConflict || error instanceof OpportunityActionsConflict || error instanceof GroceryConflict ? 409 : 400, { error: parts[0] === "finance" && ["account-captures", "account-history"].includes(parts[1]) && !(error instanceof AccountCapturesError) ? "Captures de comptes indisponibles. Les données restent conservées." : parts[0] === "finance" && parts[1] === "source-expenses" && !(error instanceof SourceExpensesError) ? "Dépenses source indisponibles. Les données restent conservées." : sourceInventory && !(error instanceof SourceInventoryError) ? "Inventaire source indisponible. Les données restent conservées." : grocery && !(error instanceof GroceryError) ? "Action Courses indisponible. Les données restent conservées ; actualisez avant de réessayer." : error instanceof Error ? error.message : "Request failed." }, origin);
+    json(response, error instanceof VehicleConflict || error instanceof PropertyConflict || error instanceof MortgageConflict || error instanceof SavingsConflict || error instanceof FinanceConflict || error instanceof SourceExpensesConflict || error instanceof SourceInventoryConflict || error instanceof AccountCapturesConflict || error instanceof NotificationConflict || error instanceof OpportunityActionsConflict || error instanceof GroceryConflict ? 409 : 400, { error: parts[0] === "finance" && ["account-captures", "account-history"].includes(parts[1]) && !(error instanceof AccountCapturesError) ? "Captures de comptes indisponibles. Les données restent conservées." : parts[0] === "finance" && parts[1] === "source-expenses" && !(error instanceof SourceExpensesError) ? "Dépenses source indisponibles. Les données restent conservées." : sourceInventory && !(error instanceof SourceInventoryError) ? "Inventaire source indisponible. Les données restent conservées." : grocery && !(error instanceof GroceryError) ? "Action Courses indisponible. Les données restent conservées ; actualisez avant de réessayer." : error instanceof Error ? error.message : "Request failed." }, origin);
   }
 });
 

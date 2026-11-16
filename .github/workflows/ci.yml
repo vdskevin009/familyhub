@@ -68,7 +68,7 @@ jobs:
           test "$(cat build.revision)" = "$GITHUB_SHA"
           sha256sum --check build.sha256
       - name: Verify property evidence and private intake
-        run: npm run test:properties
+        run: npm run test:properties && npm run test:vehicles
       - name: Verify PWA installability metadata
         run: npm run test:pwa
       - name: Verify authoritative opportunity calculations
