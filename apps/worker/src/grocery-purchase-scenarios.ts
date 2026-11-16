@@ -1,6 +1,6 @@
 import { normalizeProduct, type GroceryRecord, type GroceryUnit } from "./grocery-model.js";
 import { normalizedSize, type GroceryPlan, type GroceryPrice } from "./grocery-planning.js";
-import { purchaseLineKey, purchasePriceKey } from "./grocery-purchase-evidence.js";
+import { purchaseEvidenceReason, purchaseLineKey, purchasePriceKey } from "./grocery-purchase-evidence.js";
 import { confirmedPurchaseFormat, purchaseCandidateReason, type PurchaseResolution } from "./grocery-purchase-resolution.js";
 import type { PurchaseScenario, PurchaseScenarioHint } from "./grocery-purchase-scenario-model.js";
 import { purchaseRetailerName, purchaseScenarioRetailers } from "./grocery-purchase-retailers.js";
@@ -134,7 +134,7 @@ function inferredFormat(record: GroceryRecord, index: number, plan: GroceryPlan,
   if (line.size !== null && line.unit) return { size: line.size, unit: line.unit, note: "Format transcrit dans la source d'achat.", source: null };
   const explicit = explicitScenarioFormat(title);
   if (explicit) return { ...explicit, note: "Format explicitement indiqué dans le libellé source : " + title, source: null };
-  const reviewed = (plan.purchaseComparisons ?? []).filter(e => e.recordId === record.id && e.lineIndex === index && e.lineKey === purchaseLineKey(line));
+  const reviewed = (plan.purchaseComparisons ?? []).filter(e => e.recordId === record.id && e.lineIndex === index && e.lineKey === purchaseLineKey(line) && Date.parse(e.reviewedAt) <= now && !purchaseEvidenceReason(e,record,plan));
   if (reviewed.length && reviewed.every(e => e.size === reviewed[0].size && e.unit === reviewed[0].unit)) return { size: reviewed[0].size, unit: reviewed[0].unit, note: "Format dérivé de la preuve de comparaison conservée : " + reviewed[0].provenance, source: { title: reviewed[0].provenance, url: "", date: reviewed[0].reviewedAt } };
   const validSource = (c: NonNullable<PurchaseResolution["candidates"]>[number]) => state?.decisions[c.id]?.state !== "unconfirmed" && sourceRecords.some(r=>r.id===c.recordId&&!purchaseCandidateReason(c,r,now));
   const sameId = state?.candidates.filter(c => c.size !== null && c.unit !== null && c.productId === line.productReference?.id && validSource(c)) ?? [];
@@ -173,7 +173,7 @@ export function derivePurchaseScenarios(records: GroceryRecord[], plan: GroceryP
       // across all retailers before calculating anything, never one different package per store.
       if (target.unit === "each" && target.size === 1 && line.uncertain && line.unit === null) {
         const physicalRefs = refs.filter(p => reference(p, state?.scenarioHints ?? [])?.unit !== "each");
-        const inferred = inferredFormat({ ...record, receipt: { ...record.receipt, items: record.receipt.items.map((l,i) => i === lineIndex ? { ...l, size:null, unit:null } : l) } },lineIndex,plan,undefined,physicalRefs,now,[]);
+        const inferred = inferredFormat({ ...record, receipt: { ...record.receipt, items: record.receipt.items.map((l,i) => i === lineIndex ? { ...l, size:null, unit:null } : l) } },lineIndex,{...plan,purchaseComparisons:[]},undefined,physicalRefs,now,[]);
         if (inferred && inferred.unit !== "each") target = { ...inferred, note: "Unité de vente physique inconnue : hypothèse commune à tous les magasins. " + inferred.note };
       }
       const countBases = (state?.scenarioHints ?? []).filter(h => h.purpose === "count-equivalent" && target.unit === "each" && h.sourceCount === target.size && Date.parse(h.observedAt) <= now && (line.productReference ? h.productId === line.productReference.id : !h.productId && normalizeProduct(h.product) === normalizeProduct(title)) && plan.prices.some(p => p.id === h.priceId && purchasePriceKey(p) === h.priceKey));

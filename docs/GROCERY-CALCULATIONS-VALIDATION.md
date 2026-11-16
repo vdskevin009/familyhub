@@ -2,6 +2,8 @@
 
 Status: local Testing; no release, deployment, production import or live-offer acceptance implied.
 
+Integration on the updated main branch also exercises the product aggregate. Historical reviewed formats must still match their saved source/reference keys and cannot be future-dated; a removed reference cannot determine a new scenario target. When an unknown selling unit receives a common physical-pack hypothesis, the selling-unit comparison is not fed back into physical inference. Legacy fixtures now supply their explicit SKU for SKU-scoped hypotheses and expect missing coverage for unsupported cucumber count-to-mass conversions.
+
 Independent review follow-up: reviewed equivalences are now checked against the common physical target before taking priority over estimates. With no scenario, an explicit source label still controls the target; contradictory reviewed targets abstain. Nested numeric multipacks and `packs of` prefixes use the full quantity, while unsupported postfix declarations abstain rather than losing a multiplier. Whole liquid eggs, whites, shell eggs and substitutes remain separate. Synthetic regressions reproduce each review finding; no visual component or production data change is involved.
 
 The former selling-unit fallback could price a different physical quantity at each retailer. For example, two unknown selling units could become two 500 g packs at one retailer and two 1 kg packs at another. The corrected projection chooses one dated reference hypothesis for the source quantity and applies it to every retailer. Explicit source quantities remain authoritative; known counts never become mass without a scoped common hint.

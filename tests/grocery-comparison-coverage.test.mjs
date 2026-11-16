@@ -128,6 +128,19 @@ test('reviewed unknown-family equivalents cannot contradict an explicit source l
  Object.assign(f.plan.prices[0],{product:'Brand Beta Quinoa',size:1000});secondStore(f.plan);reviewedFormats(f);
  assert.ok(purchaseScenarioStores(f.plan,f.record,today).every(s=>s.covered===0));
 });
+
+test('stale reviewed formats do not determine the source target of a new scenario',()=>{
+ const f=onlyLine(fixture());Object.assign(f.record.receipt.items[0],{quantity:1,size:null,unit:null});reviewedFormats(f);
+ Object.assign(f.plan.purchaseComparisons[0],{priceId:'removed-price',size:2000});
+ assert.equal(wm(f).lines[0].scenario.size,500);assert.equal(wm(f).normalized,5);
+});
+
+test('a reviewed unknown selling unit cannot re-enter physical package inference',()=>{
+ const f=onlyLine(fixture());Object.assign(f.record.receipt.items[0],{quantity:1,size:null,unit:null});Object.assign(f.plan.prices[0],{size:1,unit:'each'});reviewedFormats(f);
+ secondStore(f.plan,{size:500,unit:'g'});
+ const row=derivePurchaseScenarios([f.record],f.plan,undefined,today).find(r=>r.priceId==='p2');
+ assert.equal(row.size,500);assert.equal(row.unit,'g');assert.equal(row.normalized,8);
+});
 test('an unrecognized product with exact source text can use an independent price',()=>{
  const f=onlyLine(fixture());f.record.receipt.items[0].product='Synthetic pantry item';f.plan.prices[0].product='Synthetic pantry item';assert.equal(wm(f).covered,1);assert.equal(wm(f).lines[0].scenario.family,'exact-name');
  f.plan.prices[0].product='Other synthetic pantry item';assert.equal(wm(f).covered,0);assert.deepEqual(wm(f).lines[0].diagnostic.reasons,['family-unrecognized']);
