@@ -1,16 +1,16 @@
 import { useEffect, useRef, useState } from "react";
-import { Plus, Pencil, Search, RefreshCw, TrendingDown, ChevronRight, Upload } from "lucide-react";
+import { Plus, Pencil, Search, RefreshCw, TrendingDown, ChevronRight, ChevronLeft, MoreHorizontal, Upload } from "lucide-react";
 import { PageHeader, Sheet, Notice } from "../ui/primitives";
 import { currency, recurringCandidates } from "../domain";
 import type { HubState } from "../state";
 import type { AppView } from "../types";
-import { categories, newContract, effectiveContracts, publicBaseline,
+import { newContract, effectiveContracts, publicBaseline,
   comparisonFingerprint, baselineKey, shortlistTotal, type SavingsContract, type SavingsCategory } from "../savings";
 import { startSavingsResearch, fetchSavingsResearch, fetchFinances } from "../worker";
 import SavingsContractForm from "./SavingsContractForm";
 import RecurringServices from "./RecurringServices";
 import type { FinanceState } from "../../../worker/src/finance-model";
-import { defaultPeriod, rangeLabel } from "../finance-periods";
+import { calendarPeriod, shiftPeriod, rangeLabel } from "../finance-periods";
 import { reconcilePayments } from "../savings-payments";
 import PeriodNavigator from "./PeriodNavigator";
 import SavingsPayments, { PaymentObservations } from "./SavingsPayments";
@@ -18,9 +18,12 @@ import SavingsContractDetails from "./SavingsContractDetails";
 import SavingsOfferCard from "./SavingsOfferCard";
 import { useSavingsSharing } from "../savings-sharing";
 import { importSavingsContractBundle } from "../savings-contract-import";
+import { useFinanceDialogHistory } from "../use-finance-dialog-history";
 import { comparisonLead } from "../comparison-leads";
+import { recurringCategories as categories } from "../recurring-presentation";
 import SourceText from "../ui/SourceText";
 import "../compact-finances.css";
+import "../recurrents.css";
 
 export default function SavingsView({ hub, onNavigate }: { hub: HubState; onNavigate: (view: AppView) => void }) {
   const contracts = effectiveContracts(hub.savings), reviews = hub.savings.Reviews ?? [];
@@ -32,7 +35,15 @@ export default function SavingsView({ hub, onNavigate }: { hub: HubState; onNavi
   const [editing, setEditing] = useState<SavingsContract | null>(null);
   const [editingRevision, setEditingRevision] = useState<string | null>(null);
   const sharing = useSavingsSharing(hub);
-  function openEditor(contract: SavingsContract) { setEditingRevision(sharing.revisionFor(contract)); setEditing(contract); }
+  const editorTrigger = useRef<HTMLElement | null>(null);
+  function openEditor(contract: SavingsContract) { editorTrigger.current = document.activeElement instanceof HTMLElement ? document.activeElement : null; setEditingRevision(sharing.revisionFor(contract)); setEditing(contract); }
+  function closeEditor() {
+    setEditing(null);
+    requestAnimationFrame(() => {
+      if (editorTrigger.current?.isConnected && editorTrigger.current.getClientRects().length) editorTrigger.current.focus();
+      else document.querySelector<HTMLElement>(detailContract ? '[data-savings-edit]' : reviewOpen ? '.savings-candidate button' : '.recurring-add')?.focus();
+    });
+  }
   const [researching, setResearching] = useState<SavingsContract | null>(null);
   const [comparisonLink] = useState(() => {
     const query = new URLSearchParams(location.search), record = query.get("record"), job = query.get("job"), offer = query.get("offer");
@@ -66,14 +77,34 @@ export default function SavingsView({ hub, onNavigate }: { hub: HubState; onNavi
   const [starting, setStarting] = useState(false), startingRef = useRef(false);
   const [filter, setFilter] = useState<SavingsCategory | "all">("all");
   const [finance, setFinance] = useState<FinanceState | null>(null), [financeError, setFinanceError] = useState("");
-  const [period, setPeriod] = useState(() => defaultPeriod());
+  const [period, setPeriod] = useState(() => { const now=new Date();return calendarPeriod(now.getFullYear(),now.getMonth()+1); });
+  const [optionsOpen,setOptionsOpen]=useState(false), [reviewOpen,setReviewOpen]=useState(false), [periodOpen,setPeriodOpen]=useState(false);
+  const optionsTrigger=useRef<HTMLButtonElement>(null), reviewTrigger=useRef<HTMLButtonElement>(null), periodTrigger=useRef<HTMLButtonElement>(null);
+  const closeOptions=()=>{setOptionsOpen(false);requestAnimationFrame(()=>optionsTrigger.current?.focus());};
+  const closeReviews=()=>{setReviewOpen(false);requestAnimationFrame(()=>reviewTrigger.current?.focus());};
+  const closePeriod=()=>{setPeriodOpen(false);requestAnimationFrame(()=>periodTrigger.current?.focus());};
+  // One history entry for the nested flow. Back dismisses the top panel, restoring
+  // the entry while its parent remains open; switching child panels cannot race popstate.
+  useFinanceDialogHistory(Boolean(optionsOpen || reviewOpen || periodOpen || detailContract || editing || researching || openResult),()=>{
+    if(openResult){closeComparison();return !detailContract;}
+    if(editing){closeEditor();return !(detailContract || reviewOpen);}
+    if(researching){if(startingRef.current)return false;closeResearch();return !detailContract;}
+    if(detailContract){closeDetails();return true;}
+    if(reviewOpen){closeReviews();return true;}
+    if(periodOpen){closePeriod();return true;}
+    closeOptions();return true;
+  });
+  function closeResearch() {
+    if (startingRef.current) return;
+    setResearching(null);
+    requestAnimationFrame(() => document.querySelector<HTMLElement>(detailContract ? '[data-savings-research]' : '.saved-comparisons > summary')?.focus());
+  }
   useEffect(() => {
     let cancelled = false;
     setFinance(null); setFinanceError("");
     if (hub.worker.Endpoint && hub.worker.ApiKey) void fetchFinances(hub.worker).then(saved => {
       if (cancelled) return;
       setFinance(saved?.schema === 1 ? saved : null);
-      if (saved?.data) setPeriod(defaultPeriod(saved.data.scope));
     }).catch(() => { if (!cancelled) setFinanceError("Historique bancaire indisponible. Les références contractuelles restent visibles; aucun montant payé n’est présumé."); });
     return () => { cancelled = true; };
   }, [hub.worker.Endpoint, hub.worker.ApiKey]);
@@ -102,7 +133,6 @@ export default function SavingsView({ hub, onNavigate }: { hub: HubState; onNavi
     const review = reviews.filter(r => r.job.contractId === contract.id && r.job.report).at(-1);
     return review ? [{ contract, review }] : [];
   });
-  const leads = Object.fromEntries(visibleContracts.map(c => [c.id, comparisonLead(c, latest(c.id))]));
   const entries = visibleContracts.flatMap(contract => {
     const review = reviews.filter(review => review.job.contractId === contract.id && Object.values(review.decisions).includes("shortlist")).at(-1);
     if (!review?.job.report || review.localKey !== baselineKey(contract)) return [];
@@ -110,6 +140,7 @@ export default function SavingsView({ hub, onNavigate }: { hub: HubState; onNavi
   });
   const total = shortlistTotal(entries);
   const recurring = recurringCandidates(hub.spending).filter(item => !contracts.some(contract => contract.name.toLowerCase() === item.merchant.toLowerCase())).slice(0, 5);
+  const reviewCount = payments.reviews.filter(r=>r.contractIds.some(id=>visibleContracts.some(c=>c.id===id))).length + recurring.length;
   const [importing, setImporting] = useState(false);
   async function importContractFile(file: File) {
     setError(""); setMessage("");
@@ -118,13 +149,13 @@ export default function SavingsView({ hub, onNavigate }: { hub: HubState; onNavi
     try {
       const contract = await importSavingsContractBundle(file, contracts);
       hub.setSavings(previous => ({ ...previous, Contracts: [...(previous.Contracts ?? []), contract] }));
-      setMessage("Contract and " + contract.documents.length + " document(s) imported on this device. Review the historical details, then choose Share device contracts with paired devices to sync to your PC.");
+      setMessage("Contract and " + contract.documents.length + " document(s) imported on this device. Review the historical details, then choose Partager les contrats avec les appareils associés to sync to your PC.");
     } catch (err) { setError(err instanceof Error ? err.message : "Could not import contract; existing data was preserved."); }
     finally { setImporting(false); }
   }
   function save(contract: SavingsContract) {
     hub.setSavings(previous => ({ ...previous, Contracts: [...(previous.Contracts ?? []).filter(item => item.id !== contract.id), contract] }));
-    setEditing(null); setMessage("Contract saved on this device."); setError("");
+    closeEditor(); setMessage("Contract saved on this device."); setError("");
     if (editingRevision) { setMessage("Edit saved on this device; updating your paired PC…"); void sharing.update(contract, editingRevision).then(saved => setMessage(saved ? "Contract saved on this device and your paired PC." : "Edit saved on this device. The shared version was not updated; see the connection or conflict message.")); }
   }
   async function startResearch() {
@@ -142,44 +173,55 @@ export default function SavingsView({ hub, onNavigate }: { hub: HubState; onNavi
   const focusedReview = focusedContract ? resultJob ? reviews.find(review => review.job.id === resultJob && review.job.contractId === focusedContract.id) : latest(focusedContract.id) : undefined;
   const stale = focusedContract && focusedReview && focusedReview.localKey !== baselineKey(focusedContract);
   return <section className="view-stack savings-view">
-    <PageHeader title="Dépenses récurrentes" subtitle="Vos paiements, services et contrats"><button className="button" aria-label="Add contract" title="Add contract" disabled={sharing.busy || importing} onClick={() => { setError(""); setDetailId(null); openEditor(newContract("telecom", crypto.randomUUID())); }}><Plus size={17} aria-hidden="true" /><span className="savings-add-label">Add contract</span></button></PageHeader>
-    <div className="savings-import-actions"><label className="button secondary file-button" title="Import an additive contract bundle without replacing existing data"><Upload size={17} aria-hidden="true" />{importing ? "Importing…" : "Import contract file"}<input type="file" accept=".json,application/json" disabled={importing || sharing.busy} onChange={event => { const file = event.target.files?.[0]; event.target.value = ""; if (file) void importContractFile(file); }} /></label></div>
+    <PageHeader title="Récurrents"><button type="button" className="icon-button" ref={optionsTrigger} aria-label="Options des récurrents" aria-haspopup="dialog" aria-expanded={optionsOpen} onClick={()=>setOptionsOpen(true)}><MoreHorizontal size={22}/></button></PageHeader>
     {error && <Notice error onDismiss={() => setError("")}>{error}</Notice>}
     {message && <Notice onDismiss={() => setMessage("")}>{message}</Notice>}
     {sharing.error && <Notice error>{sharing.error}</Notice>}
     {detailId && !detailContract && !sharing.busy && <Notice onDismiss={closeDetails}>Le contrat lié n'est pas présent dans les données chargées. Actualisez les contrats partagés ou consultez la connexion à votre PC.</Notice>}
     {sharing.researchError && <Notice error>{sharing.researchError}</Notice>}
-    <details className="surface savings-period"><summary>Période des paiements : {rangeLabel(period)}</summary>
-      <PeriodNavigator range={period} onChange={setPeriod} scope={finance?.data?.scope} label="Période des paiements" />
-    </details>
-    <div className="savings-toolbar"><label>Category<select value={filter} onChange={event => setFilter(event.target.value as typeof filter)}><option value="all">All contracts</option>{Object.entries(categories).map(([key, label]) => <option value={key} key={key}>{label}</option>)}</select></label><button className="button secondary" onClick={() => onNavigate("finances")}>Finances<ChevronRight size={16} /></button></div>
+    <div className="recurring-month-navigation" aria-label="Navigation mensuelle des paiements">
+      <button type="button" className="icon-button" aria-label="Mois précédent" onClick={()=>setPeriod(shiftPeriod(calendarPeriod(Number(period.from.slice(0,4)),Number(period.from.slice(5,7))),-1))}><ChevronLeft size={18}/></button>
+      <button type="button" ref={periodTrigger} className="recurring-period-trigger" aria-label="Choisir la période des paiements" aria-haspopup="dialog" onClick={()=>setPeriodOpen(true)}>{rangeLabel(period)}</button>
+      <button type="button" className="icon-button" aria-label="Mois suivant" onClick={()=>setPeriod(shiftPeriod(calendarPeriod(Number(period.to.slice(0,4)),Number(period.to.slice(5,7))),1))}><ChevronRight size={18}/></button>
+    </div>
+    <Sheet open={periodOpen} onClose={closePeriod} title="Période des paiements"><PeriodNavigator range={period} onChange={setPeriod} scope={finance?.data?.scope} label="Période des paiements"/><button type="button" className="button" onClick={closePeriod}>Voir les paiements</button></Sheet>
     {financeError && <Notice error>{financeError}</Notice>}
     {!finance?.data && <p className="muted">Ouvrez Finances pour importer l’historique bancaire. Seules les références explicitement TTC peuvent être affichées; les autres montants restent à compléter.</p>}
     {period.from > period.to && <Notice error>La date de début doit précéder la date de fin.</Notice>}
-    <PaymentObservations result={payments} contracts={visibleContracts} onCategorize={() => onNavigate("finances")} />
-    {reviews.some(r => visibleContracts.some(c => c.id === r.job.contractId) && Object.values(r.decisions).includes("shortlist")) && <div className="savings-summary savings-reviewed-summary"><div><small>Reviewed shortlist</small><strong>{currency.format(total.firstYear)}<span>/first year</span></strong><small>Estimated, not realized · {total.count} compatible {total.count === 1 ? "option" : "options"}</small>{total.excluded > 0 && <small>{total.excluded} shortlisted options excluded because costs, requirements or dependencies need review.</small>}</div></div>}
+    <SavingsPayments result={payments} contracts={visibleContracts} range={period} onMonth={setPeriod} />
+    {reviewCount>0 && <button type="button" className="recurring-review-banner" ref={reviewTrigger} aria-haspopup="dialog" onClick={()=>setReviewOpen(true)}><strong>{reviewCount} élément(s) à vérifier</strong><ChevronRight size={18}/></button>}
+    <div className="savings-toolbar recurring-contract-toolbar"><h2>Contrats</h2><label><span className="sr-only">Filtrer les contrats</span><select aria-label="Filtrer les contrats" value={filter} onChange={event=>setFilter(event.target.value as typeof filter)}><option value="all">Tous les contrats</option>{Object.entries(categories).map(([key,label])=><option value={key} key={key}>{label}</option>)}</select></label></div>
+    <RecurringServices contracts={visibleContracts} summaries={payments.summaries} onOpen={openDetails} />
     {savedComparisons.length > 0 && <details className="saved-comparisons" onKeyDown={e => { if (e.key === "Escape") { e.currentTarget.open = false; e.currentTarget.querySelector("summary")?.focus(); } }}>
-      <summary>Comparaisons enregistrées <span className="count-badge">{savedComparisons.length}</span></summary>
-      <div className="saved-comparison-list">{savedComparisons.map(({ contract, review }) => <button type="button" key={contract.id} onClick={() => openComparison(contract, review.job.id)}>
+      <summary>Comparaisons disponibles <span className="count-badge">{savedComparisons.length}</span><small>À examiner, pas une économie réalisée</small></summary>
+    {reviews.some(r => visibleContracts.some(c => c.id === r.job.contractId) && Object.values(r.decisions).includes("shortlist")) && <div className="savings-summary savings-reviewed-summary"><div><small>Sélection examinée</small><strong>{currency.format(total.firstYear)}<span>/première année</span></strong><small>Estimation, non réalisée · {total.count} compatible {total.count === 1 ? "option" : "options"}</small>{total.excluded > 0 && <small>{total.excluded} shortlisted options excluded because costs, requirements or dependencies need review.</small>}</div></div>}
+
+      <div className="saved-comparison-list">{savedComparisons.map(({ contract, review }) => <button type="button" key={contract.id} className="comparison-lead" aria-label={"Comparaison pour " + contract.name} onClick={() => openComparison(contract, review.job.id, comparisonLead(contract,review)?.offerIndex ?? null)}>
         <span><strong>{contract.name}</strong><small>{review.job.report!.offers.length} offre(s) · {new Date(review.job.completedAt ?? review.job.createdAt).toLocaleDateString("fr-CA")}</small></span><ChevronRight size={18} aria-hidden="true" />
       </button>)}</div>
     </details>}
-    {contracts.length > 0 && <><SavingsPayments result={payments} contracts={visibleContracts} range={period} onMonth={setPeriod} /><RecurringServices contracts={visibleContracts} summaries={payments.summaries} onOpen={openDetails} leads={leads} onComparison={(c, lead) => openComparison(c, lead.jobId, lead.offerIndex)} /></>}
-    {!contracts.length && <div className="surface savings-empty"><TrendingDown size={30} /><h2>Start with one recurring cost</h2><p>Phone, insurance, subscriptions, card fees or mortgage. Add what you know; the checklist shows what is still missing.</p><div className="savings-category-picks">{Object.entries(categories).map(([key, label]) => <button className="button secondary" key={key} onClick={() => openEditor(newContract(key as SavingsCategory, crypto.randomUUID()))}>{label}</button>)}</div></div>}
-    {contracts.length > 0 && !contracts.some(contract => filter === "all" || filter === contract.category) && <p className="muted">No contracts in this category. Add one or choose All contracts.</p>}
-    {recurring.length > 0 && <section className="surface"><h2>From your imported spending</h2><p className="muted">Repeating merchants are candidates. Confirm the billing cycle and amount.</p>{recurring.map(item => <div className="savings-candidate" key={item.merchant}><span><strong>{item.merchant}</strong><small>{item.count} charges · average {currency.format(item.average)}</small></span><button className="button secondary" onClick={() => openEditor({ ...newContract("other", crypto.randomUUID()), name: item.merchant, price: Number(item.average.toFixed(2)) })}>Review candidate</button></div>)}</section>}
-    <details className="surface savings-settings"><summary>Partage et recherche quotidienne</summary><div className="view-stack">
-    <div className="surface view-stack"><p className="muted">{sharing.paired ? sharing.status || "Loading shared contracts from your PC…" : "Connectez votre PC dans Plus → Réglages et outils to see shared contracts on your phone."}</p>{sharing.paired && <div className="row-actions"><button className="button secondary" disabled={sharing.busy} onClick={() => void sharing.refresh()}><RefreshCw size={15} />{sharing.busy ? "Updating contracts…" : "Refresh shared contracts"}</button><button className="button secondary" disabled={sharing.busy || !(hub.savings.Contracts ?? []).length} onClick={() => void sharing.share()}>Share device contracts with paired devices</button></div>}<p className="muted">Sharing copies contract details, notes and attached documents to your own paired PC. Other paired devices can then load them. Different saved versions are preserved.</p></div>
-    {sharing.paired && <div className="surface view-stack"><h2>Daily public research</h2><p>{sharing.research?.schedule?.enabled ? `Every day at ${sharing.research.schedule.at} (${sharing.research.schedule.timeZone}). Your PC must be running with your Windows user signed in.` : "No daily schedule has been confirmed by your paired PC."}</p>{sharing.research?.daily && <p className="muted">Last attempt {sharing.research.daily.attemptedAt ? new Date(sharing.research.daily.attemptedAt).toLocaleString() : "unknown"} · {sharing.research.daily.outcome?.replaceAll("-", " ")} · {sharing.research.daily.results?.filter(result => result.outcome === "complete").length ?? 0} completed comparisons.</p>}<p className="muted">New comparisons load when you open Savings or refresh shared contracts. Public estimates still need your review. Previous decisions are retained in result history.</p></div>}
+    {!contracts.length && <div className="surface savings-empty"><TrendingDown size={30} /><h2>Ajoutez un premier contrat</h2><p>Téléphone, assurance, abonnement, frais de carte ou hypothèque. Ajoutez les détails connus ; les autres restent à confirmer.</p><div className="savings-category-picks">{Object.entries(categories).map(([key, label]) => <button className="button secondary" key={key} onClick={() => openEditor(newContract(key as SavingsCategory, crypto.randomUUID()))}>{label}</button>)}</div></div>}
+    {contracts.length > 0 && !contracts.some(contract => filter === "all" || filter === contract.category) && <p className="muted">Aucun contrat dans cette catégorie. Choisissez Tous les contrats ou ajoutez-en un.</p>}
+    <button type="button" className="button secondary recurring-add" disabled={sharing.busy || importing} onClick={()=>{setError("");setDetailId(null);openEditor(newContract("telecom",crypto.randomUUID()));}}><Plus size={18}/>Ajouter un contrat</button>
+    <Sheet open={reviewOpen && !editing} onClose={closeReviews} title="Éléments à vérifier">
+      <PaymentObservations result={payments} contracts={visibleContracts} onCategorize={()=>onNavigate("finances")}/>
+    {recurring.length > 0 && <section className="surface"><h2>Depuis les dépenses importées</h2><p className="muted">Ces commerçants sont des candidats. Confirmez le cycle et le montant facturé.</p>{recurring.map(item => <div className="savings-candidate" key={item.merchant}><span><strong>{item.merchant}</strong><small>{item.count} charges · average {currency.format(item.average)}</small></span><button className="button secondary" onClick={() => openEditor({ ...newContract("other", crypto.randomUUID()), name: item.merchant, price: Number(item.average.toFixed(2)) })}>Examiner le candidat</button></div>)}</section>}
+    </Sheet>
+    <Sheet open={optionsOpen} onClose={closeOptions} title="Options des récurrents"><div className="view-stack savings-settings">
+    <div className="savings-import-actions"><label className="button secondary file-button" title="Import an additive contract bundle without replacing existing data"><Upload size={17} aria-hidden="true" />{importing ? "Importing…" : "Importer un contrat"}<input type="file" accept=".json,application/json" disabled={importing || sharing.busy} onChange={event => { const file = event.target.files?.[0]; event.target.value = ""; if (file) void importContractFile(file); }} /></label></div>
+    <button type="button" className="button secondary" onClick={()=>onNavigate("finances")}>Ouvrir Finances<ChevronRight size={16}/></button>
+    <h2>Partage et recherche quotidienne</h2>
+    <div className="surface view-stack"><p className="muted">{sharing.paired ? sharing.status || "Loading shared contracts from your PC…" : "Connectez votre PC dans Plus → Réglages et outils to see shared contracts on your phone."}</p>{sharing.paired && <div className="row-actions"><button className="button secondary" disabled={sharing.busy} onClick={() => void sharing.refresh()}><RefreshCw size={15} />{sharing.busy ? "Updating contracts…" : "Actualiser les contrats partagés"}</button><button className="button secondary" disabled={sharing.busy || !(hub.savings.Contracts ?? []).length} onClick={() => void sharing.share()}>Partager les contrats avec les appareils associés</button></div>}<p className="muted">Sharing copies contract details, notes and attached documents to your own paired PC. Other paired devices can then load them. Different saved versions are preserved.</p></div>
+    {sharing.paired && <div className="surface view-stack"><h2>Recherche publique quotidienne</h2><p>{sharing.research?.schedule?.enabled ? `Every day at ${sharing.research.schedule.at} (${sharing.research.schedule.timeZone}). Your PC must be running with your Windows user signed in.` : "No daily schedule has been confirmed by your paired PC."}</p>{sharing.research?.daily && <p className="muted">Last attempt {sharing.research.daily.attemptedAt ? new Date(sharing.research.daily.attemptedAt).toLocaleString() : "unknown"} · {sharing.research.daily.outcome?.replaceAll("-", " ")} · {sharing.research.daily.results?.filter(result => result.outcome === "complete").length ?? 0} completed comparisons.</p>}<p className="muted">New comparisons load when you open Savings or refresh shared contracts. Public estimates still need your review. Previous decisions are retained in result history.</p></div>}
     <p className="savings-privacy muted">Contracts are saved on this device and your paired PC after sharing. Public research runs on request or through your explicitly enabled daily PC schedule. Names, notes and documents stay out of research. No provider contact or contract change occurs.</p>
-    </div></details>
+    </div></Sheet>
     <Sheet open={Boolean(detailContract) && !editing && !researching && !openResult} onClose={closeDetails} title={detailContract ? "Contrat · " + detailContract.name : "Contrat"} wide>
       {detailContract && <><SavingsContractDetails contract={detailContract} paid={payments.summaries.find(s => s.contractId === detailContract.id)!} review={latest(detailContract.id)} onEdit={() => { setError(""); openEditor(detailContract); }} onResearch={() => { setError(""); setResearching(detailContract); }} onResults={() => openComparison(detailContract)} /><button className="button secondary" onClick={closeDetails}>Retour aux services</button></>}
     </Sheet>
-    <Sheet open={Boolean(editing)} onClose={() => setEditing(null)} title={editing?.name ? "Edit contract" : "Add contract"} description="Save what you know. Missing details remain unknown." wide>
-      {editing && <SavingsContractForm key={editing.id} initial={editing} onSave={save} onClose={() => setEditing(null)} />}
+    <Sheet open={Boolean(editing)} onClose={closeEditor} title={editing?.name ? "Edit contract" : "Add contract"} description="Save what you know. Missing details remain unknown." wide>
+      {editing && <SavingsContractForm key={editing.id} initial={editing} onSave={save} onClose={closeEditor} />}
     </Sheet>
-    <Sheet open={Boolean(researching)} onClose={() => !starting && setResearching(null)} title="Compare public offers" description="Review the summary sent to your paired PC and Codex for public research.">
+    <Sheet open={Boolean(researching)} onClose={closeResearch} title="Compare public offers" description="Review the summary sent to your paired PC and Codex for public research.">
       {researching && <div className="view-stack">{error && <Notice error>{error}</Notice>}<p>Only category, recognized provider, province, entered costs and numeric comparison requirements are sent. Names, notes, documents, raw spending and account identifiers are excluded from public research.</p><details open><summary>Summary to analyze</summary><pre className="savings-context">{JSON.stringify(publicBaseline(researching), null, 2)}</pre></details>{publicBaseline(researching).provider === "Provider not disclosed" && <p className="muted">This custom provider name stays private. Current-provider offers cannot be checked until a recognized provider is selected.</p>}<p>Public prices are estimates. No information is submitted to providers, no personalized quotes are requested and no contracts are changed.</p>{!hub.worker.Endpoint || !hub.worker.ApiKey ? <button className="button secondary" onClick={() => { setResearching(null); onNavigate("more"); }}>Connectez votre PC dans Plus → Réglages et outils</button> : <button className="button" disabled={starting} onClick={() => void startResearch()}><Search size={17} />{starting ? "Starting…" : "Start public comparison"}</button>}</div>}
     </Sheet>
     <Sheet open={Boolean(openResult)} onClose={closeComparison} title={focusedContract ? focusedContract.name + " : comparaison" : "Comparaison"} wide className="savings-comparison-dialog">
