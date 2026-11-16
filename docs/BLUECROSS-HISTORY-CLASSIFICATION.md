@@ -7,6 +7,22 @@ assert expired sessions or rejected passwords. No authentication guard is reset.
 Historical portal failures still require live evidence; a later successful read
 alone does not establish the original failure's cause.
 
+PR #300 also retains the scheduled runner's already-installed bounded HTTP
+transport in maintained source. Unlike an abort signal around a general fetch,
+its explicit total deadline includes waiting for response headers. It never
+redirects or replays a request. Ten runner/transport regressions cover sequential
+collection, busy ownership, ambiguous outcomes, delayed headers, interrupted
+bodies, redirects and the standalone report. The installed script bytes are
+preserved; this is not evidence that transport caused the original portal stop.
+
+The integration run verified a complete live Blue Cross read followed by an
+independent preview without another credential attempt or ledger change.
+Desjardins saved-session inspection reached the login form without transmitting
+credentials; its existing uncertainty guard remains in place. Live outcomes,
+publication and future scheduled/physical-phone gates are tracked separately in
+issue #299. The original local-candidate report below records its earlier scope
+and limitations; its counts are not a statement of current deployment status.
+
 Issue #159; FH-REIMB-032, FH-REIMB-040, FH-REIMB-045. Release candidate.
 
 The synthetic regression reaches the member home, finds one visible history

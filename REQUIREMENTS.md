@@ -10,16 +10,17 @@ evidence. Explain the uncertain history outcome and paused automatic retries;
 retain account-profile selection as a separate operator action. The web contract
 includes the worker's existing `login-incomplete` and `profile-selection-required`
 reasons. Existing durable retry stops and single-use recovery acknowledgement
-remain unchanged. Local regression validation is in progress; CI, publication,
-installed activation and live/scheduled acceptance remain distinct gates.
+remain unchanged. Implemented in PR #300 with local regression validation;
+CI, publication, installed activation and live/scheduled acceptance remain
+distinct gates recorded in issue #299.
 
 ## FH-VEHICLE-001 - Sourced vehicle shortlist
 
-Accepted, local implementation in progress. Projets > Voiture uses sourced compact cards, owner follow/unfollow, observed price/status history and comparison. Used family SUV, Greater Vancouver, CAD 23–30k before taxes, AWD preferred and no invented mileage cutoff. No fabricated accident-free, valuation or savings claims. Existing search automation handoff only after verified deployment. See docs/VEHICLE-PROJECT.md.
+Implemented in merged PR #298 (`6c76bf2`); CI/Pages run 43805189352 passed. The private worker's `vehicle-project-v1` capability and paired mobile-browser intake/comparison were verified from the tested artifact. Physical-phone acceptance and connection to an existing research automation remain separate open gates in issue #299. Projets > Voiture uses sourced compact cards, owner follow/unfollow, observed price/status history and comparison. Used family SUV, Greater Vancouver, CAD 23–30k before taxes, AWD preferred and no invented mileage cutoff. No fabricated accident-free, valuation or savings claims. See docs/VEHICLE-PROJECT.md.
 
 ## Blue Cross history failure classification - FH-REIMB-032 / FH-REIMB-040 / FH-REIMB-045
 
-Testing locally; not published or deployed. After a reserved history click, an
+Implemented in PR #300; operational acceptance is tracked in issue #299. After a reserved history click, an
 unrecognized login-layout result on a known Blue Cross member/history page with
 no visible password or human challenge is reported as a collection error. It
 does not establish session expiration or successful authentication. Existing
