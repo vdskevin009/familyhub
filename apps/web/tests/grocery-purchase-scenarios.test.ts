@@ -21,7 +21,7 @@ test("four retailer aliases are canonicalized; leads cannot create a calculated 
 });
 
 test("a common count-to-mass hypothesis compares the same six minis across retailers and rounds full bulk packs",()=>{
- const r=record("Mini Cucumbers",{size:6,unit:"each"}),p=planFor("Mini Cucumbers reference 1 lb",453.59237,"g",3),state=emptyPurchaseResolution();
+ const r=record("Mini Cucumbers",{size:6,unit:"each",productReference:{provider:"pcexpress",id:"11111111_EA"}}),p=planFor("Mini Cucumbers reference 1 lb",453.59237,"g",3),state=emptyPurchaseResolution();
  for(const[id,name,size,price]of[["co","Costco",907.18474,4],["so","Save on Foods",454,5]] as const){p.retailers.push({...p.retailers[0],id,name,areaConfirmed:false,locality:"Nonlocal fictional"});p.prices.push({...p.prices[0],id,retailerId:id,product:name+" Mini Cucumbers",size,price,approved:false,substitution:true,locality:"Nonlocal fictional",localityConfirmed:false});}
  state.scenarioHints=[{id:"six",purpose:"count-equivalent",product:"Mini Cucumbers",productId:"11111111_EA",priceId:"price",priceKey:purchasePriceKey(p.prices[0]),size:453.59237,unit:"g",sourceCount:6,packagePrice:null,sourceUrl:"https://example.com/reference",observedAt:"2026-10-28T00:00:00.000Z",note:"Fictional explicit hypothesis: six minis share one pound, original mass unknown"}];
  const stores=purchaseScenarioStores(p,r,today,state),bulk=stores.find(s=>s.name==="Costco")!;assert.equal(bulk.normalized,2);assert.equal(bulk.outlay,4);assert.equal(bulk.nonlocal,true);assert.equal(bulk.lines[0].scenario!.size,453.59237);assert.equal(stores[0].normalized,3);
@@ -41,10 +41,10 @@ test("whole-bean espresso references are coffee beans; ground espresso is not si
  assert.equal(purchaseScenarioStores(p,r,today).find(s=>s.name==="Save-On-Foods")!.estimated,1);p.prices[0].product="Other Ground Espresso Dark Blend";assert.equal(purchaseScenarioStores(p,r,today).find(s=>s.name==="Save-On-Foods")!.covered,0);
 });
 
-test("a historical selling-unit proof can estimate one sourced physical pack while known physical units remain binding",()=>{
+test("stale selling-unit evidence cannot block an independent physical-pack hypothesis; known units remain binding",()=>{
  const r=record("Fictional Strawberries"),p=planFor("Other Strawberries",454,"g",5);
  p.purchaseComparisons=[{id:"old-unit",recordId:r.id,lineIndex:0,lineKey:purchaseLineKey(r.receipt.items[0]),priceId:"previous",priceKey:"previous",purpose:"comparison-only",relation:"equivalent-same-format",quantity:1,size:1,unit:"each",formatLabel:"Selling unit, physical size unknown",referenceFormatLabel:"Selling unit",sourceEstimate:null,sourceEstimateEvidence:"Unknown",provenance:"Fictional older selling-unit reference",reviewedAt:"2026-10-28T00:00:00.000Z"}];
- const before=JSON.stringify(r),s=purchaseScenarioStores(p,r,today)[0];assert.equal(s.estimated,1);assert.equal(s.normalized,5);assert.match(s.lines[0].scenario!.assumptions.join(" "),/unité de vente source.*paquet de référence/);assert.equal(JSON.stringify(r),before);
+ const before=JSON.stringify(r),s=purchaseScenarioStores(p,r,today)[0];assert.equal(s.estimated,1);assert.equal(s.normalized,5);assert.match(s.lines[0].scenario!.assumptions.join(" "),/Format d'achat inconnu.*hypothèse/);assert.equal(JSON.stringify(r),before);
  r.receipt.items[0].size=1;r.receipt.items[0].unit="l";assert.equal(purchaseScenarioStores(p,r,today)[0].covered,0);
 });
 
@@ -63,7 +63,7 @@ test("unknown quantity and format use an explicit one-pack hypothesis without re
 });
 test("missing independent price stays unavailable and a receipt never compares against itself",()=>{
  const r=record("Fictional Tofu Extra Firm",{size:350,unit:"g",amount:3.5}),p=planFor(r.receipt.items[0].product,350,"g",3.5);p.prices[0].kind="receipt";p.prices[0].evidence.url="";p.prices[0].evidence.title="Fictional ticket "+r.id;
- const s=purchaseScenarioStores(p,r,today)[0];assert.equal(s.covered,0);assert.equal(s.normalized,null);assert.match(s.lines[0].reason,/aucune référence indépendante/);
+ const s=purchaseScenarioStores(p,r,today)[0];assert.equal(s.covered,0);assert.equal(s.normalized,null);assert.deepEqual(s.lines[0].diagnostic!.reasons,["receipt-not-independent"]);
 });
 test("old and nonlocal prices are estimates with age and conditions, never verified or alert inputs",()=>{
  const r=record("Fictional Tofu Extra Firm",{size:350,unit:"g"}),p=planFor(r.receipt.items[0].product,350,"g",3.5);p.prices[0].evidence.date="2026-10-12";p.prices[0].localityConfirmed=false;p.prices[0].available="unknown";
@@ -73,11 +73,11 @@ test("dietary constraints and kg/L conflicts are unavailable rather than guessed
  const organic=record("Organic Tofu Extra Firm"),p=planFor("Conventional Tofu Extra Firm");assert.equal(purchaseScenarioStores(p,organic,today)[0].covered,0);
  const almond=record("Original Unsweetened Almond Milk",{size:1,unit:"kg"}),a=planFor(almond.receipt.items[0].product,1,"l",4);const s=purchaseScenarioStores(a,almond,today)[0];assert.equal(s.covered,0);assert.match(s.lines[0].reason,/unité comparable/);
 });
-test("count-to-weight mini-cucumber scenario spells out its package assumption",()=>{
- const r=record("Mini Cucumbers",{size:6,unit:"each"}),p=planFor("Other Mini Cucumbers",453.59237,"g",3);const s=purchaseScenarioStores(p,r,today)[0];assert.equal(s.estimated,1);assert.equal(s.normalized,3);assert.match(s.lines[0].scenario!.assumptions.join(" "),/75.6 g par mini/);assert.match(s.lines[0].scenario!.formula,/0.453592 kg/);
+test("count-to-weight mini-cucumber scenario needs an explicit common mass hypothesis",()=>{
+ const r=record("Mini Cucumbers",{size:6,unit:"each"}),p=planFor("Other Mini Cucumbers",453.59237,"g",3);const s=purchaseScenarioStores(p,r,today)[0];assert.equal(s.estimated,0);assert.equal(s.normalized,null);assert.deepEqual(s.lines[0].diagnostic!.reasons,["format-missing"]);
 });
 test("household 700g stays scoped to its reference; older alternative SKU stays 1.41kg, all estimated",()=>{
- const name="Boneless Skinless Chicken Breasts",current=record(name),old={...record(name),id:"older"},future={...record(name,{productReference:{provider:"pcexpress",id:"22222222_EA"}}),id:"future"},p=planFor(name,1,"kg",10),state=emptyPurchaseResolution();p.prices[0].weighed=true;
+ const name="Boneless Skinless Chicken Breasts",current=record(name),old={...record(name,{productReference:{provider:"pcexpress",id:"11111111_EA"}}),id:"older"},future={...record(name,{productReference:{provider:"pcexpress",id:"22222222_EA"}}),id:"future"},p=planFor(name,1,"kg",10),state=emptyPurchaseResolution();p.prices[0].weighed=true;
  state.candidates=[{id:"household",recordId:current.id,lineIndex:0,lineKey:purchaseLineKey(current.receipt.items[0]),product:name,brand:"Fictional",productId:"22222222_EA",itemId:"item",size:700,unit:"g",formatLabel:"700g household assumption",formatBasis:"household-assumption",sourceUrl:"https://example.com/format",observedAt:"2026-10-28T00:00:00.000Z",note:"Fictional user hypothesis for this SKU only"}];
  state.scenarioHints=[{id:"old-format",purpose:"source-format",product:name,productId:"11111111_EA",priceId:"",priceKey:"",size:1.41,unit:"kg",packagePrice:null,sourceUrl:"https://example.com/other-format",observedAt:"2026-10-28T00:00:00.000Z",note:"Different SKU, old identity remains estimated"}];
  const rows=derivePurchaseScenarios([current,old,future],p,state,today);assert.ok(Math.abs(rows.find(s=>s.recordId===current.id)!.normalized-7)<1e-10);assert.equal(rows.find(s=>s.recordId===old.id)!.normalized,14.1);assert.ok(Math.abs(rows.find(s=>s.recordId===future.id)!.normalized-7)<1e-10);assert.equal(old.receipt.items[0].size,null);
