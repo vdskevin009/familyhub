@@ -1,0 +1,42 @@
+/* Approved recurring-services overview. Amount bases stay in the shared projection. */
+.savings-view { max-width:1000px; }
+.recurring-month-navigation { display:grid; grid-template-columns:44px minmax(0,1fr) 44px; align-items:center; padding:4px; background:var(--accent-soft); border-radius:var(--radius); }
+.recurring-period-trigger { min-height:44px; border:0; background:none; font:inherit; font-weight:700; color:var(--ink); text-transform:capitalize; }
+.recurring-month-navigation .icon-button { border:0; background:none; }
+.savings-view .recurring-paid { background:#274f98; color:white; border:0; padding:24px; border-radius:20px; gap:10px; }
+.savings-view .recurring-paid h2 { color:inherit; font-size:13px; text-transform:uppercase; letter-spacing:.04em; }
+.savings-view .recurring-paid .finance-totals { margin:0; padding:0; background:none; border:0; gap:18px; }
+.savings-view .recurring-paid .finance-totals strong { color:white; font-size:clamp(30px,7vw,42px); line-height:1.2; }
+.savings-view .recurring-paid small, .savings-view .recurring-paid .muted { color:#e0eaff; }
+.savings-view .recurring-paid .info-trigger { color:white; }
+.savings-view .recurring-paid .compact-dialog { color:var(--ink); }
+.savings-view .recurring-paid .compact-dialog h2 { color:var(--ink); text-transform:none; letter-spacing:normal; font-size:18px; }
+.savings-view .recurring-paid .compact-dialog small { color:var(--muted); }
+.recurring-review-banner { display:flex; justify-content:space-between; align-items:center; gap:12px; min-height:52px; padding:14px 16px; border:0; border-radius:var(--radius); background:var(--warning-soft); color:var(--warning); font:inherit; text-align:left; }
+.recurring-contract-toolbar { justify-content:space-between; align-items:center; gap:12px; }
+.recurring-contract-toolbar h2 { margin:0; }
+.recurring-contract-toolbar label { min-width:0; max-width:60%; }
+.recurring-contract-toolbar select { max-width:100%; min-width:0; min-height:44px; font-size:13px; }
+.recurring-contracts { min-width:0; }
+.recurring-contracts .recurring-package { display:grid; grid-template-columns:44px minmax(0,1fr) auto 16px; align-items:center; gap:12px; width:100%; min-height:82px; padding:16px 0; border:0; border-bottom:1px solid var(--line); border-radius:0; background:none; text-align:left; color:var(--ink); }
+.recurring-monogram { width:44px; height:44px; display:grid; place-items:center; border-radius:12px; background:var(--accent-soft); color:var(--accent); font-weight:750; font-size:21px; }
+.recurring-row-copy, .recurring-row-amount { display:grid; gap:5px; min-width:0; }
+.recurring-row-copy strong { font-size:16px; overflow-wrap:anywhere; }
+.recurring-row-copy small, .recurring-row-amount small { color:var(--muted); font-size:12px; }
+.recurring-row-amount { text-align:right; white-space:nowrap; font-variant-numeric:tabular-nums; }
+.recurring-row-amount.reference strong { color:var(--muted); }
+.recurring-amount-note { font-size:13px; color:var(--muted); margin:20px 0; }
+.savings-view .saved-comparisons { background:var(--accent-soft); border:0; border-radius:var(--radius); padding:16px; }
+.savings-view .saved-comparisons > summary { color:var(--accent); font-weight:700; }
+.savings-view .saved-comparisons > summary small { display:block; font-weight:400; color:var(--muted); margin-top:5px; }
+.recurring-add { min-height:56px; justify-content:flex-start; }
+.savings-contract .savings-contract-heading { display:grid; gap:16px; }
+.savings-contract .savings-contract-heading > strong { font-size:36px; line-height:1.2; }
+.savings-contract .savings-contract-heading > strong small { display:block; color:var(--muted); font-size:13px; margin-top:8px; }
+.recurring-contract-services, .paid-contract-details { border-top:1px solid var(--line); padding-top:20px; }
+.recurring-contract-services > div { display:flex; justify-content:space-between; gap:14px; padding:10px 0; }
+.recurring-contract-services small { color:var(--muted); }
+.recurring-payment-row { display:grid; gap:6px; }
+.recurring-payment-row > small { color:var(--muted); }
+.savings-view :is(button,summary,select):focus-visible { outline:3px solid var(--accent); outline-offset:3px; }
+@media(max-width:380px) { .recurring-contracts .recurring-package { grid-template-columns:36px minmax(0,1fr) auto; gap:8px; } .recurring-monogram { width:36px; height:40px; } .recurring-package > svg { display:none; } .recurring-row-copy strong { font-size:14px; } .recurring-row-amount strong { font-size:14px; } }

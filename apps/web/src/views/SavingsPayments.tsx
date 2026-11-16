@@ -1,35 +1,39 @@
 import type { SavingsContract } from "../savings";
 import type { ContractPayments, PaidRow, reconcilePayments } from "../savings-payments";
-import { calendarPeriod, rangeLabel, type DateRange } from "../finance-periods";
+import { calendarPeriod, periodMode, rangeLabel, type DateRange } from "../finance-periods";
+import { recurringPaidTotals } from "../recurring-presentation";
 import InfoPopover from "../ui/InfoPopover";
 const money = (cents: number, currency: string) => new Intl.NumberFormat("fr-CA", { style: "currency", currency }).format(cents / 100);
 function PaymentSource({ row }: { row: PaidRow }) {
     return <details className="finance-evidence"><summary>Source du paiement</summary>{row.sources.map((s, i) => <p key={i}>{s.name}{s.record ? ` · ligne ${s.record}` : ""}{s.page ? ` · page ${s.page}` : ""}{s.sha256 && <code>SHA-256 : {s.sha256}</code>}</p>)}</details>;
 }
 export function ContractPaymentDetails({ contract, summary }: { contract: SavingsContract; summary: ContractPayments }) {
-    return <details className="paid-contract-details"><summary>Paiements et rapprochement ({summary.rows.length})</summary><div className="view-stack">
+    return <section className="paid-contract-details"><h3>Paiements</h3><div className="view-stack">
+        {!summary.rows.length && <p>Aucun paiement rapproché dans cette période. Cela ne prouve pas une dépense nulle.</p>}
+        {summary.rows.map(row=><div className="recurring-payment-row" key={row.id}><strong>{row.date} · {money(row.outflowCents,row.currency)}</strong><small>{row.outflowCents<0 ? "Remboursement déduit" : "Paiement rapproché"}</small><PaymentSource row={row}/></div>)}
+        <details><summary>Historique et rapprochement ({summary.history.length})</summary><div className="view-stack">
         <p>Regroupement proposé par libellé du fournisseur. Il ne prouve ni le numéro de police ni le forfait des anciens paiements. Les décisions de nature enregistrées dans Finances restent prioritaires.</p>
         {summary.latest && <p>Dernier débit observé : <strong>{money(summary.latest.outflowCents, summary.latest.currency)}</strong> le {summary.latest.date}. {summary.repeated ? "Même montant sur deux mois successifs; tarif futur non garanti." : "Le montant n’est pas retenu comme tarif mensuel stable."}</p>}
         {summary.invoiceMatch && <p>Le montant source daté du {contract.billing?.asOf} coïncide avec le prélèvement du {summary.invoiceMatch.date}. Cette égalité ne prouve pas un rapprochement de facture indépendant; vérifier les références originales.</p>}
         {summary.referenceMonthly != null && <p>Référence TTC enregistrée : {money(Math.round(summary.referenceMonthly * 100), contract.billing?.currency ?? "CAD")}/mois après normalisation du seul intervalle facturé. Ce n’est pas un paiement de cette période ni une prévision.</p>}
-        {!summary.rows.length && <p>Aucun paiement rapproché dans cette période. Cela ne prouve pas une dépense nulle.</p>}
-        {summary.rows.map(row => <div key={row.id}><strong>{row.date} · {money(row.outflowCents, row.currency)}</strong><p>{row.description}{row.outflowCents < 0 ? " · remboursement déduit" : ""}</p><PaymentSource row={row} /></div>)}
-    </div></details>;
+        {summary.history.map(row=><div key={row.id}><strong>{row.date} · {money(row.outflowCents,row.currency)}</strong><p>{row.description}{row.outflowCents<0 ? " · remboursement déduit" : ""}</p><PaymentSource row={row}/></div>)}
+        </div></details>
+    </div></section>;
 }
 export default function SavingsPayments({ result, contracts, range, onMonth }: { result: ReturnType<typeof reconcilePayments>; contracts: SavingsContract[]; range: DateRange; onMonth: (range: DateRange) => void }) {
     const ids = new Set(contracts.map(c => c.id));
     const summaries = result.summaries.filter(s => ids.has(s.contractId));
-    const totals: Record<string, { cents: number; matched: number; missing: number }> = {};
-    for (const c of contracts) { const s = summaries.find(s => s.contractId === c.id)!; const total = totals[c.billing?.currency ?? "CAD"] ??= { cents: 0, matched: 0, missing: 0 }; if (s.cents === null) total.missing++; else { total.cents += s.cents; total.matched++; } }
+    const totals = recurringPaidTotals(contracts, summaries);
     return <section className="surface view-stack recurring-paid" aria-label="Paiements TTC de la période">
-        <div className="compact-heading"><h2>Payé sur la période</h2><InfoPopover title="Paiements de la période">
+        <div className="compact-heading"><h2>{periodMode(range)==="month" ? "Payé ce mois" : "Payé sur la période"}</h2><InfoPopover title="Paiements de la période">
             <p>{rangeLabel(range)} · {contracts.length} contrat(s) affiché(s).</p>
             <p>Dates des opérations bancaires, remboursements déduits. Les périodes des factures restent dans les contrats. Un prélèvement décalé n’est pas déplacé vers un autre mois.</p>
             <p>Totaux partiels : taxes et frais inclus dans le débit, sans calcul séparé. Un contrat sans paiement identifié n’est pas considéré comme gratuit.</p>
             {Object.entries(totals).map(([currency, t]) => <p key={currency}>{currency} : {t.matched} contrat(s) rapproché(s), {t.missing} sans paiement identifié.</p>)}
         </InfoPopover></div>
         <small className="muted">{rangeLabel(range)}</small>
-        <div className="finance-totals">{Object.entries(totals).map(([currency, t]) => <div key={currency}><strong>{t.matched ? money(t.cents, currency) : "Non disponible"}</strong><small>{currency} · {t.matched}/{t.matched + t.missing} contrats rapprochés{t.missing > 0 ? " · total partiel" : ""}</small></div>)}</div>
+        <div className="finance-totals">{Object.entries(totals).map(([currency, t]) => <div key={currency}><strong>{t.cents !== null ? money(t.cents, currency) : "Non disponible"}</strong><small>{currency} · {t.matched}/{t.matched + t.missing} contrats rapprochés{t.missing > 0 ? " · total partiel" : ""}</small></div>)}</div>
+        <small>Sur les paiements disponibles</small>
         {!contracts.length && <p>Aucun contrat dans ce filtre. Aucun total disponible.</p>}
         {result.months.length > 1 && <details className="savings-months"><summary>Voir les paiements mois par mois</summary>{Object.keys(totals).map(currency => {
             const months = result.months.map(m => { const rows = summaries.flatMap(s => s.rows).filter(r => r.currency === currency && r.date.startsWith(m.month)); return { ...m, count: rows.length, cents: rows.reduce((n, r) => n + r.outflowCents, 0) }; });
