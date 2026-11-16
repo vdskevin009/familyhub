@@ -8,6 +8,7 @@ export type PropertyObservation = {
   status: 'active' | 'sold' | 'withdrawn' | 'unavailable' | 'unknown';
   primaryPhoto?: { url: string; sourceUrl: string; attribution: string; checkedAt: string } | null;
   statusEvidence: Evidence<string>;
+  monthlyStrataFeeCad?: Evidence<number>;
   priceCad: Evidence<number>; bedrooms: Evidence<number>; lowerLonsdale: Evidence<boolean>;
   separateEntrances: Evidence<boolean>;
   airbnb: { status: 'unknown' | 'conditional' | 'prohibited'; evidence: { url: string; checkedAt: string; note: string }[] };
@@ -31,9 +32,10 @@ export function validateProperty(input: unknown): PropertyObservation {
   if (p.priceCad.value !== null && p.priceCad.value <= 0 || p.bedrooms.value !== null && !Number.isInteger(p.bedrooms.value)) throw Error('Invalid property amount/count');
   if (!p.airbnb || !['unknown','conditional','prohibited'].includes(p.airbnb.status) || !Array.isArray(p.airbnb.evidence) || p.airbnb.evidence.length > 20 || p.airbnb.evidence.some(e => !url(e.url) || !date(e.checkedAt) || Date.parse(e.checkedAt) > Date.parse(p.observedAt) || !text(e.note)) || p.airbnb.status !== 'unknown' && p.airbnb.evidence.length === 0) throw Error('Airbnb assessment requires evidence; no blanket permission');
   if (p.primaryPhoto != null && (!url(p.primaryPhoto.url) || !url(p.primaryPhoto.sourceUrl) || !text(p.primaryPhoto.attribution,300) || !date(p.primaryPhoto.checkedAt) || Date.parse(p.primaryPhoto.checkedAt)>Date.parse(p.observedAt))) throw Error("Invalid attributed listing photo");
+  if(p.monthlyStrataFeeCad!==undefined && !evidence(p.monthlyStrataFeeCad,"number",p.observedAt)) throw Error("Strata fees require dated source evidence");
   // Whitelist the payload: never persist arbitrary imported private context.
   const fact = <T>(e: Evidence<T>): Evidence<T> => ({value:e.value,sourceUrl:e.sourceUrl,checkedAt:e.checkedAt,note:e.note});
-  return {id:p.id,listingId:p.listingId,observedAt:p.observedAt,address:p.address,url:p.url,status:p.status,statusEvidence:fact(p.statusEvidence),primaryPhoto:p.primaryPhoto == null ? null : {url:p.primaryPhoto.url,sourceUrl:p.primaryPhoto.sourceUrl,attribution:p.primaryPhoto.attribution,checkedAt:p.primaryPhoto.checkedAt},priceCad:fact(p.priceCad),bedrooms:fact(p.bedrooms),lowerLonsdale:fact(p.lowerLonsdale),separateEntrances:fact(p.separateEntrances),airbnb:{status:p.airbnb.status,evidence:p.airbnb.evidence.map(e=>({url:e.url,checkedAt:e.checkedAt,note:e.note}))}};
+  return {id:p.id,listingId:p.listingId,observedAt:p.observedAt,address:p.address,url:p.url,status:p.status,statusEvidence:fact(p.statusEvidence),primaryPhoto:p.primaryPhoto == null ? null : {url:p.primaryPhoto.url,sourceUrl:p.primaryPhoto.sourceUrl,attribution:p.primaryPhoto.attribution,checkedAt:p.primaryPhoto.checkedAt},monthlyStrataFeeCad:p.monthlyStrataFeeCad===undefined?{value:null,sourceUrl:null,checkedAt:null,note:"Not collected"}:fact(p.monthlyStrataFeeCad),priceCad:fact(p.priceCad),bedrooms:fact(p.bedrooms),lowerLonsdale:fact(p.lowerLonsdale),separateEntrances:fact(p.separateEntrances),airbnb:{status:p.airbnb.status,evidence:p.airbnb.evidence.map(e=>({url:e.url,checkedAt:e.checkedAt,note:e.note}))}};
 }
 export function propertyCard(input: unknown, now = new Date()) {
   const p = validateProperty(input);
@@ -80,6 +82,22 @@ export class PropertyStore {
       return {...propertyCard(p,now),followed:decisions.get(p.listingId)?.followed??false,changes};
     });
     return {observations,cards,followingHistory,followingRevision:followingHistory.length};
+  }
+  async compare(input:unknown,now=new Date()) {
+    if(!input||typeof input!=='object')throw Error('Choose two or three listings');
+    const ids=(input as {listingIds?:unknown}).listingIds;
+    if(!Array.isArray(ids)||ids.length<2||ids.length>3||ids.some(id=>!text(id,160))||new Set(ids).size!==ids.length)throw Error('Choose two or three distinct listings');
+    const state=await this.read(now);
+    return {comparedAt:now.toISOString(),items:ids.map(id=>{
+      const card=state.cards.find(c=>c.listingId===id);if(!card)throw Error('Unknown comparison listing');
+      const priced=state.observations.filter(o=>o.listingId===id&&o.priceCad.value!==null);
+      const initial=priced[0]?.priceCad.value??null, current=card.priceCad.value;
+      return {...card,budgetHeadroomCad:current===null?null:1_700_000-current,
+        askingPriceReductionCad:current===null||initial===null?null:Math.max(0,initial-current),
+        realizedSavingsCad:null,negotiatedSavingsCad:null,
+        costCoverage:'asking-price-and-published-strata-only',
+        missingCosts:['property-tax','insurance','maintenance','financing','closing-costs']};
+    })};
   }
   async setFollowing(input:unknown) {
     if(!input || typeof input!=='object')throw Error('Invalid following decision');

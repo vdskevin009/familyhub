@@ -59,3 +59,13 @@ test('following optimistic concurrency and request replay prevent lost manual ch
 });
 test('sold cannot be inferred from missing status evidence',()=>{assert.throws(()=>validateProperty({...fixture(),status:'sold',statusEvidence:fact(null)}));});
 test('late older observations do not reset current listing or follow state',async()=>{const s=new PropertyStore(await mkdtemp(join(tmpdir(),'fh-property-old-')));await s.ingest({...fixture(),id:'new',observedAt:'2026-11-18T10:00:00Z',status:'unavailable',statusEvidence:fact('unavailable')});await s.ingest(fixture());const state=await s.read();assert.equal(state.cards[0].status,'unavailable');assert.equal(state.cards[0].followed,false);});
+
+test('comparison separates budget room, listing price reduction, fees and realized savings',async()=>{
+ const s=new PropertyStore(await mkdtemp(join(tmpdir(),'fh-property-compare-')));await s.ingest(fixture());
+ await s.ingest({...fixture(),id:'price-drop',observedAt:'2026-11-17T10:00:00Z',priceCad:fact(1500000),monthlyStrataFeeCad:fact(500)});
+ await s.ingest({...fixture(),id:'second',listingId:'other',priceCad:fact(null)});
+ const c=await s.compare({listingIds:['synthetic-listing','other']},new Date('2026-11-17T10:00:00Z'));
+ assert.equal(c.items[0].budgetHeadroomCad,200000);assert.equal(c.items[0].askingPriceReductionCad,100000);assert.equal(c.items[0].monthlyStrataFeeCad.value,500);assert.equal(c.items[0].realizedSavingsCad,null);
+ assert.equal(c.items[1].budgetHeadroomCad,null);assert.equal(c.items[1].monthlyStrataFeeCad.value,null);
+ await assert.rejects(s.compare({listingIds:['synthetic-listing','synthetic-listing']}));await assert.rejects(s.compare({listingIds:['synthetic-listing','missing']}));
+});

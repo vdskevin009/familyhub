@@ -341,6 +341,7 @@ const server = createServer(async (request, response) => {
   const parts = pathParts(request.url);
   try {
     if (parts[0] === "property-project") {
+      if (parts.length === 2 && parts[1] === "comparison" && request.method === "POST") { json(response,200,await propertyStore.compare(await readJson(request,2_000)),origin);return; }
       if (parts.length === 2 && parts[1] === "following" && request.method === "POST") { json(response,200,await propertyStore.setFollowing(await readJson(request,2_000)),origin);return; }
       if (parts.length === 1 && request.method === "GET") { json(response,200,await propertyStore.read(),origin);return; }
       if (parts.length === 2 && parts[1] === "observations" && request.method === "POST") { json(response,200,await propertyStore.ingest(await readJson(request,32_000)),origin);return; }
