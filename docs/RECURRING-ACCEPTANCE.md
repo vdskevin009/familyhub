@@ -1,6 +1,7 @@
 # Récurrents — implementation-only acceptance
 
-Branch `feat/recurrents-approved-layout`, based on Trends `182c66a`.
+Branch `feat/recurrents-approved-layout`, feature commit `2c2531e`, integrated with
+deployed main `844f991` in local merge `a40fedd`.
 Requirement FH-SAV-013. No publication or deployment is authorized for this lot.
 No private data, imports, worker controller, secrets or permissions changed.
 
@@ -25,6 +26,8 @@ Provider-label grouping keeps its existing limitations visible in the history pa
 - Savings aggregate 34/34, including two new tests for amount bases, months, refunds,
   real zero, unknowns, independent currencies, bundle totals and source immutability.
 - Product aggregate 147/147; web TypeScript and production Vite build passed.
+  Product aggregate, web typecheck/build and compact browser acceptance passed again
+  after integrating the final deployed main commit.
 - Browser suites passed: finances, compact-spending, savings, savings-sharing,
   notifications and insurance-reference. Responsive suites cover 320/390/768/1440;
   insurance additionally checks its existing 1280 desktop fixture.

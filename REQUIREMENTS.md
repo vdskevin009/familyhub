@@ -23,7 +23,7 @@ still retain existing English strings. Full localization is not yet verified.
 
 ## FH-FIN-032 - Monthly Trends overview and signed difference explanation
 
-Accepted A+B; **implemented in draft PR #294; complete CI and release verification pending**.
+Accepted A+B; **PR #294 merged and deployed at 844f991; complete CI and public runtime verified**.
 Open the selected month or current month directly. Keep compact monthly
 navigation and account/currency filters. Show observed net spending, the signed
 available reference difference, and the daily observed/reference curve. Rank the
@@ -36,18 +36,18 @@ signs, account/currency scope, and unknown values. An absent comparison is not z
 a favorable difference is not guaranteed savings. Keep collection and bank freshness
 distinct and method/coverage in a compact information control. C/watchlists is outside
 this approval. The annual-first entry in FH-FIN-018 is superseded as target presentation
-only; current production behavior remains until complete verification.
+only; the verified A+B presentation now runs in production.
 
 `finance-trend-attribution.ts` derives category deltas without changing existing
 financial calculations, apportions only display rounding, and retains all category
 membership in its compact remainder. FH-FIN-031 remains the prerequisite for the
 unified register. The original approved reference is now locally verified and its
-pixels reviewed. See `docs/FINANCE-TRENDS-AB-WORK-IN-PROGRESS.md` for UI checks and
-the remaining CI and publication gates. The new Projets proposal is not implemented.
+pixels reviewed. See `docs/FINANCE-RELEASE-VERIFICATION.md` for final CI and runtime
+evidence; the earlier work-in-progress document is historical. The new Projets proposal is not implemented.
 
 ## FH-FIN-031 - One Finances destination and reconciled expense register
 
-Accepted; **PR #293 merged at c92d5d0 after complete CI; production verification pending**.
+Accepted; **PR #293 merged and deployed at c92d5d0; verified again in final release 844f991**.
 Finances becomes a primary navigation destination. The later proposal placing Récurrents inside Finances and grouping Courses, Hypothèque, Voiture and Nouveau bien under Projets is not implemented. The owner explicitly authorized merging and deploying the ready Finances lot independently on 2026-11-16; existing routes remain available while that later proposal awaits validation.
 Its first-level tabs are Comptes (first/default), Dépenses, Tendances and Contributions.
 Contributions retains its existing widgets, targets and calculations. A category opens
@@ -58,14 +58,13 @@ Missing evidence never establishes zero. No scheduled import or source rewrite i
 authorized by this presentation change.
 
 The separation of recent/historical expenses in FH-FIN-025 and the standalone Plus
-entry in FH-FIN-021 are superseded as target presentation by this decision; their
-currently deployed behavior remains in place until the complete replacement passes
-verification. The original records, classifications, conservative identity rules and
+entry in FH-FIN-021 are superseded by the verified deployed presentation. The
+original records, classifications, conservative identity rules and
 unknown-data safeguards remain authoritative. FH-FIN-030 was a separate closed,
 unmerged proposal and is not part of this implementation.
 
 The paired read-only `/finances/register-bindings` endpoint derives verified identities from hash-checked successful import archives. `finance-register.ts` provides read-only reconciliation and a shared filtered
-projection with synthetic regression tests. API/UI integration, approved-image inspection and the accessible panel are implemented. Exact head e7c6a46 passed CI run 43781125437. Complete real-data identity coverage and deployed verification remain unfinished. See `docs/FINANCE-UNIFIED-WORK-IN-PROGRESS.md`.
+projection with synthetic regression tests. API/UI integration, approved-image inspection and the accessible panel are implemented. Exact head e7c6a46 passed CI run 43781125437. Deployed UI and worker verification passed; complete real-data identity coverage remains incomplete and unresolved sources stay outside totals. See `docs/FINANCE-RELEASE-VERIFICATION.md`.
 
 ## Purchase-only Courses and monthly PC Express spending - FH-GROCERY-015 (#155)
 
