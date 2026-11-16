@@ -713,3 +713,10 @@ test("insurer authentication failures give recovery guidance and never expose Ap
     assert.equal(applicableInsurerPreview(status, null), false);
   }
 });
+
+test("history collection errors supersede a stale successful preview without implying expired login", () => {
+  const preview = { status: "success" as const, new: 2, complete: true, applied: false };
+  const status = { state: "error" as const, error: "Blue Cross claims history could not be opened from the member page.", lastSuccess: "2026-01-01T00:00:00Z" };
+  assert.equal(insurerSyncMessage(status, preview, false), status.error);
+  assert.equal(applicableInsurerPreview(status, preview), false);
+});

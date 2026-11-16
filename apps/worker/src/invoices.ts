@@ -15,6 +15,7 @@ import { buildCleanupSuggestions, buildReconciliationSnapshot, recoverMissingDes
 import { automaticWorkflowStatus, type ReimbursementWorkflowRecord, type ReimbursementWorkflowStatus } from "./reimbursement-workflow.js";
 import { blueCrossInvoices, type BlueCrossRow } from "./bluecross.js";
 import { blueCrossPrivateDirectory, collectBlueCrossPortal, type PortalCollection } from "./bluecross-collector.js";
+import { BlueCrossHistoryUnavailableError } from "./bluecross-history-failure.js";
 import { desjardinsInvoices, planDesjardinsUpsert } from "./desjardins.js";
 import { collectDesjardinsPortal, desjardinsPrivateDirectory, loadDesjardinsSnapshot, loadMemberAliases } from "./desjardins-collector.js";
 import { parseDesjardinsBackfill } from "./desjardins-backfill.js";
@@ -199,7 +200,8 @@ export async function syncBlueCrossPortal(apply = false, interactive = false, co
       unmatched: reconciliation?.unmatched.length, snapshotPath: result.snapshotPath, backup };
   } catch (error) {
     const message = error instanceof Error ? error.message : "";
-    const safeMessage = /^Collection is incomplete or ambiguous/.test(message) ? message
+    const safeMessage = error instanceof BlueCrossHistoryUnavailableError ? new BlueCrossHistoryUnavailableError().message
+      : /^Collection is incomplete or ambiguous/.test(message) ? message
       : /spawn (?:EPERM|UNKNOWN)/i.test(message) ? "Windows blocked the local Blue Cross browser launch. Check that installed Google Chrome can open on this PC."
       : /executable doesn't exist|browser.*not installed/i.test(message) ? "Google Chrome is unavailable on this Windows PC, or Playwright Chromium is unavailable on this platform. Install the browser before syncing."
       : /timeout|net::|network/i.test(message) ? "Blue Cross portal navigation timed out or the network is unavailable."

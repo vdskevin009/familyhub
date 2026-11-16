@@ -9,6 +9,7 @@ process.env.FAMILYHUB_WORKER_DATA = directory;
 const { parsePortalPages, savePortalSnapshot, blueCrossAuthCookies, blueCrossSessionMarker } = await import('../apps/worker/dist/bluecross-collector.js');
 const { initializeInvoices, initializeBlueCrossStatus, getBlueCrossStatus, syncBlueCrossPortal, planBlueCrossUpsert } = await import('../apps/worker/dist/invoices.js');
 const { buildReconciliationSnapshot } = await import('../apps/worker/dist/reconciliation.js');
+const { BlueCrossHistoryUnavailableError } = await import('../apps/worker/dist/bluecross-history-failure.js');
 
 test('private session state excludes cookies from unrelated domains', () => {
   const cookies = [
@@ -167,6 +168,33 @@ test('snapshots are immutable audit inputs with minimal source facts', async () 
   assert.equal(contents.includes('grdClaimsGrid'), false);
   await savePortalSnapshot(base);
   assert.equal(await readFile(path, 'utf8'), contents);
+});
+
+test('history access failure is an error, stops retries and preserves saved coverage and ledger for preview/apply/automatic intake', async () => {
+  const before = await readFile(join(directory, 'invoices.json'), 'utf8');
+  const lastSuccess = getBlueCrossStatus().lastSuccess;
+  const lastAppliedAt = getBlueCrossStatus().lastAppliedAt;
+  assert.ok(lastSuccess);
+  for (const [apply, automatic] of [[false, false], [true, false], [false, true]]) {
+    let attempts = 0;
+    await assert.rejects(syncBlueCrossPortal(apply, false, async () => {
+      attempts++;
+      const failure = new BlueCrossHistoryUnavailableError();
+      failure.message += ' PRIVATE_PORTAL_TEXT';
+      throw failure;
+    }, automatic), error => error.message === new BlueCrossHistoryUnavailableError().message);
+    assert.equal(attempts, 1, 'An uncertain history click must not restart the collector');
+    await initializeBlueCrossStatus();
+    const status = getBlueCrossStatus();
+    assert.equal(status.state, 'error');
+    assert.equal(status.authReason, undefined);
+    assert.equal(status.retry.state, 'incomplete');
+    assert.equal(status.latestResult, undefined);
+    assert.equal(status.lastSuccess, lastSuccess);
+    assert.equal(status.lastAppliedAt, lastAppliedAt);
+    assert.equal(status.error, new BlueCrossHistoryUnavailableError().message);
+    assert.equal(await readFile(join(directory, 'invoices.json'), 'utf8'), before);
+  }
 });
 test('damaged optional sync status does not prevent the invoice worker from starting', async () => {
   await writeFile(join(directory, 'bluecross', 'status.json'), '{');

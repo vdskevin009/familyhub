@@ -4,6 +4,16 @@
 
 Accepted, local implementation in progress. Projets > Voiture uses sourced compact cards, owner follow/unfollow, observed price/status history and comparison. Used family SUV, Greater Vancouver, CAD 23–30k before taxes, AWD preferred and no invented mileage cutoff. No fabricated accident-free, valuation or savings claims. Existing search automation handoff only after verified deployment. See docs/VEHICLE-PROJECT.md.
 
+## Blue Cross history failure classification - FH-REIMB-032 / FH-REIMB-040 / FH-REIMB-045
+
+Testing locally; not published or deployed. After a reserved history click, an
+unrecognized login-layout result on a known Blue Cross member/history page with
+no visible password or human challenge is reported as a collection error. It
+does not establish session expiration or successful authentication. Existing
+authentication stops remain authoritative. The uncertain navigation is not
+automatically retried; saved records and last complete coverage remain intact.
+Issue #159; `bluecross-history-failure.ts`, collector and sync error handling.
+See `docs/BLUECROSS-HISTORY-CLASSIFICATION.md` for evidence and remaining gates.
 
 ## FH-PROPERTY-001 - Sourced property project shortlist
 

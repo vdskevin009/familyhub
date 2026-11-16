@@ -8,6 +8,7 @@ const privateDir = await mkdtemp(join(tmpdir(), 'fh-bc-history-'));
 process.env.FAMILYHUB_WORKER_DATA = privateDir;
 const { createBlueCrossHistoryNavigation } = await import('../apps/worker/dist/bluecross-history-navigation.js');
 const { blueCrossPageCategory } = await import('../apps/worker/dist/bluecross-page-category.js');
+const { blueCrossHistoryFailure, BlueCrossHistoryUnavailableError } = await import('../apps/worker/dist/bluecross-history-failure.js');
 const { findPortalHistoryPage } = await import('../apps/worker/dist/portal-history-page.js');
 const { tryPortalLogin, submitPortalLogin } = await import('../apps/worker/dist/portal-login.js');
 const browser = await chromium.launch({ headless: true, channel: process.platform === 'win32' ? 'msedge' : undefined });
@@ -89,6 +90,49 @@ try {
       assert.equal(JSON.stringify(diag).includes('https://'),false);
       if(scenario==='unknown-modal')assert.equal(diag.stage,'history-control-obstructed');
       if(scenario==='uncertain-click')assert.equal(diag.attempted,true);
+      passed++;
+    } finally { await context.close(); }
+  }
+  // Reproduce a completed but ineffective history click through the real login
+  // preflight. A fake clock shortens the wait; no credential provider is allowed.
+  for (const scenario of ['member-home', 'login-path-home', 'history-without-grid', 'password', 'challenge', 'captcha', 'otp', 'foreign', 'account-update', 'closed']) {
+    const context = await browser.newContext({ serviceWorkers: 'block' });
+    try {
+      await context.route('**/*', route => route.fulfill({contentType:'text/html; charset=utf-8',body:
+        '<script>window.historyClicks=0</script>'+link.replace('LOCATION','')}));
+      const page = await context.newPage();
+      await page.goto(origin+'/member/');
+      const navigate = createBlueCrossHistoryNavigation();
+      let clock = 0, credentialReads = 0, submissions = 0, controlWrites = 0;
+      const diagnostics = [];
+      const reason = await tryPortalLogin(page, 'bluecross', async () => {
+        await navigate(page);
+        return !!(await findPortalHistoryPage(context, page, 'bluecross')).page;
+      }, { now: () => (clock += 21_000), read: async () => ({ blocked: false }),
+        save: async () => { controlWrites++; },
+        credentials: async () => { credentialReads++; throw new Error('No credentials permitted'); },
+        submit: async () => { submissions++; }, diagnose: async (_, value) => diagnostics.push(value) });
+      assert.equal(reason, 'layout-changed');
+      assert.equal(diagnostics.at(-1).pageCategory, 'member-home');
+      assert.equal(await page.evaluate(()=>window.historyClicks),1);
+      if (scenario === 'login-path-home') await page.goto(origin+'/member/login/');
+      if (scenario === 'history-without-grid') await page.goto(origin+historyPath);
+      if (scenario === 'foreign') await page.goto('https://unexpected.test/member/');
+      if (scenario === 'account-update') await page.goto(origin+'/member/update-password');
+      if (scenario === 'password') await page.locator('body').evaluate(body => body.insertAdjacentHTML('beforeend','<input type="password">'));
+      if (scenario === 'challenge') await page.locator('body').evaluate(body => body.insertAdjacentHTML('beforeend','<p>Enter your verification code</p>'));
+      if (scenario === 'captcha') await page.locator('body').evaluate(body => body.insertAdjacentHTML('beforeend','<iframe src="/recaptcha"></iframe>'));
+      if (scenario === 'otp') await page.locator('body').evaluate(body => body.insertAdjacentHTML('beforeend','<input autocomplete="one-time-code">'));
+      if (scenario === 'closed') await page.close();
+      const failure = await blueCrossHistoryFailure(page, reason, navigate.diagnostic());
+      assert.equal(failure instanceof BlueCrossHistoryUnavailableError,
+        ['member-home','login-path-home','history-without-grid'].includes(scenario), scenario);
+      for (const actualReason of ['human-required','credentials-rejected','not-configured','credentials-unavailable','login-incomplete','cooldown','profile-busy',undefined]) {
+        assert.equal(await blueCrossHistoryFailure(page, actualReason, navigate.diagnostic()), undefined, actualReason);
+      }
+      assert.equal(await blueCrossHistoryFailure(page, reason, {attempted:false,stage:'history-control-missing'}),undefined);
+      assert.equal(await blueCrossHistoryFailure(page, reason, {attempted:true,stage:'returned-to-login'}),undefined);
+      assert.equal(credentialReads,0); assert.equal(submissions,0); assert.equal(controlWrites,0);
       passed++;
     } finally { await context.close(); }
   }

@@ -2,6 +2,17 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { insurerSyncMessage, insurerCollectionNeedsRefresh, applicableInsurerPreview, insurerCoverageNotice, invoiceCollectionNotice } from '../apps/web/src/insurer-sync';
 
+test('legacy unknown-layout status does not assert an expired session or request a new sign-in', () => {
+  const status = { state: 'login-required' as const, authReason: 'layout-changed' as const, lastSuccess: '2026-07-01T12:00:00Z' };
+  const detail = insurerSyncMessage(status, null, false);
+  const coverage = insurerCoverageNotice(status)!;
+  assert.match(detail, /insurer page was not recognized.*history could not be collected/i);
+  assert.match(detail, /Saved claims remain available/);
+  assert.match(coverage, /history unavailable.*payments may be missing/i);
+  assert.doesNotMatch(detail + coverage, /sign.in|session expired|reconnect/i);
+  assert.equal(applicableInsurerPreview(status, { status: 'success', new: 1, complete: true }), false);
+});
+
 test('a complete ambiguous collection is reviewable evidence, not a failed or incomplete read', () => {
   const status = { state: 'idle' as const, lastSuccess: '2026-07-09T11:00:00Z', latestResult: { status: 'success' as const, applied: false, complete: true, autoImported: 0, pendingNew: 0, pendingChanged: 0, ambiguous: 1, errors: 0 } };
   const notice = insurerCoverageNotice(status, Date.parse('2026-07-09T12:00:00Z'))!;
