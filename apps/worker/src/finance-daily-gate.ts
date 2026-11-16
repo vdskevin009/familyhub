@@ -5,7 +5,7 @@ import {join, dirname} from 'node:path';
 export const financeStages = ['collection', 'accounts', 'balances', 'transactions', 'contributions'] as const;
 export type FinanceStage = typeof financeStages[number];
 export type DailyFinanceScope = {
-  schema: 1;
+  schema: 1; inferencePolicySha256?: string;
   periods: {from: string; through: string}[];
   subjects: Record<FinanceStage, string[]>;
 };
@@ -19,6 +19,7 @@ function realDay(value: string): boolean {
   return /^\d{4}-\d{2}-\d{2}$/.test(value) && Number.isFinite(d.getTime()) && d.toISOString().slice(0, 10) === value;
 }
 export function financeScopeDigest(scope: DailyFinanceScope): string {
+  if (scope.inferencePolicySha256!==undefined && !hashPattern.test(scope.inferencePolicySha256))throw Error('Invalid inference policy pin.');
   if (scope.schema !== 1 || !Array.isArray(scope.periods) || !scope.periods.length || !scope.subjects ||
       Object.keys(scope.subjects).sort().join('|') !== [...financeStages].sort().join('|') ||
       scope.periods.some(p => !realDay(p.from) || !realDay(p.through) || p.from > p.through)) throw Error('Invalid private finance scope.');

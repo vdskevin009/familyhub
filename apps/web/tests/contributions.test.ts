@@ -36,3 +36,29 @@ test("unassigned amounts never enter progress or remaining", () => {
   validateContributions({...snapshot, plans: [p]});
   assert.deepEqual(contributionMetrics(p, snapshot), contributionMetrics(card, snapshot));
 });
+
+const inferredRow = { id: "inferred-source", date: "2030-01-01", amountCents: 12345, attribution: "inferred" as const, rationale: "Même référence que des virements précédents.", evidenceTransactionIds: ["historic-1", "historic-2"], sourceKey: "fsi_" + "a".repeat(64), collectedAt: "2030-01-01T12:00:00Z", bankReceiptConfirmed: false as const };
+test("inferred payments are separate from identified totals, forecast and achieved status", () => {
+  const p = {...card, inferredCents: 12345, inferredPayments: [inferredRow]};
+  validateContributions({...snapshot, plans: [p]});
+  assert.deepEqual(contributionMetrics(p, snapshot), contributionMetrics(card, snapshot));
+});
+test("inference rejects duplicate identities, unsupported receipt claims and inconsistent totals", () => {
+  const valid = {...card, inferredCents: 12345, inferredPayments: [inferredRow]};
+  for (const patch of [
+    {inferredCents: 1}, {inferredCents: undefined}, {inferredPayments: undefined},
+    {inferredPayments: [{...inferredRow, id: "fixture-1"}]},
+    {inferredPayments: [{...inferredRow, bankReceiptConfirmed: true}]},
+    {inferredPayments: [{...inferredRow, rationale: " "}]},
+    {inferredPayments: [{...inferredRow, evidenceTransactionIds: []}]},
+    {inferredPayments: [{...inferredRow, collectedAt: "unknown"}]},
+    {inferredCents: 24690, inferredPayments: [inferredRow, {...inferredRow, id: "other"}]},
+  ]) assert.throws(() => validateContributions({...snapshot, plans: [{...valid, ...patch}]}));
+});
+
+test("unknown inference total remains null rather than an assumed zero", () => {
+  const p = {...card, inferredCents: null, inferredPayments: [], inferenceStatus: "source-unavailable" as const};
+  assert.equal(validateContributions({...snapshot, plans:[p]}).plans[0].inferredCents, null);
+  assert.deepEqual(contributionMetrics(p,snapshot),contributionMetrics(card,snapshot));
+  assert.throws(()=>validateContributions({...snapshot,plans:[{...p,inferredPayments:[inferredRow]}]}));
+});

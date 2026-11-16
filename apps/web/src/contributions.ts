@@ -1,11 +1,16 @@
 /** Read-only private projection. No default household goal or beneficiary. */
 export type ContributionPayment = { id: string; date: string; amountCents: number };
+export type InferredContributionPayment = ContributionPayment & {
+  attribution: "inferred"; rationale: string; evidenceTransactionIds: string[];
+  sourceKey: string; collectedAt: string; bankReceiptConfirmed: false;
+};
 export type ContributionCard = {
   kind: "rrsp" | "resp"; currency: string; goalCents: number; identifiedCents: number;
   deadline: string; attribution: "confirmed" | "unconfirmed";
   beneficiary: string | null; beneficiaryConfirmed: boolean;
   weeklyPaid: ContributionPayment[]; oneOffPaid: ContributionPayment[];
   unassigned: ContributionPayment[];
+  inferredCents?: number | null; inferenceStatus?: "not-configured" | "requires-review" | "source-unavailable" | "available" | "partial-conflict" | "partial-canonical-overlap"; inferredPayments?: InferredContributionPayment[];
   weeklyForecast: { amountCents: number; count: number; totalCents: number; assumption: string } | null;
   warnings: string[];
   sourceAsOf?: string | null; retrievedAt?: string | null;
@@ -41,6 +46,17 @@ export function validateContributions(value: unknown): ContributionsSnapshot {
       }
     }
     if (p.weeklyPaid.concat(p.oneOffPaid).reduce((sum, row) => sum + row.amountCents, 0) !== p.identifiedCents) return bad();
+    const inferred = p.inferredPayments ?? [];
+    if ((p.inferredPayments === undefined) !== (p.inferredCents === undefined) || !Array.isArray(inferred) || (p.inferredCents !== null && !cents(p.inferredCents ?? 0))) return bad();
+    if (p.inferenceStatus !== undefined && !["not-configured", "requires-review", "source-unavailable", "available", "partial-conflict", "partial-canonical-overlap"].includes(p.inferenceStatus)) return bad();
+    if (p.inferredCents === null && inferred.length > 0) return bad();
+    const sourceKeys = new Set<string>();
+    for (const row of inferred) {
+      if (!row || typeof row.id !== "string" || !row.id || ids.has(row.id) || !Number.isFinite(dayTime(row.date)) || row.date > s.evaluatedOn || !cents(row.amountCents) || row.amountCents === 0 || row.attribution !== "inferred" || row.bankReceiptConfirmed !== false || typeof row.rationale !== "string" || !row.rationale.trim() || row.rationale.length > 2000 || typeof row.sourceKey !== "string" || !/^fsi_[a-f0-9]{64}$/.test(row.sourceKey) || sourceKeys.has(row.sourceKey) || !Number.isFinite(Date.parse(row.collectedAt)) || !Array.isArray(row.evidenceTransactionIds) || row.evidenceTransactionIds.length === 0 || row.evidenceTransactionIds.some(id => typeof id !== "string" || !id) || new Set(row.evidenceTransactionIds).size !== row.evidenceTransactionIds.length) return bad();
+      ids.add(row.id); sourceKeys.add(row.sourceKey);
+    }
+    const inferredTotal = inferred.reduce((sum, row) => sum + row.amountCents, 0);
+    if (!cents(inferredTotal) || inferredTotal !== (p.inferredCents ?? 0)) return bad();
     const f = p.weeklyForecast;
     if (f !== null && (p.kind !== "rrsp" || !cents(f?.amountCents) || !cents(f?.count) || !cents(f?.totalCents) || f.totalCents !== f.amountCents * f.count || typeof f.assumption !== "string" || !f.assumption.trim())) return bad();
   }

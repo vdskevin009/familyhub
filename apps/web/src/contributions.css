@@ -45,3 +45,12 @@
 @media (min-width: 760px) { .contribution-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; } }
 @media (max-width: 380px) { .contribution-card { padding: 18px; } .contribution-goal { align-items: flex-start; flex-direction: column; gap: 4px; } .contribution-bottom strong { font-size: 1rem; } }
 @media (forced-colors: active) { .contribution-card progress { appearance: auto; } .contribution-open:focus-visible { outline-color: Highlight; } }
+
+.contribution-inferred-summary { font-size: .9rem; line-height: 1.5; margin: -8px 0 20px; overflow-wrap: anywhere; }
+.contribution-inferred-summary span { color: var(--muted, #53627a); font-size: .8rem; }
+.contribution-inferred ul { list-style: none; padding: 0; margin: 0; }
+.contribution-inferred li { padding-block: 12px; border-bottom: 1px solid var(--border, #dbe1e9); }
+.contribution-inferred li > div { display: flex; justify-content: space-between; gap: 16px; font-variant-numeric: tabular-nums; }
+
+.contributions-view > .compact-heading { flex-wrap: wrap; }
+.contributions-view > .compact-heading h2 { flex-shrink: 0; }

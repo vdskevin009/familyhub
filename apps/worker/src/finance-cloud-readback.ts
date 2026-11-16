@@ -1,3 +1,5 @@
+import {readFinanceRegisterBindings} from './finance-register-bindings.js';
+import {readInferencePolicy,verifyInferenceView} from './contribution-inference-readback.js';
 import {parseFinancePreparation} from './finance-import.js';
 import {prepareCloudAccountCapture} from './finance-cloud-account-captures.js';
 import {FinanceAccountCapturesStore,accountCaptureId,legacyInventoryCapture} from './finance-account-captures-store.js';
@@ -79,7 +81,9 @@ async function current(options:CloudReadbackOptions){
  const apiLedger=await get('/finances'),apiInventory=await get('/finance/source-inventory'),apiExpenses=await get('/finance/source-expenses'),apiProgress=await get('/contributions/progress');
  guard(same(ledger,apiLedger)&&same(inventory,apiInventory.state)&&same(expenses,apiExpenses.state));
  const evaluatedOn=new Intl.DateTimeFormat('en-CA',{timeZone:config.timezone,year:'numeric',month:'2-digit',day:'2-digit'}).format(clock());
- const progress=contributionsView(ledger,config,evaluatedOn);guard(same(progress,apiProgress));await check();return {ledger,inventory,expenses,config,progress,accountCaptures};
+ const progress=contributionsView(ledger,config,evaluatedOn),policy=await readInferencePolicy(options.directory);
+ const inferencePolicySha256=verifyInferenceView(progress,apiProgress,ledger,config,expenses,policy,evaluatedOn,(await readFinanceRegisterBindings(join(options.directory,'finances'),ledger)).bindings);
+ await check();return {ledger,inventory,expenses,config,progress,accountCaptures,...(inferencePolicySha256?{inferencePolicySha256}:{})};
 }
 /** Baseline is a private local artifact, captured before collection/intake; never a production mutation. */
 export async function saveCloudFinanceBaseline(options:CloudReadbackOptions){
@@ -119,7 +123,7 @@ export async function produceCloudFinanceReport(options:CloudReadbackOptions,man
  for(const entry of manifest.sections){guard(requiredSections.includes(entry.dataset));const value=await rawPair(root,entry.raw);captureTime(value);nativeHashes.push(...await bindNativePages(root,value,entry.nativePages,entry.dataset));sectionStates.set(entry.dataset,pagesComplete(value,entry.dataset,ids,options.scope.periods[0]));sectionSources.set(entry.dataset,value);}
  const preparedAccountCapture=prepareCloudAccountCapture(linked,manifest.linked.capture.sha256,clock());
  guard(same(preparedAccountCapture,JSON.parse((await refBytes(root,manifest.accountCapture)).toString('utf8'))));
- const state=await current(options);
+ const state=await current(options);guard((base.inferencePolicySha256??null)===(state.inferencePolicySha256??null));
  guard(base.accountCaptures&&Array.isArray(base.accountCaptures.captures));
  const expectedCaptureRow={id:accountCaptureId('source-capture',preparedAccountCapture.snapshot),origin:'source-capture',snapshot:preparedAccountCapture.snapshot};
  guard(state.accountCaptures.captures.some(c=>same(c,expectedCaptureRow))&&base.accountCaptures.captures.every((prior:any)=>state.accountCaptures.captures.some(c=>same(c,prior))));
