@@ -1,8 +1,9 @@
 # Tendances A+B — local checkpoint
 
 Local implementation on `feat/finance-trends-monthly-ui`, based on the tested
-Finances lot `2387c97e054fc413d246570832416ab7d47c0867`. Neither lot is published,
-merged or deployed. Récurrents is a separate implementation-only lot.
+Finances lot, now merged via #293 at `c92d5d0d73ec3c508e601a18522fad5a7cbc174b`.
+Draft PR #294 is retargeted to main and includes that exact base. Its complete CI and
+production verification remain pending. Récurrents is a separate implementation-only lot.
 
 ## Implemented and reviewed
 
@@ -50,12 +51,29 @@ No imports, private-data changes, permissions, secrets, locks or runtime changes
 
 Automatic approval rejected pushing `feat/finance-unified-navigation`: publishing
 the current navigation was judged insufficiently authorized while the newer Projets /
-Récurrents placement proposal awaited validation. That push did not execute; no PR
-or remote CI exists for these commits. No alternate publication route was attempted.
-The user was asked specifically about a draft PR and CI without merge/deployment.
-Local work continues while that answer is pending. No GitHub Issue is required by
-the user's explicit instruction, and none was created.
+Récurrents placement proposal awaited validation. That push did not execute and no
+alternate publication route was attempted.
+The owner subsequently authorized draft PRs and CI explicitly; the single permitted
+retry succeeded and #293/#294 were created. No GitHub Issue is required by the user's
+explicit instruction, and none was created. The initial CI passed compilation, .NET
+and financial calculations. Remaining failures exposed old theme/navigation/version
+expectations and the relocated collection-coverage control. Tests follow the actual
+approved UI; the information panel retains the exact covered-account count.
 
-Exact-commit normal npm/Node 22 CI, .NET regressions, merge, Pages publication and
-installed-worker/runtime verification remain unrun. Local tests use Node 24/pnpm;
-dotnet is unavailable locally. No deployment or newly synchronized bank data is claimed.
+Complete exact-commit npm/Node 22 CI, merge, Pages publication and installed-worker
+verification remain release gates. .NET regressions passed on the initial remote
+commit. Local tests use Node 24/pnpm; dotnet is unavailable locally. No deployment
+or newly synchronized bank data is claimed.
+
+The second CI run also exposed the old inventory test's expectation that all seven
+source accounts remain rendered beneath Trends. The approved monthly screen omits
+that duplicate inventory, while Comptes and Dépenses retain all seven. The test now
+verifies the compact view and verifies every account again after returning; the
+four-width source-inventory suite passes, including stale responses and keyboard.
+
+Finances head `e7c6a46e3eb24e615a2fe4386c8c98a7b507dfad` passed all CI gates in
+run 43781125437. Moving #293 from draft to ready was rejected by automatic approval
+twice, including after checking the owner's later deployment instructions. The owner
+then explicitly requested fusion and deployment of the ready lot. The next permitted
+attempt succeeded and #293 merged normally. No indirect publication route was used.
+Its main CI/Pages run is 43782857654; production is not yet claimed verified.

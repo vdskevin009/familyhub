@@ -4,7 +4,7 @@ import { baselineWindowMonths, shiftMonth, type SpendingTrend } from "../finance
 import { Sheet } from "../ui/primitives";
 import { useFinanceDialogHistory } from "../use-finance-dialog-history";
 import { attributeSpendingDifference, leadingSpendingDifferences } from "../finance-trend-attribution";
-import { displayFinanceCapture } from "./FinanceCollectionNote";
+import { displayFinanceCapture, FinanceCollectionNote } from "./FinanceCollectionNote";
 import InfoPopover from "../ui/InfoPopover";
 import "../finance-trends.css";
 
@@ -68,7 +68,7 @@ export default function FinanceTrends({ state, trend, account, currency, onMonth
         <p>Les bornes des mouvements ne prouvent pas un historique exhaustif. Les comptes incomplets ne sont pas supposés nuls. Un écart favorable n'est pas une économie garantie.</p>
         <p>Transferts, paiements de carte, placements, doublons confirmés et natures à vérifier restent exclus. Les remboursements conservent leur signe. {trend.summary.included.filter(r=>!r.reviewed).length} classifications restent suggérées.</p>
         {unresolvedCount>0 && <p>{unresolvedCount} opérations source sans rapprochement vérifié dans ce périmètre restent hors sous-total. Retrouvez-les dans Dépenses.</p>}
-        <p>La collecte ne prouve ni la fraîcheur bancaire ni une couverture complète. Les autres comptes peuvent conserver des sources plus anciennes.</p>
+        <FinanceCollectionNote state={state}/>
         <details><summary>Méthode et couverture des sources</summary>
             <ul>{trend.candidates.map(c=><li key={c.month}>{c.month} : {c.reasons.length ? c.reasons.join("; ") : `admissible, comparaison du ${c.from} au ${c.comparisonTo}`}</li>)}</ul>
             <ul>{trend.coverage.map(c=><li key={c.account}><strong>{c.account}</strong>{c.rows.length ? c.rows.map((r,i)=><p key={i}>{r.earliest ?? "Début inconnu"} au {r.latest ?? "Fin inconnue"}{r.warning ? ` · ${r.warning}` : ""}</p>) : <p>Bornes absentes</p>}</li>)}</ul>
