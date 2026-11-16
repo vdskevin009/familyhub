@@ -1,69 +1,61 @@
 # Tendances A+B — local checkpoint
 
-Partial groundwork only. Branch `feat/finance-trends-attribution` starts from the
-stabilized local register checkpoint `798d94527d5739a42ffcb229d43cbb37767ffe9a` on
-`feat/finance-unified-navigation`. Neither lot has been pushed, merged or deployed.
+Local implementation on `feat/finance-trends-monthly-ui`, based on the tested
+Finances lot `2387c97e054fc413d246570832416ab7d47c0867`. Neither lot is published,
+merged or deployed. Récurrents is a separate implementation-only lot.
 
-## Scope
+## Implemented and reviewed
 
-The owner approved A as the month overview and B as its accessible difference panel.
-C is excluded. Comptes remains the first Finances tab, Contributions retains its
-widgets, and this lot must not reintroduce separate recent/historical registers.
+The original approved PNG was transferred to this machine, SHA-256 verified
+(`15773c81790d18593d2604ad9cc9bfffa3aa5264be71665529666e222e0ff3d6`) and its pixels
+inspected before visual implementation. Synthetic browser screenshots are compared
+with A (overview) and B (signed explanation). C is excluded.
 
-## Implemented
+Tendances opens the current or already-selected month directly, with a compact
+month strip, date picker and existing account/currency filters. The observed net
+amount, signed comparison and cumulative daily curve are visible immediately.
+Leading category differences open the current category operations. Touching the
+headline difference opens a native dialog with all category differences on the
+same symmetric scale, observed amounts and access to operations. Keyboard, Escape,
+browser Back and focus restoration preserve the current scope. Method/coverage
+details are in an information dialog; collection is not presented as bank freshness.
 
-`finance-trend-attribution.ts` consumes the existing `spendingTrend` result without
-changing reference eligibility, comparable days, baseline means, source data or
-classifications. It computes signed category differences, ranks their absolute
-contributions to the headline difference, and supplies a common symmetric scale.
-Every category remains in detail; the compact overview includes an explicit summed
-Autres with all underlying keys. Unknown observed/reference values stay unavailable.
-Inconsistent or missing category totals prevent an unsupported explanation.
+`finance-trend-attribution.ts` consumes `spendingTrend` without changing its
+eligibility, comparable days, means, exclusions, decisions or source facts. Missing
+observations/reference stay unavailable. Reference means can contain fractional
+cents: presentation-only largest-remainder rounding with stable category-key ties
+makes every displayed category difference sum exactly to the displayed headline.
+All categories remain in B; A supplies an explicit reconciled remainder if needed.
+An advantageous difference is not represented as guaranteed savings.
 
-Reference means can contain fractions of a cent. Raw values remain untouched. Only
-the display layer distributes rounding by largest remainder with stable category-key
-ties, making displayed category differences add exactly to the displayed total.
-This is display rounding, not a change to financial arithmetic or a savings claim.
-
-`trendEntryMonth` preserves the selected month or uses the current month, independently
-of the latest capture date. The existing annual-first UI has not yet been changed.
-
-## Blockers and remaining work
-
-Official Library materialization of approved `familyhub-tendances-alternatives.png`
-failed on this Windows environment with
-`AttributeError: module 'os' has no attribute 'setxattr'`. No destination image exists.
-Pixels were not inspected, and no unofficial transfer or metadata bypass was used.
-The same failure affects the first approved Finances reference. Visual implementation
-is therefore pending the supported reference transfer required by the owner.
-
-The earlier automatic approval refusal of GitHub issue creation also remains open;
-this lot did not retry it or use a different publication route. See the first lot's
-checkpoint for the exact refusal and the incomplete reviewed-crosswalk integration.
-
-After those gates: finish FH-FIN-031 and integrate these functions into monthly A;
-make the existing daily curve directly visible; implement B with native-dialog focus,
-Escape, Back, return focus and category operations in the same selected scope. Keep
-method/coverage available through a compact information control and label collection
-timestamps without asserting bank freshness. Test empty/error/loading/reference-less
-states and repeated month/category/account/currency changes. Verify 320/390/768/1440
-layouts and synthetic captures before exact-commit CI, PR, merge and Pages verification.
-
-No UI, worker/API, production data, private mapping, imports, pins, locks, credentials,
-permissions or installed runtime have been changed by this lot. No live acceptance,
-fresh synchronization, complete data coverage or deployment is claimed.
+No separate recent/historical selector remains. Unverified source identities remain
+visible in Dépenses and excluded from calculated subtotals; a scoped count is retained
+in Tendances coverage. This UI does not invent identity bindings or complete coverage.
+No imports, private-data changes, permissions, secrets, locks or runtime changes.
 
 ## Checks actually run
 
-- 9 new attribution tests and 14 unchanged historical-trend regressions: 23/23 passed.
-  Coverage includes comparable partial days, signed refunds, genuine zero, missing
-  reference, indicative coverage, account/currency scope, all-category reconciliation,
-  stable rounding, reference-only categories and repeated month changes.
-- Product aggregate: 147/147 passed, including the 12 register and 9 attribution
-  tests (not disjoint totals). Web TypeScript and Vite production build passed again
-  after the attribution addition. Worker TypeScript/build passed on the first lot,
-  and no worker source changed in either lot. `git diff --check` passed.
-- No UI was integrated, so no browser/keyboard/mobile screenshots or deployed
-  acceptance are claimed. Full aggregate CI and .NET remain unrun; no local dotnet
-  command exists. Local dependencies use pnpm/Node 24; normal npm lockfile/Node 22
-  exact-commit CI is still required before any release.
+- Attribution/regression tests: 9 new + 14 unchanged historical-trend tests passed.
+  Refunds/negative amounts, true zero, absent/partial reference, account/currency
+  filters, reference-only categories, rounding and repeated changes are covered.
+- Product aggregate: 147/147 passed (overlapping with the above tests).
+- Web TypeScript and Vite production build passed.
+- A+B browser acceptance passed at 320/390/768/1440: direct-month entry, category
+  reconciliation, missing/zero/error states, filters, repeated panels/months,
+  keyboard/focus/Back, source editing and unchanged saved bank facts.
+- The first lot's financial aggregate passed 303/303, inventory view 6/6 and all
+  11 finance browser suites. No worker financial calculation changed in this lot.
+
+## Publication gate
+
+Automatic approval rejected pushing `feat/finance-unified-navigation`: publishing
+the current navigation was judged insufficiently authorized while the newer Projets /
+Récurrents placement proposal awaited validation. That push did not execute; no PR
+or remote CI exists for these commits. No alternate publication route was attempted.
+The user was asked specifically about a draft PR and CI without merge/deployment.
+Local work continues while that answer is pending. No GitHub Issue is required by
+the user's explicit instruction, and none was created.
+
+Exact-commit normal npm/Node 22 CI, .NET regressions, merge, Pages publication and
+installed-worker/runtime verification remain unrun. Local tests use Node 24/pnpm;
+dotnet is unavailable locally. No deployment or newly synchronized bank data is claimed.

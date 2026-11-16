@@ -2,8 +2,8 @@
 
 ## FH-FIN-032 - Monthly Trends overview and signed difference explanation
 
-Accepted A+B; **partial local calculation groundwork only, no UI integration or
-deployment**. Open the selected month or current month directly. Keep compact monthly
+Accepted A+B; **local UI integrated and tested, not published or deployed**.
+Open the selected month or current month directly. Keep compact monthly
 navigation and account/currency filters. Show observed net spending, the signed
 available reference difference, and the daily observed/reference curve. Rank the
 categories that explain the difference. Open the full signed category attribution in
@@ -20,8 +20,9 @@ only; current production behavior remains until complete verification.
 `finance-trend-attribution.ts` derives category deltas without changing existing
 financial calculations, apportions only display rounding, and retains all category
 membership in its compact remainder. FH-FIN-031 remains the prerequisite for the
-unified register. See `docs/FINANCE-TRENDS-AB-WORK-IN-PROGRESS.md` for unimplemented
-UI, release gates and the approved-reference transfer failure.
+unified register. The original approved reference is now locally verified and its
+pixels reviewed. See `docs/FINANCE-TRENDS-AB-WORK-IN-PROGRESS.md` for UI checks and
+the pending navigation publication gate.
 
 ## FH-FIN-031 - One Finances destination and reconciled expense register
 

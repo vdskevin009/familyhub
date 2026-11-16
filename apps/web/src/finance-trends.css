@@ -1,4 +1,4 @@
-.finance-tabs { grid-template-columns: 1fr 1.4fr 1fr; width: min(100%, 520px); }
+.finance-tabs { width: min(100%, 520px); }
 .finance-tabs button { padding-inline: 6px; }
 .trend-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
 .trend-heading label { min-width: 140px; max-width: 100%; }
@@ -133,3 +133,38 @@
   .finance-trends .trend-navigation h2 { font-size: 18px; }
 }
 @media (prefers-reduced-motion: reduce) { .finance-trends * { scroll-behavior: auto; } }
+
+/* Approved A overview with B attribution in a dialog; the financial model is unchanged. */
+.trend-month-navigation { display:grid; grid-template-columns:44px repeat(4,minmax(0,1fr)) 44px; gap:2px; padding:4px; border-radius:var(--radius); background:var(--accent-soft); }
+.trend-month-navigation > button { border:0; background:transparent; min-width:0; min-height:44px; padding:4px 2px; color:var(--muted); border-radius:var(--radius-sm); font-family:inherit; font-size:13px; }
+.trend-month-navigation > button.selected { background:var(--accent); color:white; font-weight:700; }
+.trend-month-navigation > .icon-button { color:var(--accent); font-size:24px; }
+.trend-period-heading { flex-wrap:wrap; }
+.trend-period-heading h2 { text-transform:capitalize; }
+.trend-period-heading h2 { font-size:16px; }
+.trend-period-heading input { min-width:0; max-width:132px; min-height:44px; font-size:12px; }
+.finance-trends .trend-overview { padding:22px; gap:20px; }
+.trend-overview .trend-headline { display:grid; justify-items:start; gap:8px; }
+.trend-overview .trend-headline > span { color:var(--muted); }
+.trend-overview .trend-total { font-size:clamp(30px,6vw,42px); line-height:1.15; }
+.trend-difference { display:inline-flex; align-items:center; justify-content:space-between; gap:16px; min-height:44px; max-width:100%; border:0; border-radius:var(--radius-sm); padding:8px 12px; font-weight:700; text-align:left; }
+.trend-difference.favorable { background:var(--success-soft); }
+.trend-difference.higher { background:var(--warning-soft); }
+.trend-difference.equal { background:var(--soft); }
+.finance-trends .favorable, .trend-attribution-dialog .favorable { color:var(--success); }
+.finance-trends .higher, .trend-attribution-dialog .higher { color:var(--warning); }
+.trend-reference-status, .trend-no-reference { font-size:13px; }
+.trend-explanation ul, .trend-attribution-list { list-style:none; padding:0; margin:0; }
+.trend-explanation .trend-category { display:flex; width:100%; align-items:center; justify-content:space-between; gap:12px; min-height:48px; }
+.trend-explanation .trend-category strong { font-variant-numeric:tabular-nums; white-space:nowrap; }
+.trend-collection { align-items:center; }
+.trend-collection small { min-width:0; }
+.trend-attribution-total { font-size:clamp(30px,6vw,42px); font-variant-numeric:tabular-nums; }
+.trend-axis-legend { text-align:right; color:var(--muted); font-size:13px; }
+.trend-attribution-list button { display:grid; grid-template-columns:minmax(0,1fr) minmax(110px,1fr); gap:12px; padding:14px 0; width:100%; min-height:64px; border:0; border-bottom:1px solid var(--line); text-align:left; background:transparent; }
+.trend-attribution-list button > span { display:grid; gap:5px; min-width:0; overflow-wrap:anywhere; }
+.trend-attribution-list button > span:last-child > strong { text-align:right; font-variant-numeric:tabular-nums; }
+.trend-attribution-track { display:block; position:relative; height:20px; background:linear-gradient(to right, transparent calc(50% - 1px),var(--control-line) calc(50% - 1px),var(--control-line) calc(50% + 1px),transparent calc(50% + 1px)); }
+.trend-attribution-track > span { position:absolute; height:12px; top:4px; border-radius:3px; background:currentColor; }
+@media(max-width:400px) { .finance-trends .trend-overview { padding:16px; } .trend-month-navigation { grid-template-columns:36px repeat(4,minmax(0,1fr)) 36px; } .trend-month-navigation > .icon-button { min-width:36px; } }
+@media(min-width:1000px) { .finance-trends { grid-template-columns:minmax(0,1.5fr) minmax(260px,1fr); align-items:start; } .trend-month-navigation,.trend-period-heading,.trend-collection { grid-column:1 / -1; } }
