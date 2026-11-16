@@ -32,6 +32,10 @@ test('isolated worker HTTP respects pairing, origin, payload limits and idempote
   assert.equal((await post({...fixture(),address:'Conflicting address'})).status,409);
   assert.equal((await post({...fixture(),extra:'x'.repeat(33000)})).status,400);
   const state=await (await fetch(endpoint,{headers})).json();assert.equal(state.cards.length,1);assert.equal(state.observations.length,1);
+  const {promisify}=await import('node:util');const {execFile}=await import('node:child_process');const cli=promisify(execFile);
+  const input=join(dir,'input.json');await writeFile(input,JSON.stringify([fixture()]));
+  const preview=await cli(process.execPath,['scripts/property-ingest.mjs','--file',input],{windowsHide:true});assert.equal(JSON.parse(preview.stdout).writes,0);
+  const applied=await cli(process.execPath,['scripts/property-ingest.mjs','--file',input,'--apply','--endpoint',`http://127.0.0.1:${port}`,'--key-file',join(dir,'pairing-key.txt')],{windowsHide:true});assert.equal(JSON.parse(applied.stdout).duplicates,1);assert.equal(JSON.parse(applied.stdout).verified,true);
   const following={requestId:'http-follow',listingId:'synthetic-listing',followed:true,expectedRevision:0};
   assert.equal((await fetch(endpoint+'/following',{method:'POST',body:JSON.stringify(following)})).status,401);
   assert.equal((await fetch(endpoint+'/following',{method:'POST',headers,body:JSON.stringify(following)})).status,200);

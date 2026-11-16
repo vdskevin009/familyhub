@@ -28,3 +28,17 @@ Validation update: 13 tests pass including following POST authorization/409 read
 POST /property-project/comparison accepts two or three distinct listingIds, reads current stored observations only and causes no collection. Compare cards expose asking price, optional dated published monthly strata fee, source/market status/follow decision, and conditional Airbnb evidence. Budget headroom, asking-price reduction since first known observation, hypothetical negotiation and realized savings are separate fields; latter two remain null. Unknown fee is not zero. Missing tax, insurance, maintenance, financing and closing costs remain explicit. No total cost or expected Airbnb profit is invented. UI provides Tous / Suivis / Non suivis and concise comparison, not nested dashboards.
 
 Production release gates: merge latest main, verify isolated private route behavior and synthetic regression suite, integrate owner-approved visual references, connect existing daily search without duplicate schedule, prove ingestion and independent readback, verify UI on phone and exact deployed commit. Changes remain local pending publication authorization.
+
+## Existing daily research handoff
+
+After the worker release exposes property-project-v1, the existing daily research may prepare a private JSON array of validated observations and call scripts/property-ingest.mjs. Preview (without --apply) performs no requests or writes. Apply requires the existing key file and paired endpoint, verifies health capability and baseline, checks all input conflicts before writing, and independently reads each persisted observation. Lost responses are never blindly replayed. No schedule is installed by this change, and no live handoff has run yet.
+
+The consumer validates returned observations in the browser using a Node-free property-model module. No secret or private runtime path is shipped in the static PWA. Original source image display and new Following/Comparison visuals await reference-pixel verification and UI implementation; current approval of extended behavior is verbal, not approval of a final extended screenshot.
+
+## Local UI verification (not deployed)
+
+Original V2 PNG was inspected on kevinpc after source-to-destination SHA256 verification: bc6c9c06b8251f1f48349bc4e0a7c80966fade11065a17a92aa762e0d5ca765f. It drives colors, cards, address/direct listing link, evidence panel and photo fallback. Followed/non-followed, market status and multi-property comparison extend the verbally approved requirements; they have not yet been separately approved as final screenshots. Unlike the illustrative mockup, no price-coherent badge or fabricated comparable price band is shown without sold evidence.
+
+Implemented UI: Projets container preserves existing Courses and Hypothèque destinations, adds Nouveau bien, and keeps Voiture explicitly unavailable pending implementation. Property view handles empty/offline states, source detail dialog, follow/unfollow with verified re-read, filters, two/three selection and comparison dialog. Private responses are not stored in browser localStorage. Import helper changes no schedule.
+
+Synthetic browser acceptance at 390 and 1100 widths passes: no horizontal page overflow, following/filtering, dialog/Escape, comparison/close, offline last-state preservation, empty state, Projects navigation and browser Back. Screenshots are synthetic local QA only, not production evidence. Full cross-feature/browser aggregate checks and live collector handoff remain release gates.
