@@ -236,3 +236,5 @@ Local Finances navigation/register integration and its release gates are describ
 ## Vehicle shortlist foundation
 
 FH-VEHICLE-001 adds separate private vehicle evidence and owner decisions through vehicle-project-v1, with a compact project view and guarded intake helper. No live collector or schedule is claimed until verified. See docs/VEHICLE-PROJECT.md.
+
+The isolated started schema-2 recovery candidate and retained-forecast preparation correction are documented in [Finance started recovery](docs/FINANCE-STARTED-RECOVERY.md). No live recovery or activation is implied.

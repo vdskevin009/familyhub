@@ -348,3 +348,5 @@ The candidate preoperation-v1 scheduled bridge journals first operation authoriz
 ## Vehicle shortlist foundation
 
 FH-VEHICLE-001 adds separate private vehicle evidence and owner decisions through vehicle-project-v1, with a compact project view and guarded intake helper. No live collector or schedule is claimed until verified. See VEHICLE-PROJECT.md.
+
+The FH-FIN-027/028 started recovery candidate keeps the legacy inventory unchanged and dates fresh account evidence through the separate capture store. Exceptional not-applied recovery is a local offline path: the Windows process that holds deny-write/delete handles also owns every gate mutation; a Node child only verifies and plans. Exact before/after bindings, owner stop/drain evidence, immutable partial output and no-write/uncertain-write rejection preserve fail-closed behavior. See [protocol and trust boundaries](FINANCE-STARTED-RECOVERY.md). It is not registered in the worker or scheduled runner.

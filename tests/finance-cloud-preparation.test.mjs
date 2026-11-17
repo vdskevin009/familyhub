@@ -22,3 +22,43 @@ test('completed state with missing proof blocks locally rather than claiming ski
 test('completed proof with altered intended scope blocks locally',async()=>{const f=await fixture(),r=await produceCloudFinanceReport(f.options,f.manifest);await finalizeScheduledFinance(f.options,f.options.admission,r,async()=>cloudFinanceVerifiers(f.options,async()=>f.manifest));await writeFile(join(f.directory,'finance-feed/daily-scope.json'),JSON.stringify({...f.scope,periods:[{from:'2025-01-01',through:'2026-11-16'}]}));await assert.rejects(initializeFinanceScope(f.directory,'absent',f.now()))});
 test('complete day plus unresolved other pending day blocks rather than skips',async()=>{const f=await fixture(),r=await produceCloudFinanceReport(f.options,f.manifest);await finalizeScheduledFinance(f.options,f.options.admission,r,async()=>cloudFinanceVerifiers(f.options,async()=>f.manifest));const file=join(f.directory,'finance-feed/daily-gate/state.json'),s=JSON.parse(await readFile(file));s.pending={...f.options.admission.attempt,id:'synthetic-old-pending',localDate:'2026-11-15'};s.days['2026-11-15']={status:'pending',scopeDigest:s.pending.scopeDigest,lastAttemptAt:s.pending.startedAt,attemptId:s.pending.id};await writeFile(file,JSON.stringify(s));await assert.rejects(initializeFinanceScope(f.directory,'absent',f.now()),/conflicts/)});
 test('relative mapping path is not resolved implicitly',async()=>{const {d,p}=await setup(),policy=JSON.parse(await readFile(p));policy.mappingFile='mapping.json';await writeFile(p,JSON.stringify(policy));await assert.rejects(initializeFinanceScope(d,p,new Date('2026-11-16T16:00:00Z')),/Absolute/)});
+
+import {financeSourceKey} from '../apps/worker/src/finance-source-inventory-store.ts';
+import {validateFinanceSourceInventory,sourceInventoryIsStale} from '../apps/worker/src/finance-source-inventory-model.ts';
+import {loadCloudIntakePlan} from '../apps/worker/src/finance-cloud-readback.ts';
+for(const [oldCount,freshCount,available] of [[29,31,true],[31,29,true],[29,29,true],[29,0,false],[0,31,true],[29,0,true]]){
+ test(`retained forecasts ${oldCount} -> ${freshCount}, available=${available}: original date, content, links and coverage survive`,async()=>{
+  const h=await packet(),{f,args,files,pack,packetArg}=h,baseFile=join(f.evidenceDirectory,'baseline-'+f.options.admission.attempt.id+'.json'),base=JSON.parse(await readFile(baseFile));
+  const inventory=base.inventory.snapshot;
+  // A historical account disappears from the current universe. Retained forecasts
+  // must retain its valid link, while the fresh account capture adds a new account.
+  inventory.accounts[0].sourceKey=financeSourceKey('account','synthetic-item','no-longer-returned');
+  const historicalAccounts=oldCount===31?3:oldCount===freshCount?2:1;
+  for(let i=1;i<historicalAccounts;i++)inventory.accounts.push({...structuredClone(inventory.accounts[0]),sourceKey:financeSourceKey('account','synthetic-item','prior-extra-'+i),name:'Historical extra '+i});
+  inventory.availability.accounts.observedCount=historicalAccounts;
+  inventory.predictions=Array.from({length:oldCount},(_,i)=>({sourceKey:financeSourceKey('prediction','synthetic-item','prior-'+i),accountSourceKey:inventory.accounts[0].sourceKey,name:'Historical forecast '+i,flow:'outflow',amount:{amountCents:100,currency:'CAD'},predictedOn:'2026-11-18',frequency:'monthly',kind:'forecast'}));
+  inventory.availability.recurring={status:'available',coverage:'complete',observedCount:oldCount};
+  await writeFile(baseFile,JSON.stringify(base));
+  const native=JSON.parse(await readFile(join(pack,'recurring_transactions0.json'))),result=native.structuredContent.results[0].result;
+  result.items=Array.from({length:freshCount},(_,i)=>({id:'new-content-'+i,amount:999}));
+  if(!available)result.coverage={dataset:'recurring_transactions',availability:'unavailable',state:'unknown',is_complete_for_query:false,warning_codes:['source-absent']};
+  for(const name of ['recurring_transactions0.json','recurring_transactions0-archive.json']){const b=JSON.stringify(native);await writeFile(join(pack,name),b);Object.assign(files.find(f=>f.path===name),{sha256:sha(b),bytes:Buffer.byteLength(b)});}
+  await writeFile(packetArg,JSON.stringify({files}));
+  const original=await readFile(join(pack,'recurring_transactions0.json'));
+  await assembleFinanceCloudPacket(args);
+  const manifest=JSON.parse(await readFile(join(f.evidenceDirectory,'fresh-cloud-manifest.json'))),plan=await loadCloudIntakePlan(f.options,manifest);
+  assert.equal(manifest.inventoryPolicy,'retain-baseline-v1');assert.deepEqual(plan.inventory,inventory);
+  assert.equal(plan.inventory.availability.recurring.observedCount,oldCount);assert.equal(plan.accountCapture.accounts.length,2);
+  assert.equal(sourceInventoryIsStale(plan.inventory,f.now()),true);assert.deepEqual(await readFile(join(pack,'recurring_transactions0.json')),original);
+  // A forged fresh date or count is rejected by the independent reconstruction,
+  // even with a matching artifact hash. The strict model count guard also stays.
+  const forged={...plan.inventory,collectedAt:f.linked.collectedAt};manifest.inventory=await f.ref('forged-inventory.json',forged);
+  await assert.rejects(loadCloudIntakePlan(f.options,manifest));
+  assert.throws(()=>validateFinanceSourceInventory({...inventory,availability:{...inventory.availability,recurring:{status:'available',coverage:'complete',observedCount:oldCount+1}}},f.now()));
+ });
+}
+test('missing recurring source section remains blocked; missing coverage is never an empty attestation',async()=>{
+ const {args,files,pack,packetArg}=await packet(),name='transfer-metadata.json',metadata=JSON.parse(await readFile(join(pack,name)));
+ metadata.toolCalls=metadata.toolCalls.filter(c=>c.queries[0].query_type!=='recurring_transactions');const b=JSON.stringify(metadata);await writeFile(join(pack,name),b);Object.assign(files.find(f=>f.path===name),{sha256:sha(b),bytes:Buffer.byteLength(b)});await writeFile(packetArg,JSON.stringify({files}));
+ await assert.rejects(assembleFinanceCloudPacket(args));
+});

@@ -23,8 +23,10 @@ test('invalid shard parameters never silently select an empty test run', () => {
 
 test('workflow keeps an always-evaluated aggregate gate and same-compile artifact references', () => {
   const workflow = readFileSync('.github/workflows/ci.yml','utf8');
-  assert.match(workflow, /build:\s+if: always\(\)\s+needs: \[compile, unit, browser, domain\]/);
-  for (const name of ['COMPILE','UNIT','BROWSER','DOMAIN']) assert.ok(workflow.includes(`test "$${name}" = success`));
+  assert.match(workflow, /build:\s+if: always\(\)\s+needs: \[compile, unit, browser, domain, finance-recovery-windows\]/);
+  for (const name of ['COMPILE','UNIT','BROWSER','DOMAIN','FINANCE_RECOVERY_WINDOWS']) assert.ok(workflow.includes(`test "$${name}" = success`));
+  assert.match(workflow,/finance-recovery-windows:\s+runs-on: windows-latest/);
+  assert.ok(workflow.includes('node --import tsx --test tests/finance-started-recovery.test.mjs'));
   assert.equal((workflow.match(/name: \$\{\{ needs\.compile\.outputs\.artifact_name \}\}/g) || []).length, 3);
   assert.equal((workflow.match(/sha256sum --check build\.sha256/g) || []).length, 4);
   assert.match(workflow,/fail-fast: false\s+matrix:\s+shard: \[1, 2, 3, 4\]/);

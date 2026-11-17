@@ -21,7 +21,7 @@ import type {FinanceState} from './finance-model.js';
 export type PrivateRef={path:string;sha256:string};
 export type NativePage={response:RawCapture;resultIndex:number;export?:RawCapture & {sourceFileId:string}};
 export type RawCapture={capture:PrivateRef;archive:PrivateRef};
-export type FinanceCloudManifest={schema:1;attemptId:string;scopeDigest:string;baseline:PrivateRef;mapping:PrivateRef;linked:RawCapture;expenses:RawCapture;nativeTransactions:NativePage[];sections:{dataset:string;raw:RawCapture;nativePages:NativePage[]}[];inventory:PrivateRef;accountCapture:PrivateRef};
+export type FinanceCloudManifest={schema:1;inventoryPolicy?:'retain-baseline-v1';attemptId:string;scopeDigest:string;baseline:PrivateRef;mapping:PrivateRef;linked:RawCapture;expenses:RawCapture;nativeTransactions:NativePage[];sections:{dataset:string;raw:RawCapture;nativePages:NativePage[]}[];inventory:PrivateRef;accountCapture:PrivateRef};
 export type CloudReadbackOptions={directory:string;evidenceDirectory:string;scope:DailyFinanceScope & {mappingDigest:string;accountPolicy: 'all-linked';accountScope:'returned-institution-accounts'};admission:ScheduledAdmission;clock?:()=>Date;get:(route:string)=>Promise<any>};
 const sha=(v:Buffer|string)=>createHash('sha256').update(v).digest('hex');
 const same=(a:unknown,b:unknown)=>dailyFinanceDigest(a)===dailyFinanceDigest(b);
@@ -132,7 +132,12 @@ export async function produceCloudFinanceReport(options:CloudReadbackOptions,man
  guard(same(protectedFacts(base.ledger),protectedFacts(state.ledger))&&same(base.config,state.config)&&base.ledger.imports.every((x:any)=>state.ledger.imports.some(y=>same(x,y))));
  guard((base.ledger.data?.balanceObservations??[]).every((row:any)=>(state.ledger.data?.balanceObservations??[]).some(current=>same(row,current))));
  guard(base.expenses.snapshots.every((x:any)=>state.expenses.snapshots.some(y=>same(x,y)))&&state.expenses.snapshots.some(s=>same(s,expenseSnapshot)));
- const inventory=validateFinanceSourceInventory(JSON.parse((await refBytes(root,manifest.inventory)).toString('utf8')),clock());guard(same(inventory,state.inventory.snapshot)&&time(inventory.collectedAt)>=time(base.capturedAt));
+ const inventory=validateFinanceSourceInventory(JSON.parse((await refBytes(root,manifest.inventory)).toString('utf8')),clock());guard(same(inventory,state.inventory.snapshot));
+ const retained=manifest.inventoryPolicy==='retain-baseline-v1';
+ let inventorySemanticsComplete=!retained;
+ if(retained){guard(same(inventory,base.inventory.snapshot));}
+ else {
+ guard(time(inventory.collectedAt)>=time(base.capturedAt));
  guard(same(inventory.accounts.map(a=>a.sourceKey).sort(),keys.filter(k=>!Object.hasOwn(mapping,k))));
   const expectedCapture=Math.max(time(linked.collectedAt),...[...sectionSources.values()].map(v=>time(v.collectedAt)));
  guard(time(inventory.collectedAt)===expectedCapture);
@@ -140,7 +145,7 @@ export async function produceCloudFinanceReport(options:CloudReadbackOptions,man
  const mappedCurrent=keys.some(k=>Object.hasOwn(mapping,k));
  const expectedAccountsAvailability={status:enumerationComplete?(mappedCurrent?'partial':'available'):'unavailable',coverage:enumerationComplete?(mappedCurrent?'partial':'complete'):'unknown',observedCount:inventory.accounts.length};
  guard(same(inventory.availability.accounts,expectedAccountsAvailability));
- let inventorySemanticsComplete=true;
+
  for(const [dataset,field] of [['investment_holdings','holdings'],['investment_transactions','activity'],['recurring_transactions','recurring'],['liabilities','liabilities']] as const){
   const native=sectionSources.get(dataset),count=native.pages.reduce((n:number,p:any)=>n+p.result.items.length,0),complete=sectionStates.get(dataset)===true;
   const partial=!complete&&native.pages.some((p:any)=>p.result.coverage?.availability==='ready'&&p.result.coverage?.is_complete_for_query===false);
@@ -149,6 +154,8 @@ export async function produceCloudFinanceReport(options:CloudReadbackOptions,man
  const recurring=sectionSources.get('recurring_transactions'),recurringCount=recurring.pages.reduce((n:number,p:any)=>n+p.result.items.length,0);
  if(sectionStates.get('recurring_transactions')&&recurringCount===0)guard(inventory.predictions.length===0);
  else{guard(same(inventory.predictions,base.inventory.snapshot?.predictions??[]));inventorySemanticsComplete=false;}
+ }
+ const enumerationComplete=linkedBody.institutions.every((i:any)=>coverage(i.account_coverage,'accounts'))&&!(linkedBody.manual_accounts?.length);
  let balancesComplete=true;
  for(const [key,a] of byKey){
   const balance=a.balances;const known=balance&&typeof balance.current==='number'&&Number.isFinite(balance.current)&&typeof balance.iso_currency_code==='string';
@@ -156,7 +163,7 @@ export async function produceCloudFinanceReport(options:CloudReadbackOptions,man
   if(Object.hasOwn(mapping,key)){
    guard(state.ledger.data?.accounts.some(row=>row.id===mapping[key]));
    if(known)guard(state.ledger.data?.balanceObservations?.some(row=>row.accountId===mapping[key]&&row.balanceCents===amount(balance.current)&&row.currency===balance.iso_currency_code&&row.capturedAt===linked.collectedAt&&row.sourceAsOf===null&&row.source.sha256===manifest.linked.capture.sha256));
-  }else{
+  }else if(!retained){
       const row=inventory.accounts.find(row=>row.sourceKey===key)!;guard(row.name===a.name);
    const owner=linkedBody.institutions.find((i:any)=>i.accounts.some((r:any)=>r.item_id===a.item_id&&r.account_id===a.account_id));
    const sourceInstitution=typeof owner?.institution?.name==='string'?owner.institution.name:null;
@@ -175,7 +182,7 @@ export async function produceCloudFinanceReport(options:CloudReadbackOptions,man
  const accountsComplete=enumerationComplete&&inventorySemanticsComplete;
  const collectionComplete=accountsComplete&&txComplete&&[...sectionStates.values()].every(Boolean);
  const statuses={collection:collectionComplete,accounts:accountsComplete,balances:balancesComplete&&enumerationComplete,transactions:txComplete,contributions:txComplete};
- const receipts:StageReceipt[]=financeStages.map(stage=>{const subjects=options.scope.subjects[stage],retain=stage==='contributions'||stage==='transactions';const payload={schema:1 as const,stage,attemptId:options.admission.attempt.id,localDate:options.admission.attempt.localDate,scopeDigest:manifest.scopeDigest,status:statuses[stage]?'confirmed' as const:'partial' as const,...(['accounts','balances'].includes(stage)?{verificationLimits:preparedAccountCapture.verificationLimits}:{}),...(!inventorySemanticsComplete&&['accounts','collection'].includes(stage)?{verificationLimits:[...preparedAccountCapture.verificationLimits,'Nonempty credit or recurring fields are preserved from baseline but not independently source-derived; stage remains partial.']} : {}),confirmedSubjectIds:retain?[]:[...subjects],...(retain?{retainedUnassigned:subjects.map(subjectId=>({subjectId,evidenceDigests:evidence,sourceNative:true as const,persisted:true as const,readbackVerified:true as const,limits:['Complete raw source retained separately; canonical attribution and existing Contributions configuration remain unchanged. CSV blank cells cannot distinguish absent, null and empty source values; original bytes and envelope are preserved.']}))}:{}),evidenceDigests:evidence,withheldCount:statuses[stage]?0:1,uncertainWrite:false,sourceFreshness:'unknown' as const,sourceAsOf:null};return {payload,digest:dailyFinanceDigest(payload)}});
+ const receipts:StageReceipt[]=financeStages.map(stage=>{const subjects=options.scope.subjects[stage],retain=stage==='contributions'||stage==='transactions';const payload={schema:1 as const,stage,attemptId:options.admission.attempt.id,localDate:options.admission.attempt.localDate,scopeDigest:manifest.scopeDigest,status:statuses[stage]?'confirmed' as const:'partial' as const,...(['accounts','balances'].includes(stage)?{verificationLimits:preparedAccountCapture.verificationLimits}:{}),...(!inventorySemanticsComplete&&['accounts','collection'].includes(stage)?{verificationLimits:[...preparedAccountCapture.verificationLimits,retained?'Legacy inventory retains its original collection date and fields; fresh account captures and raw section coverage are verified separately. Legacy semantics remain partial.':'Credit or recurring fields were inherited without independent fresh derivation; the legacy result remains partial.']} : {}),confirmedSubjectIds:retain?[]:[...subjects],...(retain?{retainedUnassigned:subjects.map(subjectId=>({subjectId,evidenceDigests:evidence,sourceNative:true as const,persisted:true as const,readbackVerified:true as const,limits:['Complete raw source retained separately; canonical attribution and existing Contributions configuration remain unchanged. CSV blank cells cannot distinguish absent, null and empty source values; original bytes and envelope are preserved.']}))}:{}),evidenceDigests:evidence,withheldCount:statuses[stage]?0:1,uncertainWrite:false,sourceFreshness:'unknown' as const,sourceAsOf:null};return {payload,digest:dailyFinanceDigest(payload)}});
  await check();return {writeOutcome:'confirmed',receipts};
 }
 export function cloudFinanceVerifiers(options:CloudReadbackOptions,loadManifest:()=>Promise<FinanceCloudManifest>){
@@ -211,12 +218,10 @@ export async function loadCloudIntakePlan(options:CloudReadbackOptions,manifest:
  const expenses=prepareSourceExpenses(input,now),sectionSources=new Map<string,any>(),sectionStates=new Map<string,boolean>();
  guard(manifest.sections.length===requiredSections.length&&new Set(manifest.sections.map(s=>s.dataset)).size===requiredSections.length);
  for(const entry of manifest.sections){guard(requiredSections.includes(entry.dataset));const value=await rawPair(root,entry.raw);checkTime(value);await bindNativePages(root,value,entry.nativePages,entry.dataset);sectionSources.set(entry.dataset,value);sectionStates.set(entry.dataset,pagesComplete(value,entry.dataset,ids,options.scope.periods[0]));}
- guard(base.inventory.snapshot);const candidate=structuredClone(base.inventory.snapshot);
- candidate.collectedAt=new Date(Math.max(time(linked.collectedAt),...[...sectionSources.values()].map(v=>time(v.collectedAt)))).toISOString();
- candidate.accounts=accounts.filter(a=>!Object.hasOwn(mapping,financeSourceKey('account',a.item_id,a.account_id))).map(a=>{const sourceKey=financeSourceKey('account',a.item_id,a.account_id),prior=base.inventory.snapshot.accounts.find((x:any)=>x.sourceKey===sourceKey),owner=institutions.find((i:any)=>i.accounts.some((x:any)=>x.item_id===a.item_id&&x.account_id===a.account_id));return {sourceKey,name:a.name,institution:typeof owner?.institution?.name==='string'?owner.institution.name:null,kind:['depository','credit','investment','loan','other'].includes(a.type)?a.type:'unknown',reconciliation:'not-reconciled',balance:a.balances?.current==null?null:{amountCents:amount(a.balances.current),currency:a.balances.iso_currency_code,sourceAsOf:null},credit:prior?.credit??null}});
- const mappedCurrent=[...byKey.keys()].some(k=>Object.hasOwn(mapping,k));candidate.availability.accounts={status:mappedCurrent?'partial':'available',coverage:mappedCurrent?'partial':'complete',observedCount:candidate.accounts.length};
- for(const [dataset,field] of [['investment_holdings','holdings'],['investment_transactions','activity'],['recurring_transactions','recurring'],['liabilities','liabilities']] as const){const source=sectionSources.get(dataset),complete=sectionStates.get(dataset),partial=!complete&&source.pages.some((p:any)=>p.result.coverage?.availability==='ready'&&p.result.coverage?.is_complete_for_query===false);candidate.availability[field]={status:complete?'available':partial?'partial':'unavailable',coverage:complete?'complete':partial?'partial':'unknown',observedCount:source.pages.reduce((n:number,p:any)=>n+p.result.items.length,0)};}
- const inventory=validateFinanceSourceInventory(candidate,now);guard(same(inventory,JSON.parse((await refBytes(root,manifest.inventory)).toString('utf8'))));
+ // New intake plans never refresh legacy facts without a source derivation.
+ guard(manifest.inventoryPolicy==='retain-baseline-v1'&&base.inventory.snapshot);
+ const inventory=validateFinanceSourceInventory(base.inventory.snapshot,now);
+ guard(same(inventory,JSON.parse((await refBytes(root,manifest.inventory)).toString('utf8'))));
  const mapped=accounts.filter(a=>Object.hasOwn(mapping,financeSourceKey('account',a.item_id,a.account_id))),historical=mapped.map(a=>base.ledger.data.accounts.find((old:any)=>old.id===mapping[financeSourceKey('account',a.item_id,a.account_id)]));
  const sourceInput=(s:any)=>s.detail!==undefined?s.detail:{file:s.name,...(s.sha256?{sha256:s.sha256}:{}),...(s.record?{record:s.record}:{}),...(s.page?{page:s.page}:{})};
  const balances={schema:'familyhub.td.preparation.v1',importMode:'balance-observations-only',collectedOn:base.ledger.data.collectedOn,scope:base.ledger.data.scope,accounts:historical.map(a=>({accountId:a.id,identityFingerprint:a.identity,alias:a.name,type:a.type,currency:a.currency,observedBalanceCents:a.balanceCents,observedOn:a.asOf,identityEvidence:sourceInput(a.source)})),collection:{retrievedAt:linked.collectedAt,accountIds:historical.map(a=>a.id)},balanceObservations:mapped.map(a=>({accountId:mapping[financeSourceKey('account',a.item_id,a.account_id)],currency:a.balances.iso_currency_code,balanceCents:amount(a.balances.current),capturedAt:linked.collectedAt,sourceAsOf:null,source:{file:manifest.linked.capture.path.split(/[\\/]/).at(-1),sha256:manifest.linked.capture.sha256}})),bankActivities:[],brokerageActivities:[],holdingsSnapshots:[],coverage:[],pendingActivities:[],limits:[]};

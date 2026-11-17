@@ -84,3 +84,7 @@ Crashes before state commit retain pending and lease. A crash after state commit
 Validation: new tests cover live cancellation/hourly retry, source/readback-start refusal, old/expired/modified/recovery admission refusal, concurrent cancel/start, other-owner locks, scope drift, immutable proof conflict and repeated cancellation. Existing gate, capture, readback and four-target controller tests remain required. No production rollout, schedule change, security-pin update or real-state repair is implied.
 
 Admission schema is bumped to 2 for these reservations. Original schema-1 validators reject them before authorizing an operation, so an older checkout cannot silently bypass the new marker. New code still validates genuine schema-1 admissions for existing operator-reviewed workflows, but never abandons them.
+
+## Started schema-2 candidate
+
+The separate [started recovery protocol](FINANCE-STARTED-RECOVERY.md) supersedes manual lease-removal guidance for the narrowly supported pre-controller started-but-not-applied case. It requires independently reviewed owner quiescence and effective writer exclusion. No old lock is reset or stolen, and no success is created. Other legacy/uncertain-write cases remain blocked for separate review.
