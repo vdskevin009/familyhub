@@ -143,11 +143,26 @@ jobs:
       - name: Run retained domain regression tests
         run: dotnet run --project tests/Core.Tests -c Release
 
+  finance-recovery-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - name: Verify Windows file exclusion and killed-owner fail-closed recovery
+        shell: pwsh
+        run: |
+          $env:FAMILYHUB_RECOVERY_POWERSHELL = (Get-Command pwsh).Source
+          node --import tsx --test tests/finance-started-recovery.test.mjs
+
   # Keep the existing required check name. A failed/skipped/cancelled prerequisite
   # must fail this gate, not produce a successful skipped deployment prerequisite.
   build:
     if: always()
-    needs: [compile, unit, browser, domain]
+    needs: [compile, unit, browser, domain, finance-recovery-windows]
     runs-on: ubuntu-latest
     steps:
       - name: Require every validation job to succeed
@@ -156,11 +171,13 @@ jobs:
           UNIT: ${{ needs.unit.result }}
           BROWSER: ${{ needs.browser.result }}
           DOMAIN: ${{ needs.domain.result }}
+          FINANCE_RECOVERY_WINDOWS: ${{ needs.finance-recovery-windows.result }}
         run: |
           test "$COMPILE" = success
           test "$UNIT" = success
           test "$BROWSER" = success
           test "$DOMAIN" = success
+          test "$FINANCE_RECOVERY_WINDOWS" = success
       - uses: actions/download-artifact@v4
         if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
         with:
