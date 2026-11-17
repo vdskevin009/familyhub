@@ -1,7 +1,7 @@
 import {FinanceAccountCapturesStore,legacyInventoryCapture,accountCaptureId} from '../apps/worker/src/finance-account-captures-store.ts';
 import {prepareCloudAccountCapture} from '../apps/worker/src/finance-cloud-account-captures.ts';
 import test from 'node:test';import assert from 'node:assert/strict';
-import {mkdtemp,mkdir,writeFile,readFile} from 'node:fs/promises';import {join} from 'node:path';import {tmpdir} from 'node:os';import {createHash} from 'node:crypto';
+import {mkdtemp,mkdir,writeFile,readFile,realpath} from 'node:fs/promises';import {join} from 'node:path';import {tmpdir} from 'node:os';import {createHash} from 'node:crypto';
 import {parseNativeFinanceCsv} from '../apps/worker/src/finance-cloud-native.ts';
 import {financeFixture} from './finance-fixture.mjs';
 import {FinanceLibrary} from '../apps/worker/src/finance-library.ts';
@@ -13,7 +13,9 @@ import {beginScheduledFinance,finalizeScheduledFinance} from '../apps/worker/src
 import {saveCloudFinanceBaseline,produceCloudFinanceReport,cloudFinanceVerifiers} from '../apps/worker/src/finance-cloud-readback.ts';
 const sha=b=>createHash('sha256').update(b).digest('hex');
 export async function fixture({mapped=false,skipAccountCapture=false,history=false,beforeIntakes=false,retainedInventory=false,inferencePolicy=false}={}){
- const directory=await mkdtemp(join(tmpdir(),'cloud-readback-synthetic-')),evidenceDirectory=join(directory,'private-evidence');await mkdir(evidenceDirectory);
+ // Windows hosted runners may expose TEMP through an 8.3 alias. Construct fixtures
+ // under its real path; production recovery deliberately rejects aliased inputs.
+ const directory=await mkdtemp(join(await realpath(tmpdir()),'cloud-readback-synthetic-')),evidenceDirectory=join(directory,'private-evidence');await mkdir(evidenceDirectory);
  const ref=async(name,value)=>{const bytes=JSON.stringify(value);await writeFile(join(evidenceDirectory,name),bytes);return {path:name,sha256:sha(bytes)}};
  const pair=async(name,value)=>({capture:await ref(name+'.json',value),archive:await ref(name+'-raw-archive.json',value)});
  const library=new FinanceLibrary(join(directory,'finances'));await library.import({bundle:financeFixture(),apply:true,expectedRevision:'empty'});
