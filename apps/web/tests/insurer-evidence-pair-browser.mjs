@@ -24,6 +24,18 @@ const rows=['Scaling, Two units','Root Planing, Two units'].flatMap((label,i)=>[
  {...common,Id:`dj-${i}`,Fingerprint:`dj-${i}`,Provider:'Desjardins',ClaimedService:i?'APLAN. DE RACINES':'DÉTARTRAGE DEUX UNITÉS',Insurer:'desjardins',StructuredSource:'desjardins-portal',ReimbursedAmount:112,DetectedAmount:112},
  {...common,Id:`bc-${i}`,Fingerprint:`bc-${i}`,Provider:'Blue Cross',ClaimedService:label,Insurer:'blue-cross',StructuredSource:'blue-cross-portal',ReimbursedAmount:28,DetectedAmount:28}
 ]);
+async function openCoverageDetails(page) {
+ const coverage=page.getByRole('region',{name:'Insurer collection coverage'});
+ const details=coverage.locator(':scope > details'),summary=details.locator(':scope > summary');
+ await summary.getByText(/\d+ source\(s\) à vérifier/).waitFor();
+ assert.equal(await details.getAttribute('open'),null,'Coverage starts compact without hiding the warning');
+ assert.match(await summary.innerText(),/Blue Cross/,'The compact warning identifies the affected provider');
+ assert.match(await summary.innerText(),/données possiblement incomplètes/,'Incomplete-source context is visible before opening detail');
+ assert.equal(await coverage.getByRole('button',{name:'Review Sources',exact:true}).isVisible(),true,'The source action remains immediately available');
+ await summary.click();
+ assert.notEqual(await details.getAttribute('open'),null,'Native disclosure opens the full coverage evidence');
+ return coverage;
+}
 let browser;
 try {
  browser=await chromium.launch({headless:true,channel:process.platform==='win32'?'msedge':undefined});
@@ -49,8 +61,12 @@ try {
   });
   await page.goto(base);
   await page.getByText(/Gmail sign-in required on the PC/).waitFor();
-  await page.getByText(/Collection complete; 1 insurer record needs review before matching/).waitFor();
+  const coverage=await openCoverageDetails(page);
+  await coverage.getByText(/Collection complete; 1 insurer record needs review before matching/).waitFor();
   assert.equal(await page.getByText(/Collection incomplete\. Recent payments may be missing/).count(),0);
+  await page.locator('.reimbursement-totals > summary').click();
+  assert.equal(await page.getByRole('link',{name:'Desjardins history',exact:true}).isVisible(),true);
+  assert.equal(await page.getByRole('link',{name:'Blue Cross history',exact:true}).isVisible(),true);
   assert.equal(await page.getByRole('link',{name:'Desjardins history',exact:true}).getAttribute('href'),'?view=desjardins');
   assert.equal(await page.getByRole('link',{name:'Blue Cross history',exact:true}).getAttribute('href'),'?view=blue-cross');
   await page.getByText(/Potential to recover is the outstanding balance, not payment history/).waitFor();
@@ -87,7 +103,7 @@ try {
       ? {state:'login-required',authReason:state==='legacy-layout'?'layout-changed':'login-incomplete',lastSuccess}
       : {state:'error',error:'Blue Cross claims history could not be opened from the member page. No complete collection was made. Saved claims remain unchanged. Review the history on the PC before trying again.',lastSuccess};
     await page.reload();
-    const coverage=page.getByRole('region',{name:'Insurer collection coverage'});
+    const coverage=await openCoverageDetails(page);
     await coverage.getByText(state!=='history-error'?/Insurer history unavailable/:/Collection incomplete/).waitFor();
     assert.doesNotMatch(await coverage.innerText(),/sign.in required|session expired|reconnect/i);
     await coverage.getByRole('button',{name:'Review Sources'}).first().click();
