@@ -48,6 +48,7 @@ import "../finance-source-inventory.css";
 import InfoPopover from "../ui/InfoPopover";
 import "../compact-finances.css";
 import "../finance-journeys.css";
+import "../finance-visual.css";
 const money = (cents: number, currency = "CAD") =>
     new Intl.NumberFormat("fr-CA", { style: "currency", currency }).format(
         cents / 100,
@@ -77,15 +78,19 @@ function Bars({
     onSelect,
     currency = "CAD",
     scale,
+    signed = values.some(value => value.cents < 0),
 }: {
     values: { id: string; label: string; cents: number; note?: string }[];
     onSelect?: (id: string) => void;
     currency?: string;
     scale?: number;
+    signed?: boolean;
 }) {
     const max = scale ?? Math.max(1, ...values.map((v) => Math.abs(v.cents)));
     return (
-        <ul className="finance-bars">
+        <>
+        {signed && <p className="finance-signed-legend" aria-hidden="true"><span>Remboursements</span><span>0</span><span>Dépenses</span></p>}
+        <ul className={`finance-bars${signed ? " finance-bars-signed" : ""}`}>
             {values.map((v) => (
                 <li key={v.id}>
                     <button
@@ -106,7 +111,8 @@ function Bars({
                                 className={v.cents < 0 ? "negative" : ""}
                                 style={{
                                     width:
-                                        (Math.abs(v.cents) / max) * 100 + "%",
+                                        (Math.abs(v.cents) / max) * (signed ? 50 : 100) + "%",
+                                    ...(signed ? { left: `${v.cents < 0 ? 50 - Math.abs(v.cents) / max * 50 : 50}%` } : {}),
                                 }}
                             />
                         </span>
@@ -114,6 +120,7 @@ function Bars({
                 </li>
             ))}
         </ul>
+        </>
     );
 }
 function Benchmarks({
@@ -703,7 +710,7 @@ export default function FinancesView({
                     </button>
                 </div>
             )}
-            {paired && tab !== "contributions" && !loading && !data && !error && (
+            {paired && tab !== "contributions" && tab !== "investments" && !loading && !data && !error && (
                 <div className="surface">
                     <h2>Aucun historique importé</h2>
                     <p>
@@ -748,16 +755,16 @@ export default function FinancesView({
                             </p>
                                         <p>Remboursements déduits. Totaux par date d’opération. La vue annuelle conserve les mois partiels et les lacunes; elle n’extrapole pas une année complète.</p>
                                         <p>{summary.reviewCount} opérations à revoir · {summary.unreviewedCount} suggestions non confirmées.</p>
+                                        <p>Mouvements de la période, pas un solde bancaire disponible.</p>
                                     </InfoPopover></div></div>
                                     {summary.included.length>0 && <p className="finance-total-formula">{money(summary.included.filter(r => r.outflowCents > 0).reduce((sum, r) => sum + r.outflowCents, 0), currency)} de dépenses − {money(-summary.included.filter(r => r.outflowCents < 0).reduce((sum, r) => sum + r.outflowCents, 0), currency)} remboursés</p>}
-                                    <p className="muted">Mouvements de la période, pas un solde bancaire disponible.</p>
                                     <button id="finance-open-operations" className="button secondary finance-operations-link" onClick={showOperations}>Voir les opérations</button>
                                     <h2>Où va l’argent ?</h2>
                                     {summary.included.length ? (
                                         <>
-                                            <Bars currency={currency} values={expenseValues.slice(0, 5)} scale={expenseScale} onSelect={key => openCategory(key as ExpenseCategory)} />
+                                            <Bars currency={currency} values={expenseValues.slice(0, 5)} scale={expenseScale} signed={expenseValues.some(value => value.cents < 0)} onSelect={key => openCategory(key as ExpenseCategory)} />
                                             {expenseValues.length > 5 && <details className="finance-more-categories"><summary>Autres catégories ({expenseValues.length - 5})</summary>
-                                                <Bars currency={currency} values={expenseValues.slice(5)} scale={expenseScale} onSelect={key => openCategory(key as ExpenseCategory)} />
+                                                <Bars currency={currency} values={expenseValues.slice(5)} scale={expenseScale} signed={expenseValues.some(value => value.cents < 0)} onSelect={key => openCategory(key as ExpenseCategory)} />
                                             </details>}
                                         </>
                                     ) : (

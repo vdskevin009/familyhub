@@ -1,0 +1,34 @@
+/* Compact evidence-first overview; every detailed source/action stays available. */
+.reimbursement-app-view .coverage-overview {
+  display: flex; align-items: flex-start; gap: 12px; padding: 10px 14px;
+  border: 1px solid #e2cda5; border-radius: var(--radius); background: var(--warning-soft);
+}
+.coverage-overview > details { flex: 1; min-width: 0; }
+.coverage-overview > details > summary { display: flex; gap: 9px; align-items: center; min-height: 44px; color: var(--warning); }
+.coverage-overview summary > span { display: grid; gap: 3px; }
+.coverage-overview summary strong { font-size: 13px; }
+.coverage-overview summary small { font-size: 11px; color: var(--warning); }
+.coverage-overview > .text-action { color: var(--warning); flex: 0 0 auto; min-height: 44px; }
+.coverage-overview .collection-warning { border: 0; background: transparent; padding: 10px 0; }
+.coverage-overview .collection-warning p { font-size: 12px; }
+.reimbursement-app-view .claim-scope-summary { grid-template-columns: minmax(0, 1fr); gap: 10px; }
+.reimbursement-app-view .reimbursement-family-scopes { gap: 7px; }
+.reimbursement-app-view .family-scope-card { min-height: 58px; padding: 8px 12px; }
+.reimbursement-app-view .scope-recovery { font-size: 14px; }
+.reimbursement-app-view .reimbursement-totals { border-color: var(--accent-line); background: var(--surface); border-radius: var(--radius); }
+.reimbursement-app-view .reimbursement-totals > summary { padding: 18px 20px; min-height: 118px; }
+.reimbursement-app-view .reimbursement-totals > summary > span:first-child { display: grid; gap: 5px; }
+.reimbursement-app-view .reimbursement-totals > summary strong { font-size: clamp(29px, 5vw, 36px); line-height: 1.12; color: var(--accent); letter-spacing: -.035em; }
+.reimbursement-app-view .reimbursement-totals > summary small { font-size: 12px; }
+.reimbursement-summary > .privacy-note { grid-column: 1 / -1; font-size: 12px; }
+.reimbursement-app-view .expense-card { gap: 10px; }
+.reimbursement-app-view .expense-amounts { background: transparent; padding: 12px 0; }
+.reimbursement-app-view .expense-amounts strong { font-size: 17px; }
+.reimbursement-app-view .expense-amounts .remaining { padding-block: 7px; margin-block: -7px; border-radius: 7px; background: var(--accent-soft); }
+.reimbursement-app-view .expense-amounts .remaining strong { color: var(--accent); }
+@media (max-width: 420px) {
+  .reimbursement-app-view .coverage-overview { flex-wrap: wrap; gap: 0; }
+  .coverage-overview > .text-action { padding-block: 4px; min-height: 36px; margin-left: 27px; }
+  .reimbursement-app-view .family-scope-card { padding-inline: 9px; }
+  .reimbursement-app-view .expense-amounts strong { font-size: 16px; }
+}

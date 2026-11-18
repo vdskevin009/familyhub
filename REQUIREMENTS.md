@@ -1,8 +1,16 @@
 # FamilyHub - Canonical Requirements
 
+## Existing-screen visual readiness - issue #307
+
+**FH-UX-002 — Testing.** Prioritize the existing product before the proposed cash forecast, reserves, outcome ledger or additional notification policies. Keep the current five primary destinations: Aujourd’hui, Remboursements, Finances, Projets and Plus. Retain source libraries, projects, tools, filters, history, manual decisions and detailed actions. This navigation supersedes the historical Claims-first clause in FH-UX-001 and the older destination names in FH-PROACTIVE-002; their other safeguards remain in force.
+
+Present existing evidence with prominent qualified amounts, labelled comparable bars, compact action/status rows and on-demand detail. Keep unknowns, stale/partial coverage, currencies, refunds, non-guaranteed estimates and observed versus forecast payments distinct. No absent amount becomes zero and no successful API read becomes a new collection date. The first useful Today action precedes aggregate summaries. Informational notices do not imply success.
+
+Guard reads and async continuations when leaving/changing connection; select one primary navigation item; preserve keyboard access, focus restoration and all workflows at narrow/mobile/desktop widths. Frontend presentation only: no new financial feature, worker/API/schema change, external action, notification sending or schedule. Code references: existing Today/Finances/Reimbursements/Savings/Notifications views, `apps/web/src/navigation.ts`, `apps/web/src/ui` and scoped styles. Validation/release: `docs/VISUAL-READINESS.md` and issue #307.
+
 ## Daily reliability audit - issue #305
 
-Implemented locally on `fix/daily-reliability-audit-20261117`; release and installed-worker acceptance remain separate.
+Merged in PR #306 as `1382dcf4d192d747630f3b400f69d9b9827b728c`; full CI, published PWA and scoped existing-worker activation/preservation are verified. Next natural runs and physical-phone receipt remain separate acceptance gates in issue #305.
 
 - **FH-OPS-001:** The daily mail runner uses the existing configured worker and waits briefly for its supervisor to restore health. Failed health/authentication must not spawn another worker or overwrite its logs. An initially busy collection that finishes with an uncertain failure must not be replayed; explicit `continuationReady: true` still permits the established bounded invoice continuation. Existing schedules and independent grocery outcome are preserved.
 - **FH-MAIL-008:** Persist only allowlisted plugin failure codes/stages, boolean diagnostic flags and bounded counters in the existing runtime status. Preserve them across restart, clear them on success, and expose copies in paired invoice/grocery status. Never retain raw errors, account identifiers, URLs, request arguments or tool output. This improves future diagnosis; it cannot recover previously discarded evidence or authorize retries.

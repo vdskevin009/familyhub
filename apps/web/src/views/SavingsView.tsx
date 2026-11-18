@@ -24,6 +24,7 @@ import { recurringCategories as categories } from "../recurring-presentation";
 import SourceText from "../ui/SourceText";
 import "../compact-finances.css";
 import "../recurrents.css";
+import "../savings-visual.css";
 
 export default function SavingsView({ hub, onNavigate }: { hub: HubState; onNavigate: (view: AppView) => void }) {
   const contracts = effectiveContracts(hub.savings), reviews = hub.savings.Reviews ?? [];
@@ -77,6 +78,7 @@ export default function SavingsView({ hub, onNavigate }: { hub: HubState; onNavi
   const [starting, setStarting] = useState(false), startingRef = useRef(false);
   const [filter, setFilter] = useState<SavingsCategory | "all">("all");
   const [finance, setFinance] = useState<FinanceState | null>(null), [financeError, setFinanceError] = useState("");
+  const [financeLoading, setFinanceLoading] = useState(Boolean(hub.worker.Endpoint && hub.worker.ApiKey));
   const [period, setPeriod] = useState(() => { const now=new Date();return calendarPeriod(now.getFullYear(),now.getMonth()+1); });
   const [optionsOpen,setOptionsOpen]=useState(false), [reviewOpen,setReviewOpen]=useState(false), [periodOpen,setPeriodOpen]=useState(false);
   const optionsTrigger=useRef<HTMLButtonElement>(null), reviewTrigger=useRef<HTMLButtonElement>(null), periodTrigger=useRef<HTMLButtonElement>(null);
@@ -101,11 +103,11 @@ export default function SavingsView({ hub, onNavigate }: { hub: HubState; onNavi
   }
   useEffect(() => {
     let cancelled = false;
-    setFinance(null); setFinanceError("");
+    setFinance(null); setFinanceError(""); setFinanceLoading(Boolean(hub.worker.Endpoint && hub.worker.ApiKey));
     if (hub.worker.Endpoint && hub.worker.ApiKey) void fetchFinances(hub.worker).then(saved => {
       if (cancelled) return;
       setFinance(saved?.schema === 1 ? saved : null);
-    }).catch(() => { if (!cancelled) setFinanceError("Historique bancaire indisponible. Les références contractuelles restent visibles; aucun montant payé n’est présumé."); });
+    }).catch(() => { if (!cancelled) setFinanceError("Historique bancaire indisponible. Les références contractuelles restent visibles; aucun montant payé n’est présumé."); }).finally(() => { if (!cancelled) setFinanceLoading(false); });
     return () => { cancelled = true; };
   }, [hub.worker.Endpoint, hub.worker.ApiKey]);
   const payments = reconcilePayments(contracts, finance, period.from, period.to);
@@ -186,11 +188,11 @@ export default function SavingsView({ hub, onNavigate }: { hub: HubState; onNavi
     </div>
     <Sheet open={periodOpen} onClose={closePeriod} title="Période des paiements"><PeriodNavigator range={period} onChange={setPeriod} scope={finance?.data?.scope} label="Période des paiements"/><button type="button" className="button" onClick={closePeriod}>Voir les paiements</button></Sheet>
     {financeError && <Notice error>{financeError}</Notice>}
-    {!finance?.data && <p className="muted">Ouvrez Finances pour importer l’historique bancaire. Seules les références explicitement TTC peuvent être affichées; les autres montants restent à compléter.</p>}
+    {!financeLoading && !finance?.data && !financeError && <button type="button" className="recurring-source-link" onClick={()=>onNavigate("finances")}><span>Historique bancaire à importer<small>Les références contractuelles restent visibles.</small></span><ChevronRight size={18}/></button>}
     {period.from > period.to && <Notice error>La date de début doit précéder la date de fin.</Notice>}
-    <SavingsPayments result={payments} contracts={visibleContracts} range={period} onMonth={setPeriod} />
+    <SavingsPayments result={payments} contracts={visibleContracts} range={period} onMonth={setPeriod} loading={financeLoading} />
     {reviewCount>0 && <button type="button" className="recurring-review-banner" ref={reviewTrigger} aria-haspopup="dialog" onClick={()=>setReviewOpen(true)}><strong>{reviewCount} élément(s) à vérifier</strong><ChevronRight size={18}/></button>}
-    <div className="savings-toolbar recurring-contract-toolbar"><h2>Contrats</h2><label><span className="sr-only">Filtrer les contrats</span><select aria-label="Filtrer les contrats" value={filter} onChange={event=>setFilter(event.target.value as typeof filter)}><option value="all">Tous les contrats</option>{Object.entries(categories).map(([key,label])=><option value={key} key={key}>{label}</option>)}</select></label></div>
+    <div className="savings-toolbar recurring-contract-toolbar"><h2>Contrats <span className="recurring-contract-count">{visibleContracts.length}</span></h2><label><span className="sr-only">Filtrer les contrats</span><select aria-label="Filtrer les contrats" value={filter} onChange={event=>setFilter(event.target.value as typeof filter)}><option value="all">Tous les contrats</option>{Object.entries(categories).map(([key,label])=><option value={key} key={key}>{label}</option>)}</select></label></div>
     <RecurringServices contracts={visibleContracts} summaries={payments.summaries} onOpen={openDetails} />
     {savedComparisons.length > 0 && <details className="saved-comparisons" onKeyDown={e => { if (e.key === "Escape") { e.currentTarget.open = false; e.currentTarget.querySelector("summary")?.focus(); } }}>
       <summary>Comparaisons disponibles <span className="count-badge">{savedComparisons.length}</span><small>À examiner, pas une économie réalisée</small></summary>

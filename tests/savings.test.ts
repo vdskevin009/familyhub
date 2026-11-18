@@ -9,7 +9,7 @@ import { effectiveContracts } from "../apps/web/src/savings";
 import { BillingCycle, type SavingsState } from "../apps/web/src/types";
 import { calendarPeriod, periodMode, shiftPeriod, defaultPeriod } from "../apps/web/src/finance-periods";
 import { reconcilePayments, providerMatches } from "../apps/web/src/savings-payments";
-import { recurringAmount, recurringPaidTotals } from "../apps/web/src/recurring-presentation";
+import { recurringAmount, recurringPaidTotals, recurringPaidCategories } from "../apps/web/src/recurring-presentation";
 import { parseFinancePreparation } from "../apps/worker/src/finance-import";
 import type { FinanceState, FinanceTransaction, Nature } from "../apps/worker/src/finance-model";
 import { financeFixture } from "./finance-fixture.mjs";
@@ -39,10 +39,22 @@ test("compact paid totals retain real zero, negative refunds and separate curren
   const contracts=[cad,usd,unknown],before=JSON.stringify([contracts,state]);
   const result=reconcilePayments(contracts,state,"2026-09-01","2026-09-30");
   assert.deepEqual(recurringPaidTotals(contracts,result.summaries),{CAD:{cents:0,matched:1,missing:1},USD:{cents:1500,matched:1,missing:0}});
+  assert.equal(recurringAmount(cad,result.summaries[0]).date,null,"A period total with a payment and refund cannot be dated as one payment");
+  assert.deepEqual(recurringPaidCategories(contracts,result.summaries),{CAD:[{category:"telecom",cents:0,matched:1}],USD:[{category:"subscription",cents:1500,matched:1}]});
   const refundOnly=reconcilePayments(contracts,state,"2026-09-05","2026-09-05");
   assert.equal(recurringPaidTotals([cad],refundOnly.summaries).CAD.cents,-9500);
+  assert.deepEqual(recurringPaidCategories([cad],refundOnly.summaries),{CAD:[{category:"telecom",cents:-9500,matched:1}]});
+  assert.deepEqual(recurringPaidCategories([unknown],result.summaries),{},"Unknown and reference amounts have no chart bar");
   assert.deepEqual(recurringPaidTotals([unknown],result.summaries).CAD,{cents:null,matched:0,missing:1});
   assert.deepEqual(recurringPaidTotals([],result.summaries),{});
+  assert.equal(JSON.stringify([contracts,state]),before);
+});
+test("recurring breakdown aggregates contracts once and ranks net payments without changing evidence", () => {
+  const contracts=[{...newContract("telecom","telus"),provider:"TELUS",services:[{id:"component",name:"Documented component",pricing:"documented" as const,monthlyAmount:30,taxesIncluded:true,source:"Synthetic"}]},{...newContract("telecom","shaw"),provider:"Shaw"},{...newContract("subscription","music"),provider:"Spotify"},{...newContract("other","reference"),provider:"Reference",price:400,taxesIncluded:true}];
+  const state=paymentState();state.data!.transactions=[payment("telus","TELUS SYNTHETIC","2026-09-01",5000),payment("shaw","SHAW SYNTHETIC","2026-09-02",6000),payment("spotify","SPOTIFY SYNTHETIC","2026-09-03",2000)];
+  const before=JSON.stringify([contracts,state]), result=reconcilePayments(contracts,state,"2026-09-01","2026-09-30");
+  assert.deepEqual(recurringPaidCategories(contracts,result.summaries),{CAD:[{category:"telecom",cents:11000,matched:2},{category:"subscription",cents:2000,matched:1}]});
+  assert.deepEqual(recurringPaidCategories([contracts[2]],result.summaries),{CAD:[{category:"subscription",cents:2000,matched:1}]},"Category filtering must not retain payments from other contracts");
   assert.equal(JSON.stringify([contracts,state]),before);
 });
 test("recurring review periods retain ambiguous evidence without paid totals or source mutation", () => {

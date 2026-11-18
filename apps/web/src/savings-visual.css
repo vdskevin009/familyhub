@@ -1,0 +1,60 @@
+/* Existing recurring payments: observed totals first, evidence remains in detail. */
+.savings-view .recurring-paid { background:var(--surface); color:var(--ink); border:1px solid var(--line); padding:24px; border-radius:var(--radius); gap:20px; }
+.savings-view .recurring-paid h2 { font-size:14px; text-transform:none; letter-spacing:normal; font-weight:600; }
+.savings-view .recurring-paid small, .savings-view .recurring-paid .muted { color:var(--muted); font-size:13px; line-height:1.45; }
+.savings-view .recurring-paid .info-trigger { color:var(--muted); }
+.savings-view .recurring-paid .recurring-currency-groups { display:grid; gap:24px; }
+.savings-view .recurring-currency-group { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:28px; align-items:start; }
+.recurring-currency-group + .recurring-currency-group { border-top:1px solid var(--line); padding-top:24px; }
+.recurring-paid-summary { display:grid; gap:10px; align-content:start; min-width:0; }
+.savings-view .recurring-paid .finance-totals, .savings-view .recurring-paid .finance-totals > div { min-width:0; }
+.savings-view .recurring-paid .recurring-paid-amount strong { color:var(--ink); font-size:clamp(30px,5vw,44px); letter-spacing:-.035em; font-weight:700; line-height:1.15; overflow-wrap:anywhere; font-variant-numeric:tabular-nums; }
+.savings-view .recurring-paid .recurring-paid-amount strong.recurring-unavailable { font-size:28px; letter-spacing:-.02em; }
+.savings-view .recurring-paid .recurring-paid-amount small { display:block; margin-top:8px; }
+.recurring-coverage { justify-self:start; margin-top:10px; color:var(--accent); font-size:13px; font-weight:600; }
+.recurring-coverage.partial { color:var(--muted); }
+.recurring-coverage-track, .recurring-category-track { display:block; overflow:hidden; border-radius:3px; background:var(--accent-soft); }
+.recurring-coverage-track { height:5px; max-width:240px; }
+.recurring-coverage-track > span, .recurring-category-track > span { height:100%; display:block; background:var(--accent); border-radius:inherit; }
+.recurring-breakdown { min-width:0; border-left:1px solid var(--line); padding-left:28px; }
+.recurring-breakdown h3 { color:var(--muted); font-size:13px; font-weight:600; margin:0 0 16px; }
+.recurring-breakdown ul { list-style:none; padding:0; margin:0; display:grid; gap:16px; }
+.recurring-breakdown li { display:grid; gap:7px; }
+.recurring-breakdown li > div { display:flex; align-items:baseline; justify-content:space-between; gap:12px; font-size:14px; line-height:1.4; }
+.recurring-breakdown li > div > span { min-width:0; overflow-wrap:anywhere; }
+.savings-view .recurring-paid .recurring-breakdown strong { color:var(--ink); font-size:14px; line-height:1.4; letter-spacing:normal; white-space:nowrap; font-weight:600; font-variant-numeric:tabular-nums; }
+.recurring-category-track { height:7px; }
+.savings-view .recurring-refund strong, .savings-view .recurring-paid .recurring-breakdown .recurring-refund strong { color:var(--success); }
+.recurring-refund .recurring-category-track > span { background:var(--success); }
+.recurring-loading { min-height:96px; display:flex; align-items:center; color:var(--muted); margin:0; }
+.savings-view .savings-months { border-top:1px solid var(--line); padding-top:16px; }
+.savings-view .savings-months > summary { font-size:14px; color:var(--accent); }
+.recurring-source-link { display:flex; align-items:center; justify-content:space-between; gap:16px; width:100%; border:1px solid var(--line); border-radius:var(--radius); padding:14px 16px; background:var(--surface); color:var(--ink); text-align:left; font:inherit; font-size:14px; }
+.recurring-source-link small { display:block; color:var(--muted); font-size:13px; margin-top:4px; }
+.recurring-contract-count { display:inline-grid; place-items:center; min-width:24px; padding:3px 7px; margin-left:6px; border-radius:6px; background:var(--accent-soft); color:var(--accent); font-size:13px; font-weight:600; vertical-align:middle; }
+.savings-view .recurring-contract-toolbar { margin-top:4px; }
+.savings-view .recurring-contract-toolbar select { font-size:14px; }
+.savings-view .recurring-contracts .recurring-package { padding:18px 0; gap:14px; }
+.savings-view .recurring-row-copy { gap:3px; }
+.savings-view .recurring-row-copy strong { font-weight:600; line-height:1.4; }
+.savings-view .recurring-row-copy small, .savings-view .recurring-row-amount small { font-size:13px; line-height:1.4; }
+.savings-view .recurring-row-copy .recurring-payment-basis { font-size:12px; }
+.savings-view .recurring-row-amount strong { font-size:17px; font-weight:600; }
+.savings-view .recurring-package:hover { background:var(--accent-soft); }
+@media(max-width:600px) {
+  .savings-view .recurring-paid { padding:20px; gap:18px; }
+  .savings-view .recurring-currency-group { grid-template-columns:minmax(0,1fr); gap:22px; }
+  .recurring-breakdown { border-left:0; border-top:1px solid var(--line); padding:18px 0 0; }
+  .recurring-breakdown h3 { margin-bottom:14px; }
+  .recurring-breakdown ul { gap:14px; }
+  .recurring-coverage-track { max-width:none; }
+  .savings-view .recurring-contract-toolbar select { font-size:16px; }
+}
+@media(max-width:380px) {
+  .savings-view .recurring-paid { padding:16px; }
+  .savings-view .recurring-contracts .recurring-package { grid-template-columns:32px minmax(0,1fr) auto; gap:8px; }
+  .savings-view .recurring-monogram { width:32px; height:36px; border-radius:8px; }
+  .savings-view .recurring-row-copy strong { font-size:14px; }
+  .savings-view .recurring-row-amount strong { font-size:14px; }
+  .savings-view .recurring-row-copy small { font-size:12px; }
+}

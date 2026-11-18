@@ -5,6 +5,7 @@ import { PageHeader, Sheet } from "../ui/primitives";
 import { contributionMetrics, type ContributionCard, type ContributionPayment, type ContributionsSnapshot } from "../contributions";
 import { fetchContributions } from "../contributions-api";
 import "../contributions.css";
+import "../finance-visual.css";
 
 const title = (kind: ContributionCard["kind"]) => kind === "rrsp" ? "REER" : "REEE";
 const money = (cents: number, currency: string) => new Intl.NumberFormat("fr-CA", { style: "currency", currency, maximumFractionDigits: 2 }).format(cents / 100);
@@ -74,10 +75,11 @@ export default function ContributionsView({ worker, embedded = false }: { worker
       return <article key={kind} className={`contribution-card${m.reached ? " reached" : m.effort ? " effort" : ""}`} aria-labelledby={`contribution-${kind}`}>
         <header><div><h2 id={`contribution-${kind}`}>{title(kind)}</h2>{kind === "resp" && <p>{plan.beneficiary || "Bénéficiaire"}{!plan.beneficiaryConfirmed && " · à confirmer"}</p>}</div>{m.reached && <span className="contribution-achieved"><Check size={16} aria-hidden="true" />Objectif atteint</span>}</header>
         <div className="contribution-goal"><span>Objectif personnel</span><strong>{money(plan.goalCents, plan.currency)}</strong></div>
-        <div className="contribution-progress-label"><span><strong>{money(plan.identifiedCents, plan.currency)}</strong> identifiés</span><strong>{new Intl.NumberFormat("fr-CA", {maximumFractionDigits: 1}).format(m.percent)} %</strong></div>
+        <div className="contribution-progress-label"><span><strong>{money(plan.identifiedCents, plan.currency)}</strong><span>Versements identifiés</span></span><strong>{new Intl.NumberFormat("fr-CA", {maximumFractionDigits: 1}).format(m.percent)} %</strong></div>
         <progress max={100} value={Math.min(100, m.percent)} aria-label={`${title(kind)} : versements identifiés par rapport à l’objectif personnel`} aria-valuetext={`${money(plan.identifiedCents, plan.currency)} identifiés sur ${money(plan.goalCents, plan.currency)}`} />
         {inferenceLabel(plan.inferenceStatus) && <p className="contribution-inferred-summary">{inferenceLabel(plan.inferenceStatus)}</p>}
-        {(plan.inferredCents ?? 0) > 0 && <p className="contribution-inferred-summary"><strong>{money(plan.inferredCents!, plan.currency)}</strong> à attribution déduite<br /><span>Séparés du total identifié · réception non confirmée</span></p>}
+        {(plan.inferredCents ?? 0) > 0 && <p className="contribution-inferred-summary"><strong>{money(plan.inferredCents!, plan.currency)}</strong> déduits, hors total<br /><span>Réception non confirmée</span></p>}
+        {kind === "rrsp" && plan.weeklyForecast && <div className="contribution-forecast-summary"><span>À venir · estimation</span><strong>{money(m.forecastCents, plan.currency)}</strong><small>Hors progression</small></div>}
         <div className="contribution-bottom"><div><span>{kind === "rrsp" ? "Restant après prévision" : "Restant"}</span><strong>{money(m.remainingCents, plan.currency)}</strong></div><div><span>Temps restant</span><strong>{m.remainingDays === 0 ? "Échéance atteinte" : `${m.months} mois ${m.days} j`}</strong></div></div>
         <div className="contribution-state">{uncertain ? <span><CircleAlert size={16} aria-hidden="true" />{kind === "resp" && !plan.beneficiaryConfirmed ? "Bénéficiaire à confirmer" : "Attribution à confirmer"}</span> : null}{m.effort && <span><CircleAlert size={16} aria-hidden="true" />{m.remainingDays === 0 ? "Effort restant après échéance" : "Effort supérieur à 1 000 $/mois"}</span>}{plan.warnings.length > 0 && <span>Données partielles · voir les versements</span>}</div>
         <button type="button" className="contribution-open" aria-label={`Voir les versements ${title(kind)}`} onClick={() => setSelected(plan)}>Voir les versements<ChevronRight size={18} aria-hidden="true" /></button>

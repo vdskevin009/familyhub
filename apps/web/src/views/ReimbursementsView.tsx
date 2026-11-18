@@ -18,6 +18,8 @@ import { applicableInsurerPreview, insurerSyncMessage, insurerCollectionNeedsRef
 import { useMutations } from "../ui/use-mutations";
 import { fetchPortalReconnect, reconnectPortal, type PortalReconnect } from "../worker";
 import { requireSaved } from "../ui/mutation-queue";
+import { sumKnownAmounts } from "../ui/known-amount";
+import "../reimbursements-visual.css";
 
 type Props = { hub: HubState };
 const statusCopy: Record<ReimbursementCaseStatus, string> = {
@@ -32,6 +34,10 @@ function money(value: number | null | undefined, code = "CAD"): string {
   if (value === null || value === undefined || !Number.isFinite(value)) return "—";
   try { return new Intl.NumberFormat("en-CA", { style: "currency", currency: code || "CAD" }).format(value); }
   catch { return `${value.toFixed(2)} ${code || "CAD"}`; }
+}
+
+function SummaryAmount({ label, value, caption }: { label: string; value: ReturnType<typeof sumKnownAmounts>; caption: string }) {
+  return <article><small>{label}</small><strong>{money(value.amount)}{value.unknown > 0 && value.amount !== null ? " + ?" : ""}</strong><span>{value.unknown ? `${value.unknown} montant(s) à confirmer` : caption}</span></article>;
 }
 
 function dateValue(value: string | null | undefined): number {
@@ -76,6 +82,7 @@ export default function ReimbursementsView({ hub }: Props) {
   const reconnectBusy = Object.values(reconnects).some(job => job?.state === "running");
   const [query, setQuery] = useSessionValue("claims.query", "", (value): value is string => typeof value === "string");
   const refreshEpoch = useRef(0);
+  const activeConnection = useRef<{ worker: HubState["worker"] } | null>(null);
   const [selectedClaimIds, setSelectedClaimIds] = useState<Set<string>>(() => new Set());
   const [bulkIgnoring, setBulkIgnoring] = useState(false);
   const [savedFilters, setSavedFilters] = useSessionValue<InvoiceHistoryFilter[]>("claims.details", [], (value): value is InvoiceHistoryFilter[] => Array.isArray(value) && value.every(item => ["fully-reimbursed", "not-fully-reimbursed", "primary", "secondary"].includes(item)));
@@ -98,13 +105,19 @@ export default function ReimbursementsView({ hub }: Props) {
   const paired = Boolean(hub.worker.Endpoint.trim() && hub.worker.ApiKey.trim());
   const manualActionsAvailable = !workerVersion || workerVersionAtLeast(workerVersion, manualReconciliationWorkerVersion);
 
+  function currentConnection() {
+    const connection = activeConnection.current;
+    return connection && connection.worker.Endpoint === hub.worker.Endpoint && connection.worker.ApiKey === hub.worker.ApiKey ? connection : null;
+  }
+
   async function refresh(quiet = false) {
-    if (!paired) return;
+    const connection = currentConnection();
+    if (!paired || !connection) return;
     const epoch = ++refreshEpoch.current;
     if (!quiet) { setBusy(true); setError(""); }
     try {
       const [snapshot, bc, dj] = await Promise.all([fetchInvoices(hub.worker), fetchBlueCrossStatus(hub.worker).catch(() => null), fetchDesjardinsStatus(hub.worker).catch(() => null)]);
-      if (epoch !== refreshEpoch.current) return;
+      if (epoch !== refreshEpoch.current || connection !== activeConnection.current) return;
       setBlueCrossStatus(bc); setDesjardinsStatus(dj);
       hub.setReimbursements(previous => ({
         ...previous,
@@ -120,10 +133,10 @@ export default function ReimbursementsView({ hub }: Props) {
         IgnoredExpenses: snapshot.ignoredExpenses ?? [],
         InvoiceCoverage: snapshot.coverage
       }));
-      setLastSuccess(snapshot.lastSuccess || new Date().toISOString());
+      setLastSuccess(snapshot.lastSuccess || "");
       setInvoiceNotice(invoiceCollectionNotice(snapshot));
     } catch (err) {
-      if (epoch !== refreshEpoch.current) return;
+      if (epoch !== refreshEpoch.current || connection !== activeConnection.current) return;
       if (quiet) throw err;
       setError(err instanceof Error ? err.message : "The PC results could not be refreshed.");
     } finally { if (!quiet && epoch === refreshEpoch.current) setBusy(false); }
@@ -144,37 +157,48 @@ export default function ReimbursementsView({ hub }: Props) {
   }
 
   useEffect(() => {
-    if (!paired) { setWorkerVersion(""); return; }
+    let stopped = false;
+    activeConnection.current = paired ? { worker: hub.worker } : null;
+    setWorkerVersion(""); setBlueCrossStatus(null); setDesjardinsStatus(null); setLastSuccess("");
+    setBlueCrossBusy(false); setDesjardinsBusy(false);
+    if (!paired) { setBusy(false); setInvoiceNotice(null); return; }
     void refresh();
-    void testWorker(hub.worker).then(health => setWorkerVersion(health.version || "")).catch(() => setWorkerVersion(""));
-    void fetchBlueCrossStatus(hub.worker).then(setBlueCrossStatus).catch(() => setBlueCrossStatus(null));
-    void fetchDesjardinsStatus(hub.worker).then(setDesjardinsStatus).catch(() => setDesjardinsStatus(null));
+    void testWorker(hub.worker).then(health => { if (!stopped) setWorkerVersion(health.version || ""); }).catch(() => { if (!stopped) setWorkerVersion(""); });
+    return () => { stopped = true; activeConnection.current = null; ++refreshEpoch.current; };
   }, [paired, hub.worker.Endpoint, hub.worker.ApiKey]);
 
   const portalBusy = reconnectBusy || blueCrossStatus?.state === "syncing" || desjardinsStatus?.state === "syncing";
 
   async function runBlueCrossSync(apply: boolean) {
-    if (!paired || blueCrossBusy || desjardinsBusy || portalBusy) return;
+    const connection = currentConnection();
+    if (!paired || !connection || blueCrossBusy || desjardinsBusy || portalBusy) return;
     setBlueCrossBusy(true); setError(""); setBlueCrossResult(null);
     try {
       const result = await syncBlueCross(hub.worker, apply);
+      if (connection !== activeConnection.current) return;
       setBlueCrossResult(result);
       if (insurerCollectionNeedsRefresh(result, apply)) await refreshAppliedClaims();
-      setBlueCrossStatus(await fetchBlueCrossStatus(hub.worker));
-    } catch (err) { setError(err instanceof Error ? err.message : "Blue Cross sync failed."); }
-    finally { setBlueCrossBusy(false); }
+      if (connection !== activeConnection.current) return;
+      const status = await fetchBlueCrossStatus(hub.worker);
+      if (connection === activeConnection.current) setBlueCrossStatus(status);
+    } catch (err) { if (connection === activeConnection.current) setError(err instanceof Error ? err.message : "Blue Cross sync failed."); }
+    finally { if (connection === activeConnection.current) setBlueCrossBusy(false); }
   }
 
   async function runDesjardinsSync(apply: boolean) {
-    if (!paired || blueCrossBusy || desjardinsBusy || portalBusy) return;
+    const connection = currentConnection();
+    if (!paired || !connection || blueCrossBusy || desjardinsBusy || portalBusy) return;
     setDesjardinsBusy(true); setError(""); setDesjardinsResult(null);
     try {
       const result = await syncDesjardins(hub.worker, apply);
+      if (connection !== activeConnection.current) return;
       setDesjardinsResult(result);
       if (insurerCollectionNeedsRefresh(result, apply)) await refreshAppliedClaims();
-      setDesjardinsStatus(await fetchDesjardinsStatus(hub.worker));
-    } catch (err) { setError(err instanceof Error ? err.message : "Desjardins sync failed."); }
-    finally { setDesjardinsBusy(false); }
+      if (connection !== activeConnection.current) return;
+      const status = await fetchDesjardinsStatus(hub.worker);
+      if (connection === activeConnection.current) setDesjardinsStatus(status);
+    } catch (err) { if (connection === activeConnection.current) setError(err instanceof Error ? err.message : "Desjardins sync failed."); }
+    finally { if (connection === activeConnection.current) setDesjardinsBusy(false); }
   }
 
   async function refreshAppliedClaims() {
@@ -183,14 +207,15 @@ export default function ReimbursementsView({ hub }: Props) {
   }
 
   async function reconnect(insurer: "bluecross" | "desjardins") {
-    if (reconnectStarting.current || portalBusy || blueCrossBusy || desjardinsBusy) return;
+    const connection = currentConnection();
+    if (!connection || reconnectStarting.current || portalBusy || blueCrossBusy || desjardinsBusy) return;
     reconnectStarting.current = true;
     setError("");
     if (insurer === "bluecross") setBlueCrossResult(null); else setDesjardinsResult(null);
     try {
       const job = await reconnectPortal(hub.worker, insurer);
-      setReconnects(previous => ({ ...previous, [insurer]: job }));
-    } catch (err) { setError(err instanceof Error ? err.message : "Could not open insurer sign-in."); }
+      if (connection === activeConnection.current) setReconnects(previous => ({ ...previous, [insurer]: job }));
+    } catch (err) { if (connection === activeConnection.current) setError(err instanceof Error ? err.message : "Could not open insurer sign-in."); }
     finally { reconnectStarting.current = false; }
   }
 
@@ -341,12 +366,10 @@ export default function ReimbursementsView({ hub }: Props) {
   const finance = useMemo(() => {
     const cad = workflowScopedCases.filter(item => !item.PreviouslyFound && reimbursementWorkflowStatus(item) !== "ignore" && (item.Currency || "CAD") === "CAD");
     return {
-      totalPaid: cad.reduce((sum, item) => sum + (item.OriginalAmount ?? 0), 0),
-      primary: cad.reduce((sum, item) => sum + (primaryReimbursementAmount(item) ?? 0), 0),
-      secondary: cad.reduce((sum, item) => sum + (secondaryReimbursementAmount(item) ?? 0), 0),
-      desjardins: cad.reduce((sum, item) => sum + (namedInsurerReimbursementAmount(item, "Desjardins", invoiceById) ?? 0), 0),
-      blueCross: cad.reduce((sum, item) => sum + (namedInsurerReimbursementAmount(item, "Blue Cross", invoiceById) ?? 0), 0),
-      outstanding: cad.reduce((sum, item) => sum + (item.PotentialRemaining ?? 0), 0),
+      totalPaid: sumKnownAmounts(cad.map(item => item.OriginalAmount)),
+      desjardins: sumKnownAmounts(cad.map(item => namedInsurerReimbursementAmount(item, "Desjardins", invoiceById))),
+      blueCross: sumKnownAmounts(cad.map(item => namedInsurerReimbursementAmount(item, "Blue Cross", invoiceById))),
+      outstanding: sumKnownAmounts(cad.map(item => item.PotentialRemaining)),
       attention: workflowScopedCases.filter(item => reimbursementWorkflowStatus(item) === "open" && reimbursementCaseStatus(item) === "needs-attention").length
         + (workflowFilter === "open" || workflowFilter === "all" ? scopedUnmatched.length : 0)
     };
@@ -453,7 +476,11 @@ export default function ReimbursementsView({ hub }: Props) {
   const coverageWarnings = ([["Desjardins", desjardinsStatus], ["Blue Cross", blueCrossStatus]] as const).flatMap(([name, status]) => {
     const message = insurerCoverageNotice(status); return message ? [{ name, status, message }] : [];
   });
-  const coveragePanel = <section className="collection-coverage" aria-label="Insurer collection coverage">{coverageWarnings.map(({ name, status, message }) => <div className="collection-warning" key={name} role="status"><div><strong>{name}</strong><p>{message}</p><small>{status?.lastSuccess ? `Last complete read: ${new Date(status.lastSuccess).toLocaleString()}` : "No complete read confirmed"}</small></div><button type="button" className="button secondary compact-button" onClick={() => setSourcesOpen(true)} aria-haspopup="dialog">Review Sources</button></div>)}</section>;
+  const coveragePanel = coverageWarnings.length > 0 && <section className="collection-coverage coverage-overview" aria-label="Insurer collection coverage">
+    <details><summary><AlertTriangle size={18} aria-hidden="true" /><span><strong>{coverageWarnings.length} source(s) à vérifier</strong><small>{coverageWarnings.map(entry => entry.name).join(" · ")} — données possiblement incomplètes</small></span></summary>
+      {coverageWarnings.map(({ name, status, message }) => <div className="collection-warning" key={name} role="status"><div><strong>{name}</strong><p>{message}</p><small>{status?.lastSuccess ? `Last complete read: ${new Date(status.lastSuccess).toLocaleString()}` : "No complete read confirmed"}</small></div></div>)}
+    </details><button type="button" className="text-action" onClick={() => setSourcesOpen(true)} aria-haspopup="dialog">Review Sources</button>
+  </section>;
   return <div className={`view-stack reimbursement-app-view${linkedRecord ? " reimbursement-dossier-view" : ""}`}>
     {preparingExpense && <PrepareClaim key={preparingExpense} expenseId={preparingExpense}
       initialInsurer={preparingInsurer || (preparingNextInsurer === "Desjardins" ? "desjardins" : preparingNextInsurer === "Blue Cross" ? "blue-cross" : undefined)}
@@ -513,7 +540,7 @@ export default function ReimbursementsView({ hub }: Props) {
     {invoiceNotice && <Notice error>{invoiceNotice}</Notice>}
     {error && <Notice error onDismiss={() => setError("")}>{error}</Notice>}
     {workerVersion && !manualActionsAvailable && <div className="banner error" role="status"><AlertTriangle size={17} />PC worker {workerVersion} is outdated for manual reimbursement matching. Update/restart the FamilyHub worker to {manualReconciliationWorkerVersion} or later, then refresh this page.</div>}
-    {savedMessage && <Notice onDismiss={() => setSavedMessage("")}>{savedMessage}</Notice>}
+    {savedMessage && <Notice success onDismiss={() => setSavedMessage("")}>{savedMessage}</Notice>}
     {!linkedRecord && model.warnings.length > 0 && <details className="source-notices"><summary>Source notes · {model.warnings.length}</summary>
       {model.warnings.map(warning => <p key={warning}>{warning}</p>)}
     </details>}
@@ -544,19 +571,19 @@ export default function ReimbursementsView({ hub }: Props) {
       })}
     </section>
 
-    <p className="privacy-note">Potential to recover is the outstanding balance, not payment history. Saved insurer records: <a href="?view=desjardins">Desjardins history</a> · <a href="?view=blue-cross">Blue Cross history</a>. Completed claims are in Closed or All.</p>
     <details className="reimbursement-totals">
       <summary>
-        <span><small>Potential to recover</small><strong>{scopeSummaries.get(personScope)!.knownAmounts || !scopeSummaries.get(personScope)!.open ? money(scopeSummaries.get(personScope)!.potentiallyRecoverable) : "—"}{scopeSummaries.get(personScope)!.unknownAmounts > 0 ? " + ?" : ""}</strong></span>
+        <span><small>Potential to recover</small><strong>{scopeSummaries.get(personScope)!.knownAmounts || !scopeSummaries.get(personScope)!.open ? money(scopeSummaries.get(personScope)!.potentiallyRecoverable) : "—"}{scopeSummaries.get(personScope)!.unknownAmounts > 0 ? " + ?" : ""}</strong><small>{scopeLabel} · estimation non garantie{scopeSummaries.get(personScope)!.unknownAmounts > 0 ? " · partielle" : ""}</small></span>
         <span className="totals-disclosure">Totals <span aria-hidden="true">⌄</span></span>
       </summary>
       <section className="reimbursement-summary" aria-label={`${scopeLabel} reimbursement summary`}>
+        <p className="privacy-note">Potential to recover is the outstanding balance, not payment history. Saved insurer records: <a href="?view=desjardins">Desjardins history</a> · <a href="?view=blue-cross">Blue Cross history</a>. Completed claims are in Closed or All.</p>
         <p className="privacy-note">Known CAD balances across all open claims in this family scope, including claims with a date to confirm. Search and detail filters do not change this total. Eligibility is not guaranteed. Ambiguous payment links are excluded until resolved.{scopeSummaries.get(personScope)!.unknownAmounts > 0 ? ` ${scopeSummaries.get(personScope)!.unknownAmounts} amounts still need confirmation.` : ""}</p>
         <p className="privacy-note">The figures below cover the {workflowLabel.toLowerCase()} workflow for {scopeLabel}; they are not totals for the entire insurer history.</p>
-        <article className="summary-primary"><small>Total expenses</small><strong>{money(finance.totalPaid)}</strong><span>{scopeLabel}</span></article>
-        <article><small>Desjardins</small><strong>{money(finance.desjardins)}</strong><span>reimbursed</span></article>
-        <article><small>Blue Cross</small><strong>{money(finance.blueCross)}</strong><span>reimbursed</span></article>
-        <article><small>Remaining balance</small><strong>{money(finance.outstanding)}</strong><span>{workflowLabel.toLowerCase()} workflow</span></article>
+        <SummaryAmount label="Total expenses" value={finance.totalPaid} caption={scopeLabel} />
+        <SummaryAmount label="Desjardins" value={finance.desjardins} caption="reimbursed" />
+        <SummaryAmount label="Blue Cross" value={finance.blueCross} caption="reimbursed" />
+        <SummaryAmount label="Remaining balance" value={finance.outstanding} caption={`${workflowLabel.toLowerCase()} workflow`} />
         <article className={finance.attention ? "summary-attention" : ""}><small>Needs attention</small><strong>{finance.attention}</strong><span>items</span></article>
       </section>
     </details>

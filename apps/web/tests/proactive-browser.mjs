@@ -117,6 +117,11 @@ try {
     assert.equal(await page.locator(".today-priorities .opportunity-card").count(), 3);
     assert.equal(await page.getByText("LOCAL_ONLY_STALE_CARD", { exact: false }).count(), 0);
     assert.equal(await page.locator(".benefit-tile").count(), 3);
+    assert.equal(await page.locator(".source-indicators .source-dot.ready").count(), 7, "Source bars show availability only, beside the explicit source label");
+    const leadingAction = page.locator(".today-priorities .opportunity-card").first();
+    const summaryOrder = await page.evaluate(() => ({ action: document.querySelector(".today-priorities .opportunity-card").getBoundingClientRect().bottom, summary: document.querySelector(".today-benefits").getBoundingClientRect().top }));
+    assert.ok(summaryOrder.action <= summaryOrder.summary, "The first complete useful action remains ahead of the money summary");
+    assert.equal(await leadingAction.locator(".opportunity-icon svg").count(), 1);
     await page.locator(".benefit-tile").nth(2).getByText("Non mesuré", { exact: true }).waitFor();
     assert.equal((await actions.read()).history.length, 0, "Viewing the home does not mutate decisions");
     await noOverflow(page, "Today " + width);
@@ -230,6 +235,9 @@ try {
       state.failed = false; state.snapshot.lastSuccess = "2000-01-01T12:00:00Z";
       await page.getByRole("button", { name: "Actualiser les priorités", exact: true }).click(); await waitReady(page);
       await page.locator(".recovery-tile").getByText("À vérifier", { exact: true }).waitFor();
+      const showStaleActions = page.getByRole("button", { name: /^Voir les \d+ actions$/ });
+      if (await showStaleActions.isVisible()) await showStaleActions.click();
+      await page.locator('.opportunity-card[data-domain="claims"] .opportunity-evidence-state').getByText("Données anciennes", { exact: true }).first().waitFor();
       await context.setOffline(true);
       await page.getByText("Connexion interrompue", { exact: true }).waitFor();
       assert.equal(await page.getByRole("button", { name: "Actualiser les priorités", exact: true }).isDisabled(), true);
@@ -248,7 +256,8 @@ try {
       await page.locator(".other-link").filter({ hasText: label }).click();
       assert.equal(new URL(page.url()).searchParams.get("view"), route);
       await page.locator("main h1").first().waitFor();
-      assert.equal(await nav.getByRole("button", { name: "Plus", exact: true }).getAttribute("aria-current"), "page");
+      assert.equal(await nav.getByRole("button", { name: route === "mortgage" ? "Projets" : "Plus", exact: true }).getAttribute("aria-current"), "page");
+      assert.equal(await nav.locator('button[aria-current="page"]').count(), 1, "Every deep section has exactly one primary destination");
       if (route === "documents") for (const [name, source] of [["Factures", "invoices"], ["Desjardins", "desjardins"], ["Blue Cross", "blue-cross"]]) {
         await page.getByRole("navigation", { name: "Sources documentaires", exact: true }).getByRole("button", { name, exact: true }).click();
         assert.equal(new URL(page.url()).searchParams.get("view"), source);

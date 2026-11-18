@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Bell, RefreshCw, Settings2 } from "lucide-react";
+import { Bell, CalendarClock, CheckCircle2, CircleDollarSign, Clock3, FileSearch, HeartHandshake, Home, Landmark, RefreshCw, Settings2, ShoppingBasket, TrendingUp } from "lucide-react";
 import type { HubState } from "../state";
 import type { AppView } from "../types";
 import { notificationActionState, notificationNeedsAttention, notificationSnoozeCrossesExpiry } from "../../../worker/src/notification-model";
@@ -8,6 +8,10 @@ import { notificationLabels, notificationTargetHref, pushSupported, applicationS
 import { fetchNotifications, updateNotifications } from "../worker";
 import { PageHeader, Notice, Sheet } from "../ui/primitives";
 import "../notifications.css";
+
+const categoryIcons = { collection: RefreshCw, reimbursement: HeartHandshake, unmatched: FileSearch, price: TrendingUp, deadline: CalendarClock, weekly: CircleDollarSign, mortgage: Home, policy: Landmark, grocery: ShoppingBasket, "claim-deadline": CalendarClock };
+const categoryLabels = { collection: "Collecte", reimbursement: "Remboursement", unmatched: "Rapprochement", price: "Prélèvement", deadline: "Échéance", weekly: "Bilan", mortgage: "Hypothèque", policy: "Taux directeur", grocery: "Courses", "claim-deadline": "Réclamation" };
+const categoryQualifications = { collection: "État de collecte à vérifier. Derniers résultats conservés.", reimbursement: "Relevé d’assurance · dépôt bancaire non confirmé.", unmatched: "Rapprochement non confirmé.", price: "Une hausse de paiement ne prouve pas une hausse de tarif.", deadline: "Date enregistrée · conditions à vérifier.", weekly: "Couverture limitée aux imports. Total du foyer non établi.", mortgage: "Piste à vérifier · aucun gain acquis.", policy: "Taux directeur · impact personnel à vérifier.", grocery: "Écart produits, hors frais, taxes et déplacement. Gain net non établi." };
 
 export default function NotificationsView({ hub, onNavigate }: { hub: HubState; onNavigate: (view: AppView) => void }) {
   const [state, setState] = useState<NotificationSnapshot | null>(null), [error, setError] = useState(""), [message, setMessage] = useState("");
@@ -79,7 +83,7 @@ export default function NotificationsView({ hub, onNavigate }: { hub: HubState; 
   const events = [...(state?.events ?? [])].reverse().filter(e => e.id === selected || (!unreadOnly || !e.readAt) && (filter === "history" || filter === "attention" && notificationNeedsAttention(e) || filter === "snoozed" && e.active && notificationActionState(e) === "snoozed"));
   const attentionCount = (state?.events ?? []).filter(e => notificationNeedsAttention(e)).length;
   return <section className="view-stack notifications-view">
-    <PageHeader title="Notifications" subtitle="Les actions utiles, puis leur historique.">
+    <PageHeader title="Notifications" subtitle="À traiter, reporter ou retrouver">
       <button className="button secondary" disabled={!paired || busy} onClick={() => void refresh()}><RefreshCw size={16} />Actualiser</button>
       <button className="button secondary" onClick={() => setSettings(true)}><Settings2 size={16} />Préférences</button>
     </PageHeader>
@@ -87,24 +91,42 @@ export default function NotificationsView({ hub, onNavigate }: { hub: HubState; 
     {error && <Notice error>{error}</Notice>}{message && <Notice>{message}</Notice>}
     {busy && !state && <p role="status">Chargement de l'historique depuis votre PC…</p>}
     {state && <>
+      {state.deliveryPolicy && <div className="notification-delivery-status"><Bell size={18} aria-hidden="true" /><strong>1 avis automatique maximum par jour</strong><span>8 h – 21 h · Vancouver</span></div>}
       <nav className="notification-filters" aria-label="Filtrer les notifications">{([["attention", "À traiter"], ["snoozed", "Reportées"], ["history", "Historique"]] as const).map(([value, name]) => <button type="button" className={filter === value ? "active" : ""} aria-pressed={filter === value} key={value} onClick={() => setFilter(value)}>{name}{value === "attention" && attentionCount > 0 ? ` · ${attentionCount}` : ""}</button>)}</nav>
       <div className="notification-toolbar"><label><input type="checkbox" checked={unreadOnly} onChange={e => setUnreadOnly(e.target.checked)} />Non lues seulement</label><small>{state.scannedAt ? `Vérifié le ${new Date(state.scannedAt).toLocaleString("fr-CA")}` : "Première analyse en attente"}</small></div>
       {state.sourceErrors.length > 0 && <Notice>Sources indisponibles : {state.sourceErrors.join(", ")}. Les anciens résultats sont conservés.</Notice>}
-      {state.monitoring && <details><summary>Événements surveillés et preuves manquantes</summary>{state.monitoring.map(item => <section key={item.category}><h3>{({ policy: "Banque du Canada", renewal: "Assurance et forfaits", gic: "GIC à échéance", grocery: "Courses habituelles", "claim-deadline": "Délais de réclamation" })[item.category]}</h3><p>{item.status === "watching" ? "Surveillance des preuves enregistrées" : item.status === "missing" ? "Informations à compléter" : "Source indisponible"}. {item.detail}</p></section>)}</details>}
+      {state.monitoring && <details className="notification-monitoring"><summary>Événements surveillés et preuves manquantes</summary>{state.monitoring.map(item => <section key={item.category}><div><h3>{({ policy: "Banque du Canada", renewal: "Assurance et forfaits", gic: "GIC à échéance", grocery: "Courses habituelles", "claim-deadline": "Délais de réclamation" })[item.category]}</h3><span className={`notification-chip ${item.status === "watching" ? "" : "caution"}`}>{item.status === "watching" ? "Surveillé" : item.status === "missing" ? "À compléter" : "Indisponible"}</span></div><p>{item.detail}</p></section>)}</details>}
       {selected && !state.events.some(e => e.id === selected) && <Notice>Cette notification n’est plus dans les 500 éléments conservés. Consultez les données actuelles dans leur section.</Notice>}
       {!events.length && <div className="empty-state"><Bell size={28} /><strong>{unreadOnly ? "Aucune notification non lue" : filter === "attention" ? "Rien de nouveau à traiter" : filter === "snoozed" ? "Aucune notification reportée" : "Aucune mise à jour disponible"}</strong><p>{filter === "attention" ? "Les résultats et les éléments déjà connus restent dans Historique." : "Le PC conserve les preuves et leur état. Une mise à jour ne signifie pas toujours une action à faire."}</p></div>}
-      <ol className="notification-list">{events.map(event => <li key={event.id}><article id={`notice-${event.id}`} tabIndex={-1} className={`surface notification-card ${event.readAt ? "" : "unread"}`}>
-        <div className="notification-meta"><span>{notificationLabels[event.kind]}</span><time dateTime={event.createdAt}>{new Date(event.createdAt).toLocaleString("fr-CA")}</time></div>
-        <div className="notification-state">{notificationActionState(event) === "snoozed" ? `Reportée au ${new Date(event.decision!.snoozedUntil!).toLocaleString("fr-CA")}` : notificationActionState(event) === "resolved" ? "Rappel traité" : notificationActionState(event) === "dismissed" ? "Rappel écarté" : !event.active ? "État terminé" : event.actionable === false ? "Information" : "À consulter"}</div>
-        <h2>{event.title}</h2><p>{event.detail}</p>
-        {event.links?.map(link => <p key={link.url}><a href={link.url} target="_blank" rel="noreferrer">{link.label}</a></p>)}
-        <small>{event.baseline ? "Déjà présent lors du premier passage · aucun Push envoyé" : "Nouvel élément observé"}{!event.active && " · cet état n’est plus observé dans les sources actuelles"}{event.sourceDate && ` · date source : ${event.sourceDate.slice(0, 10)}`}</small>
-        {state.lifecycleSupported && event.active && event.actionable !== false && notificationActionState(event) === "open" && notificationSnoozeCrossesExpiry(event, 7 * 86_400_000) && <p className="muted">Un report de 7 jours masquerait ce rappel au-delà de sa période de validité. Ouvrez le dossier avant de choisir ce report.</p>}
-        <div className="notification-actions"><a className="button secondary" href={notificationTargetHref(event.target)}>Ouvrir le dossier</a>{!event.readAt && <button className="text-action" disabled={busy} onClick={() => void mutate({ action: "read", id: event.id })}>Marquer comme lu</button>}
-          {state.lifecycleSupported && event.active && notificationActionState(event) === "open" && <><button className="text-action" disabled={busy} onClick={() => void mutate({ action: "snooze", id: event.id, snoozedUntil: new Date(Date.now() + 3_600_000).toISOString() }, "Rappel reporté d’une heure. Le dossier reste inchangé.")}>Reporter 1 heure</button><button className="text-action" disabled={busy} onClick={() => void mutate({ action: "snooze", id: event.id, snoozedUntil: new Date(Date.now() + 7 * 86_400_000).toISOString() }, "Rappel reporté de 7 jours. Le dossier reste inchangé.")}>Reporter 7 jours</button>{event.actionable !== false && <button className="text-action" disabled={busy} onClick={() => void mutate({ action: "resolve", id: event.id }, "Rappel traité. Le dossier et les montants restent inchangés.")}>Marquer traité</button>}<button className="text-action" disabled={busy} onClick={() => void mutate({ action: "dismiss", id: event.id }, "Rappel écarté pour ces preuves. Le dossier reste inchangé.")}>Écarter</button></>}
-          {state.lifecycleSupported && notificationActionState(event) !== "open" && <button className="text-action" disabled={busy} onClick={() => void mutate({ action: "restore", id: event.id }, "Rappel rétabli, sans nouvel envoi Push.")}>Rétablir le rappel</button>}
-        </div>
-      </article></li>)}</ol>
+      <ol className="notification-list">{events.map(event => {
+        const Icon = categoryIcons[event.kind], actionState = notificationActionState(event);
+        const expired = Boolean(event.expiresAt && Date.parse(event.expiresAt) <= Date.now());
+        return <li key={event.id}><article id={`notice-${event.id}`} tabIndex={-1} className={`surface notification-card ${event.readAt ? "" : "unread"}`} data-kind={event.kind}>
+          <div className="notification-category-icon"><Icon size={22} aria-hidden="true" /></div>
+          <div className="notification-content">
+            <div className="notification-meta"><span>{categoryLabels[event.kind]}</span><time dateTime={event.createdAt}>{new Date(event.createdAt).toLocaleString("fr-CA")}</time></div>
+            <h2>{event.title}</h2>
+            <div className="notification-state"><span className="notification-chip">{actionState === "snoozed" ? <><Clock3 size={14} aria-hidden="true" />{`Reportée au ${new Date(event.decision!.snoozedUntil!).toLocaleString("fr-CA")}`}</> : actionState === "resolved" ? <><CheckCircle2 size={14} aria-hidden="true" />Rappel traité</> : actionState === "dismissed" ? "Rappel écarté" : !event.active ? "État terminé" : event.actionable === false ? "Information" : "À consulter"}</span>{expired ? <span className="notification-chip caution">Période expirée</span> : notificationNeedsAttention(event) && (event.priority ?? 0) >= 3 && <span className="notification-chip caution">Priorité élevée</span>}{event.readAt && <span className="notification-read-state">Lu</span>}</div>
+            <p className="notification-detail">{event.kind === "claim-deadline" ? event.detail : categoryQualifications[event.kind]}</p>
+            {event.kind === "deadline" && event.sourceDate && <p className="notification-deadline"><CalendarClock size={15} aria-hidden="true" />Date enregistrée : {event.sourceDate.slice(0, 10)}</p>}
+            {event.expiresAt && <p className="notification-validity"><CalendarClock size={14} aria-hidden="true" />Validité du rappel : {new Date(event.expiresAt).toLocaleDateString("fr-CA")}</p>}
+            {event.baseline && <span className="notification-baseline">Déjà connu · aucun Push envoyé</span>}
+            <details className="notification-evidence"><summary>Sources et contexte</summary>
+              {event.kind !== "claim-deadline" && <p className="notification-source-detail">{event.detail}</p>}
+              {event.links?.map(link => <p key={link.url}><a href={link.url} target="_blank" rel="noreferrer">{link.label}</a></p>)}
+              <p>{event.baseline ? "Déjà présent lors du premier passage · aucun Push envoyé" : "Nouvel élément observé"}{!event.active && " · cet état n’est plus observé dans les sources actuelles"}{event.sourceDate && ` · date source : ${event.sourceDate.slice(0, 10)}`}</p>
+              <p>L’historique ne prouve pas la réception sur un appareil. Vérifiez les envois dans Préférences.</p>
+            </details>
+            <div className="notification-actions"><a className="button secondary" href={notificationTargetHref(event.target)}>Ouvrir le dossier</a>{!event.readAt && <button className="text-action" disabled={busy} onClick={() => void mutate({ action: "read", id: event.id })}>Marquer comme lu</button>}
+              {state.lifecycleSupported && actionState !== "open" && <button className="text-action" disabled={busy} onClick={() => void mutate({ action: "restore", id: event.id }, "Rappel rétabli, sans nouvel envoi Push.")}>Rétablir le rappel</button>}
+            </div>
+            {state.lifecycleSupported && event.active && actionState === "open" && <details className="notification-manage"><summary>Gérer le rappel</summary>
+              {event.actionable !== false && notificationSnoozeCrossesExpiry(event, 7 * 86_400_000) && <p className="notification-snooze-warning">Un report de 7 jours dépasserait la validité de ce rappel. Ouvrez le dossier avant de le reporter.</p>}
+              <div className="notification-actions"><button className="button secondary" disabled={busy} onClick={() => void mutate({ action: "snooze", id: event.id, snoozedUntil: new Date(Date.now() + 3_600_000).toISOString() }, "Rappel reporté d’une heure. Le dossier reste inchangé.")}>Reporter 1 heure</button><button className="button secondary" disabled={busy} onClick={() => void mutate({ action: "snooze", id: event.id, snoozedUntil: new Date(Date.now() + 7 * 86_400_000).toISOString() }, "Rappel reporté de 7 jours. Le dossier reste inchangé.")}>Reporter 7 jours</button>{event.actionable !== false && <button className="text-action" disabled={busy} onClick={() => void mutate({ action: "resolve", id: event.id }, "Rappel traité. Le dossier et les montants restent inchangés.")}>Marquer traité</button>}<button className="text-action" disabled={busy} onClick={() => void mutate({ action: "dismiss", id: event.id }, "Rappel écarté pour ces preuves. Le dossier reste inchangé.")}>Écarter</button></div>
+            </details>}
+          </div>
+        </article></li>;
+      })}</ol>
     </>}
     <Sheet open={settings} onClose={() => setSettings(false)} title="Préférences de notification">
       <p>Les préférences d’envoi et l’historique sont partagés avec vos appareils associés. Aucun courriel n’est envoyé. L’écran verrouillé affiche uniquement « FamilyHub — Une mise à jour est disponible ».</p>
