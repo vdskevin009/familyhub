@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { randomUUID, createHash } from "node:crypto";
 import { Codex } from "@openai/codex-sdk";
 import { reusableResearch } from "./savings-cadence.js";
-import { categories, newContract, publicBaseline, baselineKey, type SavingsContract, type PublicBaseline, type SavingsJob, type SavingsReport, type SavingsOffer } from "./savings-model.js";
+import { categories, newContract, publicBaseline, baselineKey, savingsExpiryTime, type SavingsContract, type PublicBaseline, type SavingsJob, type SavingsReport, type SavingsOffer } from "./savings-model.js";
 
 function record(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Invalid Savings object.");
@@ -54,7 +54,7 @@ export function validateReport(value: unknown, contractId: string, now = new Dat
     const checkedAt = shortText(offer.checkedAt, 40);
     if (!Number.isFinite(Date.parse(checkedAt)) || Date.parse(checkedAt) > now.getTime() + 86_400_000) throw new Error("Invalid source verification date.");
     const validUntil = offer.validUntil === null ? null : shortText(offer.validUntil, 10);
-    if (validUntil !== null && (!/^\d{4}-\d{2}-\d{2}$/.test(validUntil) || !Number.isFinite(Date.parse(validUntil)))) throw new Error("Invalid offer expiry.");
+    if (validUntil !== null && savingsExpiryTime(validUntil) === null) throw new Error("Invalid offer expiry.");
     if (!Array.isArray(offer.sources) || offer.sources.length < 1 || offer.sources.length > 10) throw new Error("Every offer needs public sources.");
     const sources = offer.sources.map(rawSource => {
       const source = record(rawSource), url = new URL(shortText(source.url, 2000));
@@ -185,12 +185,17 @@ export class SavingsResearch {
     return job;
   }
   private async execute(job: SavingsJob) {
+    let terminal: SavingsJob;
     try {
       job.status = "running"; await this.save(job);
-      job.report = validateReport(JSON.parse(await this.run(savingsPrompt(job.baseline))), job.contractId);
-      job.status = "complete";
-    } catch { job.status = "failed"; job.error = "Public research could not produce a validated comparison. Check the PC Codex/web-search configuration and retry."; }
-    job.completedAt = new Date().toISOString(); await this.save(job);
+      const report = validateReport(JSON.parse(await this.run(savingsPrompt(job.baseline))), job.contractId);
+      terminal = { ...job, report, status: "complete" };
+    } catch { terminal = { ...job, status: "failed", error: "Public research could not produce a validated comparison. Check the PC Codex/web-search configuration and retry." }; }
+    terminal.completedAt = new Date().toISOString();
+    // Pollers and the daily runner may act immediately on completion. Publish it only
+    // after the atomic file replacement, so a restart cannot turn acknowledged success into interruption.
+    await this.save(terminal);
+    Object.assign(job, terminal);
   }
 }
 export function codexSavingsRunner(codex: Codex, workingDirectory: string) {

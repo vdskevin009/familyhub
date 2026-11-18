@@ -7,6 +7,7 @@ import { MailCollectionRuntime } from '../apps/worker/dist/mail-collection-runti
 import { readMailSourcePolicy, mailSourceReadiness } from '../apps/worker/dist/mail-source-policy.js';
 import { planInvoiceMail, planGroceryMail } from '../apps/worker/dist/mail-collection-plan.js';
 import { createMailAttachmentCache } from '../apps/worker/dist/mail-attachment-cache.js';
+import { GmailPluginCollectionError } from '../apps/worker/dist/gmail-plugin-runner.js';
 const at=1793534400, account={email:'synthetic@example.test',label:'Synthetic',linkId:'link_synthetic'};
 const other={email:'other@example.test',label:'Other',linkId:'link_other'};
 const policy=accounts=>({schema:1,mode:'plugin',accounts});
@@ -79,6 +80,44 @@ test('source-policy changes during retrieval invalidate the attempt before appli
 test('post-application failure makes no false rollback or unchanged-checkpoint claim',async t=>{const f=await setup(t,{collectInvoices:async()=>{throw new Error('Synthetic partial apply');}});await assert.rejects(f.runtime.collectInvoices());assert.match(f.runtime.status().error,/Some verified pages may already be saved/);assert.doesNotMatch(f.runtime.status().error,/not advanced/);});
 
 test('bounded source failure exposes sanitized status and does not invoke legacy or collector paths',async t=>{const f=await setup(t,{runner:async()=>{throw new Error('private link and token must not escape');}});await assert.rejects(f.runtime.collectInvoices(),/Mail retrieval/);assert.equal(f.calls.length,0);const status=await readFile(join(f.directory,'mail-runtime-status.json'),'utf8');assert.doesNotMatch(status,/private link|token|synthetic-link/);assert.match(status,/checkpoints were not advanced/);});
+
+test('allowlisted plugin diagnosis survives restart without messages, identities or automatic retry',async t=>{
+ let runs=0;const failure=new GmailPluginCollectionError('invalid_evidence');failure.message='PRIVATE account@example.test https://private.test token';failure.stage='tool_evidence';
+ failure.diagnostics={eventCount:7,mcpItems:0,agentItems:1,invalid:false,started:false,completed:false,turnComplete:true,reportedAuthorization:true,authError:true,exitCode:1,account:'PRIVATE',url:'https://private.test',arguments:{token:'PRIVATE'},extraFlag:true};
+ const expected={code:'invalid_evidence',stage:'tool_evidence',diagnostics:{invalid:false,started:false,completed:false,turnComplete:true,reportedAuthorization:true,authError:true,eventCount:7,mcpItems:0,agentItems:1,exitCode:1}};
+ const f=await setup(t,{runner:async()=>{runs++;throw failure;}});
+ await assert.rejects(f.runtime.collectInvoices(),/checkpoints were not advanced/);assert.equal(runs,1);assert.equal(f.calls.length,0);
+ assert.deepEqual(f.runtime.status().failure,expected);
+ f.runtime.status().failure.diagnostics.authError=false;assert.equal(f.runtime.status().failure.diagnostics.authError,true,'Status consumers cannot mutate the retained diagnosis');
+ const saved=await readFile(join(f.directory,'mail-runtime-status.json'),'utf8');assert.doesNotMatch(saved,/PRIVATE|account@example|https:|token|extraFlag|arguments|stack/);assert.deepEqual(JSON.parse(saved).attempts.invoices.failure,expected);
+ const restarted=new MailCollectionRuntime(f.deps);await restarted.accounts();assert.deepEqual(restarted.status().failure,expected);assert.equal(runs,1,'Loading and reading status never replay retrieval');
+ const recovered=new MailCollectionRuntime({...f.deps,runner:async request=>{runs++;return batch(request);}});await recovered.collectInvoices();assert.equal(recovered.status().failure,undefined);assert.equal(recovered.status().error,undefined);assert.equal(runs,2);assert.equal(f.calls.length,1);
+ assert.equal(JSON.parse(await readFile(join(f.directory,'mail-runtime-status.json'),'utf8')).attempts.invoices.failure,undefined);
+});
+
+test('unknown exceptions and unsupported diagnostic values remain private',async t=>{
+ for(const failure of [Object.assign(new Error('PRIVATE'),{code:'invalid_evidence',stage:'tool_evidence',diagnostics:{authError:true}}),new GmailPluginCollectionError('PRIVATE')]) {
+  const f=await setup(t,{runner:async()=>{throw failure;}});await assert.rejects(f.runtime.collectInvoices());assert.equal(f.runtime.status().failure,undefined);assert.doesNotMatch(await readFile(join(f.directory,'mail-runtime-status.json'),'utf8'),/PRIVATE|authError/);
+ }
+ const failure=new GmailPluginCollectionError('runner_unavailable');failure.stage='PRIVATE';failure.diagnostics={eventCount:-1,mcpItems:Infinity,agentItems:1.5,exitCode:999999,authError:'PRIVATE',unknownField:true};
+ const f=await setup(t,{runner:async()=>{throw failure;}});await assert.rejects(f.runtime.collectInvoices());assert.deepEqual(f.runtime.status().failure,{code:'runner_unavailable',diagnostics:{unknownField:true}});
+});
+
+test('grocery diagnosis stays domain-scoped and old runtime records remain compatible',async t=>{
+ const failure=new GmailPluginCollectionError('metadata_unavailable');failure.stage='isolation_before';let runs=0;
+ const f=await setup(t,{runner:async()=>{runs++;throw failure;}});await assert.rejects(f.runtime.collectGroceries());
+ const status=await f.runtime.groceryStatus();assert.equal(status.incomplete,true);assert.equal(status.error,'gmail-unavailable');assert.deepEqual(status.failure,{code:'metadata_unavailable',stage:'isolation_before'});assert.equal(f.runtime.status().failure,undefined);
+ const restarted=new MailCollectionRuntime(f.deps);assert.deepEqual((await restarted.groceryStatus()).failure,status.failure);assert.equal(runs,1);
+ await writeFile(join(f.directory,'mail-runtime-status.json'),JSON.stringify({schema:1,attempts:{invoices:{lastAttempt:now().toISOString(),error:'OLD_PRIVATE'}}}));
+ const legacy=new MailCollectionRuntime(f.deps);await legacy.accounts();assert.equal(legacy.status().failure,undefined);assert.match(legacy.status().error,/Previous mail retrieval/);assert.doesNotMatch(JSON.stringify(legacy.status()),/OLD_PRIVATE/);
+});
+
+test('reload sanitizes stored diagnostic extras and interrupted attempts never reuse an old cause',async t=>{
+ const f=await setup(t),attempt={lastAttempt:now().toISOString(),error:'PRIVATE',failure:{code:'profile_mismatch',stage:'isolation_after',diagnostics:{authError:false,account:'PRIVATE',eventCount:2},raw:'PRIVATE'}};
+ const path=join(f.directory,'mail-runtime-status.json');await writeFile(path,JSON.stringify({schema:1,attempts:{invoices:attempt}}));
+ const runtime=new MailCollectionRuntime(f.deps);await runtime.accounts();assert.deepEqual(runtime.status().failure,{code:'profile_mismatch',stage:'isolation_after',diagnostics:{authError:false,eventCount:2}});assert.doesNotMatch(JSON.stringify(runtime.status()),/PRIVATE/);
+ await writeFile(path,JSON.stringify({schema:1,running:'invoices',attempts:{invoices:attempt}}));const interrupted=new MailCollectionRuntime(f.deps);await interrupted.accounts();assert.equal(interrupted.status().failure,undefined);assert.match(interrupted.status().error,/interrupted/);assert.equal(f.calls.length,0);
+});
 
 test('corrupt runtime status is preserved instead of being overwritten by a retry',async t=>{const f=await setup(t);const path=join(f.directory,'mail-runtime-status.json');await writeFile(path,'{not valid');const runtime=new MailCollectionRuntime(f.deps);await assert.rejects(runtime.collectInvoices());assert.equal(await readFile(path,'utf8'),'{not valid');assert.equal(f.calls.length,0);});
 

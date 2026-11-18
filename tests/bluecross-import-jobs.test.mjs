@@ -17,7 +17,23 @@ test('accepted cancellation before durable apply boundary prevents late applicat
 test('cancellation after durable apply boundary is refused and failure becomes unknown',async t=>{let release,entered;const started=new Promise(r=>entered=r);const f=await setup(t,async(i,o)=>{await o.onApplying();entered();await new Promise(r=>release=r);throw Error('private source content');});await f.j.start('request_1',intent);await started;await assert.rejects(f.j.cancel('request_1'),/cannot be cancelled/);release();const r=await done(f.j);assert.equal(r.status,'outcome-unknown');assert.doesNotMatch(r.error,/private source/);await assert.rejects(f.j.start('request_2',intent),/unknown outcome/);assert.equal((await f.j.start('request_1',intent)).status,'outcome-unknown');});
 test('uncertain persistence of apply marker never permits application or automatic retry',async t=>{let writes=0,applies=0;const f=await setup(t,async(i,o)=>{await o.onApplying();applies++;return importResult(true);},async(p,s)=>{await atomicJson(p,s);if(++writes===2)throw Error('uncertain write');});await f.j.start('request_1',intent);await new Promise(r=>setTimeout(r,30));await assert.rejects(f.j.status('request_1'),/unavailable/);assert.equal(applies,0);const restarted=new BlueCrossImportJobs({...f.deps,write:atomicJson});assert.equal((await restarted.start('request_1',intent)).status,'outcome-unknown');await assert.rejects(restarted.start('request_2',intent),/unknown outcome/);});
 test('accepted receipt write failure starts no work and fails closed until inspection',async t=>{let runs=0;const f=await setup(t,async()=>{runs++;return importResult(true);},async()=>{throw Error('disk failed');});await assert.rejects(f.j.start('request_1',intent),/persistence failed/);await assert.rejects(f.j.start('request_1',intent),/unavailable/);assert.equal(runs,0);});
-test('persisted completed result survives uncertain acknowledgement without reapplying',async t=>{let writes=0,runs=0;const f=await setup(t,async(i,o)=>{runs++;await o.onApplying();return importResult(true);},async(p,s)=>{await atomicJson(p,s);if(++writes===3)throw Error('response uncertain');});await f.j.start('request_1',intent);await new Promise(r=>setTimeout(r,40));const restarted=new BlueCrossImportJobs({...f.deps,write:atomicJson});assert.equal((await restarted.start('request_1',intent)).status,'completed');assert.equal(runs,1);});
+test('persisted completed result survives uncertain acknowledgement without reapplying',{timeout:5000},async t=>{
+ let writes=0,runs=0,terminalWritten;
+ const persisted=new Promise(resolve=>terminalWritten=resolve);
+ const f=await setup(t,async(i,o)=>{runs++;await o.onApplying();return importResult(true);},async(p,s)=>{
+  await atomicJson(p,s);
+  if(++writes===3){terminalWritten();throw Error('response uncertain');}
+ });
+ await f.j.start('request_1',intent);
+ // Restart only after the completed receipt exists, independent of disk/CI speed.
+ await persisted;
+ await assert.rejects(f.j.status('request_1'),/unavailable/);
+ const saved=JSON.parse(await readFile(join(f.directory,'bluecross-import-jobs.json'),'utf8'));
+ assert.equal(saved.jobs[0].status,'completed');
+ const restarted=new BlueCrossImportJobs({...f.deps,write:atomicJson});
+ assert.equal((await restarted.start('request_1',intent)).status,'completed');
+ assert.equal(runs,1);
+});
 test('unknown IDs are never created by status/cancel and malformed history is preserved',async t=>{const f=await setup(t,async()=>(importResult(false)));await assert.rejects(f.j.status('request_1'),/unknown/);await assert.rejects(f.j.cancel('request_1'),/unknown/);await writeFile(join(f.directory,'bluecross-import-jobs.json'),'{invalid');const j=new BlueCrossImportJobs(f.deps);await assert.rejects(j.start('request_1',intent),/unavailable/);assert.equal(await readFile(join(f.directory,'bluecross-import-jobs.json'),'utf8'),'{invalid');});
 test('overlapping new request does not start or leave a second accepted receipt',async t=>{let release;const f=await setup(t,async()=>new Promise(r=>release=()=>r(importResult(false))));await f.j.start('request_1',{...intent,apply:false});await assert.rejects(f.j.start('request_2',{...intent,apply:false}),/already running/);release();await done(f.j);const state=JSON.parse(await readFile(join(f.directory,'bluecross-import-jobs.json'),'utf8'));assert.equal(state.jobs.length,1);assert.equal(JSON.stringify(state).includes('synthetic@example.test'),false);assert.equal(JSON.stringify(state).includes('abcdef123456'),false);});
 

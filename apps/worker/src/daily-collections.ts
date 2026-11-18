@@ -32,6 +32,7 @@ export async function runDailyCollections(call: DailyCall,
       if (!state.busy) {
         if (state.setupRequired) throw new Error("setup-required");
         if (observingInitialBusy && !hasFreshSuccess(state, previousSuccess, phaseStarted)) {
+          if (state.error && state.continuationReady !== true) throw new Error("incomplete");
           // Busy may belong to a different mail operation. Its completion does not prove this collection ran.
           observingInitialBusy = false;
           previousSuccess = state.lastSuccess;
@@ -69,6 +70,7 @@ export async function runDailyCollections(call: DailyCall,
       if (now() > deadline) throw new Error("timeout");
       if (state.busy) continue;
       if (observingInitialBusy && !hasFreshSuccess(state, previousSuccess, phaseStarted)) {
+        if (state.error || state.accounts?.some(account => account.active !== false && account.error)) throw new Error("incomplete");
         observingInitialBusy = false;
         previousSuccess = state.lastSuccess;
         await call("/groceries/collect", "POST"); continue;

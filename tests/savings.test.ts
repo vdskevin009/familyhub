@@ -161,6 +161,17 @@ test("expired and stale public offers are excluded; negative savings stay negati
   assert.equal(compareOffer(contract(), offer({ validUntil: "2020-01-01" }), new Date(), true).firstYear, null);
   assert.ok((compareOffer(contract(), offer({ monthlyPrice: 200, promoMonths: 0 }), new Date(), true).firstYear ?? 0) < 0);
 });
+
+test("impossible expiry dates never become current offers or numerical savings", () => {
+  const now = new Date("2026-02-01T12:00:00Z");
+  for (const validUntil of ["2026-02-30", "2026-04-31", "not-a-date"]) {
+    const candidate = offer({ checkedAt: now.toISOString(), validUntil });
+    assert.throws(() => validateReport({ summary: "Synthetic", missing: [], offers: [candidate] }, "synthetic", now));
+    assert.equal(compareOffer(contract(), candidate, now, true).firstYear, null, "Legacy saved evidence also fails closed");
+  }
+  const leap = offer({ checkedAt: "2028-02-01T12:00:00Z", validUntil: "2028-02-29" });
+  assert.equal(validateReport({ summary: "Synthetic", missing: [], offers: [leap] }, "synthetic", new Date(leap.checkedAt)).offers.length, 1);
+});
 test("mortgage compares fixed Canadian-compounded interest with identical term and amortization", () => {
   const c = { ...contract(), category: "mortgage" as const, mortgageBalance: 400000, mortgageRate: 5, amortizationYears: 25, termMonths: 60 };
   const a = offer({ mortgageRate: 4, termMonths: 60, amortizationYears: 25 });
@@ -214,4 +225,31 @@ test("research jobs persist, deduplicate pending starts and mark interrupted wor
     await restarted.initialize(); assert.equal(restarted.get(first.id)?.status, "failed");
     assert.equal(await readFile(join(dir, "aaaa.json"), "utf8"), "{malformed");
   } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+test("research completion is not exposed until the terminal result is durably saved", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "familyhub-savings-durable-"));
+  const service = new SavingsResearch(dir, async () => JSON.stringify({ summary: "Synthetic saved result", missing: [], offers: [] }));
+  let release!: () => void, reachedSave!: () => void;
+  const gate = new Promise<void>(resolve => { release = resolve; });
+  const saving = new Promise<void>(resolve => { reachedSave = resolve; });
+  const internal = service as unknown as { save: (job: any) => Promise<void> };
+  const save = internal.save.bind(service);
+  internal.save = async job => { if (job.status === "complete") { reachedSave(); await gate; } await save(job); };
+  try {
+    await service.initialize();
+    const first = await service.start({ contractId: "synthetic", baselineKey: "b".repeat(64), baseline: publicBaseline(contract()) });
+    await saving;
+    assert.equal(first.status, "running");
+    assert.equal(service.get(first.id)?.report, undefined);
+    assert.equal(JSON.parse(await readFile(join(dir, first.id + ".json"), "utf8")).status, "running");
+    assert.equal((await service.start({ contractId: "synthetic", baselineKey: "b".repeat(64), baseline: publicBaseline(contract()) })).id, first.id, "A poll/start during persistence cannot launch another comparison");
+    release();
+    for (let i = 0; i < 100 && first.status !== "complete"; i++) await new Promise(resolve => setTimeout(resolve, 5));
+    assert.equal(first.status, "complete");
+    assert.equal(JSON.parse(await readFile(join(dir, first.id + ".json"), "utf8")).status, "complete");
+    const restarted = new SavingsResearch(dir, async () => { throw new Error("No replay"); });
+    await restarted.initialize();
+    assert.equal(restarted.get(first.id)?.status, "complete");
+  } finally { release(); await rm(dir, { recursive: true, force: true }); }
 });

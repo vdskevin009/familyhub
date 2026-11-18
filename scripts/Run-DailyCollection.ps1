@@ -9,7 +9,6 @@ $env:FAMILYHUB_WORKER_DATA = [IO.Path]::GetFullPath($DataDirectory)
 $env:FAMILYHUB_WORKER_PORT = [string]$Port
 $env:FAMILYHUB_WORKER_HOST = '127.0.0.1'
 if ($CodexPath) { $env:FAMILYHUB_CODEX_PATH = $CodexPath }
-$entry = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../apps/worker/dist/index.js'))
 $collector = Join-Path $PSScriptRoot '../apps/worker/dist/collect-once.js'
 $readiness = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../apps/worker/dist/mail-source-policy-cli.js'))
 $sourceReadinessJson = & $NodePath $readiness
@@ -24,15 +23,16 @@ function Get-WorkerHealth {
 }
 $health = Get-WorkerHealth
 if (-not $health) {
-  $node = (Get-Command $NodePath -ErrorAction Stop).Source
-  Start-Process -FilePath $node -ArgumentList @('"' + $entry + '"') -WorkingDirectory (Split-Path $entry) -WindowStyle Hidden -RedirectStandardOutput (Join-Path $DataDirectory 'worker.log') -RedirectStandardError (Join-Path $DataDirectory 'worker-error.log') | Out-Null
+  # The installed supervisor owns worker startup. An unavailable/auth-failing
+  # health request does not prove the process stopped. Wait briefly for recovery,
+  # but never create a competing worker or overwrite the existing worker logs.
   for ($attempt = 0; $attempt -lt 20; $attempt++) {
     Start-Sleep -Milliseconds 500
     $health = Get-WorkerHealth
     if ($health) { break }
   }
 }
-if (-not $health) { throw 'The worker could not start. Check worker-error.log; another process may already use this port.' }
+if (-not $health) { throw 'The existing worker is unavailable or pairing was rejected. Check FamilyHub Worker and its logs; daily collection did not start another process.' }
 if ([version]$health.version -lt [version]'2.3.0') { throw 'An older FamilyHub worker is using this port. Restart it with the updated worker before collecting.' }
 # The source policy is bound to the worker process. Never collect through an old
 # legacy process after plugin selection, and never silently restart it here.

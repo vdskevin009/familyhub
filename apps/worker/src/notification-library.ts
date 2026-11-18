@@ -97,7 +97,10 @@ export class NotificationLibrary {
             expiresAt: candidate.expiresAt, priority: candidate.priority });
           event.links = candidate.links;
           event.pushState ??= "handled"; // Upgrade never sends the historical backlog.
-        } else if (ready.includes(event.kind === "policy" ? "policy" : event.kind === "grocery" ? "groceries" : event.kind === "claim-deadline" ? "claim-deadlines" : event.kind === "collection" ? "collections" : ["reimbursement", "unmatched"].includes(event.kind) ? "invoices" : event.target.view === "mortgage" ? "mortgage" : event.target.view === "savings" ? "contracts" : "finance")) {
+        // Collection reads can succeed independently. A different collector's status,
+        // or this collector still running, cannot establish recovery of its old alert.
+        } else if ((event.kind !== "collection" || evidence.collections?.some(c => ["idle", "up-to-date", "error", "login-required"].includes(c.state) && event.groupId === hash(`collection:${c.id}`)))
+          && ready.includes(event.kind === "policy" ? "policy" : event.kind === "grocery" ? "groceries" : event.kind === "claim-deadline" ? "claim-deadlines" : event.kind === "collection" ? "collections" : ["reimbursement", "unmatched"].includes(event.kind) ? "invoices" : event.target.view === "mortgage" ? "mortgage" : event.target.view === "savings" ? "contracts" : "finance")) {
           event.active = false;
           if (event.pushState === "pending") event.pushState = "expired";
         }

@@ -124,6 +124,12 @@ export function yearCost(monthly: number, after: number | null, months: number):
   const promo = Math.min(12, Math.max(0, months));
   return months === 0 ? monthly * 12 : monthly * promo + (after ?? monthly) * (12 - promo);
 }
+/** Strict calendar expiry: Date.parse alone silently rolls February 30 into March. */
+export function savingsExpiryTime(value: string): number | null {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+  const stamp = Date.parse(value + "T23:59:59.999Z");
+  return Number.isFinite(stamp) && new Date(stamp).toISOString().slice(0, 10) === value ? stamp : null;
+}
 function mortgageInterest(balance: number, rate: number, years: number, months: number): { first: number; next: number } {
   const r = Math.pow(1 + rate / 200, 1 / 6) - 1;
   const n = Math.round(years * 12);
@@ -151,7 +157,11 @@ export function compareOffer(contract: SavingsContract, offer: SavingsOffer, now
   const checked = Date.parse(offer.checkedAt);
   if (!Number.isFinite(checked) || checked > now.getTime() + 86_400_000 || now.getTime() - checked > 30 * 86_400_000)
     reasons.push("Offer needs a fresh public-price check");
-  if (offer.validUntil && Date.parse(offer.validUntil + "T23:59:59Z") < now.getTime()) reasons.push("Offer has expired");
+  if (offer.validUntil !== null) {
+    const expiry = savingsExpiryTime(offer.validUntil);
+    if (expiry === null) reasons.push("Offer expiry needs verification");
+    else if (expiry < now.getTime()) reasons.push("Offer has expired");
+  }
   if (!offer.sources.length) reasons.push("No verifiable public source");
   if (contract.category === "car-insurance" && (offer.liabilityLimit !== contract.liabilityLimit || offer.collisionDeductible !== contract.collisionDeductible || offer.comprehensiveDeductible !== contract.comprehensiveDeductible || contract.liabilityLimit === null || contract.collisionDeductible === null || contract.comprehensiveDeductible === null))
     reasons.push("Liability limits and deductibles do not match");

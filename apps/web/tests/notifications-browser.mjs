@@ -88,6 +88,15 @@ try {
     assert.equal(await policyCard.getByRole("link", { name: "Décision officielle et date d’effet", exact: true }).getAttribute("href"), "https://www.bankofcanada.ca/core-functions/monetary-policy/key-interest-rate/");
     await page.getByText("Événements surveillés et preuves manquantes", { exact: true }).click(); await page.getByText("Délais de réclamation", { exact: true }).waitFor(); await noOverflow(); await page.screenshot({ path: join(output, `monitoring-${width}.png`), fullPage: true }); await page.getByText("Événements surveillés et preuves manquantes", { exact: true }).click();
     const reminder = page.locator(".notification-card").filter({ hasText: "Renouvellement : Synthetic internet" });
+    const shortSnoozeStarted = Date.now();
+    await reminder.getByRole("button", { name: "Reporter 1 heure", exact: true }).click();
+    await page.getByText("Rappel reporté d’une heure. Le dossier reste inchangé.", { exact: true }).waitFor();
+    const shortSnooze = (await lib.read()).events.find(e => e.kind === "deadline").decision;
+    assert.ok(Date.parse(shortSnooze.snoozedUntil) >= shortSnoozeStarted + 3_600_000);
+    assert.ok(Date.parse(shortSnooze.snoozedUntil) <= Date.now() + 3_600_000);
+    await page.getByRole("button", { name: "Reportées", exact: true }).click();
+    await reminder.getByRole("button", { name: "Rétablir le rappel", exact: true }).click();
+    await page.getByRole("button", { name: "Historique", exact: true }).click(); await reminder.waitFor();
     await reminder.getByRole("button", { name: "Reporter 7 jours", exact: true }).click();
     await page.getByText("Rappel reporté de 7 jours. Le dossier reste inchangé.", { exact: true }).waitFor();
     await page.getByRole("button", { name: "Reportées", exact: true }).click();

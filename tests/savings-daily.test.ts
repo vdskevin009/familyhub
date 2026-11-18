@@ -71,6 +71,19 @@ test("adaptive research cadence preserves explicit expiry, fingerprint changes a
   assert.equal(reusableResearch(contract, "current", [{ ...job, report: { offers: [{ validUntil: "2026-10-22" }] } }], now), undefined);
   contract.renewal = "2026-10-25"; assert.equal(reusableResearch(contract, "current", [job], now), undefined);
 });
+
+test("recently saved research cannot renew stale, future or impossible offer evidence", () => {
+  const now = new Date("2026-10-23T16:00:00Z"), contract = newContract("home-insurance", "evidence-age");
+  const job: any = { id: "recent", contractId: contract.id, baselineKey: "current", status: "complete", createdAt: "2026-10-23T15:00:00Z", completedAt: "2026-10-23T15:00:00Z", report: { offers: [{ checkedAt: "2026-10-23T12:00:00Z", validUntil: "2026-10-31" }], missing: [], summary: "Synthetic" } };
+  assert.equal(reusableResearch(contract, "current", [job], now)?.id, "recent");
+  for (const change of [{ checkedAt: "2026-09-01T12:00:00Z" }, { checkedAt: "2026-10-24T12:00:00Z" }, { checkedAt: "invalid" }, { validUntil: "2027-02-30" }]) {
+    const candidate = { ...job, report: { ...job.report, offers: [{ ...job.report.offers[0], ...change }] } };
+    assert.equal(reusableResearch(contract, "current", [candidate], now), undefined, JSON.stringify(change));
+  }
+  contract.renewal = "2026-10-27";
+  const oldSource = { ...job, report: { ...job.report, offers: [{ ...job.report.offers[0], checkedAt: "2026-10-21T12:00:00Z" }] } };
+  assert.equal(reusableResearch(contract, "current", [oldSource], now), undefined, "Imminent deadlines use the source check date as well as job completion");
+});
 test("uncertain daily start is recovered only from a unique new dated job, never re-POSTed", async () => {
   const now = Date.parse("2026-10-23T16:00:00Z"); let posts = 0, reads = 0;
   const job = { id: "new", contractId: "one", scheduledDate: "2026-10-23", createdAt: new Date(now).toISOString(), status: "complete" };
