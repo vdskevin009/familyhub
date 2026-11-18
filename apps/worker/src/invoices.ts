@@ -1,4 +1,5 @@
 import type { MailAttachmentSource } from "./mail-attachment-cache.js";
+import type { MailRetrievalFailure } from "./mail-collection-runtime.js";
 import { legacyMailSource, type MailSource, type MailAccount } from "./mail-source.js";
 import { invoiceHistoryStart, invoiceHistoryVersion, healthReceiptRepairVersion, invoiceWindow, historyWindow, incrementalRequest, repairRequest, historyRequest, needsInvoiceUpgrade, upgradeCandidates, retryCandidates, planInvoiceMail, type InvoiceProgress, type InvoiceMailPlan } from "./mail-collection-plan.js";
 import { validatedNewInsurerPayments } from "./insurer-payment-intake.js";
@@ -29,7 +30,7 @@ import { latestOwnerAdjudications, withOwnerAdjudications, ownerAdjudicationAppl
 
 export type InvoiceMailAccess = {
   accounts(): Promise<Array<{ email: string; label: string; sourceMode?: "legacy" | "plugin"; collections?: ("invoices" | "groceries")[] }>>;
-  status(): { busy: boolean; sourceMode: "legacy" | "plugin"; error?: string; lastAttempt?: string };
+  status(): { busy: boolean; sourceMode: "legacy" | "plugin"; error?: string; lastAttempt?: string; failure?: MailRetrievalFailure };
   attachment(source: MailAttachmentSource, options?: { signal?: AbortSignal; cacheOnly?: boolean }): Promise<Buffer | undefined>;
 };
 let invoiceMailAccess: InvoiceMailAccess | undefined;
@@ -577,7 +578,7 @@ export async function invoiceSnapshot() {
     learning: { decisions: state.decisions.filter(item => !item.undoneAt).length, undoable: state.decisions.filter(item => !item.undoneAt).slice(-10).reverse() },
     busy: busy || !!mailStatus?.busy, sourceMode: mailStatus?.sourceMode || "legacy", accounts, progress: state.accounts,
     lastAttempt: mailStatus?.lastAttempt || state.lastAttempt, lastSuccess: state.lastSuccess,
-    error: mailStatus?.error || state.error, setupRequired: !invoiceAccounts.length,
+    error: mailStatus?.error || state.error, failure: mailStatus?.failure, setupRequired: !invoiceAccounts.length,
     continuationReady: !mailStatus?.error && invoiceAccounts.length > 0 && invoiceAccounts.every(account => !state.accounts[account.email.toLowerCase()]?.error)
       && invoiceAccounts.some(account => { const p = state.accounts[account.email.toLowerCase()]; return p && (p.window || p.invoiceHistoryWindow || p.healthReceiptRepairVersion !== healthReceiptRepairVersion || p.invoiceHistoryVersion !== invoiceHistoryVersion); }) };
 }

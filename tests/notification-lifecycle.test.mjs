@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { OpportunityActions, insuranceRenewalOpportunityId } from "../apps/worker/dist/opportunity-actions.js";
 import { NotificationLibrary } from "../apps/worker/dist/notification-library.js";
-import { notificationActionState, notificationCandidates } from "../apps/worker/dist/notification-model.js";
+import { notificationActionState, notificationCandidates, notificationSnoozeCrossesExpiry } from "../apps/worker/dist/notification-model.js";
 import { now, pushFixture, contractEvidence, invoiceEvidence, financeEvidence } from "./notification-fixture.mjs";
 async function sandbox(run) { const dir = await mkdtemp(join(tmpdir(), "familyhub-notification-lifecycle-")); try { await run(join(dir, "history.json")); } finally { await rm(dir, { recursive: true, force: true }); } }
 async function setup(path, send) {
@@ -13,6 +13,15 @@ async function setup(path, send) {
   const s = await lib.read(); await lib.mutate({ action: "enroll", expectedRevision: s.revision, permission: "granted", label: "Synthetic phone", subscription: fixture.subscription, publicKey: fixture.config.publicKey });
   return lib;
 }
+
+test("snooze warning uses the event expiry, never inventing a deadline from its source date", () => {
+  const event = { sourceDate: "2026-10-01", expiresAt: "2026-10-13T17:00:00Z" };
+  assert.equal(notificationSnoozeCrossesExpiry(event, 7 * 86_400_000, now.getTime()), true);
+  assert.equal(notificationSnoozeCrossesExpiry(event, 3_600_000, now.getTime()), false);
+  assert.equal(notificationSnoozeCrossesExpiry({ sourceDate: "2026-10-01" }, 7 * 86_400_000, now.getTime()), false);
+  assert.equal(notificationSnoozeCrossesExpiry({ expiresAt: "invalid" }, 7 * 86_400_000, now.getTime()), false);
+  assert.equal(notificationSnoozeCrossesExpiry(event, 3_600_000, Date.parse(event.expiresAt) - 3_600_000), true);
+});
 
 test("read is not resolved; decisions survive milestone changes and reopen only for material evidence", () => sandbox(async path => {
   const calls = [], lib = await setup(path, async (...args) => { calls.push(args); return "accepted"; }), contract = contractEvidence();
@@ -64,6 +73,26 @@ test("old source facts and informational payments never trigger automatic pushes
   await lib.scan({ finance: { ...finance, data: { ...finance.data, gics: [] } } }, [], now);
   const s = await lib.scan({ invoices, finance, collections: [{ id: "old", label: "Synthetic", state: "error", lastAttempt: "2026-01-01" }] }, [], now);
   assert.equal(sends, 0); assert.ok(s.events.find(e => e.kind === "deadline")); assert.equal(s.events.find(e => e.kind === "reimbursement").actionable, false);
+}));
+
+test("a missing or still-running collector cannot clear its earlier alert", () => sandbox(async path => {
+  let sends = 0;
+  const lib = await setup(path, async () => { sends++; return "accepted"; });
+  const blocked = { id: "gmail", label: "Synthetic invoices", state: "error", lastAttempt: now.toISOString() };
+  const other = { id: "bluecross", label: "Synthetic insurer", state: "up-to-date", lastSuccess: now.toISOString() };
+  let s = await lib.scan({ collections: [blocked, other] }, [], now);
+  const id = s.events[0].id;
+  s = await lib.mutate({ action: "snooze", id, snoozedUntil: "2026-10-13T17:00:00Z", expectedRevision: s.revision }, now);
+  const decision = s.events[0].decision;
+  for (const collections of [[other], [{ ...blocked, state: "syncing" }, other], [{ ...blocked, state: "unavailable" }, other]]) {
+    s = await lib.scan({ collections }, ["factures et remboursements"], now);
+    assert.equal(s.events.find(e => e.id === id).active, true, "only that collector's completed read may clear its alert");
+    assert.deepEqual(s.events.find(e => e.id === id).decision, decision);
+  }
+  s = await lib.scan({ collections: [{ ...blocked, state: "idle", lastSuccess: now.toISOString() }, other] }, [], now);
+  assert.equal(s.events.find(e => e.id === id).active, false, "a successful current source can close the old error");
+  assert.deepEqual(s.events.find(e => e.id === id).decision, decision);
+  assert.equal(sends, 0);
 }));
 
 test("legacy history upgrades silently, preserves device/preferences and rejects corrupt lifecycle metadata", () => sandbox(async path => {

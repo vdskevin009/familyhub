@@ -30,6 +30,16 @@ test("private evidence accepts unknowns without converting them to zero and sele
   assert.equal(decisionTermsFor([terms()], "other"), undefined);
 });
 
+test("latest mortgage evidence follows the actual instant across optional fractional seconds", () => {
+  const older = { ...profile(), id: "z-older", recordedAt: "2026-01-01T17:00:00Z" };
+  const newer = { ...profile(), id: "a-newer", recordedAt: "2026-01-01T17:00:00.500Z", principal: 290000 };
+  const firstTerms = { ...terms(), id: "z-older", recordedAt: older.recordedAt };
+  const correctedTerms = { ...terms(), id: "a-newer", recordedAt: newer.recordedAt, fees: charge(500) };
+  for (const rows of [[older, newer], [newer, older]]) assert.equal(latestDecisionProfile(rows)?.principal, 290000);
+  for (const rows of [[firstTerms, correctedTerms], [correctedTerms, firstTerms]]) assert.equal(decisionTermsFor(rows, "synthetic-offer")?.fees.amount, 500);
+  assert.equal(latestDecisionProfile([{ ...older, id: "a" }, { ...older, id: "z", recordedAt: "2026-01-01T17:00:00.000Z" }])?.id, "z", "Equivalent instants retain the deterministic ID tie-break");
+});
+
 test("independent FCAC payment example, discounted cash flows and closed-form balance agree", () => {
   const result = simulateLoan(loan()), r = Math.pow(1.025, 1 / 6) - 1;
   close(result.initialPayment, 1744.81, .01); close(result.interest, 70211.42, .05);

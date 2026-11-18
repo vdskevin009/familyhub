@@ -23,6 +23,9 @@ export function notificationActionState(event: NotificationEvent, now = Date.now
 export function notificationNeedsAttention(event: NotificationEvent, now = Date.now()): boolean {
   return event.active && !event.baseline && event.actionable !== false && notificationActionState(event, now) === "open";
 }
+export function notificationSnoozeCrossesExpiry(event: NotificationEvent, delayMs: number, now = Date.now()): boolean {
+  return !!event.expiresAt && Number.isFinite(delayMs) && delayMs > 0 && Date.parse(event.expiresAt) <= now + delayMs;
+}
 export type CollectionEvidence = { id: string; label: string; state: string; lastAttempt?: string; lastSuccess?: string; authReason?: string; error?: string };
 export type NotificationEvidence = { invoices?: Awaited<ReturnType<typeof invoiceSnapshot>>; collections?: CollectionEvidence[]; contracts?: SavingsContract[]; finance?: FinanceState; mortgage?: MortgageDailyReport[]; policy?: PolicyRateRead; mortgageState?: MortgageState; groceries?: { library: GroceryLibrary; plan: GroceryPlan }; claimDeadlines?: ClaimDeadline[] };
 export type NotificationPreferences = Record<NotificationKind, boolean>;

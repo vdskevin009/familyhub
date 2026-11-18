@@ -1,5 +1,17 @@
 # FamilyHub - Canonical Requirements
 
+## Daily reliability audit - issue #305
+
+Implemented locally on `fix/daily-reliability-audit-20261117`; release and installed-worker acceptance remain separate.
+
+- **FH-OPS-001:** The daily mail runner uses the existing configured worker and waits briefly for its supervisor to restore health. Failed health/authentication must not spawn another worker or overwrite its logs. An initially busy collection that finishes with an uncertain failure must not be replayed; explicit `continuationReady: true` still permits the established bounded invoice continuation. Existing schedules and independent grocery outcome are preserved.
+- **FH-MAIL-008:** Persist only allowlisted plugin failure codes/stages, boolean diagnostic flags and bounded counters in the existing runtime status. Preserve them across restart, clear them on success, and expose copies in paired invoice/grocery status. Never retain raw errors, account identifiers, URLs, request arguments or tool output. This improves future diagnosis; it cannot recover previously discarded evidence or authorize retries.
+- **FH-NOTIF-001 / FH-PROACTIVE-004:** A missing or still-running collector cannot clear its earlier alert. Require that exact collector's completed evidence. Add an explicit one-hour snooze and warn when a seven-day snooze passes known event validity, preserving existing decisions, budgets, quiet hours and generic Push content.
+- **FH-SAV-003 / FH-SAV-006:** A saved research timestamp cannot renew an older source-check date. Invalid calendar expiries are rejected and cannot yield savings estimates. Publish completed research only after durable persistence, so polling success survives restart.
+- **FH-MORTGAGE-004:** Select the newest profile and mortgage terms by parsed timestamp, including equivalent offset/fractional-second formats.
+
+Verification and release boundaries are recorded in `docs/DAILY-RELIABILITY-AUDIT.md`. Proposed cash-flow, irregular-expense, outcome-ledger and relevance mockups remain proposals, not activated financial features. No financial transaction, claim submission, provider contact, new schedule or device enrollment is introduced.
+
 ## Interrupted insurer sign-in - FH-REIMB-040 / FH-REIMB-045
 
 The scheduled insurer runner retains the existing installed HTTP transport with an explicit total deadline (15 minutes for collection, including response headers), no redirects and no request replay. This brings the already-installed local safeguard into the maintained source, without changing its schedule, automatic intake policy or credential controls. Synthetic regressions cover delayed headers, interrupted bodies, deadlines and redirects; they do not attest a future scheduled portal read. Tracked in issue #299 and PR #300.

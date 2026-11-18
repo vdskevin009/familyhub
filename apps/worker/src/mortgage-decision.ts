@@ -88,10 +88,10 @@ export function validateDecisionTerms(input: unknown): DecisionTerms {
   return clone(t);
 }
 export function latestDecisionProfile(records: DecisionProfile[]): DecisionProfile | undefined {
-  return [...records].sort((a, b) => b.recordedAt.localeCompare(a.recordedAt) || b.id.localeCompare(a.id))[0];
+  return [...records].sort((a, b) => Date.parse(b.recordedAt) - Date.parse(a.recordedAt) || b.id.localeCompare(a.id))[0];
 }
 export function decisionTermsFor(records: DecisionTerms[], offerId: string): DecisionTerms | undefined {
-  return [...records].filter(t => t.offerId === offerId).sort((a, b) => b.recordedAt.localeCompare(a.recordedAt) || b.id.localeCompare(a.id))[0];
+  return [...records].filter(t => t.offerId === offerId).sort((a, b) => Date.parse(b.recordedAt) - Date.parse(a.recordedAt) || b.id.localeCompare(a.id))[0];
 }
 /** Relative shocks to the contractual variable rate, not predictions of prime or of Bank of Canada decisions. */
 export function rateScenarios(asOf: string): RateScenario[] {

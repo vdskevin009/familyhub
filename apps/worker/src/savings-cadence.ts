@@ -1,4 +1,4 @@
-import type { SavingsContract, SavingsJob } from "./savings-model.js";
+import { savingsExpiryTime, type SavingsContract, type SavingsJob } from "./savings-model.js";
 const day = 86_400_000;
 /** Scheduling metadata is private. Only the existing public whitelist reaches research. */
 export function researchIntervalDays(contract: SavingsContract, now: Date): number {
@@ -25,7 +25,12 @@ export function reusableResearch(contract: SavingsContract, fingerprint: string,
     && job.report && Number.isFinite(Date.parse(job.completedAt ?? job.createdAt))
     && Date.parse(job.completedAt ?? job.createdAt) <= now.getTime()
     && now.getTime() - Date.parse(job.completedAt ?? job.createdAt) < interval
-    // An explicitly expired candidate warrants a new check even within the usual cadence.
-    && job.report.offers.every(offer => !offer.validUntil || Date.parse(offer.validUntil + "T23:59:59Z") >= now.getTime()))
-    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
+    // Saving a result does not refresh its source checks. Both clocks must satisfy the cadence.
+    && job.report.offers.every(offer => {
+      const checked = Date.parse(offer.checkedAt);
+      const expiry = offer.validUntil === null ? null : savingsExpiryTime(offer.validUntil);
+      return Number.isFinite(checked) && checked <= now.getTime() && now.getTime() - checked < interval
+        && (offer.validUntil === null || expiry !== null && expiry >= now.getTime());
+    }))
+    .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt) || b.id.localeCompare(a.id))[0];
 }

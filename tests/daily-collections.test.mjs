@@ -1,5 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+import { createServer } from "node:http";
+import { mkdtemp, mkdir, readFile, writeFile, access, rm } from "node:fs/promises";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 import { runDailyCollections } from "../apps/worker/dist/daily-collections.js";
 const tick = { pause: async () => {}, now: () => 0 };
 const success = { busy: false, incomplete: false, lastSuccess: "2026-10-01T12:00:00.000Z", accounts: [] };
@@ -186,4 +192,62 @@ test("retrieval failure cannot be retried merely because old progress has a part
     return {};
   }, tick);
   assert.equal(result.invoices, "incomplete-or-unknown"); assert.equal(starts, 1);
+});
+
+for (const phase of ["invoices", "groceries"]) {
+  test(`${phase}: an observed busy operation that fails must not be retried as unrelated work`, async () => {
+    let reads = 0, starts = 0;
+    const statusPath = phase === "invoices" ? "/invoices" : "/groceries/collection-status";
+    const result = await runDailyCollections(async (path, method = "GET") => {
+      if (path === "/health") return { capabilities: ["grocery-collection-v1"] };
+      if (method === "POST") { if (path === `/${phase}/collect`) starts++; return {}; }
+      if (path !== statusPath) return { setupRequired: true };
+      return ++reads === 1 ? { busy: true } : { busy: false, error: "Retrieval outcome is uncertain", continuationReady: false };
+    }, tick);
+    assert.equal(result[phase], "incomplete-or-unknown");
+    assert.equal(starts, 0, "observing failure does not authorize another collection");
+  });
+}
+
+test("an observed invoice tranche with explicit continuation readiness may safely continue", async () => {
+  let reads = 0, starts = 0;
+  const result = await runDailyCollections(async (path, method = "GET") => {
+    if (path === "/invoices/collect" && method === "POST") { starts++; return {}; }
+    if (path !== "/invoices") return { setupRequired: true };
+    if (++reads === 1) return { busy: true };
+    if (reads === 2) return { busy: false, error: "Some accounts are incomplete", continuationReady: true };
+    return success;
+  }, tick);
+  assert.equal(result.invoices, "complete");
+  assert.equal(starts, 1);
+});
+
+test("scheduled mail runner cannot start another worker when the existing listener rejects pairing", { skip: process.platform !== "win32" }, async () => {
+  const directory = await mkdtemp(join(tmpdir(), "familyhub-daily-startup-"));
+  const scripts = join(directory, "scripts"), dist = join(directory, "apps", "worker", "dist"), data = join(directory, "data");
+  const marker = join(directory, "unexpected-launch.txt");
+  const server = createServer((_request, response) => { response.writeHead(401); response.end("Unauthorized"); });
+  try {
+    await Promise.all([mkdir(scripts), mkdir(dist, { recursive: true }), mkdir(data)]);
+    await writeFile(join(scripts, "Run-DailyCollection.ps1"), await readFile(new URL("../scripts/Run-DailyCollection.ps1", import.meta.url)));
+    await writeFile(join(dist, "mail-source-policy-cli.js"), 'console.log(JSON.stringify({ mode: "plugin", ready: true }));');
+    const trap = `require("node:fs").writeFileSync(${JSON.stringify(marker)}, "A competing process was launched");`;
+    await writeFile(join(dist, "index.js"), trap);
+    await writeFile(join(dist, "collect-once.js"), trap);
+    await writeFile(join(data, "pairing-key.txt"), "synthetic-key");
+    await writeFile(join(data, "worker.log"), "existing-log");
+    await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
+    const command = '& $env:FH_TEST_RUNNER -DataDirectory $env:FH_TEST_DATA -NodePath $env:FH_TEST_NODE -Port $env:FH_TEST_PORT';
+    await assert.rejects(promisify(execFile)(join(process.env.SystemRoot, "System32", "WindowsPowerShell", "v1.0", "powershell.exe"),
+      ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", command], {
+        windowsHide: true, timeout: 30_000, env: { ...process.env, FH_TEST_RUNNER: join(scripts, "Run-DailyCollection.ps1"),
+          FH_TEST_DATA: data, FH_TEST_NODE: process.execPath, FH_TEST_PORT: String(server.address().port) }
+      }), /existing worker is unavailable/);
+    await assert.rejects(access(marker), { code: "ENOENT" });
+    assert.equal(await readFile(join(data, "worker.log"), "utf8"), "existing-log");
+  } finally {
+    server.closeAllConnections();
+    await new Promise(resolve => server.close(resolve));
+    await rm(directory, { recursive: true, force: true });
+  }
 });

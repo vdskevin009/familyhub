@@ -10,12 +10,36 @@ import { preparedPluginMailSource } from "./prepared-plugin-mail-source.js";
 import { collectInvoices, invoiceCollectionPlan, importBlueCrossMessages } from "./invoices.js";
 import type { GroceryCollection } from "./grocery-collection.js";
 import type { RawMail } from "./gmail-client.js";
+import { GmailPluginCollectionError, type GmailPluginFailureCode } from "./gmail-plugin-runner.js";
 export type PluginRetrievalRequest = { account: string; linkId: string; queries: readonly { q: string; maxResults: number }[]; messageIds?: readonly string[] };
 export type PluginBatchRunner = (request: PluginRetrievalRequest, options: { signal: AbortSignal }) => Promise<PluginBatch>;
 export type PluginOriginalRequest = { account: string; linkId: string; expected: MailAttachmentSource };
 export type PluginOriginalRunner = (request: PluginOriginalRequest, options: { signal: AbortSignal }) => Promise<Buffer>;
 type Domain = "invoices" | "groceries" | "attachment" | "bluecross";
-type Attempt = { lastAttempt?: string; error?: string };
+const failureCodes: readonly GmailPluginFailureCode[] = ["invalid_evidence", "profile_mismatch", "unsupported_attachment", "unsupported_original_host", "budget_exceeded", "timeout_or_cancelled", "metadata_unavailable", "configuration_changed", "runner_unavailable", "download_failed"];
+const failureStages = ["isolation_before", "tool_evidence", "isolation_after"] as const;
+const diagnosticFlags = ["invalid", "started", "completed", "turnComplete", "reportedMissingTool", "reportedUnknownAccount", "reportedMissingParent", "reportedAuthorization", "reportedOtherFailure", "claimedDone", "configError", "unknownField", "duplicateKey", "permissionError", "authError"] as const;
+export type MailRetrievalFailure = { code: GmailPluginFailureCode; stage?: typeof failureStages[number]; diagnostics?: Record<string, boolean | number> };
+/** Rebuild from a fixed vocabulary at capture, reload and read-back. No message,
+ * stack, account, request, URL, tool output or arbitrary diagnostic key is copied. */
+function retrievalFailure(value: unknown): MailRetrievalFailure | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return;
+  const input = value as Record<string, unknown>;
+  if (!failureCodes.includes(input.code as GmailPluginFailureCode)) return;
+  const result: MailRetrievalFailure = { code: input.code as GmailPluginFailureCode };
+  if (failureStages.includes(input.stage as typeof failureStages[number])) result.stage = input.stage as typeof failureStages[number];
+  if (input.diagnostics && typeof input.diagnostics === "object" && !Array.isArray(input.diagnostics)) {
+    const source = input.diagnostics as Record<string, unknown>, diagnostics: Record<string, boolean | number> = {};
+    for (const key of diagnosticFlags) if (typeof source[key] === "boolean") diagnostics[key] = source[key];
+    for (const key of ["eventCount", "mcpItems", "agentItems", "exitCode"] as const) {
+      const number = source[key];
+      if (typeof number === "number" && Number.isInteger(number) && number >= (key === "exitCode" ? -1 : 0) && number <= (key === "exitCode" ? 255 : 1_000_000)) diagnostics[key] = number;
+    }
+    if (Object.keys(diagnostics).length) result.diagnostics = diagnostics;
+  }
+  return result;
+}
+type Attempt = { lastAttempt?: string; error?: string; failure?: MailRetrievalFailure };
 type RuntimeState = { schema: 1; running?: Domain; attempts: Partial<Record<Domain, Attempt>> };
 type Dependencies = {
   directory?: string; grocery: GroceryCollection; runner?: PluginBatchRunner; originalRunner?: PluginOriginalRunner; timeoutMs?: number;
@@ -50,9 +74,12 @@ export class MailCollectionRuntime {
       for (const domain of ["invoices", "groceries", "attachment", "bluecross"] as const) {
         const attempt = saved.attempts[domain];
         if (attempt && (typeof attempt !== "object" || Array.isArray(attempt) || attempt.lastAttempt !== undefined && (typeof attempt.lastAttempt !== "string" || !Number.isFinite(Date.parse(attempt.lastAttempt))) || attempt.error !== undefined && typeof attempt.error !== "string")) throw new Error();
-        if (attempt) this.state.attempts[domain] = { lastAttempt: attempt.lastAttempt, ...(attempt.error ? { error: "Previous mail retrieval was incomplete; retry from its saved source window." } : {}) };
+        if (attempt) {
+          const failure = attempt.error ? retrievalFailure(attempt.failure) : undefined;
+          this.state.attempts[domain] = { lastAttempt: attempt.lastAttempt, ...(attempt.error ? { error: "Previous mail retrieval was incomplete; retry from its saved source window." } : {}), ...(failure ? { failure } : {}) };
+        }
       }
-      if (saved.running) this.state.attempts[saved.running] = { ...this.state.attempts[saved.running], error: "Previous mail retrieval was interrupted; coverage was not established." };
+      if (saved.running) this.state.attempts[saved.running] = { lastAttempt: this.state.attempts[saved.running]?.lastAttempt, error: "Previous mail retrieval was interrupted; coverage was not established." };
     } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") { this.statusUnreadable = true; this.policyError = "Mail runtime status is unavailable; inspect the private worker state before retrying."; } }
   }
   private async policy() {
@@ -69,8 +96,9 @@ export class MailCollectionRuntime {
     return (await credentials()).accounts.map(({ email, label }) => ({ email, label, sourceMode: "legacy" as const }));
   }
   status() {
+    const failure = this.policyError ? undefined : retrievalFailure(this.state.attempts.invoices?.failure);
     return { busy: !!this.active, sourceMode: this.mode, lastAttempt: this.state.attempts.invoices?.lastAttempt,
-      error: this.policyError || this.state.attempts.invoices?.error };
+      error: this.policyError || this.state.attempts.invoices?.error, ...(failure ? { failure } : {}) };
   }
   isBusy() { return !!this.active; }
   /** Cancels retrieval only. An applying collector retains its existing atomic/manual-authority semantics. */
@@ -91,8 +119,9 @@ export class MailCollectionRuntime {
       this.state.running = domain; this.state.attempts[domain] = { lastAttempt: this.now().toISOString() }; await this.save();
       const result = await action(active.controller.signal, () => { active.controller.signal.throwIfAborted(); active.applying = true; clearTimeout(timer); });
       return result;
-    } catch {
-      this.state.attempts[domain] = { ...this.state.attempts[domain], error: active.applying ? "Mail application did not finish cleanly. Some verified pages may already be saved; inspect current collection status before retrying." : "Mail retrieval did not complete. Collector checkpoints were not advanced by this attempt; inspect source status before retrying." };
+    } catch (error) {
+      const failure = !active.applying && error instanceof GmailPluginCollectionError ? retrievalFailure(error) : undefined;
+      this.state.attempts[domain] = { lastAttempt: this.state.attempts[domain]?.lastAttempt, error: active.applying ? "Mail application did not finish cleanly. Some verified pages may already be saved; inspect current collection status before retrying." : "Mail retrieval did not complete. Collector checkpoints were not advanced by this attempt; inspect source status before retrying.", ...(failure ? { failure } : {}) };
       throw new Error(this.state.attempts[domain]!.error);
     } finally {
       clearTimeout(timer); externalSignal?.removeEventListener("abort", externalAbort); this.state.running = undefined;
@@ -164,8 +193,9 @@ export class MailCollectionRuntime {
   }
   async groceryStatus() {
     await this.ready; const current = await this.deps.grocery.status(), attempt = this.state.attempts.groceries;
+    const failure = this.policyError ? undefined : retrievalFailure(attempt?.failure);
     return { ...current, busy: !!this.active || current.busy, lastAttempt: attempt?.lastAttempt || current.lastAttempt,
-      ...(attempt?.error || this.policyError ? { incomplete: true, error: "gmail-unavailable" as const } : {}) };
+      ...(attempt?.error || this.policyError ? { incomplete: true, error: "gmail-unavailable" as const } : {}), ...(failure ? { failure } : {}) };
   }
   async importBlueCross(email: unknown, messageIds: unknown, apply: unknown, options: { signal?: AbortSignal; onApplying?: () => Promise<void> } = {}) {
     if (typeof email !== "string" || !Array.isArray(messageIds) || !messageIds.length || messageIds.length > 10 || messageIds.some(id => typeof id !== "string" || !/^[a-f0-9]{8,40}$/i.test(id)) || typeof apply !== "boolean") throw new Error("Provide an exact account and bounded source message IDs.");
