@@ -2,7 +2,7 @@
 
 ## Existing-screen visual readiness - issue #307
 
-**FH-UX-002 — Testing.** Prioritize the existing product before the proposed cash forecast, reserves, outcome ledger or additional notification policies. Keep the current five primary destinations: Aujourd’hui, Remboursements, Finances, Projets and Plus. Retain source libraries, projects, tools, filters, history, manual decisions and detailed actions. This navigation supersedes the historical Claims-first clause in FH-UX-001 and the older destination names in FH-PROACTIVE-002; their other safeguards remain in force.
+**FH-UX-002 — Implemented in PR #308; release gates tracked in issue #307.** Prioritize the existing product before the proposed cash forecast, reserves, outcome ledger or additional notification policies. Keep the current five primary destinations: Aujourd’hui, Remboursements, Finances, Projets and Plus. Retain source libraries, projects, tools, filters, history, manual decisions and detailed actions. This navigation supersedes the historical Claims-first clause in FH-UX-001 and the older destination names in FH-PROACTIVE-002; their other safeguards remain in force.
 
 Present existing evidence with prominent qualified amounts, labelled comparable bars, compact action/status rows and on-demand detail. Keep unknowns, stale/partial coverage, currencies, refunds, non-guaranteed estimates and observed versus forecast payments distinct. No absent amount becomes zero and no successful API read becomes a new collection date. The first useful Today action precedes aggregate summaries. Informational notices do not imply success.
 

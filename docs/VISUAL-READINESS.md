@@ -1,6 +1,6 @@
 # Existing screens: visual clarity and production readiness
 
-Issue #307; FH-UX-001/002, FH-PROACTIVE-001..006, FH-NOTIF-001/007 and existing financial/source contracts. Existing functionality is the scope; forecast, reserve and outcome-ledger proposals are deferred.
+Implementation PR #308; release tracking in issue #307. FH-UX-001/002, FH-PROACTIVE-001..006, FH-NOTIF-001/007 and existing financial/source contracts. Existing functionality is the scope; forecast, reserve and outcome-ledger proposals are deferred.
 
 ## Design direction
 
@@ -61,8 +61,8 @@ This review covers changed entry/detail flows, not every screen's complete busin
 
 ## Verification and release
 
-Local typechecking for web/worker, production web compilation, 162 PWA/product/transport tests and five CI shard-coverage tests pass. The theme/navigation harness passes 12 routes at four widths under both system color preferences. New regressions pass at six widths (320–1440 px), including unknown freshness, late unmounted reads and post-sync continuations, one active destination, source details and keyboard focus. The synthetic sync is isolated and is never replayed.
+Local typechecking for web/worker, production web/worker compilation, 162 PWA/product/transport tests and five CI shard-coverage tests pass. The theme/navigation harness passes 12 routes at four widths under both system color preferences. New regressions pass at six widths (320–1440 px), including unknown freshness, late unmounted reads and post-sync continuations, one active destination, source details and keyboard focus. The synthetic sync is isolated and is never replayed.
 
-Today passes six widths, Notifications four, existing Savings four and new recurring visual regressions four. Financial calculation and recurring-presentation regressions pass; final browser results and the exact release revision are tracked in issue #307. Existing tests retain correction/undo, source documents, saved decisions and lifecycle acceptance. Full PR/main CI, publication and exact served revision remain required release gates; the issue records each gate separately.
+Today passes six widths, Notifications four, existing Savings four and new recurring visual regressions four. Finance, Monthly Accounts, Trends, Contributions and compact spending pass four widths each, plus 45 financial model and 21 targeted Savings tests. Final Finance/Monthly/Trends reruns pass against the release build. Existing tests retain correction/undo, source documents, saved decisions and lifecycle acceptance. Full PR/main CI, publication and exact served revision remain required release gates; issue #307 records each gate separately.
 
 No worker source/API/schema changes are introduced, so no installed-worker restart is required. Natural daily source completion, physical-phone rendering/push receipt and financial outcomes remain distinct, unproven gates in #305. A healthy process or synthetic fixture cannot establish them. RTL and slow-motion animation inspection were not performed; existing reduced-motion behavior is retained.
