@@ -12,7 +12,7 @@ import type { GroceryCollection } from "./grocery-collection.js";
 import type { RawMail } from "./gmail-client.js";
 import { GmailPluginCollectionError, type GmailPluginFailureCode } from "./gmail-plugin-runner.js";
 export type PluginRetrievalRequest = { account: string; linkId: string; queries: readonly { q: string; maxResults: number }[]; messageIds?: readonly string[] };
-export type PluginBatchRunner = (request: PluginRetrievalRequest, options: { signal: AbortSignal }) => Promise<PluginBatch>;
+export type PluginBatchRunner = (request: PluginRetrievalRequest, options: { signal: AbortSignal; allowHeldMessages?: boolean }) => Promise<PluginBatch>;
 export type PluginOriginalRequest = { account: string; linkId: string; expected: MailAttachmentSource };
 export type PluginOriginalRunner = (request: PluginOriginalRequest, options: { signal: AbortSignal }) => Promise<Buffer>;
 type Domain = "invoices" | "groceries" | "attachment" | "bluecross";
@@ -132,10 +132,10 @@ export class MailCollectionRuntime {
     signal.throwIfAborted();
     if (JSON.stringify(await this.policy()) !== JSON.stringify(policy)) throw new Error("Mail source selection changed during retrieval.");
   }
-  private async batch(account: PluginMailAccount, queries: readonly { q: string; maxResults: number }[], messageIds: readonly string[], signal: AbortSignal): Promise<PluginBatch> {
+  private async batch(account: PluginMailAccount, queries: readonly { q: string; maxResults: number }[], messageIds: readonly string[], signal: AbortSignal, allowHeldMessages = false): Promise<PluginBatch> {
     signal.throwIfAborted();
-    const batch = await this.runner({ account: account.email, linkId: account.linkId, queries, messageIds }, { signal });
-    signal.throwIfAborted(); createPluginBatchTransport(batch, account.email);
+    const batch = await this.runner({ account: account.email, linkId: account.linkId, queries, messageIds }, { signal, ...(allowHeldMessages ? { allowHeldMessages: true } : {}) });
+    signal.throwIfAborted(); createPluginBatchTransport(batch, account.email, { allowHeldMessages });
     return batch;
   }
   /** Save ALL original leaves, including sources skipped by classification/manual-authority guards. */
@@ -143,6 +143,7 @@ export class MailCollectionRuntime {
     const cache = createMailAttachmentCache(join(this.directory, "mail-attachments"));
     const originals = new Map(batch.attachments.map(a => [JSON.stringify([a.messageId, a.attachmentId]), a]));
     for (const message of batch.messages) {
+      if (batch.heldMessages?.some(held => held.messageId === message.id)) continue;
       const walk = async (part: NonNullable<RawMail["payload"]>): Promise<void> => {
         signal.throwIfAborted();
         if (part.body?.attachmentId) {
@@ -167,12 +168,12 @@ export class MailCollectionRuntime {
       for (let i = 0; i < accounts.length; i++) {
         const account = accounts[i], plan = plans[i];
         const queries = [plan.incremental, ...(plan.repair ? [plan.repair.request] : []), ...(plan.history ? [plan.history.request] : [])];
-        const batch = await this.batch(account, queries.map(({ q, maxResults }) => ({ q, maxResults })), [...new Set([...plan.upgradeMessageIds, ...plan.retryMessageIds])], signal);
+        const batch = await this.batch(account, queries.map(({ q, maxResults }) => ({ q, maxResults })), [...new Set([...plan.upgradeMessageIds, ...plan.retryMessageIds, ...plan.heldMessageIds])], signal, true);
         inputs.push({ account, batch });
       }
       await this.unchanged(policy, signal);
       for (const input of inputs) await this.cacheBatch(input.batch, signal);
-      await this.unchanged(policy, signal); applying(); await (this.deps.collectInvoices || collectInvoices)({ source: preparedPluginMailSource(inputs), plans });
+      await this.unchanged(policy, signal); applying(); await (this.deps.collectInvoices || collectInvoices)({ source: preparedPluginMailSource(inputs, { allowHeldMessages: true }), plans });
     });
   }
   async collectGroceries() {

@@ -24,13 +24,14 @@ const rows=['Scaling, Two units','Root Planing, Two units'].flatMap((label,i)=>[
  {...common,Id:`dj-${i}`,Fingerprint:`dj-${i}`,Provider:'Desjardins',ClaimedService:i?'APLAN. DE RACINES':'DÉTARTRAGE DEUX UNITÉS',Insurer:'desjardins',StructuredSource:'desjardins-portal',ReimbursedAmount:112,DetectedAmount:112},
  {...common,Id:`bc-${i}`,Fingerprint:`bc-${i}`,Provider:'Blue Cross',ClaimedService:label,Insurer:'blue-cross',StructuredSource:'blue-cross-portal',ReimbursedAmount:28,DetectedAmount:28}
 ]);
-async function openCoverageDetails(page) {
+async function openCoverageDetails(page, expectedSummary = /Blue Cross : rapprochements à vérifier/) {
  const coverage=page.getByRole('region',{name:'Insurer collection coverage'});
  const details=coverage.locator(':scope > details'),summary=details.locator(':scope > summary');
  await summary.getByText(/\d+ source\(s\) à vérifier/).waitFor();
  assert.equal(await details.getAttribute('open'),null,'Coverage starts compact without hiding the warning');
  assert.match(await summary.innerText(),/Blue Cross/,'The compact warning identifies the affected provider');
- assert.match(await summary.innerText(),/données possiblement incomplètes/,'Incomplete-source context is visible before opening detail');
+ assert.match(await summary.innerText(),expectedSummary,'The compact caption identifies the actual source state before opening detail');
+ assert.doesNotMatch(await summary.innerText(),/données possiblement incomplètes/,'A completed review must not inherit a blanket incomplete caption');
  assert.equal(await coverage.getByRole('button',{name:'Review Sources',exact:true}).isVisible(),true,'The source action remains immediately available');
  await summary.click();
  assert.notEqual(await details.getAttribute('open'),null,'Native disclosure opens the full coverage evidence');
@@ -39,10 +40,11 @@ async function openCoverageDetails(page) {
 let browser;
 try {
  browser=await chromium.launch({headless:true,channel:process.platform==='win32'?'msedge':undefined});
- for(const width of [390,1440]) {
+ for(const width of [320,390,1440]) {
   await writeFile(join(dir,'invoices.json'),JSON.stringify({items:rows,accounts:{}}));await api.initializeInvoices();
   const context=await browser.newContext({viewport:{width,height:1000},serviceWorkers:'block'}),page=await context.newPage(),posts=[],errors=[];
   let blueCrossSyncStatus={state:'idle',lastSuccess:new Date().toISOString(),latestResult:{status:'success',applied:false,complete:true,autoImported:0,ambiguous:1,errors:0,pendingNew:0,pendingChanged:0}};
+  let invoiceStatus={error:'Some accounts are incomplete.',lastSuccess:'2026-08-01T12:00:00Z',progress:{'synthetic@example.test':{error:'Gmail authorization expired or was rejected. Reconnect this account on the PC.'}}};
   page.on('pageerror',e=>errors.push(e.message));
   await page.addInitScript(()=>localStorage.setItem('familyhub.worker.v1',JSON.stringify({Endpoint:'https://synthetic-worker.invalid',ApiKey:'synthetic-key'})));
   await page.route('https://synthetic-worker.invalid/**',async route=>{
@@ -50,7 +52,7 @@ try {
    const reply=body=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(body),headers:{'Access-Control-Allow-Origin':'*'}});
    if(req.method()==='OPTIONS')return reply({});
    if(path==='/health')return reply({status:'ok',version:'2.26.19'});
-   if(path==='/invoices')return reply({...await api.invoiceSnapshot(), error:'Some accounts are incomplete.', lastSuccess:'2026-08-01T12:00:00Z', progress:{'synthetic@example.test':{error:'Gmail authorization expired or was rejected. Reconnect this account on the PC.'}}});
+   if(path==='/invoices')return reply({...await api.invoiceSnapshot(),...invoiceStatus});
    if(path==='/bluecross/status')return reply(blueCrossSyncStatus);
    if(req.method()==='POST'){
     const body=req.postDataJSON();posts.push({path,body});
@@ -61,6 +63,8 @@ try {
   });
   await page.goto(base);
   await page.getByText(/Gmail sign-in required on the PC/).waitFor();
+  await page.getByRole('region',{name:'Insurer collection coverage'}).getByText(/Blue Cross : rapprochements à vérifier/).waitFor();
+  await page.screenshot({path:join(output,`claims-coverage-compact-${width}.png`),fullPage:true});
   const coverage=await openCoverageDetails(page);
   await coverage.getByText(/Collection complete; 1 insurer record needs review before matching/).waitFor();
   assert.equal(await page.getByText(/Collection incomplete\. Recent payments may be missing/).count(),0);
@@ -97,13 +101,35 @@ try {
   await scaling.getByRole('button',{name:'Review nearby Desjardins records'}).click();
   await scaling.getByText('Linked to this claim',{exact:true}).waitFor();
   await page.screenshot({path:join(output,`insurer-pair-${width}.png`),fullPage:true});
+  for (const scenario of [
+    {name:'unsupported-attachment',status:{failure:{code:'unsupported_attachment'},error:'PRIVATE_ATTACHMENT_NAME.pdf raw checkpoint',progress:{}},expected:/Collecte interrompue : une pièce jointe Gmail/},
+    {name:'held-mail',status:{coverage:{since:'2026-08-01',complete:false,heldMessages:2},error:'PRIVATE_MAIL_SOURCE checkpoint',progress:{}},expected:/Collecte partielle : 2 messages Gmail restent à vérifier/},
+    {name:'held-mail-interrupted',status:{coverage:{since:'2026-08-01',complete:false,heldMessages:2},failure:{code:'unsupported_attachment'},error:'PRIVATE_ATTACHMENT_NAME.pdf raw checkpoint',progress:{}},expected:/2 messages Gmail restent à vérifier.*dernière collecte a aussi été interrompue/},
+    {name:'persisted-held-mail',status:{coverage:{since:'2026-08-01',complete:false,heldMessages:2},progress:{}},expected:/Collecte partielle : 2 messages Gmail restent à vérifier/},
+  ]) {
+    invoiceStatus={...scenario.status,lastSuccess:'2026-08-01T12:00:00Z'};
+    await page.reload();
+    await page.getByText(scenario.expected).waitFor();
+    assert.doesNotMatch(await page.locator('body').innerText(),/PRIVATE_|checkpoint|Gmail sign-in required/);
+    assert.equal(await page.getByRole('region',{name:'Insurer collection coverage'}).locator(':scope > details').getAttribute('open'),null);
+    assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
+    await page.screenshot({path:join(output,`claims-${scenario.name}-${width}.png`),fullPage:true,animations:'disabled'});
+    assert.equal(posts.length,3,'Inspecting mail failures must not start collection, login or a financial action');
+  }
+  invoiceStatus={coverage:{since:'2026-08-01',complete:true,heldMessages:0},progress:{}};
+  blueCrossSyncStatus={state:'idle',lastSuccess:new Date().toISOString(),latestResult:{status:'success',complete:true,applied:false,pendingNew:1,pendingChanged:0,ambiguous:0,errors:0}};
+  await page.reload();
+  const pendingCoverage=await openCoverageDetails(page,/Blue Cross : résultats à examiner/);
+  await pendingCoverage.getByText(/Collected insurer records still need review and Apply/).waitFor();
+  assert.equal(await page.getByText(/Collecte partielle/).count(),0,'Resolved held source count clears the mail warning');
+  assert.equal(posts.length,3);
   for (const state of ['legacy-layout','history-error','interrupted-signin']) {
     const lastSuccess='2026-08-01T12:00:00Z';
     blueCrossSyncStatus=state!=='history-error'
       ? {state:'login-required',authReason:state==='legacy-layout'?'layout-changed':'login-incomplete',lastSuccess}
       : {state:'error',error:'Blue Cross claims history could not be opened from the member page. No complete collection was made. Saved claims remain unchanged. Review the history on the PC before trying again.',lastSuccess};
     await page.reload();
-    const coverage=await openCoverageDetails(page);
+    const coverage=await openCoverageDetails(page,state==='legacy-layout'?/Blue Cross : historique indisponible/:state==='history-error'?/Blue Cross : collecte incomplète/:/Blue Cross : connexion non confirmée/);
     await coverage.getByText(state!=='history-error'?/Insurer history unavailable/:/Collection incomplete/).waitFor();
     assert.doesNotMatch(await coverage.innerText(),/sign.in required|session expired|reconnect/i);
     await coverage.getByRole('button',{name:'Review Sources'}).first().click();

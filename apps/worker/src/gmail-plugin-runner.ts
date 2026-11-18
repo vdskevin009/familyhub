@@ -7,6 +7,7 @@ import { stat } from "node:fs/promises";
 import { privateCodexBinary } from "./private-codex.js";
 import { createPluginBatchTransport, pluginMessageToRawMail, type PluginBatch } from "./gmail-plugin-batch.js";
 import type { MailAttachmentSource } from "./mail-attachment-cache.js";
+import { validHeldOriginal } from "./mail-source.js";
 
 const APP = "connector_2128aebfecb84f64a069897515042a44";
 export type GmailReadTool = "get_profile" | "search_email_ids" | "batch_read_email" | "read_attachment";
@@ -16,6 +17,8 @@ export type GmailAttachmentEvidence = Readonly<{ fromTool: "batch_read_email"; l
   attachmentId: string; filename: string; mimeType: string; sizeBytes: number; readAttachmentSupported: true }>;
 export type GmailPluginCall = Readonly<{ tool: GmailReadTool; arguments: Readonly<Record<string, unknown>>; attachmentEvidence?: GmailAttachmentEvidence }>;
 export type GmailPluginRunnerOptions = { signal?: AbortSignal;
+  /** Internal invoice collector only; other consumers require complete originals. */
+  allowHeldMessages?: boolean;
   /** Test/internal dependency only. Never supplied by HTTP input. Must return actual MCP structured evidence. */
   invoke?: (call: GmailPluginCall, signal: AbortSignal) => Promise<unknown>;
   download?: (url: string, size: number, signal: AbortSignal) => Promise<Buffer>;
@@ -300,21 +303,25 @@ function payload(value: unknown): Record<string, unknown> {
   for (let i = 0; object(result.structuredContent); i++) { check(i < 3); result = result.structuredContent; }
   check(result.isError !== true); return result;
 }
-type AttachmentReference = { messageId: string; attachmentId: string; filename: string; mime: string; size: number };
-function references(message: Record<string, unknown>): AttachmentReference[] {
+type AttachmentReference = { messageId: string; attachmentId: string; filename: string; mime: string; size: number; supported: boolean };
+function references(message: Record<string, unknown>, allowHeldMessages = false): AttachmentReference[] {
   const result: AttachmentReference[] = [];
   const walk = (part: unknown, depth: number) => {
     check(object(part) && object(part.body) && depth <= 12);
     if (part.body.attachment_id != null) {
-      check(part.read_attachment_supported === true && typeof part.body.attachment_id === "string" && part.body.attachment_id.length <= 1500
+      check((part.read_attachment_supported === true || allowHeldMessages && part.read_attachment_supported === false) && typeof part.body.attachment_id === "string" && part.body.attachment_id.length <= 1500
         && typeof part.filename === "string" && (part.filename.length > 0 || unnamedAsset(part.filename, part.mime_type)) && typeof part.mime_type === "string"
         && (part.filename !== "" || part.parts == null || (Array.isArray(part.parts) && part.parts.length === 0))
-        && Number.isSafeInteger(part.body.size) && Number(part.body.size) > 0 && Number(part.body.size) <= MAX_ATTACHMENT, "unsupported_attachment");
-      result.push({ messageId: String(message.id), attachmentId: part.body.attachment_id, filename: part.filename, mime: part.mime_type, size: Number(part.body.size) });
+        && Number.isSafeInteger(part.body.size) && Number(part.body.size) >= 0 && Number(part.body.size) <= MAX_ATTACHMENT
+        && (part.read_attachment_supported === false || Number(part.body.size) > 0), "unsupported_attachment");
+      const reference = { messageId: String(message.id), attachmentId: part.body.attachment_id, filename: part.filename, mime: part.mime_type, size: Number(part.body.size), supported: part.read_attachment_supported === true };
+      if (allowHeldMessages) check(validHeldOriginal({ attachmentId: reference.attachmentId, filename: reference.filename, mimeType: reference.mime, size: reference.size, reason: "unsupported_attachment" })
+        && (part.parts == null || Array.isArray(part.parts) && part.parts.length === 0));
+      result.push(reference);
     }
     if (part.parts != null) { check(Array.isArray(part.parts)); for (const child of part.parts) walk(child, depth + 1); }
   };
-  walk(message.payload, 0); check(result.length <= 30); return result;
+  walk(message.payload, 0); check(result.length <= 30 && new Set(result.map(reference => reference.attachmentId)).size === result.length); return result;
 }
 
 /** Fetch one ledger-bound original, without claiming message or query coverage. Unrelated body content is not interpreted. */
@@ -419,7 +426,12 @@ export async function collectGmailPluginBatch(input: GmailPluginRequest, options
     }
     for (const id of requested) {
       const message = returned.get(id); check(message);
-      batch.messages.push(pluginMessageToRawMail(message)); attachments.push(...references(message));
+      batch.messages.push(pluginMessageToRawMail(message));
+      const originals = references(message, options.allowHeldMessages === true), unavailable = originals.filter(reference => !reference.supported);
+      if (unavailable.length) {
+        (batch.heldMessages ||= []).push({ messageId: id, attachments: unavailable.map(reference => ({ attachmentId: reference.attachmentId,
+          filename: reference.filename, mimeType: reference.mime, size: reference.size, reason: "unsupported_attachment" })) });
+      } else attachments.push(...originals);
     }
   }
   let totalAttachmentBytes = 0; const attachmentKeys = new Set<string>();
@@ -437,6 +449,6 @@ export async function collectGmailPluginBatch(input: GmailPluginRequest, options
     check(Buffer.isBuffer(bytes) && bytes.length === attachment.size);
     batch.attachments.push({ messageId: attachment.messageId, attachmentId: attachment.attachmentId, size: bytes.length, data: bytes.toString("base64url") });
   }
-  createPluginBatchTransport(batch, plan.account); // Final all-or-nothing invariant check, before any consumer can write.
+  createPluginBatchTransport(batch, plan.account, { allowHeldMessages: options.allowHeldMessages }); // Validate every source; held originals never become readable messages.
   return batch;
 }

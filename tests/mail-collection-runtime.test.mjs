@@ -175,3 +175,18 @@ test('original job external cancellation aborts retrieval and holds shared lock 
  const f=await setup(t,{originalRunner:async(_request,{signal})=>new Promise((resolve,reject)=>{start();signal.addEventListener('abort',()=>{release=()=>reject(Error('stopped'));},{once:true});})});
  const running=f.runtime.attachment(expected,{signal:controller.signal});await started;controller.abort();assert.equal(f.runtime.isBusy(),true);release();await assert.rejects(running);assert.equal(f.runtime.isBusy(),false);assert.equal((await readdir(f.directory)).includes('mail-attachments'),false);
 });
+
+
+test('held-source opt-in is invoice-only and never creates partial grocery or explicit import application',async t=>{
+ const calls=[];const f=await setup(t,{runner:async(request,options)=>{
+  calls.push({request,options});const mail=raw();mail.payload={mimeType:'multipart/mixed',headers:mail.payload.headers,body:{size:0},parts:[mail.payload,
+   {mimeType:'application/ics',filename:'event.ics',readAttachmentSupported:false,body:{size:631,attachmentId:'calendar1'},parts:[]}]};
+  return{schema:1,account:request.account,messages:[mail],attachments:[],heldMessages:[{messageId:mail.id,attachments:[{attachmentId:'calendar1',filename:'event.ics',mimeType:'application/ics',size:631,reason:'unsupported_attachment'}]}],
+   queries:request.queries.map(q=>({...q,complete:true,pages:[{messageIds:[mail.id]}]}))};
+ }});
+ await f.runtime.collectInvoices();assert.equal(calls[0].options.allowHeldMessages,true);assert.equal(f.calls.length,1);
+ assert.equal((await f.calls[0][1].source.held(account)).length,1);
+ await assert.rejects(f.runtime.collectGroceries());assert.equal(calls[1].options.allowHeldMessages,undefined);assert.equal(f.calls.length,1);
+ await assert.rejects(f.runtime.importBlueCross(account.email,['abcdef123456'],false));assert.equal(calls[2].options.allowHeldMessages,undefined);assert.equal(f.calls.length,1);
+ assert.ok(!(await readdir(f.directory)).includes('mail-attachments'),'No unavailable original is cached');
+});

@@ -2,9 +2,24 @@ import type { credentials, accessToken, gmail } from "./gmail-client.js";
 
 export type MailAccount = Readonly<{ email: string; label: string }>;
 export type MailSession = { read<T>(path: string): Promise<T> };
+export type HeldMailOriginal = { attachmentId: string; filename: string; mimeType: string; size: number; reason: "unsupported_attachment" };
+export type HeldMailMessage = { messageId: string; attachments: HeldMailOriginal[]; queries: string[] };
+/** Exact source evidence exists, but its originals are unavailable through this connector. */
+export class HeldMailSourceError extends Error {
+  constructor(readonly messageId: string) { super("Source message is held until its original attachments are available."); }
+}
+export function validHeldOriginal(value: unknown): value is HeldMailOriginal {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const v = value as Record<string, unknown>;
+  return typeof v.attachmentId === "string" && /^[A-Za-z0-9_-]{1,1500}$/.test(v.attachmentId)
+    && typeof v.filename === "string" && v.filename.length <= 255 && !/[\x00-\x1f\x7f]/.test(v.filename)
+    && typeof v.mimeType === "string" && v.mimeType.length <= 200 && /^[a-z0-9!#$&^_.+-]+\/[a-z0-9!#$&^_.+-]+$/i.test(v.mimeType)
+    && !/^multipart\//i.test(v.mimeType) && (v.filename.length > 0 || !/^text\//i.test(v.mimeType))
+    && Number.isSafeInteger(v.size) && Number(v.size) >= 0 && Number(v.size) <= 20_000_000 && v.reason === "unsupported_attachment";
+}
 /** Source identities and read sessions, with no OAuth fields in the consumer contract. */
 export class MailAuthorizationError extends Error {}
-export type MailSource = { preflight?(account: MailAccount, paths: readonly string[]): Promise<void>; transport?: "plugin-batch"; accounts(): Promise<MailAccount[]>; open(account: MailAccount): Promise<MailSession> };
+export type MailSource = { held?(account: MailAccount): Promise<HeldMailMessage[]>; preflight?(account: MailAccount, paths: readonly string[]): Promise<void>; transport?: "plugin-batch"; accounts(): Promise<MailAccount[]>; open(account: MailAccount): Promise<MailSession> };
 type LegacyDependencies = { credentials: typeof credentials; accessToken: typeof accessToken; gmail: typeof gmail };
 
 /** The direct path retains its existing authorization/refresh behavior behind this adapter. */

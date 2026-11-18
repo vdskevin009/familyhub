@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { RawMail } from "./gmail-client.js";
+import { HeldMailSourceError, validHeldOriginal, type HeldMailMessage, type HeldMailOriginal } from "./mail-source.js";
 
 /** In-memory evidence only. No network, credentials, storage, or production wiring. */
 export type GmailCall = <T>(token: string, path: string) => Promise<T>;
@@ -7,6 +8,7 @@ export type PluginBatch = {
   schema: 1;
   account: string;
   messages: RawMail[];
+  heldMessages?: Array<{ messageId: string; attachments: HeldMailOriginal[] }>;
   attachments: Array<{ messageId: string; attachmentId: string; size: number; data: string }>;
   queries: Array<{ q: string; maxResults: number; complete: true;
     pages: Array<{ pageToken?: string; messageIds: string[]; nextPageToken?: string }> }>;
@@ -66,6 +68,7 @@ export function pluginMessageToRawMail(input: unknown): RawMail {
     check(Array.isArray(children));
     check(data !== undefined || hasAttachment || body.size === 0);
     return { mimeType: part.mime_type, filename: part.filename, headers: part.headers,
+      ...(typeof part.read_attachment_supported === "boolean" ? { readAttachmentSupported: part.read_attachment_supported } : {}),
       body: { size: body.size, ...(data !== undefined ? { data } : {}), ...(hasAttachment ? { attachmentId: body.attachment_id as string } : {}) },
       parts: children.map(child => convert(child, depth + 1)) };
   };
@@ -127,12 +130,22 @@ function countAttachments(part: NonNullable<RawMail["payload"]>): number {
  * Validates the WHOLE batch before exposing any page. `complete` is an upstream
  * assertion, not independent proof of source completeness. No Gmail query evaluation.
  */
-export function createPluginBatchTransport(input: unknown, expectedAccount: string): { account: string; token: string; gmail: GmailCall } {
+export function createPluginBatchTransport(input: unknown, expectedAccount: string, options: { allowHeldMessages?: boolean } = {}): { account: string; token: string; gmail: GmailCall; held: HeldMailMessage[] } {
   const batch = boundedClone(input);
   check(account(expectedAccount) && object(batch) && batch.schema === 1 && batch.account === expectedAccount
     && Array.isArray(batch.messages) && batch.messages.length <= 500
     && Array.isArray(batch.attachments) && batch.attachments.length <= 1000
     && Array.isArray(batch.queries) && batch.queries.length <= 20);
+  const held = new Map<string, { messageId: string; attachments: HeldMailOriginal[] }>();
+  if (batch.heldMessages !== undefined) {
+    check(options.allowHeldMessages === true && Array.isArray(batch.heldMessages) && batch.heldMessages.length <= 200);
+    for (const entry of batch.heldMessages) {
+      check(object(entry) && id(entry.messageId) && !held.has(entry.messageId) && Array.isArray(entry.attachments)
+        && entry.attachments.length > 0 && entry.attachments.length <= 30 && entry.attachments.every(validHeldOriginal)
+        && new Set(entry.attachments.map(a => a.attachmentId)).size === entry.attachments.length);
+      held.set(entry.messageId, entry as { messageId: string; attachments: HeldMailOriginal[] });
+    }
+  }
   const attachments = new Map<string, AttachmentData>();
   for (const attachment of batch.attachments) {
     check(object(attachment) && id(attachment.messageId) && attachmentId(attachment.attachmentId));
@@ -142,10 +155,28 @@ export function createPluginBatchTransport(input: unknown, expectedAccount: stri
   }
   const messages = new Map<string, RawMail>();
   for (const message of batch.messages) {
-    validateMail(message, attachments);
+    const hold = object(message) && typeof message.id === "string" ? held.get(message.id) : undefined;
+    validateMail(message, attachments, !hold);
+    if (hold) {
+      const originals: NonNullable<RawMail["payload"]>[] = [];
+      const walk = (part: NonNullable<RawMail["payload"]>) => { if (part.body?.attachmentId) originals.push(part); for (const child of part.parts || []) walk(child); };
+      walk(message.payload!);
+      check(originals.length <= 30 && new Set(originals.map(p => p.body!.attachmentId)).size === originals.length);
+      for (const part of originals) check(typeof part.readAttachmentSupported === "boolean" && !part.parts?.length
+        && validHeldOriginal({ attachmentId: part.body!.attachmentId, filename: part.filename, mimeType: part.mimeType, size: part.body!.size, reason: "unsupported_attachment" }));
+      check(originals.filter(part => part.readAttachmentSupported === false).length === hold.attachments.length);
+      for (const original of hold.attachments) {
+        const matches = originals.filter(p => p.body!.attachmentId === original.attachmentId);
+        check(matches.length === 1 && matches[0].readAttachmentSupported === false && !(matches[0].parts?.length)
+          && matches[0].filename === original.filename && matches[0].mimeType === original.mimeType && matches[0].body!.size === original.size);
+      }
+      // A held message is unavailable as a whole: no half-prepared attachment manifest.
+      check(![...attachments.keys()].some(key => JSON.parse(key)[0] === message.id));
+    }
     check(!messages.has(message.id));
     messages.set(message.id, message);
   }
+  for (const messageId of held.keys()) check(messages.has(messageId));
   for (const key of attachments.keys()) {
     const [messageId, attachmentId] = JSON.parse(key) as [string, string];
     const message = messages.get(messageId);
@@ -187,10 +218,11 @@ export function createPluginBatchTransport(input: unknown, expectedAccount: stri
       return structuredClone({ messages: page.messageIds.map(id => ({ id })), ...(page.nextPageToken ? { nextPageToken: page.nextPageToken } : {}) }) as T;
     }
     const message = /^messages\/([A-Za-z0-9_-]{1,200})\?format=full$/.exec(path);
-    if (message) { const raw = messages.get(message[1]); check(raw); return structuredClone(raw) as T; }
+    if (message) { const raw = messages.get(message[1]); check(raw); if (held.has(message[1])) throw new HeldMailSourceError(message[1]); return structuredClone(raw) as T; }
     const attachment = /^messages\/([A-Za-z0-9_-]{1,200})\/attachments\/([A-Za-z0-9_-]{1,1500})$/.exec(path);
     if (attachment) { const data = attachments.get(attachmentKey(attachment[1], attachment[2])); check(data); return structuredClone(data) as T; }
     return fail();
   };
-  return { account: expectedAccount, token, gmail };
+  return { account: expectedAccount, token, gmail, held: [...held.values()].map(entry => ({ ...structuredClone(entry),
+    queries: [...queries.values()].filter(query => query.pages.some(page => page.messageIds.includes(entry.messageId))).map(query => query.q) })) };
 }
