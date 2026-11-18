@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { applyOpportunityDecisions, buildOpportunityFeed, freshness, opportunityHref, type OpportunityInputs } from "../apps/web/src/opportunities.ts";
+import { applyOpportunityDecisions, buildOpportunityFeed, opportunitySnoozeTiming, freshness, opportunityHref, type OpportunityInputs } from "../apps/web/src/opportunities.ts";
 import { collectOpportunitySources, emptyOpportunityInputs, saveOpportunityAction, type OpportunityLoaders } from "../apps/web/src/useOpportunities.ts";
 import { newContract, baselineKey, publicBaseline, type SavingsOffer, type SavingsJob } from "../apps/worker/src/savings-model.ts";
 import { emptyPlan, type GroceryPlan } from "../apps/worker/src/grocery-planning.ts";
@@ -206,4 +206,31 @@ test("ranking is deterministic; a partial source failure does not eclipse verifi
   const input = withClaims([claim({ Id: "b" }), claim({ Id: "a", PotentialRemaining: 100000, HasUnresolvedReimbursementEvidence: true })]); input.finances.status = "error";
   const first = await buildOpportunityFeed(input, now), second = await buildOpportunityFeed(input, now);
   assert.deepEqual(first, second); assert.equal(first.opportunities[0].target.recordId, "b"); assert.equal(first.opportunities.at(-1)?.domain, "system");
+});
+
+
+test("Today snooze respects civil deadlines without inventing a cutoff time", () => {
+  const clock = new Date("2026-11-18T20:00:00Z"), hour = 3_600_000, week = 7 * 86_400_000;
+  assert.equal(opportunitySnoozeTiming("2026-11-17", hour, clock), "past");
+  assert.equal(opportunitySnoozeTiming("2026-11-18", hour, clock), "today");
+  assert.equal(opportunitySnoozeTiming("2026-11-20", week, clock), "after");
+  assert.equal(opportunitySnoozeTiming("2026-11-25", week, clock), "same-day");
+  assert.equal(opportunitySnoozeTiming("2026-11-26", week, clock), "before");
+  assert.equal(opportunitySnoozeTiming("2026-11-20", hour, clock), "before");
+  assert.equal(opportunitySnoozeTiming("2025-11-19", hour, new Date("2025-11-19T07:30:00Z")), "same-day");
+});
+test("Today snooze unknown and malformed dates cannot certify a safe return", () => {
+  for (const due of [null, "", "2026-02-29", "2026-02-30", "2026-13-01", "2026-11-18T00:00:00Z", "not-a-date"]) assert.equal(opportunitySnoozeTiming(due, 3_600_000, new Date(now)), "unknown");
+  for (const delay of [NaN, Infinity, 0, -1, Number.MAX_VALUE]) assert.equal(opportunitySnoozeTiming("2027-03-02", delay, new Date(now)), "unknown");
+  assert.equal(opportunitySnoozeTiming("2027-03-02", 3_600_000, new Date("invalid")), "unknown");
+});
+test("Today snooze uses the established Vancouver calendar across UTC, DST and year boundaries", () => {
+  const old = process.env.TZ;
+  try { for (const zone of ["UTC", "America/Vancouver"]) {
+    process.env.TZ = zone;
+    assert.equal(opportunitySnoozeTiming("2026-11-18", 3_600_000, new Date("2026-11-19T01:00:00Z")), "today");
+    assert.equal(opportunitySnoozeTiming("2027-01-07", 7 * 86_400_000, new Date("2026-12-31T20:00:00Z")), "same-day");
+    assert.equal(opportunitySnoozeTiming("2026-11-06", 7 * 86_400_000, new Date("2026-10-30T19:00:00Z")), "same-day");
+    assert.equal(opportunitySnoozeTiming("2027-03-14", 3_600_000, new Date("2027-03-14T09:30:00Z")), "today");
+  } } finally { if (old === undefined) delete process.env.TZ; else process.env.TZ = old; }
 });
