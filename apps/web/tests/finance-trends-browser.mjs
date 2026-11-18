@@ -70,6 +70,7 @@ try {
         await page.getByRole("button", { name:"Tendances",exact:true }).click();
         const view=page.locator('.finance-trends');await view.waitFor();
         assert.equal(await view.getByLabel('Mois analysé',{exact:true}).inputValue(),'2026-10','Direct entry opens the current month');
+        if(width<=700) assert(await view.getByLabel('Mois analysé',{exact:true}).evaluate(el=>parseFloat(getComputedStyle(el).fontSize)>=16),'Mobile month control avoids automatic text zoom');
         assert.equal(await view.locator('.trend-annual').count(),0);
         assert.equal(await view.locator('[data-trend-month]').count(),4);
         assert.equal(await page.getByRole('button',{name:'Source récente',exact:true}).count(),0);
@@ -77,6 +78,14 @@ try {
         const openMonth=async month=>{await view.getByLabel('Mois analysé',{exact:true}).fill(month);await page.waitForFunction(month=>document.querySelector('[data-trend-month][aria-current="date"]')?.getAttribute('data-trend-month')===month,month);};
         const headline=view.locator('.trend-headline');
         assert.match(await headline.innerText(),/780,00.*65,00.*715,00/s);
+        const leadingBars = await view.locator('[data-trend-leading] .trend-attribution-track > span').evaluateAll(els=>els.map(el=>({left:parseFloat(el.style.left),width:parseFloat(el.style.width),negative:el.classList.contains('favorable')})));
+        assert(leadingBars.length>=2); assert.equal(Math.max(...leadingBars.map(bar=>bar.width)),50);
+        for(const bar of leadingBars) { assert(bar.width>=0&&bar.width<=50); assert(Math.abs(bar.negative?bar.left+bar.width-50:bar.left-50)<0.000001,'Leading difference bars share zero'); }
+        const axes=await view.locator('[data-trend-leading] .trend-attribution-track').evaluateAll(els=>els.map(el=>{const rect=el.getBoundingClientRect();return rect.left+rect.width/2;}));
+        assert(axes.every(axis=>Math.abs(axis-axes[0])<1),'Rendered difference bars align on the same zero axis');
+        const legendZero=await view.locator('.finance-signed-legend > span').nth(1).evaluate(el=>{const rect=el.getBoundingClientRect();return rect.left+rect.width/2;});
+        assert(Math.abs(legendZero-axes[0])<1,'The legend labels the actual shared zero');
+
         assert.match(await view.innerText(),/9 premiers jours/);
         assert(await view.getByRole('img',{name:/Cumul quotidien observé/}).isVisible(),'Curve is visible without disclosure');
         await view.getByText('Valeurs jour par jour',{exact:true}).click();
@@ -124,7 +133,7 @@ try {
         await selectFinanceFilter(page,'Compte','bank');assert.match(await headline.innerText(),/600,00.*0,00.*600,00/s);
         await selectFinanceFilter(page,'Compte','');
         await selectFinanceFilter(page,'Devise','USD');assert.match(await headline.innerText(),/Non disponible/);assert.equal(await delta.count(),0);await selectFinanceFilter(page,'Devise','CAD');
-        await openMonth('2026-04');assert.match(await headline.innerText(),/Référence indisponible/);assert.equal(await delta.count(),0);
+        await openMonth('2026-04');assert.match(await headline.innerText(),/Référence indisponible/);assert.equal(await view.locator('[data-trend-leading]').count(),0,'Unknown reference has no synthetic bars');assert.equal(await delta.count(),0);
         await openMonth('2026-11');assert.match(await headline.innerText(),/Non disponible/);assert.equal(await delta.count(),0);
         await openMonth('2026-10');
         const saved=await new FinanceLibrary(join(temp,String(width))).read();assert.deepEqual(saved.data,initial.data);assert.equal(saved.decisions['oct-food'].category,'restaurants');
@@ -133,6 +142,12 @@ try {
         mode='zero';await page.getByRole('button',{name:'Actualiser',exact:true}).click();await view.locator('.trend-total').filter({hasText:/^Non disponible/}).waitFor();assert.equal(await delta.count(),0);
         mode='net-zero';await page.getByRole('button',{name:'Actualiser',exact:true}).click();await view.locator('.trend-total').filter({hasText:/^0,00/}).waitFor();assert.match(await headline.innerText(),/0,00.*-715,00.*715,00/s);
         mode='refund';await page.getByRole('button',{name:'Actualiser',exact:true}).click();await view.locator('.trend-total').filter({hasText:/-20,00/}).waitFor();assert.match(await headline.innerText(),/Référence indisponible/);assert.equal(await delta.count(),0);
+        await page.getByRole('button',{name:'Dépenses',exact:true}).click();
+        await selectFinanceFilter(page,'Mois','10');
+        const refundBar=page.locator('.finance-expense-charts [data-finance-bar="groceries"] .finance-bar-track > span');
+        await refundBar.waitFor();assert.equal(await refundBar.evaluate(el=>parseFloat(el.style.left)),0);assert.equal(await refundBar.evaluate(el=>parseFloat(el.style.width)),50,'A refund extends left from the common zero');
+        assert.match(await page.locator('.finance-category-total').innerText(),/-20,00/);
+        await page.getByRole('button',{name:'Tendances',exact:true}).click();
         assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);
         mode='error';await page.getByRole('button',{name:'Actualiser',exact:true}).click();await page.getByText('Synthetic unavailable',{exact:true}).waitFor();
         mode='empty';await page.getByRole('button',{name:'Actualiser',exact:true}).click();await page.getByRole('heading',{name:'Aucun historique importé',exact:true}).waitFor();assert.equal(await view.count(),0);

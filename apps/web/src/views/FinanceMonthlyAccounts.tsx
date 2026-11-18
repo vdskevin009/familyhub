@@ -22,6 +22,7 @@ export default function FinanceMonthlyAccounts({ read, history, selection, onSel
   const [detail, setDetail] = useState<MonthlyAccountRow | null>(null), detailAnchor = useRef<HTMLButtonElement>(null), detailId = useId();
   const currencies = [...new Set(version?.rows.map(r => r.currency).filter((c): c is string => c !== null) ?? [])].sort();
   const summary = version ? summarizeMonthlyAccounts(version, selection.accountId, selection.currency) : null;
+  const balanceScale = Math.max(1, summary?.assetsCents ?? 0, summary?.debtsCents ?? 0);
   useEffect(() => {
     if (selection.month !== null || !resolved.version || !["ready", "unsupported"].includes(read.status)) return;
     const available = [...new Set(resolved.version.rows.map(r => r.currency).filter((c): c is string => c !== null))].sort();
@@ -57,7 +58,13 @@ export default function FinanceMonthlyAccounts({ read, history, selection, onSel
           {resolved.inMonth.length > 1 && <label>Version de ce mois<select aria-label="Version de ce mois" value={version.id} onChange={e => onSelection({ ...selection, month, versionId: e.target.value, accountId: "" })}>{[...resolved.inMonth].reverse().map(v => <option key={v.id} value={v.id}>{v.dateKind === "received" ? "Reçu " + displayMonthlyCapture(v.date) : "Valeurs du " + dateLabel(v.date)}{v.superseded ? " · remplacée" : v.origin === "legacy-inventory" ? " · inventaire partiel" : ""}</option>)}</select></label>}
         </InfoPopover></div>
         <p className="accounts-net" data-accounts-net>{money(summary.netCents, selection.currency)} <small>{summary.netCents !== null && selection.currency}</small></p>
-        {version.dateKind !== "source" ? <p className="accounts-equation">Actifs <strong>{money(summary.includedCount ? summary.assetsCents : null, selection.currency)}</strong> − dettes <strong>{money(summary.includedCount ? summary.debtsCents : null, selection.currency)}</strong></p> : <p className="accounts-equation">{summary.includedCount} soldes signés enregistrés.</p>}
+        {version.dateKind !== "source" ? <dl className="accounts-balance-comparison" aria-label="Actifs et dettes de cette version">
+          {([{ label: "Actifs", cents: summary.assetsCents, kind: "assets" }, { label: "Dettes", cents: summary.debtsCents, kind: "debts" }] as const).map(item => <div key={item.kind}>
+            <dt>{item.label}</dt><dd>{money(summary.includedCount ? item.cents : null, selection.currency)}
+              {summary.includedCount > 0 && !summary.arithmeticUnavailable && item.cents !== null && <span className="accounts-balance-track" aria-hidden="true"><span data-balance-kind={item.kind} style={{ width: `${item.cents / balanceScale * 100}%` }} /></span>}
+            </dd>
+          </div>)}
+        </dl> : <p className="accounts-equation">{summary.includedCount} soldes signés enregistrés.</p>}
         {summary.unknownCount > 0 && <p className="accounts-equation">{summary.unknownCount} valeur(s) à préciser, hors total.</p>}
       </section>
       <p className="accounts-received"><time dateTime={version.date}>{stamp}</time></p>

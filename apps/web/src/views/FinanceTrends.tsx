@@ -57,6 +57,7 @@ export default function FinanceTrends({ state, trend, account, currency, onMonth
     const [detail,setDetail] = useState(false), trigger = useRef<HTMLButtonElement>(null);
     const attribution = useMemo(()=>attributeSpendingDifference(trend),[trend]);
     const leaders = leadingSpendingDifferences(attribution);
+    const leaderScale = Math.max(1, ...leaders.map(row => Math.abs(row.displayDifferenceCents)));
     const signed = (cents:number)=>`${cents>0?"+":""}${money(cents,currency)}`;
     const collection = state.imports.at(-1)?.collection;
     const close = ()=>{setDetail(false);requestAnimationFrame(()=>trigger.current?.focus());};
@@ -91,7 +92,13 @@ export default function FinanceTrends({ state, trend, account, currency, onMonth
             <DailyCurve trend={trend} currency={currency}/>
         </section>
         <section className="surface view-stack trend-explanation" aria-label="Explication de l'écart"><h2>Ce qui explique l'écart</h2>
-            {attribution.available ? <ul>{leaders.map(c=><li key={c.key}><button type="button" className="trend-category" data-trend-leading={c.key} onClick={()=>c.categoryKeys.length===1 ? onCategory(c.categoryKeys[0] as ExpenseCategory) : setDetail(true)}><span>{c.label}</span><strong className={c.displayDifferenceCents<0?"favorable":"higher"}>{signed(c.displayDifferenceCents)}</strong></button></li>)}</ul> : <p>Les différences par catégorie apparaîtront lorsqu'une référence comparable sera disponible. Le montant observé reste affiché sans économie supposée.</p>}
+            {attribution.available ? <><p className="finance-signed-legend" aria-hidden="true"><span>Moins</span><span>0</span><span>Plus</span></p><ul>{leaders.map(c=>{
+                const width = Math.abs(c.displayDifferenceCents) / leaderScale * 50;
+                return <li key={c.key}><button type="button" className="trend-category" data-trend-leading={c.key} onClick={()=>c.categoryKeys.length===1 ? onCategory(c.categoryKeys[0] as ExpenseCategory) : setDetail(true)}>
+                    <span className="trend-leading-label"><span>{c.label}</span><strong className={c.displayDifferenceCents<0?"favorable":c.displayDifferenceCents>0?"higher":""}>{signed(c.displayDifferenceCents)}</strong></span>
+                    <span className="trend-attribution-track" aria-hidden="true"><span className={c.displayDifferenceCents<0?"favorable":c.displayDifferenceCents>0?"higher":""} style={{ left: `${c.displayDifferenceCents < 0 ? 50 - width : 50}%`, width: `${width}%` }} /></span>
+                </button></li>;
+            })}</ul></> : <p>Référence comparable indisponible. Aucun écart supposé.</p>}
         </section>
         <div className="trend-collection compact-heading"><small>{collection ? <>Collecté le <time dateTime={collection.retrievedAt}>{displayFinanceCapture(collection.retrievedAt)}</time></> : "Date de collecte non disponible"}{unresolvedCount>0 ? ` · ${unresolvedCount} opérations à rapprocher` : ""}</small><InfoPopover title="Lecture des tendances">{method}</InfoPopover></div>
         <Sheet open={detail} onClose={close} title="Écart à la référence" wide className="trend-attribution-dialog">

@@ -1,7 +1,7 @@
 import type { SavingsContract } from "../savings";
 import type { ContractPayments, PaidRow, reconcilePayments } from "../savings-payments";
 import { calendarPeriod, periodMode, rangeLabel, type DateRange } from "../finance-periods";
-import { recurringPaidTotals } from "../recurring-presentation";
+import { recurringPaidTotals, recurringPaidCategories, recurringCategories } from "../recurring-presentation";
 import InfoPopover from "../ui/InfoPopover";
 const money = (cents: number, currency: string) => new Intl.NumberFormat("fr-CA", { style: "currency", currency }).format(cents / 100);
 function PaymentSource({ row }: { row: PaidRow }) {
@@ -20,22 +20,37 @@ export function ContractPaymentDetails({ contract, summary }: { contract: Saving
         </div></details>
     </div></section>;
 }
-export default function SavingsPayments({ result, contracts, range, onMonth }: { result: ReturnType<typeof reconcilePayments>; contracts: SavingsContract[]; range: DateRange; onMonth: (range: DateRange) => void }) {
+export default function SavingsPayments({ result, contracts, range, onMonth, loading = false }: { result: ReturnType<typeof reconcilePayments>; contracts: SavingsContract[]; range: DateRange; onMonth: (range: DateRange) => void; loading?: boolean }) {
     const ids = new Set(contracts.map(c => c.id));
     const summaries = result.summaries.filter(s => ids.has(s.contractId));
     const totals = recurringPaidTotals(contracts, summaries);
-    return <section className="surface view-stack recurring-paid" aria-label="Paiements TTC de la période">
+    const categories = recurringPaidCategories(contracts, summaries);
+    return <section className="surface view-stack recurring-paid" aria-label="Paiements TTC de la période" aria-busy={loading}>
         <div className="compact-heading"><h2>{periodMode(range)==="month" ? "Payé ce mois" : "Payé sur la période"}</h2><InfoPopover title="Paiements de la période">
             <p>{rangeLabel(range)} · {contracts.length} contrat(s) affiché(s).</p>
             <p>Dates des opérations bancaires, remboursements déduits. Les périodes des factures restent dans les contrats. Un prélèvement décalé n’est pas déplacé vers un autre mois.</p>
             <p>Totaux partiels : taxes et frais inclus dans le débit, sans calcul séparé. Un contrat sans paiement identifié n’est pas considéré comme gratuit.</p>
             {Object.entries(totals).map(([currency, t]) => <p key={currency}>{currency} : {t.matched} contrat(s) rapproché(s), {t.missing} sans paiement identifié.</p>)}
         </InfoPopover></div>
-        <small className="muted">{rangeLabel(range)}</small>
-        <div className="finance-totals">{Object.entries(totals).map(([currency, t]) => <div key={currency}><strong>{t.cents !== null ? money(t.cents, currency) : "Non disponible"}</strong><small>{currency} · {t.matched}/{t.matched + t.missing} contrats rapprochés{t.missing > 0 ? " · total partiel" : ""}</small></div>)}</div>
-        <small>Sur les paiements disponibles</small>
-        {!contracts.length && <p>Aucun contrat dans ce filtre. Aucun total disponible.</p>}
-        {result.months.length > 1 && <details className="savings-months"><summary>Voir les paiements mois par mois</summary>{Object.keys(totals).map(currency => {
+        {loading ? <p className="recurring-loading" role="status">Chargement des paiements…</p> : <div className="finance-totals recurring-currency-groups">{Object.entries(totals).map(([currency, t]) => {
+            const breakdown=categories[currency] ?? [];
+            const max=Math.max(1,...breakdown.map(item=>Math.abs(item.cents)));
+            return <div className="recurring-currency-group" key={currency} data-paid-currency={currency}>
+                <div className="recurring-paid-summary">
+                    <div className="recurring-paid-amount"><strong className={t.cents===null ? "recurring-unavailable" : ""}>{t.cents !== null ? money(t.cents, currency) : "Non disponible"}</strong><small>{currency} · {rangeLabel(range)}</small></div>
+                    <span className={`recurring-coverage${t.missing ? " partial" : ""}`}>{t.matched}/{t.matched+t.missing} contrats rapprochés{t.missing>0 ? " · partiel" : ""}</span>
+                    <span className="recurring-coverage-track" aria-hidden="true"><span style={{width:`${t.matched/(t.matched+t.missing)*100}%`}}/></span>
+                    <small>{t.cents===null ? "Aucun paiement identifié" : "Paiements identifiés · remboursements déduits"}</small>
+                </div>
+                {breakdown.length>0 && <div className="recurring-breakdown"><h3>Par catégorie</h3><ul>{breakdown.map(item=><li key={item.category} data-paid-category={item.category} className={item.cents<0 ? "recurring-refund" : ""}>
+                    <div><span>{recurringCategories[item.category]}</span><strong>{money(item.cents,currency)}</strong></div>
+                    <span className="recurring-category-track" aria-hidden="true"><span style={{width:`${Math.abs(item.cents)/max*100}%`}}/></span>
+                    {item.cents<0 && <small>Remboursement net</small>}
+                </li>)}</ul></div>}
+            </div>;
+        })}</div>}
+        {!loading && !contracts.length && <p>Aucun contrat dans ce filtre. Aucun total disponible.</p>}
+        {!loading && result.months.length > 1 && <details className="savings-months"><summary>Voir les paiements mois par mois</summary>{Object.keys(totals).map(currency => {
             const months = result.months.map(m => { const rows = summaries.flatMap(s => s.rows).filter(r => r.currency === currency && r.date.startsWith(m.month)); return { ...m, count: rows.length, cents: rows.reduce((n, r) => n + r.outflowCents, 0) }; });
             const max = Math.max(1, ...months.map(m => Math.abs(m.cents)));
             return <div key={currency}><h3>Mois par mois · {currency}</h3><ul className="finance-bars">{months.map(m => <li key={m.month}><button onClick={() => onMonth(calendarPeriod(Number(m.month.slice(0, 4)), Number(m.month.slice(5, 7))))}><span className="finance-bar-label"><span>{m.month}<small>{m.full ? "Fenêtre observée entière" : "Couverture partielle"}</small></span><strong>{m.count ? money(m.cents, currency) : "Aucun paiement identifié"}</strong></span><span className="finance-bar-track" aria-hidden="true"><span className={m.cents < 0 ? "negative" : ""} style={{ width: Math.abs(m.cents) / max * 100 + "%" }} /></span></button></li>)}</ul></div>;

@@ -40,6 +40,9 @@ try {
     assert.equal(await page.locator(".contribution-card.effort").count(),1);
     assert.equal(await page.locator(".contribution-card time").count(),0);
     assert.equal(await page.getByRole("progressbar").count(),2);
+    assert.equal(await page.locator('.contribution-forecast-summary').count(),1);
+    assert.match(await page.locator('.contribution-forecast-summary').innerText(),/1.?000,00.*Hors progression/s);
+    assert.equal(await page.getByRole('progressbar').first().getAttribute('value'), String(100000/600000*100));
     assert.equal(await page.locator(".contribution-inferred-summary").count(),2);
     assert.match(await page.getByRole("progressbar").first().getAttribute("aria-valuetext"), /1.?000/);
     if (!(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1))) console.error(await page.evaluate(()=>({width:innerWidth,scrollWidth:document.documentElement.scrollWidth,font:getComputedStyle(document.body).fontFamily,overflow:[...document.querySelectorAll("body *")].map(el=>({tag:el.tagName,class:el.className,rect:el.getBoundingClientRect().toJSON(),minWidth:getComputedStyle(el).minWidth})).filter(item=>item.rect.right>innerWidth+1)})));

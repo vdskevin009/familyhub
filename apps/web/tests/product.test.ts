@@ -1,4 +1,5 @@
 import "./grocery-purchase-scenarios.test";
+import "./visual-readiness.test";
 import "./grocery-receipt-products.test";
 import "./grocery-purchases.test";
 import "./grocery-catalogue.test";

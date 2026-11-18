@@ -311,6 +311,7 @@ try {
         await fillFinanceFilter(page, "Du", "2026-04-01");
         // The chart and category details inherit the register's search/review filters.
         await openFinanceRegister(page);
+        await page.waitForFunction(() => document.activeElement?.id === "finance-operations-title");
         await page.getByLabel("Rechercher", { exact: true }).fill("SPOTIFY");
         await page.locator(".finance-check input").check();
         await page.getByRole("button", { name: "Retour aux dépenses", exact: true }).click();
@@ -320,10 +321,19 @@ try {
         const categoryBars = page.locator(".finance-expense-charts > section").first();
         assert.equal(await categoryBars.getByRole("button", { name: /^Courses alimentaires/ }).count(),0);
         await openFinanceRegister(page);
+        // Opening also moves focus on the next frame. Settle it before fill("")
+        // so the scheduled heading focus cannot intercept the input's delete key.
+        await page.waitForFunction(() => document.activeElement?.id === "finance-operations-title");
         await page.getByLabel("Rechercher", { exact: true }).fill("");
+        assert.equal(await page.getByLabel("Rechercher", { exact: true }).inputValue(), "");
         await page.locator(".finance-check input").uncheck();
         // Wait for the filtered register to reflect the reset before changing screens.
-        await page.locator('.finance-operations-panel .finance-register button').filter({hasText:'SAFEWAY SYNTHETIC'}).first().waitFor();
+        await page.locator('.finance-operations-panel .finance-register button').filter({hasText:'SAFEWAY SYNTHETIC'}).first().waitFor().catch(async error => {
+            console.error('Synthetic register reset', await page.locator('.finance-operations-panel').innerText());
+            console.error('Synthetic filter controls', await page.locator('.finance-operations-panel').evaluate(el => ({open: el.open, fields: [...el.querySelectorAll('input,select')].map(input => ({value: input.value, checked: input.checked})), focused: document.activeElement?.id})));
+            await page.screenshot({path:join(screenshots,'register-reset-failure-'+width+'.png'),fullPage:true});
+            throw error;
+        });
         await page.getByRole("button", { name: "Retour aux dépenses", exact: true }).click();
         await page.waitForFunction(() => document.activeElement?.id === "finance-open-operations");
         const foodBar = categoryBars.locator('[data-finance-bar="groceries"]');
@@ -640,7 +650,7 @@ try {
             await page
                 .getByRole("button", { name: /Ouvrir le contrat Synthetic package/ })
                 .waitFor();
-            assert.match(await paid.locator(".finance-totals").innerText(), /Non disponible/);
+            assert.match(await paid.locator(".recurring-loading").innerText(), /Chargement des paiements/);
         } finally {
             releaseFinanceRead();
             financeReadGate = null;

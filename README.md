@@ -25,16 +25,16 @@ Every feature should do at least one of three things:
 2. prevent something important from being missed,
 3. reduce avoidable spending.
 
-The current default experience is **Claims**. Invoices and insurer source records are one tap away; the household tools remain under **Other**.
+The default experience is **Aujourd’hui**. Primary navigation: Aujourd’hui, Remboursements, Finances, Projets and Plus. Source libraries and household tools remain accessible. See [existing-screen visual readiness](docs/VISUAL-READINESS.md) for the current refinement and verification boundaries.
 
 ## Current experience
 
 - **Notifications** — a separate private history with source links and shared sending preferences. Opt-in PWA Web Push uses generic lock-screen content; details remain behind pairing. The PC must be running. Per-device permission, registration, revocation and an explicit receipt check are separate from service acceptance. See [setup, evidence rules and limitations](docs/NOTIFICATIONS.md).
 
-- **Claims** — the default healthcare reconciliation experience with its existing alerts and actions.
+- **Claims / Remboursements** — healthcare reconciliation with its existing alerts and actions.
 - **Documents** — one navigation entry with separate Invoices, Desjardins and Blue Cross libraries. Existing source links, reconciliation and manual choices remain available.
 - **Savings** — shared household contracts, missing-information checklists, documents and public market comparisons on the paired PC. An explicitly enabled daily agent schedule saves dated results for paired phones; previous review choices are retained. Reviewed estimates include promotions, fees and lost discounts; incompatible options do not inflate totals. See [scope and setup](docs/SAVINGS.md).
-- **Other → Today / Assistant** — prioritized household insights, quick actions, and an optional local AI assistant.
+- **Today / Aujourd’hui** — prioritized household insights, quick actions, and an optional local AI assistant.
 - **Important Mail** — review time-sensitive and administrative results prepared by the paired PC agent; promotions/newsletters are filtered and uncertain classifications remain reviewable.
 - **Reimbursements** — a healthcare reconciliation screen with paid, primary-insurer, secondary-insurer and outstanding totals; match-specific confidence/evidence; persistent manual confirm/reject decisions; and a dedicated mobile-first **À réconcilier** queue that presents one genuinely unmatched insurer record at a time with ranked expense candidates, in-place search and nearby context.
 - **Daily PC collection** — optional offline Gmail authorization, a Windows daily task, Codex classification, bounded PDF/text attachment reading, phone retrieval, attachment downloads and remembered corrections. Low-confidence items go to **À vérifier**. See [setup and limitations](docs/DAILY-INVOICES.md).

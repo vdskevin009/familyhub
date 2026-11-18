@@ -84,10 +84,22 @@ try {
     };
     const noOverflow = async () => { const overflow = await page.evaluate(() => [...document.querySelectorAll("body *")].filter(e => e.getBoundingClientRect().width && (e.getBoundingClientRect().right > innerWidth + 1 || e.getBoundingClientRect().left < -1)).slice(0, 12).map(e => ({ tag: e.tagName, class: e.className, width: e.getBoundingClientRect().width, text: e.textContent.slice(0,100) }))); if (overflow.length) { console.log(JSON.stringify(overflow)); await page.screenshot({ path: join(output, `overflow-${width}.png`), fullPage: true }); } assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), true); };
     await open(); await page.locator(".notification-card").first().waitFor(); assert.equal((await page.evaluate(() => window.__notificationCalls)).length, 0);
+    assert.equal(await page.locator(".notification-manage[open]").count(), 0, "Reminder controls start collapsed, without changing decisions");
+    assert.equal(await page.locator(".notification-evidence[open]").count(), 0, "Source context is available through explicit disclosure");
+    await page.getByText("1 avis automatique maximum par jour", { exact: true }).waitFor();
+    await noOverflow(); await page.screenshot({ path: join(output, `overview-${width}.png`), fullPage: true });
     const policyCard = page.locator(".notification-card").filter({ hasText: "La Banque du Canada a modifié son taux directeur" });
+    await policyCard.getByText("Taux directeur · impact personnel à vérifier.", { exact: true }).waitFor();
+    assert.equal(await policyCard.locator(".notification-source-detail").isVisible(), false, "Full source detail stays available without filling the default row");
+    await policyCard.locator(".notification-evidence summary").click();
+    assert.equal(await policyCard.locator(".notification-source-detail").isVisible(), true, "Opening evidence reveals the original complete explanation");
     assert.equal(await policyCard.getByRole("link", { name: "Décision officielle et date d’effet", exact: true }).getAttribute("href"), "https://www.bankofcanada.ca/core-functions/monetary-policy/key-interest-rate/");
     await page.getByText("Événements surveillés et preuves manquantes", { exact: true }).click(); await page.getByText("Délais de réclamation", { exact: true }).waitFor(); await noOverflow(); await page.screenshot({ path: join(output, `monitoring-${width}.png`), fullPage: true }); await page.getByText("Événements surveillés et preuves manquantes", { exact: true }).click();
     const reminder = page.locator(".notification-card").filter({ hasText: "Renouvellement : Synthetic internet" });
+    await reminder.locator(".notification-validity").waitFor();
+    await reminder.locator(".notification-deadline").getByText(/Date enregistrée :/).waitFor();
+    await reminder.locator(".notification-manage summary").click();
+    await reminder.getByText(/Un report de 7 jours dépasserait la validité/).waitFor();
     const shortSnoozeStarted = Date.now();
     await reminder.getByRole("button", { name: "Reporter 1 heure", exact: true }).click();
     await page.getByText("Rappel reporté d’une heure. Le dossier reste inchangé.", { exact: true }).waitFor();
@@ -97,6 +109,7 @@ try {
     await page.getByRole("button", { name: "Reportées", exact: true }).click();
     await reminder.getByRole("button", { name: "Rétablir le rappel", exact: true }).click();
     await page.getByRole("button", { name: "Historique", exact: true }).click(); await reminder.waitFor();
+    await reminder.locator(".notification-manage summary").click();
     await reminder.getByRole("button", { name: "Reporter 7 jours", exact: true }).click();
     await page.getByText("Rappel reporté de 7 jours. Le dossier reste inchangé.", { exact: true }).waitFor();
     await page.getByRole("button", { name: "Reportées", exact: true }).click();
@@ -105,6 +118,7 @@ try {
     await page.reload(); await page.getByRole("button", { name: "Reportées", exact: true }).click(); await reminder.waitFor();
     await reminder.getByRole("button", { name: "Rétablir le rappel", exact: true }).click();
     await page.getByRole("button", { name: "Historique", exact: true }).click(); await reminder.waitFor();
+    await reminder.locator(".notification-manage summary").click();
     await reminder.getByRole("button", { name: "Marquer traité", exact: true }).click();
     await page.getByText("Rappel traité. Le dossier et les montants restent inchangés.", { exact: true }).waitFor();
     assert.equal((await lib.read()).events.find(e => e.kind === "deadline").decision.state, "resolved");

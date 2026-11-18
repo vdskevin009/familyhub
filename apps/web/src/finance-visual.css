@@ -1,0 +1,103 @@
+/* Existing financial views: observed money first, sources and methods one step away. */
+.finance-view, .contributions-view {
+  --finance-chart: var(--accent, #2463d3);
+  --finance-chart-muted: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.finance-view .finance-trends { --green: var(--finance-chart); }
+.finance-view .finance-tabs { width: 100%; max-width: 640px; }
+.finance-view .finance-tabs button { min-height: 44px; }
+.finance-view .finance-expense-charts > .surface { gap: 18px; }
+.finance-view .finance-total-formula { font-size: 13px; }
+.finance-view .finance-bars { gap: 4px; }
+.finance-view .finance-bars button { padding: 12px 0; border-radius: 0; }
+.finance-view .finance-bar-label { align-items: baseline; gap: 12px; }
+.finance-view .finance-bar-label > span { min-width: 0; overflow-wrap: anywhere; }
+.finance-view .finance-bar-label strong { color: var(--ink); white-space: nowrap; }
+.finance-view .finance-bar-track { position: relative; height: 10px; background: var(--soft); border-radius: 3px; overflow: hidden; }
+.finance-view .finance-bar-track > span { background: var(--finance-chart); border-radius: 3px; min-width: 0; }
+.finance-view .finance-bars-signed .finance-bar-track { height: 15px; background: linear-gradient(to right, var(--soft) calc(50% - 1px), var(--control-line) calc(50% - 1px), var(--control-line) calc(50% + 1px), var(--soft) calc(50% + 1px)); }
+.finance-view .finance-bars-signed .finance-bar-track > span { position: absolute; height: 9px; top: 3px; }
+.finance-view .finance-bars-signed .finance-bar-track > .negative { background: var(--success); }
+.finance-view .finance-register-status:empty { display: none; }
+
+.finance-view .accounts-summary { padding: 22px; }
+.finance-view .accounts-net { margin-top: 8px; color: var(--ink); }
+.accounts-balance-comparison { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; margin: 22px 0 0; }
+.accounts-balance-comparison > div { display: grid; gap: 6px; min-width: 0; }
+.accounts-balance-comparison dt { color: var(--muted); font-size: 13px; }
+.accounts-balance-comparison dd { display: grid; gap: 6px; margin: 0; font-weight: 650; font-size: 17px; overflow-wrap: anywhere; }
+.accounts-balance-track { height: 8px; display: block; background: var(--soft); border-radius: 2px; overflow: hidden; }
+.accounts-balance-track > span { height: 100%; display: block; background: var(--finance-chart); border-radius: 2px; }
+.accounts-balance-track > [data-balance-kind="debts"] { background: var(--finance-chart-muted); }
+.finance-view .accounts-month-list { gap: 0; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; background: var(--surface); }
+.finance-view .accounts-month-row { border: 0; border-radius: 0; border-bottom: 1px solid var(--line); min-height: 76px; padding: 15px 16px; }
+.finance-view .accounts-month-row:last-child { border-bottom: 0; }
+.finance-view .accounts-row-title small, .finance-view .accounts-row-money small { font-size: 12px; }
+.finance-view .accounts-row-icon { background: var(--soft); color: var(--muted); }
+.finance-view .accounts-month-row[data-liability=true] .accounts-row-money { color: var(--ink); }
+.finance-view .accounts-month-row:focus-visible { outline-offset: -3px; }
+
+.finance-signed-legend { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); gap: 8px; color: var(--muted); font-size: 12px; }
+.finance-signed-legend > span:last-child { text-align: right; }
+.finance-view .trend-explanation { gap: 12px; }
+.finance-view .trend-explanation .trend-category { display: grid; grid-template-columns: minmax(0, 1fr); justify-content: stretch; gap: 6px; padding: 14px 0; }
+.trend-leading-label { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; }
+.trend-leading-label > span { min-width: 0; overflow-wrap: anywhere; }
+.finance-view .trend-explanation .trend-attribution-track { width: 100%; }
+.finance-view .trend-overview > details { border-top: 1px solid var(--line); }
+.finance-view .trend-overview > details > summary { font-size: 13px; }
+.finance-view .trend-reference-status { color: var(--muted); }
+.finance-view .trend-plot { font-variant-numeric: tabular-nums; }
+
+.contributions-view { width: 100%; }
+.contributions-view .contribution-cards { gap: 16px; }
+.contributions-view .contribution-card { border-radius: 12px; border-color: var(--line); padding: 22px; }
+.contributions-view .contribution-goal { margin-top: 16px; padding-bottom: 14px; border-bottom: 1px solid var(--line); }
+.contributions-view .contribution-goal strong { font-size: 18px; }
+.contributions-view .contribution-progress-label { align-items: center; margin-top: 18px; }
+.contributions-view .contribution-progress-label > span { display: grid; gap: 4px; }
+.contributions-view .contribution-progress-label > span > strong { font-size: clamp(24px, 4vw, 30px); line-height: 1.15; letter-spacing: -.025em; }
+.contributions-view .contribution-progress-label > span > span { color: var(--muted); font-size: 12px; }
+.contributions-view .contribution-progress-label > strong { font-size: 20px; }
+.contributions-view .contribution-card progress { height: 12px; margin: 14px 0 20px; }
+.contributions-view .contribution-card progress::-webkit-progress-value { background: var(--finance-chart); }
+.contributions-view .contribution-card progress::-moz-progress-bar { background: var(--finance-chart); }
+.contributions-view .contribution-card.reached progress::-webkit-progress-value { background: var(--success); }
+.contributions-view .contribution-card.reached progress::-moz-progress-bar { background: var(--success); }
+.contributions-view .contribution-bottom { padding-top: 16px; border-top: 1px solid var(--line); gap: 12px; }
+.contributions-view .contribution-bottom span { font-size: 12px; }
+.contributions-view .contribution-bottom strong { font-size: 18px; }
+.contributions-view .contribution-inferred-summary { font-size: 13px; padding-left: 10px; border-left: 2px dashed var(--control-line); margin: 0 0 16px; }
+.contribution-forecast-summary { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 2px 12px; margin-bottom: 16px; font-size: 13px; }
+.contribution-forecast-summary > span, .contribution-forecast-summary > small { color: var(--muted); }
+.contribution-forecast-summary > small { font-size: 12px; }
+.contributions-view .contribution-open { color: var(--finance-chart); }
+.contributions-view :is(button, summary):focus-visible { outline: 3px solid var(--finance-chart); outline-offset: 3px; }
+
+@media (min-width: 900px) {
+  .finance-view .accounts-month-row:nth-last-child(2):nth-child(odd) { border-bottom: 0; }
+  .finance-view .accounts-month-row:nth-child(odd) { border-right: 1px solid var(--line); }
+}
+@media (max-width: 700px) {
+  .finance-view :is(input:not([type="checkbox"]), select, textarea) { font-size: 16px; }
+  .finance-view .trend-period-heading input { max-width: 160px; }
+}
+@media (max-width: 420px) {
+  .finance-view .accounts-summary, .contributions-view .contribution-card { padding: 16px; }
+  .finance-view .accounts-month-row { padding: 13px 10px; }
+  .accounts-balance-comparison { gap: 14px; }
+  .accounts-balance-comparison dd { font-size: 15px; }
+  .finance-view .finance-bars button { padding: 11px 0; }
+  .finance-view .finance-tabs button { font-size: 12px; }
+  .contributions-view .contribution-goal { flex-direction: row; }
+  .contributions-view .contribution-bottom strong { font-size: 16px; }
+}
+@media (hover: hover) {
+  .finance-view .finance-bars button:not(:disabled):hover, .finance-view .accounts-month-row:hover { background: var(--soft); }
+}
+@media (forced-colors: active) {
+  .finance-view .finance-bar-track > span, .accounts-balance-track > span { background: CanvasText; }
+  .finance-view .finance-bars-signed .finance-bar-track { border-left: 1px solid CanvasText; border-right: 1px solid CanvasText; }
+  .contributions-view :is(button, summary):focus-visible { outline-color: Highlight; }
+}

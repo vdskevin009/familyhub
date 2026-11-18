@@ -1,6 +1,7 @@
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { Bell, CalendarDays, CircleDollarSign, Download, FileText, HeartHandshake, Home, Mail, MoreHorizontal, ChevronRight, Settings2, TrendingDown, ShoppingBasket } from "lucide-react";
 import { viewFromQuery } from "./domain";
+import { primaryDestination } from "./navigation";
 import { useFamilyHubState } from "./state";
 import type { AppView } from "./types";
 import TodayView from "./views/TodayView";
@@ -63,7 +64,7 @@ export default function App() {
   const mainRef = useRef<HTMLElement>(null);
   const documentViews = [{ id: "invoices", label: "Factures" }, { id: "desjardins", label: "Desjardins" }, { id: "blue-cross", label: "Blue Cross" }] as const;
   const documentKind = view === "documents" || view === "invoices" ? "invoices" : view === "desjardins" ? "desjardins" : view === "blue-cross" ? "blue-cross" : null;
-  const navigationActive = (id: AppView) => id === "projects" && ["property","vehicle","groceries","mortgage"].includes(view) || view === id || id === "finances" && view === "contributions" || id === "other" && (Boolean(documentKind) || otherViews.some(other => other.id === view));
+  const navigationActive = (id: AppView) => primaryDestination(view) === id;
   const pageName = view === "vehicle" ? "Voiture" : view === "property" ? "Nouveau bien" : view === "contributions" ? "Finances — Contributions" : nav.find(item => item.id === view)?.label || documentViews.find(item => item.id === view)?.label || otherViews.find(item => item.id === view)?.label || "FamilyHub";
   useEffect(() => {
     document.title = `${pageName} · FamilyHub`;

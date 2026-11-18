@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
-import { AlertCircle, AlertTriangle, CheckCircle2, Search, SlidersHorizontal, X } from "lucide-react";
+import { AlertCircle, AlertTriangle, CheckCircle2, Info, Search, SlidersHorizontal, X } from "lucide-react";
 
 /** Native modal semantics supply focus containment, Escape and focus restoration. */
 export function Sheet({ open, onClose, title, description, children, footer, wide = false, className = "", resetScrollOnOpen = false }: {
@@ -24,7 +24,7 @@ export function Sheet({ open, onClose, title, description, children, footer, wid
     onCancel={event => { event.preventDefault(); onClose(); }}
     onKeyDown={event => {
       if (event.key !== "Tab") return;
-      const controls = [...event.currentTarget.querySelectorAll<HTMLElement>('button:not(:disabled), a[href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex="0"]')]
+      const controls = [...event.currentTarget.querySelectorAll<HTMLElement>('button:not(:disabled), a[href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), summary, [tabindex]:not([tabindex="-1"])')]
         .filter(control => control.getClientRects().length > 0 && getComputedStyle(control).visibility !== "hidden");
       const first = controls[0], last = controls.at(-1);
       if (!first) { event.preventDefault(); return; }
@@ -74,9 +74,9 @@ export function FilterChips({ filters, onReset }: { filters: ActiveFilter[]; onR
   </div>;
 }
 
-export function Notice({ children, error = false, warning = false, onDismiss }: { children: ReactNode; error?: boolean; warning?: boolean; onDismiss?: () => void }) {
-  return <div className={`app-notice ${error ? "error" : warning ? "warning" : "success"}`} role={error ? "alert" : "status"}>
-    {error ? <AlertCircle size={18} aria-hidden="true" /> : warning ? <AlertTriangle size={18} aria-hidden="true" /> : <CheckCircle2 size={18} aria-hidden="true" />}<span>{children}</span>
+export function Notice({ children, error = false, warning = false, success = false, onDismiss }: { children: ReactNode; error?: boolean; warning?: boolean; success?: boolean; onDismiss?: () => void }) {
+  return <div className={`app-notice ${error ? "error" : warning ? "warning" : success ? "success" : "info"}`} role={error ? "alert" : "status"}>
+    {error ? <AlertCircle size={18} aria-hidden="true" /> : warning ? <AlertTriangle size={18} aria-hidden="true" /> : success ? <CheckCircle2 size={18} aria-hidden="true" /> : <Info size={18} aria-hidden="true" />}<span>{children}</span>
     {onDismiss && <button type="button" className="icon-button subtle" onClick={onDismiss} aria-label="Dismiss message"><X size={16} /></button>}
   </div>;
 }
