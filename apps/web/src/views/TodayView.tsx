@@ -1,10 +1,10 @@
-import { useEffect, useRef, useState, type FormEvent, type MouseEvent } from "react";
+import { useEffect, useId, useRef, useState, type FormEvent, type MouseEvent } from "react";
 import { ArrowRight, CheckCircle2, ChevronDown, ChevronRight, CircleDollarSign, Clock3, FileCheck2, HeartHandshake, Home, Info, MessageCircle, RefreshCw, Settings2, ShieldCheck, ShoppingBasket, TrendingDown, WifiOff } from "lucide-react";
 import { Notice, PageHeader, Sheet, SkeletonList } from "../ui/primitives";
 import type { HubState } from "../state";
 import type { AppView } from "../types";
 import { runWorkerTask } from "../worker";
-import { opportunityHref, type Opportunity } from "../opportunities";
+import { dateOnly, opportunityHref, opportunitySnoozeTiming, type Opportunity } from "../opportunities";
 import { useOpportunities } from "../useOpportunities";
 
 type Props = {
@@ -20,6 +20,7 @@ const domainIcons = { claims: HeartHandshake, insurance: ShieldCheck, subscripti
 const periods = { once: "ponctuel", month: "/ mois", year: "/ an", "first-year": "sur 12 mois" };
 function dateLabel(value: string | null | undefined, withTime = false) {
   if (!value) return "Date inconnue";
+  if (value.length === 10 && dateOnly(value) !== value) return "Date inconnue";
   const date = new Date(value.length === 10 ? value + "T12:00:00" : value);
   return Number.isFinite(date.getTime()) ? new Intl.DateTimeFormat("fr-CA", { day: "numeric", month: "short", year: "numeric", ...(withTime ? { hour: "2-digit", minute: "2-digit" } as const : {}) }).format(date) : "Date inconnue";
 }
@@ -27,7 +28,7 @@ function benefitLabel(opportunity: Opportunity) {
   return opportunity.benefit.amount === null ? opportunity.benefit.label : money.format(opportunity.benefit.amount);
 }
 function decisionLabel(opportunity: Opportunity) {
-  if (opportunity.decision === "snoozed") return "Reportée au " + dateLabel(opportunity.snoozedUntil);
+  if (opportunity.decision === "snoozed") return "Reportée";
   if (opportunity.decision === "dismissed") return "Masquée";
   if (opportunity.decision === "resolved") return "Traitée";
   return opportunity.freshness === "stale" ? "À actualiser" : opportunity.status === "waiting" ? "En attente" : opportunity.status === "ready" ? "À préparer" : opportunity.status === "unavailable" ? "Indisponible" : "À vérifier";
@@ -58,6 +59,13 @@ export default function TodayView({ hub, onNavigate, onOpenTarget, commandOpen, 
   const visible = showAll ? actions : actions.slice(0, 3);
   const managed = feed.allOpportunities.filter(item => item.decision && item.decision !== "seen");
   const selected = feed.allOpportunities.find(item => item.id === selectedId);
+  const snoozeWarningId = useId();
+  const now = new Date(), weekTiming = opportunitySnoozeTiming(selected?.dueDate ?? null, 7 * 86_400_000, now), hourTiming = opportunitySnoozeTiming(selected?.dueDate ?? null, 3_600_000, now);
+  const snoozeWarning = weekTiming === "past" ? "L’échéance est passée. Reporter la piste ne prolonge pas ce délai."
+    : weekTiming === "today" ? "L’échéance est aujourd’hui, sans heure limite connue. Même un report court peut la dépasser."
+    : hourTiming === "same-day" ? `Même le report d’une heure revient le jour de l’échéance du ${dateLabel(selected?.dueDate)}, sans heure limite connue.`
+    : weekTiming === "after" ? `Le report de 7 jours dépasse l’échéance du ${dateLabel(selected?.dueDate)}. Il ne prolonge pas ce délai.`
+    : weekTiming === "same-day" ? `Le report de 7 jours revient le jour de l’échéance du ${dateLabel(selected?.dueDate)}, sans heure limite connue.` : null;
   const sourceErrors = feed.sources.filter(source => source.status === "error");
   const accessibleSources = feed.sources.filter(source => source.status === "ready").length;
   const numericPotential = feed.allOpportunities.filter(item => item.benefit.kind === "potential" && item.benefit.amount !== null && item.freshness === "fresh");
@@ -67,13 +75,13 @@ export default function TodayView({ hub, onNavigate, onOpenTarget, commandOpen, 
     if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
     event.preventDefault(); onOpenTarget(opportunityHref(item.target));
   };
-  async function decide(item: Opportunity, action: "seen" | "snooze" | "dismiss" | "resolve" | "restore") {
+  async function decide(item: Opportunity, action: "seen" | "snooze" | "dismiss" | "resolve" | "restore", delayMs = 7 * 86_400_000) {
     setNotice("");
-    const options = action === "snooze" ? { snoozedUntil: new Date(Date.now() + 7 * 86_400_000).toISOString() } : undefined;
+    const options = action === "snooze" ? { snoozedUntil: new Date(Date.now() + delayMs).toISOString() } : undefined;
     const saved = await feed.setAction(item, action, options);
     if (!saved) return;
     setSelectedId(null);
-    setNotice(action === "snooze" ? "Piste reportée de 7 jours. Vous pouvez la reprendre ci-dessous." : action === "dismiss" ? "Piste masquée. Vous pouvez la réafficher dans les pistes gérées." : action === "restore" ? "Piste réaffichée dans vos actions." : action === "resolve" ? "Piste marquée comme traitée. Aucun gain ni aucune soumission n’est validé." : "Piste marquée comme lue.");
+    setNotice(action === "snooze" ? `Piste reportée ${delayMs === 3_600_000 ? "d’une heure" : "de 7 jours"}. Retour prévu le ${dateLabel(options?.snoozedUntil, true)}. Vous pouvez la reprendre ci-dessous.` : action === "dismiss" ? "Piste masquée. Vous pouvez la réafficher dans les pistes gérées." : action === "restore" ? "Piste réaffichée dans vos actions." : action === "resolve" ? "Piste marquée comme traitée. Aucun gain ni aucune soumission n'est validé." : "Piste marquée comme lue.");
   }
   async function ask(event: FormEvent) {
     event.preventDefault();
@@ -103,7 +111,7 @@ export default function TodayView({ hub, onNavigate, onOpenTarget, commandOpen, 
       <div className="opportunity-heading"><h3>{item.title}</h3><p className="opportunity-description">{item.description}</p></div>
       <div className="opportunity-value"><div className={item.benefit.amount === null ? "opportunity-benefit unknown" : "opportunity-benefit"}><strong>{benefitLabel(item)}</strong>{item.benefit.amount !== null && <span>{item.benefit.period ? periods[item.benefit.period] : "période à confirmer"}</span>}</div>
         {item.benefit.amount !== null && <p className="opportunity-qualification">{item.benefit.label} · à confirmer</p>}</div>
-      {(item.dueDate || item.decision === "seen" || item.freshness !== "fresh") && <div className="opportunity-meta">{item.dueDate && <span><Clock3 size={14} aria-hidden="true" />Échéance : {dateLabel(item.dueDate)}</span>}{item.freshness !== "fresh" && <span className="opportunity-evidence-state">{item.freshness === "stale" ? "Données anciennes" : "Fraîcheur non établie"}</span>}{item.decision === "seen" && <span>Déjà consultée</span>}</div>}
+      {(item.dueDate || item.decision === "seen" || item.decision === "snoozed" || item.freshness !== "fresh") && <div className="opportunity-meta">{item.decision === "snoozed" && <span><Clock3 size={14} aria-hidden="true" />Retour : {dateLabel(item.snoozedUntil, true)}</span>}{item.dueDate && <span><Clock3 size={14} aria-hidden="true" />Échéance : {dateLabel(item.dueDate)}</span>}{item.freshness !== "fresh" && <span className="opportunity-evidence-state">{item.freshness === "stale" ? "Données anciennes" : "Fraîcheur non établie"}</span>}{item.decision === "seen" && <span>Déjà consultée</span>}</div>}
       <div className="opportunity-actions"><a className="button" href={opportunityHref(item.target)} onClick={event => followLink(event, item)}>{item.actionLabel}<ArrowRight size={17} aria-hidden="true" /></a><button type="button" className="opportunity-details" onClick={() => { setNotice(""); setSelectedId(item.id); }} aria-label={`Sources et options : ${item.title}`} aria-haspopup="dialog"><Info size={18} aria-hidden="true" /><span>Sources et options</span></button></div>
     </article>;
   }
@@ -157,7 +165,21 @@ export default function TodayView({ hub, onNavigate, onOpenTarget, commandOpen, 
         <div className="today-detail-benefit"><span>{domainLabels[selected.domain]}</span><strong>{benefitLabel(selected)}</strong><p>{selected.benefit.amount === null ? "Aucun montant n’est supposé." : (selected.benefit.period ? periods[selected.benefit.period] : "Période à confirmer") + " · potentiel, à confirmer"}</p></div>
         <dl className="today-facts"><div><dt>Échéance</dt><dd>{selected.dueDate ? dateLabel(selected.dueDate) : "Non connue"}</dd></div><div><dt>Date des données</dt><dd>{dateLabel(selected.sourceDate)}</dd></div><div><dt>Fraîcheur</dt><dd>{selected.freshness === "fresh" ? "Dans la période de validité" : selected.freshness === "stale" ? "À actualiser" : "Non établie"}</dd></div><div><dt>Fiabilité</dt><dd>{selected.confidence === "verified" ? "Éléments vérifiés" : selected.confidence === "conditional" ? "Sous conditions" : "À établir"}</dd></div></dl>
         <h3>Preuves et conditions</h3><ul className="today-evidence">{selected.evidence.map((evidence, index) => <li key={index}>{evidence}</li>)}</ul>
-        <section className="today-card-options"><h3>Gérer cette piste</h3><p>Cette décision est conservée sur votre PC. De nouvelles preuves peuvent faire réapparaître la piste.</p>{!feed.actionsAvailable ? <p role="status">Le suivi n’est pas disponible. Vérifiez la connexion ou la version du service dans les réglages.</p> : selected.decision && selected.decision !== "seen" ? <button type="button" className="button secondary" disabled={feed.actionBusy || !online} onClick={() => void decide(selected, "restore")}>Réafficher dans mes actions</button> : <div className="today-option-buttons">{selected.decision !== "seen" && <button type="button" className="button secondary" disabled={feed.actionBusy || !online} onClick={() => void decide(selected, "seen")}>Marquer comme lue</button>}<button type="button" className="button secondary" disabled={feed.actionBusy || !online} onClick={() => void decide(selected, "snooze")}><Clock3 size={17} aria-hidden="true" />Reporter de 7 jours</button><button type="button" className="button secondary" disabled={feed.actionBusy || !online} onClick={() => void decide(selected, "dismiss")}>Masquer cette piste</button><button type="button" className="button secondary" disabled={feed.actionBusy || !online} onClick={() => void decide(selected, "resolve")}>Marquer comme traitée</button><p className="today-fine-print">Marquer comme traitée ne valide aucun gain ni aucune soumission.</p></div>}{feed.actionBusy && <p role="status">Enregistrement sur votre PC…</p>}{feed.actionError && <Notice error>{feed.actionError}</Notice>}</section>
+        <section className="today-card-options">
+          <h3>Gérer cette piste</h3>
+          <p>Cette décision est conservée sur votre PC. De nouvelles preuves peuvent faire réapparaître la piste.</p>
+          {!feed.actionsAvailable ? <p role="status">Le suivi n’est pas disponible. Vérifiez la connexion ou la version du service dans les réglages.</p> : selected.decision && selected.decision !== "seen" ? <button type="button" className="button secondary" disabled={feed.actionBusy || !online} onClick={() => void decide(selected, "restore")}>Réafficher dans mes actions</button> : <div className="today-option-buttons">
+            {snoozeWarning && <div id={snoozeWarningId}><Notice warning>{snoozeWarning}</Notice></div>}
+            {selected.decision !== "seen" && <button type="button" className="button secondary" disabled={feed.actionBusy || !online} onClick={() => void decide(selected, "seen")}>Marquer comme lue</button>}
+            <button type="button" className="button secondary" aria-describedby={snoozeWarning ? snoozeWarningId : undefined} disabled={feed.actionBusy || !online} onClick={() => void decide(selected, "snooze", 3_600_000)}><Clock3 size={17} aria-hidden="true" />Reporter 1 heure</button>
+            <button type="button" className="button secondary" aria-describedby={snoozeWarning ? snoozeWarningId : undefined} disabled={feed.actionBusy || !online} onClick={() => void decide(selected, "snooze")}><Clock3 size={17} aria-hidden="true" />Reporter de 7 jours</button>
+            <button type="button" className="button secondary" disabled={feed.actionBusy || !online} onClick={() => void decide(selected, "dismiss")}>Masquer cette piste</button>
+            <button type="button" className="button secondary" disabled={feed.actionBusy || !online} onClick={() => void decide(selected, "resolve")}>Marquer comme traitée</button>
+            <p className="today-fine-print">Marquer comme traitée ne valide aucun gain ni aucune soumission.</p>
+          </div>}
+          {feed.actionBusy && <p role="status">Enregistrement sur votre PC…</p>}
+          {feed.actionError && <Notice error>{feed.actionError}</Notice>}
+        </section>
       </>}
     </Sheet>
   </div>;

@@ -16,6 +16,10 @@ Present existing evidence with prominent qualified amounts, labelled comparable 
 
 Guard reads and async continuations when leaving/changing connection; select one primary navigation item; preserve keyboard access, focus restoration and all workflows at narrow/mobile/desktop widths. Frontend presentation only: no new financial feature, worker/API/schema change, external action, notification sending or schedule. Code references: existing Today/Finances/Reimbursements/Savings/Notifications views, `apps/web/src/navigation.ts`, `apps/web/src/ui` and scoped styles. Validation/release: `docs/VISUAL-READINESS.md` and issue #307.
 
+## Today deadline-aware snooze — committee follow-up to #305
+
+FH-PROACTIVE-003/004 and FH-UX-002 — **Draft preparation, not approved for merge or activation.** The existing Today detail offers an explicit one-hour return alongside the existing voluntary seven-day snooze. Warn before a long return reaches/passes a known civil deadline, and qualify already-past/today/hour-near-midnight cases without inventing a cutoff time. Use the existing Vancouver household calendar for comparison; show the actual return date and local display time. Unknown deadlines stay unknown. Preserve current evidence identity, exact renewal scope, revision-protected action storage, restore/new-evidence behavior and source facts. No new screen, calendar, setting, endpoint, notification policy, scheduled task, real source read or installed-worker change. Track synthetic evidence, draft PR and remaining gates in #305 and `docs/COMMITTEE-2026-11-18.md`; the natural-run/physical-phone gates of #305 remain open.
+
 ## Daily reliability audit - issue #305
 
 Merged in PR #306 as `1382dcf4d192d747630f3b400f69d9b9827b728c`; full CI, published PWA and scoped existing-worker activation/preservation are verified. Next natural runs and physical-phone receipt remain separate acceptance gates in issue #305.
