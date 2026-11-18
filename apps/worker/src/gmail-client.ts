@@ -48,7 +48,7 @@ export async function gmail<T>(token: string, path: string,
   }
   throw new Error("Gmail temporarily unavailable.");
 }
-type Part = { mimeType?: string; filename?: string; headers?: { name: string; value: string }[];
+type Part = { mimeType?: string; filename?: string; readAttachmentSupported?: boolean; headers?: { name: string; value: string }[];
   body?: { data?: string; attachmentId?: string; size?: number }; parts?: Part[] };
 export type RawMail = { id: string; threadId: string; internalDate?: string; labelIds?: string[]; snippet?: string; payload?: Part };
 export function normalizeMail(raw: RawMail): Mail {

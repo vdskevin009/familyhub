@@ -14,7 +14,7 @@ import ClaimCard from "./ClaimCard";
 import PrepareClaim from "./PrepareClaim";
 import ClaimDossier from "./ClaimDossier";
 import { FilterButton, FilterChips, Notice, PageHeader, SearchField, Sheet, SkeletonList, useSessionValue, type ActiveFilter } from "../ui/primitives";
-import { applicableInsurerPreview, insurerSyncMessage, insurerCollectionNeedsRefresh, insurerCoverageNotice, invoiceCollectionNotice } from "../insurer-sync";
+import { applicableInsurerPreview, insurerSyncMessage, insurerCollectionNeedsRefresh, insurerCoverageNotice, insurerCoverageSummary, invoiceCollectionNotice } from "../insurer-sync";
 import { useMutations } from "../ui/use-mutations";
 import { fetchPortalReconnect, reconnectPortal, type PortalReconnect } from "../worker";
 import { requireSaved } from "../ui/mutation-queue";
@@ -474,10 +474,10 @@ export default function ReimbursementsView({ hub }: Props) {
     history.replaceState(null, "", url);
   }
   const coverageWarnings = ([["Desjardins", desjardinsStatus], ["Blue Cross", blueCrossStatus]] as const).flatMap(([name, status]) => {
-    const message = insurerCoverageNotice(status); return message ? [{ name, status, message }] : [];
+    const now = Date.now(), message = insurerCoverageNotice(status, now); return message ? [{ name, status, message, summary: insurerCoverageSummary(status, now) }] : [];
   });
   const coveragePanel = coverageWarnings.length > 0 && <section className="collection-coverage coverage-overview" aria-label="Insurer collection coverage">
-    <details><summary><AlertTriangle size={18} aria-hidden="true" /><span><strong>{coverageWarnings.length} source(s) à vérifier</strong><small>{coverageWarnings.map(entry => entry.name).join(" · ")} — données possiblement incomplètes</small></span></summary>
+    <details><summary><AlertTriangle size={18} aria-hidden="true" /><span><strong>{coverageWarnings.length} source(s) à vérifier</strong><small>{coverageWarnings.map(entry => `${entry.name} : ${entry.summary}`).join(" · ")}</small></span></summary>
       {coverageWarnings.map(({ name, status, message }) => <div className="collection-warning" key={name} role="status"><div><strong>{name}</strong><p>{message}</p><small>{status?.lastSuccess ? `Last complete read: ${new Date(status.lastSuccess).toLocaleString()}` : "No complete read confirmed"}</small></div></div>)}
     </details><button type="button" className="text-action" onClick={() => setSourcesOpen(true)} aria-haspopup="dialog">Review Sources</button>
   </section>;

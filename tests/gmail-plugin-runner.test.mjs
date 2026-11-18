@@ -274,3 +274,43 @@ test('mutable caller plan cannot change a request after execution starts',async(
   const p=plan();const original=p.queries[0].q;
   await collectGmailPluginBatch(p,{invoke:async call=>{p.linkId='link_other';p.queries[0].q='changed';assert.equal(call.arguments.query,original);assert.equal(call.arguments.link_id,linkId);return {message_ids:[],next_page_token:null}}});
 });
+
+
+test('invoice opt-in holds the complete unsupported message and retrieves only independent supported originals',async()=>{
+ const held=withAttachment();held.id='held1';
+ held.payload.parts.push({mime_type:'application/ics',filename:'event.ics',headers:[],read_attachment_supported:false,
+   body:{size:631,content:null,base64_url_content:null,attachment_id:'calendar1'},parts:[]});
+ const calls=[],downloads=[];
+ const b=await realCollect({account,linkId,queries:[],messageIds:['held1','message1']},{allowHeldMessages:true,
+  invoke:async call=>{calls.push(call);if(call.tool==='get_profile')return{email:account};
+   if(call.tool==='batch_read_email')return{responses:[held,withAttachment()]};
+   validateGmailAttachmentEvidence(call);assert.equal(call.arguments.message_id,'message1');return attachment();},
+  download:async(url,size)=>{downloads.push([url,size]);return Buffer.from('%PDF-123');}});
+ assert.deepEqual(b.messages.map(m=>m.id),['held1','message1']);
+ assert.deepEqual(b.heldMessages,[{messageId:'held1',attachments:[{attachmentId:'calendar1',filename:'event.ics',mimeType:'application/ics',size:631,reason:'unsupported_attachment'}]}]);
+ assert.deepEqual(b.attachments.map(a=>a.messageId),['message1']);assert.equal(downloads.length,1);
+ assert.deepEqual(calls.map(c=>c.tool),['get_profile','batch_read_email','read_attachment']);
+ const {createPluginBatchTransport}=await import('../apps/worker/dist/gmail-plugin-batch.js');
+ assert.throws(()=>createPluginBatchTransport(b,account));
+ const transport=createPluginBatchTransport(b,account,{allowHeldMessages:true});
+ await assert.rejects(transport.gmail(transport.token,'messages/held1?format=full'),/held/);
+ assert.equal((await transport.gmail(transport.token,'messages/message1?format=full')).id,'message1');
+});
+
+test('holding unsupported originals never conceals malformed siblings, unknown support or zero-byte supported originals',async()=>{
+ for(const mutate of [m=>m.payload.parts[0].body.size++,m=>m.payload.parts[1].mime_type='not a mime',
+   m=>m.payload.parts[1].filename='bad\0name',m=>m.payload.parts[1].read_attachment_supported=undefined,
+   m=>m.payload.parts[1].body.size=0]){
+  const held=withAttachment();held.payload.parts.push({mime_type:'application/ics',filename:'event.ics',headers:[],read_attachment_supported:false,body:{size:631,attachment_id:'calendar1'},parts:[]});mutate(held);
+  const calls=[];await assert.rejects(realCollect({account,linkId,queries:[],messageIds:['message1']},{allowHeldMessages:true,invoke:async call=>{
+   calls.push(call.tool);if(call.tool==='get_profile')return{email:account};if(call.tool==='batch_read_email')return{responses:[held]};throw Error('No original may be requested');},download:async()=>{throw Error('No download');}}));
+  assert.deepEqual(calls,['get_profile','batch_read_email']);
+ }
+});
+
+test('exact zero-size unsupported original remains held without fabricating empty original bytes',async()=>{
+ const held=withAttachment();held.payload.parts[1].read_attachment_supported=false;held.payload.parts[1].body.size=0;
+ const b=await realCollect({account,linkId,queries:[],messageIds:['message1']},{allowHeldMessages:true,invoke:async call=>{
+  if(call.tool==='get_profile')return{email:account};assert.equal(call.tool,'batch_read_email');return{responses:[held]};},download:async()=>{throw Error('No download');}});
+ assert.equal(b.heldMessages[0].attachments[0].size,0);assert.deepEqual(b.attachments,[]);
+});

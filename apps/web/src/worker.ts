@@ -296,7 +296,8 @@ export type InvoiceSnapshot = {
   ignoredUnmatchedReimbursements: UnmatchedReimbursement[];
   agentReviews?: AgentReview[];
   ignoredExpenses?: ReconciliationCase[];
-  coverage?: { since: string; complete: boolean };
+  coverage?: { since: string; complete: boolean; heldMessages?: number };
+  failure?: { code: string };
   diagnostics?: { totalExpenses: number; fullyReimbursed: number; waitingPrimary: number; waitingSecondary: number; patientBalance: number; needsAttention: number; unmatchedInsurerRecords: number; duplicateCandidates: number; missingServiceDates: number; unknownMembers: number; patientAsProvider: number; amountsReconstructed: number; insurerPaymentsOverBilled: number; contradictoryEvidence: number; averageMatchConfidence: number };
   learning: { decisions: number; undoable: Array<{ id: string; itemId: string; type: string; at: string }> };
   accounts: { email: string; label: string; sourceMode?: "plugin" | "legacy"; collections?: ("invoices" | "groceries")[] }[];
@@ -329,6 +330,7 @@ export async function fetchInvoices(config: WorkerConfig): Promise<InvoiceSnapsh
     agentReviews: Array.isArray(raw.agentReviews) ? raw.agentReviews : [],
     ignoredExpenses: Array.isArray(raw.ignoredExpenses) ? raw.ignoredExpenses : [],
     coverage: raw.coverage,
+    failure: typeof raw.failure?.code === "string" ? { code: raw.failure.code } : undefined,
     diagnostics: raw.diagnostics,
     learning,
     accounts,

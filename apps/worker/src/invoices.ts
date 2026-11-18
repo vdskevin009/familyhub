@@ -1,7 +1,7 @@
 import type { MailAttachmentSource } from "./mail-attachment-cache.js";
 import type { MailRetrievalFailure } from "./mail-collection-runtime.js";
-import { legacyMailSource, type MailSource, type MailAccount } from "./mail-source.js";
-import { invoiceHistoryStart, invoiceHistoryVersion, healthReceiptRepairVersion, invoiceWindow, historyWindow, incrementalRequest, repairRequest, historyRequest, needsInvoiceUpgrade, upgradeCandidates, retryCandidates, planInvoiceMail, type InvoiceProgress, type InvoiceMailPlan } from "./mail-collection-plan.js";
+import { legacyMailSource, type MailSource, type MailAccount, type HeldMailMessage } from "./mail-source.js";
+import { invoiceHistoryStart, invoiceHistoryVersion, healthReceiptRepairVersion, invoiceWindow, historyWindow, incrementalRequest, repairRequest, historyRequest, needsInvoiceUpgrade, upgradeCandidates, retryCandidates, planInvoiceMail, invoiceHeldMessages, mergeInvoiceHolds, type HeldInvoicePurpose, type InvoiceProgress, type InvoiceMailPlan } from "./mail-collection-plan.js";
 import { validatedNewInsurerPayments } from "./insurer-payment-intake.js";
 import type { LoginReason } from "./portal-login.js";
 import { automaticReplacement, hasManualAuthority, manualReasons, sourceIdentity } from "./ingestion-policy.js";
@@ -536,6 +536,7 @@ export async function initializeInvoices(readOnly = false): Promise<void> {
     state = { ...empty(), ...saved, items: saved.items || [], corrections: saved.corrections || [], decisions: saved.decisions || [], matchDecisions: saved.matchDecisions || [],
       unmatchedDecisions: Array.isArray(saved.unmatchedDecisions) ? saved.unmatchedDecisions : [],
       workflowRecords: Array.isArray(saved.workflowRecords) ? saved.workflowRecords : [], reviews: saved.reviews || [], accounts: saved.accounts || {} };
+    for (const progress of Object.values(state.accounts)) invoiceHeldMessages(progress);
     const ingestionChanged = syncIngestionMetadata();
     if (!readOnly) {
       const metadataChanged = normalizeStoredMetadata();
@@ -567,9 +568,9 @@ export async function invoiceSnapshot() {
   const signatures = new Map(reviewTargets(effectiveItems, reconciliation).map(target => [target.key, target.signature]));
   const reviews = state.reviews.filter(item => signatures.get(item.key) === item.signature);
   return { items: displayItems, reconciliations: reconciliation.cases.map(decorateWorkflowCase), ignoredExpenses: ignoredExpenses.map(decorateWorkflowCase), unmatchedReimbursements: reconciliation.unmatched, ignoredUnmatchedReimbursements, diagnostics: reconciliation.diagnostics,
-    coverage: { since: "2025-06-01", complete: !mailStatus?.error && invoiceAccounts.length > 0 && invoiceAccounts.every(account => {
+    coverage: { since: "2025-06-01", heldMessages: invoiceAccounts.reduce((count, account) => count + (state.accounts[account.email.toLowerCase()]?.heldMessages?.length || 0), 0), complete: !mailStatus?.error && invoiceAccounts.length > 0 && invoiceAccounts.every(account => {
       const progress = state.accounts[account.email.toLowerCase()];
-      return progress?.invoiceHistoryVersion === invoiceHistoryVersion && !progress.invoiceHistoryWindow && !progress.window && !progress.error;
+      return progress?.invoiceHistoryVersion === invoiceHistoryVersion && !progress.invoiceHistoryWindow && !progress.window && !progress.error && !progress.heldMessages?.length;
     }) },
     agentReviews: reviews,
     cleanupSuggestions: buildCleanupSuggestions(state.items, state.corrections),
@@ -852,6 +853,7 @@ export async function collectInvoices(overrides: Partial<CollectionDependencies>
   const dependencies: CollectionDependencies = { credentials, accessToken, gmail, classify, historicalClassify: classifyHistorical, reviewer: codexReviewer, now: () => new Date(), ...overrides };
   const source = dependencies.source || legacyMailSource(dependencies, () => dependencies.now().getTime());
   let accounts: MailAccount[];
+  const preparedHolds = new Map<string, HeldMailMessage[]>();
   // Prepared source plans must still match current state BEFORE any attempt/error/checkpoint write.
   try {
     accounts = await source.accounts();
@@ -863,7 +865,10 @@ export async function collectInvoices(overrides: Partial<CollectionDependencies>
         if (plans.length !== 1 || JSON.stringify(plans[0]) !== JSON.stringify(invoiceCollectionPlan(key, plans[0].at))) throw new Error("Prepared invoice plan is stale; no state was changed.");
         if (!source.preflight) throw new Error("Prepared source preflight is required.");
         const plan = plans[0];
-        await source.preflight(account, [plan.incremental.path, ...(plan.repair ? [plan.repair.request.path] : []), ...(plan.history ? [plan.history.request.path] : []), ...new Set([...plan.upgradeMessageIds, ...plan.retryMessageIds].map(id => `messages/${encodeURIComponent(id)}?format=full`))]);
+        await source.preflight(account, [plan.incremental.path, ...(plan.repair ? [plan.repair.request.path] : []), ...(plan.history ? [plan.history.request.path] : []), ...new Set([...plan.upgradeMessageIds, ...plan.retryMessageIds, ...plan.heldMessageIds].map(id => `messages/${encodeURIComponent(id)}?format=full`))]);
+        const holds = source.held ? await source.held(account) : [];
+        mergeInvoiceHolds(state.accounts[key] || {}, holds, plan, dependencies.now().toISOString());
+        preparedHolds.set(key, holds);
         const progress = state.accounts[key];
         if (progress?.transport !== "plugin-batch" && (progress?.window?.page || progress?.invoiceHistoryWindow?.page || progress?.healthReceiptRepairPage)) throw new Error("Existing Gmail cursor belongs to another transport; explicit migration is required.");
       }
@@ -877,6 +882,11 @@ export async function collectInvoices(overrides: Partial<CollectionDependencies>
   try {
     await edit(() => {
       if (dependencies.source && dependencies.plans!.some(plan => JSON.stringify(plan) !== JSON.stringify(invoiceCollectionPlan(plan.account, plan.at)))) throw new Error("Prepared invoice plan changed before application.");
+      for (const plan of dependencies.plans || []) {
+        const progress = state.accounts[plan.account] ||= {};
+        const holds = mergeInvoiceHolds(progress, preparedHolds.get(plan.account) || [], plan, dependencies.now().toISOString());
+        if (holds.length) progress.heldMessages = holds;
+      }
       attempted = true;
       state.lastAttempt = dependencies.now().toISOString(); state.error = undefined;
     });
@@ -885,6 +895,7 @@ export async function collectInvoices(overrides: Partial<CollectionDependencies>
       const key = account.email.toLowerCase();
       const progress = state.accounts[key] ||= {};
       try {
+        if (!dependencies.source && progress.heldMessages?.length) throw new Error("Held plugin sources require the selected plugin transport; no direct-source fallback was started.");
         if (!dependencies.source && progress.transport === "plugin-batch" && (progress.window?.page || progress.invoiceHistoryWindow?.page || progress.healthReceiptRepairPage)) throw new Error("Prepared source cursor cannot be resumed through direct Gmail.");
         const plannedAt = dependencies.plans?.find(plan => plan.account === key)?.at;
         const planningTime = () => plannedAt ?? Math.floor(dependencies.now().getTime() / 1000);
@@ -898,58 +909,87 @@ export async function collectInvoices(overrides: Partial<CollectionDependencies>
           progress.window = invoiceWindow(progress, planningTime());
         });
         const window = progress.window!;
-        const processMessage = async (id: string, retry = false, repair = false, historical = false, amountRepair = false) => {
-          const existing = state.items.find(x => x.Id === recordId(key, id));
-          const needsUpgrade = existing && needsInvoiceUpgrade(existing);
-          const repairKnownExpense = Boolean(amountRepair && existing && existing.Category === 0 && existing.DocumentRole === "expense" && existing.Status !== 4);
-          if (existing && hasManualAuthority(existing)) return;
-          if (existing?.CorrectedAt && !needsUpgrade && !repairKnownExpense) return;
-          if (historical && existing?.HistoricalCandidate && !repairKnownExpense) return;
-          if (existing && !needsUpgrade && !repairKnownExpense && (!retry || existing.ClassificationSource !== "unavailable")
-            && (!repair || existing.Category === 0 && existing.DocumentRole === "expense" && existing.Status !== 4)) return;
-          const normalized = normalizeMail(await callGmail<RawMail>(token, `messages/${encodeURIComponent(id)}?format=full`));
-          if (normalized.blueCrossExport) {
-            await edit(() => { mergeBlueCross(blueCrossInvoices(normalized, key, account.label)); });
-            return;
-          }
-          const mail = await withAttachmentText(normalized, token, callGmail);
-          if (repairKnownExpense) {
+        const replayedHeldPurposes = new Map<string, Set<HeldInvoicePurpose>>();
+        const processMessage = async (id: string, retry = false, repair = false, historical = false, amountRepair = false, purpose?: HeldInvoicePurpose) => {
+          if (purpose && replayedHeldPurposes.get(id)?.has(purpose)) return;
+          if (preparedHolds.get(key)?.some(hold => hold.messageId === id)) return;
+          const held = progress.heldMessages?.find(hold => hold.messageId === id);
+          // A manual record may skip classification, but a held source still needs a verified full read before release.
+          const heldRaw = held ? await callGmail<RawMail>(token, `messages/${encodeURIComponent(id)}?format=full`) : undefined;
+          const processAvailable = async (retry: boolean, repair: boolean, historical: boolean, amountRepair: boolean) => {
+            const existing = state.items.find(x => x.Id === recordId(key, id));
+            const needsUpgrade = existing && needsInvoiceUpgrade(existing);
+            const repairKnownExpense = Boolean(amountRepair && existing && existing.Category === 0 && existing.DocumentRole === "expense" && existing.Status !== 4);
+            if (existing && hasManualAuthority(existing)) return;
+            if (existing?.CorrectedAt && !needsUpgrade && !repairKnownExpense) return;
+            if (historical && existing?.HistoricalCandidate && !repairKnownExpense) return;
+            if (existing && !needsUpgrade && !repairKnownExpense && (!retry || existing.ClassificationSource !== "unavailable")
+              && (!repair || existing.Category === 0 && existing.DocumentRole === "expense" && existing.Status !== 4)) return;
+            const normalized = normalizeMail(heldRaw || await callGmail<RawMail>(token, `messages/${encodeURIComponent(id)}?format=full`));
+            if (normalized.blueCrossExport) {
+              await edit(() => { mergeBlueCross(blueCrossInvoices(normalized, key, account.label)); });
+              return;
+            }
+            const mail = await withAttachmentText(normalized, token, callGmail);
+            if (repairKnownExpense) {
+              await edit(() => {
+                const index = state.items.findIndex(x => x.Id === recordId(key, id));
+                if (index < 0) return;
+                const current = state.items[index];
+                if (hasManualAuthority(current)) return;
+                const repaired = repairHealthcareAmounts(current, mail);
+                state.items[index] = automaticReplacement(current, repaired);
+              });
+              return;
+            }
+            const { result, source } = await (historical ? dependencies.historicalClassify : dependencies.classify)(mail, key, account.label);
+            const item = toInvoice(mail, key, account.label, result, source);
+            if (historical) {
+              item.HistoricalCandidate = true;
+              item.ServiceDate = item.Healthcare?.ServiceDate || item.ServiceDate;
+            }
             await edit(() => {
-              const index = state.items.findIndex(x => x.Id === recordId(key, id));
-              if (index < 0) return;
-              const current = state.items[index];
-              if (hasManualAuthority(current)) return;
-              const repaired = repairHealthcareAmounts(current, mail);
-              state.items[index] = automaticReplacement(current, repaired);
+              const index = state.items.findIndex(x => x.Id === item.Id);
+              if (index >= 0) {
+                const current = state.items[index];
+                // A temporary model failure cannot turn an indexed expense into an unknown document.
+                if (source === "unavailable" && current.ClassificationSource !== "unavailable") return;
+                // A user's correction/status during classification wins over the background result.
+                state.items[index] = automaticReplacement(current, item);
+              } else state.items.push(item);
             });
-            return;
+          };
+          if (held) {
+            // Replay the original pipeline order; combining flags would turn ordinary invoices
+            // into historical candidates or bypass an upgrade when amount repair also applies.
+            if (held.purposes.includes("upgrade")) await processAvailable(true, false, false, false);
+            if (held.purposes.includes("retry")) await processAvailable(true, false, false, false);
+            if (held.purposes.includes("incremental")) await processAvailable(false, false, false, false);
+            if (held.purposes.includes("repair")) await processAvailable(false, true, true, true);
+            if (held.purposes.includes("history")) await processAvailable(false, true, true, false);
+          } else await processAvailable(retry, repair, historical, amountRepair);
+          if (held) {
+            await edit(() => {
+              progress.heldMessages = progress.heldMessages?.filter(entry => entry.messageId !== id);
+              if (!progress.heldMessages?.length) delete progress.heldMessages;
+            });
+            // A still-unavailable classification must not consume the same ordinary retry twice.
+            replayedHeldPurposes.set(id, new Set(held.purposes));
           }
-          const { result, source } = await (historical ? dependencies.historicalClassify : dependencies.classify)(mail, key, account.label);
-          const item = toInvoice(mail, key, account.label, result, source);
-          if (historical) {
-            item.HistoricalCandidate = true;
-            item.ServiceDate = item.Healthcare?.ServiceDate || item.ServiceDate;
-          }
-          await edit(() => {
-            const index = state.items.findIndex(x => x.Id === item.Id);
-            if (index >= 0) {
-              const current = state.items[index];
-              // A temporary model failure cannot turn an indexed expense into an unknown document.
-              if (source === "unavailable" && current.ClassificationSource !== "unavailable") return;
-              // A user's correction/status during classification wins over the background result.
-              state.items[index] = automaticReplacement(current, item);
-            } else state.items.push(item);
-          });
         };
-        for (const item of progress.invoiceHistoryVersion === invoiceHistoryVersion ? upgradeCandidates([...state.items], key) : []) await processMessage(item.SourceMessageId, true);
-        for (const item of progress.invoiceHistoryVersion === invoiceHistoryVersion ? retryCandidates([...state.items], key) : []) await processMessage(item.SourceMessageId, true);
+        for (const id of dependencies.plans?.find(plan => plan.account === key)?.heldMessageIds || []) await processMessage(id);
+        for (const item of progress.invoiceHistoryVersion === invoiceHistoryVersion ? upgradeCandidates([...state.items], key) : []) await processMessage(item.SourceMessageId, true, false, false, false, "upgrade");
+        for (const item of progress.invoiceHistoryVersion === invoiceHistoryVersion ? retryCandidates([...state.items], key) : []) await processMessage(item.SourceMessageId, true, false, false, false, "retry");
         for (let pages = 0; pages < 2; pages++) {
           const list = await callGmail<{ messages?: { id: string }[]; nextPageToken?: string }>(token, incrementalRequest(window).path);
-          for (const { id } of list.messages || []) await processMessage(id);
+          for (const { id } of list.messages || []) await processMessage(id, false, false, false, false, "incremental");
           await edit(() => {
             progress.error = undefined;
             if (list.nextPageToken) window.page = list.nextPageToken;
-            else { progress.through = window.before; progress.window = undefined; progress.lastSuccess = dependencies.now().toISOString(); }
+            else {
+              progress.scannedThrough = window.before; progress.window = undefined;
+              if (!progress.heldMessages?.length) { progress.through = window.before; progress.lastSuccess = dependencies.now().toISOString(); }
+            }
           });
           if (!list.nextPageToken) break;
         }
@@ -962,7 +1002,7 @@ export async function collectInvoices(overrides: Partial<CollectionDependencies>
           });
           for (let pages = 0; pages < 2; pages++) {
             const list = await callGmail<{ messages?: { id: string }[]; nextPageToken?: string }>(token, repairRequest(progress.healthReceiptRepairPage).path);
-            for (const { id } of list.messages || []) await processMessage(id, false, true, true, true);
+            for (const { id } of list.messages || []) await processMessage(id, false, true, true, true, "repair");
             await edit(() => {
               progress.healthReceiptRepairPage = list.nextPageToken;
               if (!list.nextPageToken) progress.healthReceiptRepairVersion = healthReceiptRepairVersion;
@@ -981,16 +1021,21 @@ export async function collectInvoices(overrides: Partial<CollectionDependencies>
           const history = progress.invoiceHistoryWindow!;
           for (let pages = 0; pages < 2; pages++) {
             const list = await callGmail<{ messages?: { id: string }[]; nextPageToken?: string }>(token, historyRequest(history).path);
-            for (const { id } of list.messages || []) await processMessage(id, false, true, true);
+            for (const { id } of list.messages || []) await processMessage(id, false, true, true, false, "history");
             await edit(() => {
               progress.invoiceHistoryExamined = (progress.invoiceHistoryExamined || 0) + (list.messages?.length || 0);
               if (list.nextPageToken) history.page = list.nextPageToken;
-              else { progress.invoiceHistoryVersion = invoiceHistoryVersion; progress.invoiceHistoryThrough = history.before; progress.invoiceHistoryWindow = undefined; }
+              else {
+                progress.invoiceHistoryVersion = invoiceHistoryVersion; progress.historyScannedThrough = history.before; progress.invoiceHistoryWindow = undefined;
+                if (!progress.heldMessages?.length) progress.invoiceHistoryThrough = history.before;
+              }
             });
             if (!list.nextPageToken) break;
           }
         }
-        if (progress.window || progress.healthReceiptRepairVersion !== healthReceiptRepairVersion || progress.invoiceHistoryVersion !== invoiceHistoryVersion) complete = false;
+        if (!progress.heldMessages?.length && progress.historyScannedThrough !== undefined && progress.invoiceHistoryVersion === invoiceHistoryVersion)
+          await edit(() => { progress.invoiceHistoryThrough = progress.historyScannedThrough; });
+        if (progress.window || progress.healthReceiptRepairVersion !== healthReceiptRepairVersion || progress.invoiceHistoryVersion !== invoiceHistoryVersion || progress.heldMessages?.length) complete = false;
       } catch (error) {
         complete = false;
         await edit(() => { progress.error = error instanceof Error ? error.message : "Gmail collection failed."; });
@@ -998,7 +1043,11 @@ export async function collectInvoices(overrides: Partial<CollectionDependencies>
     }
     await edit(() => {
       if (complete) state.lastSuccess = dependencies.now().toISOString();
-      else state.error = "Some accounts are incomplete. Check account status; the next run resumes unfinished work.";
+      else {
+        const heldCount = accounts.reduce((count, account) => count + (state.accounts[account.email.toLowerCase()]?.heldMessages?.length || 0), 0);
+        state.error = heldCount ? `Collection is partial: ${heldCount} source message(s) remain held because original attachments are unavailable. Other verified messages were processed; held sources will be checked on a later run.`
+          : "Some accounts are incomplete. Check account status; the next run resumes unfinished work.";
+      }
     });
     // The collector indexes evidence; the reconciler remains deterministic. The reviewer only
     // suggests explanations for uncertain cases and cannot mutate any financial assignment.
