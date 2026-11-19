@@ -17,7 +17,7 @@ try{await mkdir(out,{recursive:true});for(const kind of ['property','vehicle'])f
  const context=await browser.newContext({viewport:{width,height:900},timezoneId:'America/Vancouver',reducedMotion:'reduce'}),page=await context.newPage(),errors=[],external=[];
  page.on('pageerror',e=>errors.push(e.message));await page.clock.install({time:new Date(at)});
  await page.addInitScript(()=>localStorage.setItem('familyhub.worker.v1',JSON.stringify({Endpoint:'https://synthetic-worker.invalid',ApiKey:'synthetic-key'})));
- const cards=[(kind==='property'?property:vehicle)('A'),(kind==='property'?property:vehicle)('B')];cards[1].statusEvidence=fact('active',old);
+ const cards=[(kind==='property'?property:vehicle)('A'),(kind==='property'?property:vehicle)('B')];cards[1].statusEvidence=fact('active',old);cards[1].available=true;cards[1].stale=false; // Existing worker claims must not renew the status source.
  let mode='ready',comparisonMode='valid',revision=0,writes=0,conflict=false;
  await page.route('**/*',async route=>{const url=new URL(route.request().url());if(url.origin===new URL(base).origin)return route.continue();if(url.origin!=='https://synthetic-worker.invalid'){external.push(url.origin);return route.abort();}
  if(url.pathname===`/${kind}-project/following`){writes++;const input=route.request().postDataJSON();if(conflict)return route.fulfill({status:409,json:{error:'Synthetic conflict'}});assert.equal(input.expectedRevision,revision);cards.find(c=>c.listingId===input.listingId).followed=input.followed;revision++;return route.fulfill({json:{revision}});}

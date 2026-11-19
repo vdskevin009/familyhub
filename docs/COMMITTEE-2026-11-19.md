@@ -1,5 +1,7 @@
 # Comité FamilyHub — 19 novembre 2026
 
+> Continuation autorisée par Kevin après le bilan : implémentation des fiches dans la PR #312 existante, sans fusion/publication ni modification du worker. Le journal initial ci-dessous est conservé. La garde de fraîcheur est désormais appliquée exclusivement par le client web aux réponses existantes ; les fichiers worker et leurs tests restent identiques à main. Voir [préparation à l’intégration](PROJECT-CARDS-INTEGRATION.md) pour le périmètre final, les preuves et le chemin de publication.
+
 ## Décision proposée
 
 Préparer uniquement un petit lot de **fiches de décision fondées sur les preuves déjà disponibles**, en PR brouillon. Distinguer adéquation au projet, connaissance du modèle/exemplaire et qualité économique du prix. Ne pas publier un moteur /100 ni activer de nouvelles notifications avec les données actuelles. Kevin décide séparément de la suite ; aucune fusion, installation ou production n'est autorisée par ce cycle.
@@ -33,7 +35,7 @@ Les tests de stockage utilisent exclusivement de nouvelles bibliothèques tempor
 
 | Impact | Avant, preuve | Après et validation |
 | --- | --- | --- |
-| Élevé : information de disponibilité trompeuse | Observation immobilière19 novembre, statut actif sourcé1 octobre : `available=true`, `stale=false`. Auto contrôlait déjà l'âge du statut. | Même contrôle d'âge de statusEvidence pour Immobilier ; seuil48 h, frontière exacte, inconnu et futur testés. Aucun fait source réécrit. |
+| Élevé : information de disponibilité trompeuse | Observation immobilière19 novembre, statut actif sourcé1 octobre : `available=true`, `stale=false`. Auto contrôlait déjà l'âge du statut. | Même contrôle d'âge de statusEvidence dans le client web Immobilier ; seuil48 h, frontière exacte, inconnu et futur testés. Aucun fait source réécrit. |
 | Élevé : mauvaises preuves comparées | La fonction compareProperties acceptait `[x,y]` ou `[a,a]` pour une demande `[a,b]`. Reproduction pure transport simulé, confirmée par critique indépendante. | Cardinalité, unicité et appartenance aux IDs sélectionnés requises ; réponses réordonnées valides acceptées. Tests unitaires et erreur navigateur sans faux résultat. |
 | Moyen : doute et incompatibilité confondus | Deux cartes fictives3/4 identiques pour un critère absent et un faux, aux largeurs320/390/1440. | `À confirmer` / `Hors critères` / `Correspond au projet`, motif du premier écart/inconnu et quatre marques avec sens textuel. Il s'agit de critères, jamais de score économique. |
 | Moyen : preuves utiles cachées | Immobilier omettait les notes/dates des critères et réservait les frais strata à la comparaison. Auto ne montrait pas marque/modèle dans les preuves structurées. Date maximale de liste utilisée malgré des annonces d'âges différents. | Notes et dates réelles, frais connus/inconnus, identité modèle/année/version distincte de l'offre, date par annonce ; suppression de la date agrégée. Prix affiché, prix vendu, état et coûts manquants restent distincts. |

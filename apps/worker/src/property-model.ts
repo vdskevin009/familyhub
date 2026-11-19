@@ -43,8 +43,7 @@ export function propertyCard(input: unknown, now = new Date()) {
   ].map(c => ({...c, status:c.pass === null ? 'unknown' : c.pass ? 'pass' : 'fail'}));
   const known = checks.filter(c=>c.pass !== null).length;
   const age = now.getTime() - Date.parse(p.observedAt);
-  const statusAge = p.statusEvidence.checkedAt === null ? Infinity : now.getTime() - Date.parse(p.statusEvidence.checkedAt);
-  const stale = age < 0 || age > 48 * 60 * 60 * 1000 || statusAge < 0 || statusAge > 48 * 60 * 60 * 1000;
+  const stale = age < 0 || age > 48 * 60 * 60 * 1000;
   return {...p, criteria:checks, evidenceCoveragePercent:known*25,
     matchPercent:known === 4 ? checks.filter(c=>c.pass).length*25 : null,
     eligibility:checks.some(c=>c.pass === false) ? 'does-not-match' : known < 4 ? 'needs-verification' : 'matches',
