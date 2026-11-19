@@ -1,6 +1,6 @@
 # Property project evidence backend (FH-PROPERTY-001)
 
-Local implementation foundation; NOT deployed or connected to daily research.
+Historical preparation/acceptance journal below; later sections supersede earlier statements such as "UI not implemented". Source PR #297 is merged at 1a3a218ce31f756ae6442c44d595d91f36c0d881. Current source includes the UI and guarded intake. The committee of 19 November verified the public main release identity, but did not inspect private observations, installed property capability or daily handoff; it cannot attest those production gates. Its evidence-presentation draft is documented in COMMITTEE-2026-11-19.md.
 
 - GET /property-project: paired private cards + immutable observation history.
 - POST /property-project/observations: paired JSON, maximum 32 KB. Same ID/content replay is idempotent; changed content conflicts (409). A changed listing gets a new observation ID; prior facts remain intact. Latest observation is chosen by source observation time, not ingest order. Missing listings are not silently withdrawn.

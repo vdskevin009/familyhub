@@ -8,6 +8,19 @@ const at='2026-11-16T10:00:00Z';
 const fact=(value:any)=>({value,sourceUrl:value===null?null:'https://example.com/listing',checkedAt:value===null?null:at,note:'Synthetic source'});
 const fixture=()=>({id:'observation-1',listingId:'synthetic-listing',observedAt:at,address:'Synthetic address',url:'https://example.com/listing',status:'active',statusEvidence:fact('active'),priceCad:fact(1600000),bedrooms:fact(3),lowerLonsdale:fact(true),separateEntrances:fact(true),airbnb:{status:'unknown',evidence:[]}});
 test('all four criteria evidenced; opportunity never fabricated',()=>{const c=propertyCard(fixture(),new Date(at));assert.equal(c.matchPercent,100);assert.equal(c.available,true);assert.equal(c.opportunity.score,null);});
+
+test('a new property observation never refreshes old or unknown status evidence',()=>{
+ const p=fixture();p.statusEvidence.checkedAt='2026-11-01T10:00:00Z';
+ const old=propertyCard(p,new Date(at));assert.equal(old.stale,true);assert.equal(old.available,false);assert.equal(old.opportunity.score,null);
+ const unknown=propertyCard({...fixture(),status:'unknown',statusEvidence:fact(null)},new Date(at));assert.equal(unknown.stale,true);assert.equal(unknown.available,false);
+});
+
+test('property status freshness uses actual source age at the 48-hour boundary and rejects future availability',()=>{
+ const p=fixture();p.statusEvidence.checkedAt='2026-11-14T10:00:00Z';
+ assert.equal(propertyCard(p,new Date(at)).stale,false);
+ assert.equal(propertyCard(p,new Date(Date.parse(at)+1)).stale,true);
+ assert.equal(propertyCard(fixture(),new Date('2026-11-15T10:00:00Z')).available,false);
+});
 test('unknown entrance is not a match or failure',()=>{const p=fixture();p.separateEntrances=fact(null);const c=propertyCard(p,new Date(at));assert.equal(c.matchPercent,null);assert.equal(c.evidenceCoveragePercent,75);assert.equal(c.eligibility,'needs-verification');});
 test('hard mismatch remains visible; stale listing is not available',()=>{const p=fixture();p.priceCad=fact(1700001);const c=propertyCard(p,new Date('2026-11-20T10:00:00Z'));assert.equal(c.matchPercent,75);assert.equal(c.eligibility,'does-not-match');assert.equal(c.available,false);});
 test('unproven facts, credential links and blanket Airbnb permission rejected',()=>{const p=fixture();p.bedrooms.sourceUrl=null;assert.throws(()=>validateProperty(p));assert.throws(()=>validateProperty({...fixture(),url:'https://user:secret@example.com/'}));assert.throws(()=>validateProperty({...fixture(),airbnb:{status:'permitted',evidence:[]}}));});

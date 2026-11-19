@@ -1,6 +1,6 @@
 # Vehicle shortlist (FH-VEHICLE-001)
 
-Local implementation; publication, production ingestion and schedule handoff are unverified.
+Historical preparation notes below. Source PR #298 is merged; issue #299 records controlled activation/intake and browser acceptance. Existing research-automation handoff, future natural runs and physical-phone acceptance remain distinct open gates. The committee of 19 November did not inspect the installed worker or private observations. Its evidence-presentation draft is documented in COMMITTEE-2026-11-19.md.
 
 Projets > Voiture follows the same compact sourced-card pattern as Nouveau bien. Scope: used family SUV in Greater Vancouver, target CAD 23,000–30,000 before tax. Lower-than-target prices are not rejected. AWD is preferred, not mandatory. No universal mileage/year cutoff is invented. CR-V, Forester, Rogue, Tucson, CX-5, RAV4 and Sorento are examples, not an exclusive whitelist.
 

@@ -1,5 +1,13 @@
 # FamilyHub - Canonical Requirements
 
+## FH-PROJECT-001 - Evidence-readable project decisions
+
+**Draft implementation, not approved for merge or activation.** Committee 19 November 2026, follow-up to #305; extends FH-VEHICLE-001, FH-PROPERTY-001 and FH-UX-002. Existing vehicle/property cards distinguish a known mismatch from missing information and a full project fit. Show the first adverse/missing criterion, per-listing observation date and explicit unevaluated market price. A fit indicator is neither independent fact verification nor an economic score.
+
+Open the unresolved criteria first, with their original values, notes, HTTPS sources and actual source-check dates; retain every criterion behind a native disclosure. Separate vehicle make/model/year/trim from this offer's kilometres, status and declared history. Unknown inspection/model reliability stays explicit. Property details retain dated status and published strata fees, unknown costs, asking-versus-sold distinction and conditional rental evidence. Do not synthesize comparables, appraisals, realized savings or rental permission. The opportunity score remains null with the existing schema.
+
+Property availability also requires status-source freshness, using the existing 48-hour boundary; a fresh observation cannot renew an old status. Property comparisons must return exactly the distinct selected listing identities. Native project dialogs restore the invoking control on close. Immutable observations, owner-following decisions, revision guards, pairing/origin/no-store protections, source schemas, installed worker and schedules remain unchanged. No vehicle/property notification producer, delivery policy or Today source is activated by this draft. Source, browser/CI, installed activation, real handoff and physical-phone acceptance are separate gates. See `docs/COMMITTEE-2026-11-19.md` for scope, synthetic evidence, competing alternatives and limits.
+
 ## Partial mail sources and recovery - issue #309
 
 **FH-MAIL-009 — Testing.** One original attachment explicitly unsupported by the configured Gmail connector must not indefinitely prevent other valid invoice mail from being processed. The invoice path may retain a strictly validated whole message as a durable held source, including exact source identity, attachment metadata and original processing purposes. Missing, malformed, oversized, conflicting or otherwise untrusted evidence still fails closed; an unsupported attachment tool must never be called and direct Gmail must never be used as an implicit fallback. Grocery and other whole-batch consumers retain their existing strict contracts.

@@ -25,6 +25,7 @@ export async function compareProperties(config:WorkerConfig,listingIds:string[])
  const r=await fetch(endpoint(config)+'/comparison',{method:'POST',headers:workerRequestHeaders(config),body:JSON.stringify({listingIds}),signal:AbortSignal.timeout(12000)});
  if(!r.ok)throw Error('Comparaison indisponible. Actualisez les biens.');
  const body=await r.json();if(!Array.isArray(body.items)||body.items.length<2||body.items.length>3)throw Error('Comparaison reçue invalide.');
+ if(body.items.length!==listingIds.length || new Set(body.items.map((v:{listingId?:unknown})=>v?.listingId)).size!==listingIds.length || body.items.some((v:{listingId?:unknown})=>!listingIds.includes(String(v?.listingId))))throw Error('Comparaison reçue incohérente.');
  return body.items.map((raw:unknown)=>{
   const p=validateProperty(raw),v=raw as Record<string,unknown>;
   for(const key of ['budgetHeadroomCad','askingPriceReductionCad'])if(v[key]!==null&&(typeof v[key]!=='number'||!Number.isFinite(v[key])))throw Error('Montant comparatif invalide.');

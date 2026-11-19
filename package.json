@@ -18,10 +18,10 @@
     "collect:desjardins": "npm run build:worker && npm --workspace @familyhub/worker run collect:desjardins --",
     "build": "npm run build:web && npm run build:worker",
     "typecheck": "npm --workspace @familyhub/web run typecheck && npm --workspace @familyhub/worker run typecheck",
-    "test:properties": "node --import tsx --test tests/property-project.test.ts",
+    "test:properties": "node --import tsx --test tests/property-project.test.ts apps/web/tests/property-api.test.ts",
     "test:opportunities": "node --import tsx --test tests/opportunities.test.ts tests/opportunity-priority.test.ts",
     "test:claims:readiness": "node --test tests/claim-readiness.test.mjs",
-    "test:proactive:browser": "node apps/web/tests/visual-readiness-browser.mjs && node apps/web/tests/proactive-browser.mjs && node apps/web/tests/property-project-browser.mjs && node apps/web/tests/vehicle-project-browser.mjs",
+    "test:proactive:browser": "node apps/web/tests/visual-readiness-browser.mjs && node apps/web/tests/proactive-browser.mjs && node apps/web/tests/property-project-browser.mjs && node apps/web/tests/vehicle-project-browser.mjs && node apps/web/tests/project-evidence-browser.mjs",
     "test:pwa": "node --test tests/pwa-install.test.mjs tests/theme.test.mjs && tsx --tsconfig apps/web/tsconfig.json --test apps/web/tests/product.test.ts && node --import tsx --test tests/worker-transport.test.ts tests/request-security.test.ts",
     "test:savings": "node --import tsx --test tests/savings.test.ts tests/savings-sharing.test.ts tests/savings-daily.test.ts tests/comparison-leads.test.ts tests/insurance-reference.test.ts",
     "test:savings:browser": "node apps/web/tests/savings-visual-browser.mjs && node apps/web/tests/savings-browser.mjs && node apps/web/tests/savings-sharing-browser.mjs && node apps/web/tests/insurance-reference-browser.mjs",
@@ -34,6 +34,6 @@
     "test:claims": "node --test tests/claim-coordination-answers.test.mjs tests/desjardins-receipt.test.mjs tests/claim-receipt-copies.test.mjs tests/split-paid-receipt.test.mjs tests/claim-patient-share.test.mjs tests/claim-practitioner-answers.test.mjs tests/claim-receipt-retry.test.mjs tests/claim-preparation.test.mjs tests/claim-browser.test.mjs tests/claim-service-choices.test.mjs tests/claim-service-suggestions.test.mjs tests/claim-field-verification.test.mjs tests/owner-adjudication.test.mjs tests/claim-autofill.test.mjs tests/claim-invoice-answers.test.mjs tests/bluecross-receipt-checklist.test.mjs && node --import tsx --test apps/web/tests/claim-transport.test.ts && tsx --tsconfig apps/web/tsconfig.json --test apps/web/tests/claim-block-reasons.test.tsx",
     "test:mortgage": "npm run build:worker && node --import tsx --test tests/mortgage.test.ts tests/worker-mortgage.test.ts tests/mortgage-contacts.test.ts tests/mortgage-decision.test.ts tests/mortgage-daily.test.ts tests/mortgage-runner.test.ts tests/worker-mortgage-assistant.test.ts",
     "test:mortgage:browser": "node --import tsx apps/web/tests/mortgage-browser.mjs && node --import tsx apps/web/tests/mortgage-assistant-browser.mjs",
-    "test:vehicles": "node --import tsx --test tests/vehicle-project.test.ts apps/web/tests/vehicle-api.test.ts"
+    "test:vehicles": "node --import tsx --test tests/vehicle-project.test.ts apps/web/tests/vehicle-api.test.ts && tsx --tsconfig apps/web/tsconfig.json --test apps/web/tests/project-evidence.test.tsx"
   }
 }
