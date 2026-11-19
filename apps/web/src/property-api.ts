@@ -4,13 +4,22 @@ import {validateProperty,propertyCard} from '../../worker/src/property-model';
 export type PropertyCard=ReturnType<typeof propertyCard>&{followed:boolean;changes:{field:string;before:unknown;after:unknown;observedAt:string;sourceUrl:string}[]};
 export type PropertySnapshot={cards:PropertyCard[];followingRevision:number};
 function endpoint(config:WorkerConfig){if(!config.Endpoint||!config.ApiKey)throw Error('Associez votre PC dans Réglages pour charger les biens.');return config.Endpoint.replace(/\/$/,'')+'/property-project';}
-export function parsePropertySnapshot(value:unknown):PropertySnapshot {
+// Existing workers may still qualify availability from observation time alone.
+// Derive the browser state from the original status evidence, without changing
+// the worker, its stored observations or its API contract.
+function displayPropertyCard(input:unknown,now=new Date()) {
+ const card=propertyCard(input,now);
+ const statusAge=card.statusEvidence.checkedAt===null?Infinity:now.getTime()-Date.parse(card.statusEvidence.checkedAt);
+ const stale=card.stale||statusAge<0||statusAge>48*60*60*1000;
+ return {...card,stale,available:card.status==='active'&&!stale};
+}
+export function parsePropertySnapshot(value:unknown,now=new Date()):PropertySnapshot {
  const s=value as {cards?:unknown;followingRevision?:unknown};
  if(!s||!Array.isArray(s.cards)||!Number.isSafeInteger(s.followingRevision)||Number(s.followingRevision)<0)throw Error('Réponse immobilière invalide.');
  const cards=s.cards.map(raw=>{
   const p=validateProperty(raw);if(typeof raw.followed!=='boolean'||!Array.isArray(raw.changes))throw Error('Suivi reçu invalide.');
   const changes=raw.changes.filter((c:unknown):c is PropertyCard['changes'][number]=>{if(!c||typeof c!=='object')return false;const x=c as PropertyCard['changes'][number];try{return ['priceCad','status'].includes(x.field)&&Number.isFinite(Date.parse(x.observedAt))&&new URL(x.sourceUrl).protocol==='https:';}catch{return false;}});
-  return {...propertyCard(p),followed:raw.followed,changes};
+  return {...displayPropertyCard(p,now),followed:raw.followed,changes};
  });
  if(new Set(cards.map(c=>c.listingId)).size!==cards.length)throw Error('Doublons dans la réponse immobilière.');
  return {cards,followingRevision:Number(s.followingRevision)};
@@ -25,9 +34,11 @@ export async function compareProperties(config:WorkerConfig,listingIds:string[])
  const r=await fetch(endpoint(config)+'/comparison',{method:'POST',headers:workerRequestHeaders(config),body:JSON.stringify({listingIds}),signal:AbortSignal.timeout(12000)});
  if(!r.ok)throw Error('Comparaison indisponible. Actualisez les biens.');
  const body=await r.json();if(!Array.isArray(body.items)||body.items.length<2||body.items.length>3)throw Error('Comparaison reçue invalide.');
+ if(body.items.length!==listingIds.length || new Set(body.items.map((v:{listingId?:unknown})=>v?.listingId)).size!==listingIds.length || body.items.some((v:{listingId?:unknown})=>!listingIds.includes(String(v?.listingId))))throw Error('Comparaison reçue incohérente.');
+ const now=new Date();
  return body.items.map((raw:unknown)=>{
   const p=validateProperty(raw),v=raw as Record<string,unknown>;
   for(const key of ['budgetHeadroomCad','askingPriceReductionCad'])if(v[key]!==null&&(typeof v[key]!=='number'||!Number.isFinite(v[key])))throw Error('Montant comparatif invalide.');
-  return {...propertyCard(p),budgetHeadroomCad:v.budgetHeadroomCad as number|null,askingPriceReductionCad:v.askingPriceReductionCad as number|null};
+  return {...displayPropertyCard(p,now),budgetHeadroomCad:v.budgetHeadroomCad as number|null,askingPriceReductionCad:v.askingPriceReductionCad as number|null};
  });
 }
