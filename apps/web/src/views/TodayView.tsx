@@ -59,10 +59,12 @@ export default function TodayView({ hub, onNavigate, onOpenTarget, commandOpen, 
   const managed = feed.allOpportunities.filter(item => item.decision && item.decision !== "seen");
   const selected = feed.allOpportunities.find(item => item.id === selectedId);
   const sourceErrors = feed.sources.filter(source => source.status === "error");
+  const partialSources = feed.sources.filter(source => source.coverage?.complete === false);
+  const claimsPartial = partialSources.some(source => source.id === "claims");
   const accessibleSources = feed.sources.filter(source => source.status === "ready").length;
   const numericPotential = feed.allOpportunities.filter(item => item.benefit.kind === "potential" && item.benefit.amount !== null && item.freshness === "fresh");
   const unknownPotential = feed.allOpportunities.filter(item => item.domain !== "system" && item.benefit.kind !== "recoverable" && item.benefit.kind !== "time" && item.benefit.amount === null);
-  const sourceLabel = !online ? "Hors ligne" : feed.loading ? "Vérification des sources…" : !feed.configured ? "PC à connecter" : sourceErrors.length ? sourceErrors.length + " source" + (sourceErrors.length > 1 ? "s" : "") + " à revoir" : accessibleSources + " sources accessibles";
+  const sourceLabel = !online ? "Hors ligne" : feed.loading ? "Vérification des sources…" : !feed.configured ? "PC à connecter" : sourceErrors.length ? sourceErrors.length + " source" + (sourceErrors.length > 1 ? "s" : "") + " à revoir" : partialSources.length ? partialSources.length + " source" + (partialSources.length > 1 ? "s partielles" : " partielle") : accessibleSources + " sources accessibles";
   const followLink = (event: MouseEvent<HTMLAnchorElement>, item: Opportunity) => {
     if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
     event.preventDefault(); onOpenTarget(opportunityHref(item.target));
@@ -109,14 +111,14 @@ export default function TodayView({ hub, onNavigate, onOpenTarget, commandOpen, 
   }
 
   const benefitSummary = <section className="today-benefits" aria-label="Des montants distincts, sans double compte">
-        <button type="button" className="benefit-tile recovery-tile" onClick={() => setSummaryOpen(true)} aria-haspopup="dialog"><HeartHandshake size={20} aria-hidden="true" /><span>À récupérer</span><strong>{feed.sources.find(source => source.id === "claims")?.status === "loading" ? "…" : feed.recoverable.amount === null ? "À vérifier" : money.format(feed.recoverable.amount)}</strong><small>Potentiel · ponctuel</small></button>
+        <button type="button" className="benefit-tile recovery-tile" onClick={() => setSummaryOpen(true)} aria-haspopup="dialog"><HeartHandshake size={20} aria-hidden="true" /><span>À récupérer</span><strong>{feed.sources.find(source => source.id === "claims")?.status === "loading" ? "…" : feed.recoverable.amount === null ? "À vérifier" : money.format(feed.recoverable.amount)}</strong><small>{claimsPartial ? "Couverture partielle" : "Potentiel · ponctuel"}</small></button>
         <button type="button" className="benefit-tile" onClick={() => setSummaryOpen(true)} aria-haspopup="dialog"><TrendingDown size={20} aria-hidden="true" /><span>Économies possibles</span><strong>{feed.loading ? "…" : numericPotential.length ? numericPotential.length + " piste" + (numericPotential.length > 1 ? "s" : "") : "À chiffrer"}</strong><small>Selon les preuves</small></button>
         <button type="button" className="benefit-tile" onClick={() => setSummaryOpen(true)} aria-haspopup="dialog"><FileCheck2 size={20} aria-hidden="true" /><span>Économies obtenues</span><strong>Non mesuré</strong><small>Preuve requise</small></button>
       </section>;
 
   return <div className="view-stack today-view">
     <PageHeader title="Aujourd’hui" subtitle="Vos priorités, à partir des preuves disponibles" />
-    <button type="button" className={`today-source-status${sourceErrors.length || !online ? " caution" : ""}`} onClick={() => setSourceOpen(true)} aria-haspopup="dialog">
+    <button type="button" className={`today-source-status${sourceErrors.length || partialSources.length || !online ? " caution" : ""}`} onClick={() => setSourceOpen(true)} aria-haspopup="dialog">
       {!online ? <WifiOff size={17} aria-hidden="true" /> : <span className="source-indicators" aria-hidden="true">{feed.sources.map(source => <span key={source.id} className={`source-dot ${source.status}`} />)}</span>}<span>{sourceLabel}</span><ChevronRight size={16} aria-hidden="true" />
     </button>
     {!online && <div className="today-state" role="status"><WifiOff size={20} aria-hidden="true" /><div><strong>Connexion interrompue</strong><p>Les montants affichés correspondent à la dernière lecture de cette session. Reconnectez-vous puis actualisez avant de décider.</p></div></div>}
@@ -144,7 +146,7 @@ export default function TodayView({ hub, onNavigate, onOpenTarget, commandOpen, 
     </section>
 
     <Sheet open={sourceOpen} onClose={() => setSourceOpen(false)} title="État des sources" description="Une lecture réussie ne garantit pas que la collecte est récente." className="today-sheet" footer={<><button type="button" className="button secondary" onClick={() => onNavigate("more")}><Settings2 size={17} aria-hidden="true" />Réglages</button><button type="button" className="button" onClick={feed.refresh} disabled={!feed.configured || feed.loading || !online}><RefreshCw size={17} aria-hidden="true" />Actualiser</button></>}>
-      <div className="today-source-list">{feed.sources.map(source => <article key={source.id}><div><h3>{source.label}</h3><span className={`opportunity-status${source.status === "error" ? " caution" : ""}`}>{source.status === "ready" ? "Accessible" : source.status === "loading" ? "Lecture…" : source.status === "unpaired" ? "Non connecté" : "À revoir"}</span></div><dl className="today-facts"><div><dt>Dernière lecture</dt><dd>{dateLabel(source.checkedAt, true)}</dd></div><div><dt>Date des données</dt><dd>{dateLabel(source.sourceDate)}</dd></div></dl>{source.error && <details><summary>Détail du problème</summary><p>{source.error}</p></details>}</article>)}</div>
+      <div className="today-source-list">{feed.sources.map(source => <article key={source.id}><div><h3>{source.label}</h3><span className={`opportunity-status${source.status === "error" || source.coverage?.complete === false ? " caution" : ""}`}>{source.status === "ready" ? source.coverage?.complete === false ? "Lecture partielle" : "Accessible" : source.status === "loading" ? "Lecture…" : source.status === "unpaired" ? "Non connecté" : "À revoir"}</span></div><dl className="today-facts"><div><dt>Dernière lecture</dt><dd>{dateLabel(source.checkedAt, true)}</dd></div><div><dt>Date des données</dt><dd>{dateLabel(source.sourceDate)}</dd></div></dl>{source.coverage?.complete === false && <p>{source.coverage.heldMessages ? `${source.coverage.heldMessages} message${source.coverage.heldMessages > 1 ? "s retenus" : " retenu"}. ` : ""}Les dossiers déjà connus restent visibles ; le total à récupérer est inconnu.</p>}{source.error && <details><summary>Détail du problème</summary><p>{source.error}</p></details>}</article>)}</div>
       <p className="today-fine-print">Actualiser relit les données conservées sur le PC. Les collectes et recherches existantes suivent leur propre calendrier.</p>
     </Sheet>
     <Sheet open={summaryOpen} onClose={() => setSummaryOpen(false)} title="Comprendre les montants" description="Trois catégories distinctes. Aucun total ne les additionne." className="today-sheet">

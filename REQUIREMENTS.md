@@ -1,5 +1,9 @@
 # FamilyHub - Canonical Requirements
 
+## Today partial coverage projection — issue #305
+
+**FH-PROACTIVE-001 / FH-MAIL-009 / FH-UX-002 — Testing (isolated web candidate).** A successful invoice API read with explicit incomplete coverage or a positive held-message count must not yield an exhaustive recovery total, including zero. Today keeps individually supported claims visible, labels the partial source and preserves its original evidence date. The assistant request includes only bounded completeness/held-count metadata; no account progress or raw diagnostic is added. Complete empty coverage retains a genuine zero. Older snapshots without coverage retain their legacy arithmetic but expose `complete: null`, never an invented complete status. No collection, source record, financial decision, worker, notification policy or deployment changes. Synthetic reproduction, acceptance and remaining gates: [committee 22 November](docs/COMMITTEE-2026-11-22.md).
+
 ## Partial mail sources and recovery - issue #309
 
 **FH-MAIL-009 — Testing.** One original attachment explicitly unsupported by the configured Gmail connector must not indefinitely prevent other valid invoice mail from being processed. The invoice path may retain a strictly validated whole message as a durable held source, including exact source identity, attachment metadata and original processing purposes. Missing, malformed, oversized, conflicting or otherwise untrusted evidence still fails closed; an unsupported attachment tool must never be called and direct Gmail must never be used as an implicit fallback. Grocery and other whole-batch consumers retain their existing strict contracts.

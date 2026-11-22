@@ -1,0 +1,109 @@
+{
+  "observedSources": [
+    {
+      "id": "claims",
+      "label": "Remboursements",
+      "status": "ready",
+      "checkedAt": "2026-11-22T16:00:00.188Z",
+      "sourceDate": "2026-11-21",
+      "error": null
+    },
+    {
+      "id": "contracts",
+      "label": "Contrats",
+      "status": "ready",
+      "checkedAt": "2026-11-22T16:00:00.189Z",
+      "sourceDate": null,
+      "error": null
+    },
+    {
+      "id": "research",
+      "label": "Recherches",
+      "status": "ready",
+      "checkedAt": "2026-11-22T16:00:00.189Z",
+      "sourceDate": null,
+      "error": null
+    },
+    {
+      "id": "finances",
+      "label": "Finances",
+      "status": "ready",
+      "checkedAt": "2026-11-22T16:00:00.189Z",
+      "sourceDate": null,
+      "error": null
+    },
+    {
+      "id": "groceries",
+      "label": "Prix des courses",
+      "status": "ready",
+      "checkedAt": "2026-11-22T16:00:00.189Z",
+      "sourceDate": null,
+      "error": null
+    },
+    {
+      "id": "purchases",
+      "label": "Achats",
+      "status": "ready",
+      "checkedAt": "2026-11-22T16:00:00.189Z",
+      "sourceDate": null,
+      "error": null
+    },
+    {
+      "id": "mortgage",
+      "label": "Hypothèque",
+      "status": "ready",
+      "checkedAt": "2026-11-22T16:00:00.189Z",
+      "sourceDate": null,
+      "error": null
+    }
+  ],
+  "priorities": [
+    {
+      "title": "Ajouter les relevés privés",
+      "domain": "finances",
+      "description": "Un relevé daté permet d’identifier les frais à vérifier.",
+      "benefit": {
+        "kind": "unknown",
+        "amount": null,
+        "currency": "CAD",
+        "period": null,
+        "label": "Frais et doublons à vérifier"
+      },
+      "dueDate": null,
+      "sourceDate": null,
+      "freshness": "unknown",
+      "evidence": [
+        "Les transferts et paiements de carte ne sont pas des dépenses à économiser.",
+        "Une répétition de libellé n’établit pas un abonnement.",
+        "La lecture du PC ne reconnecte pas la banque."
+      ]
+    },
+    {
+      "title": "Établir le gain hypothécaire net",
+      "domain": "mortgage",
+      "description": "Le relevé actuel est nécessaire pour une comparaison utile.",
+      "benefit": {
+        "kind": "unknown",
+        "amount": null,
+        "currency": "CAD",
+        "period": null,
+        "label": "Gain net inconnu"
+      },
+      "dueDate": null,
+      "sourceDate": null,
+      "freshness": "unknown",
+      "evidence": [
+        "Un taux public n’est pas une offre personnellement approuvée.",
+        "Baisse de mensualité, économie d’intérêts et cashback restent distincts.",
+        "Les hypothèses ne remplacent pas un solde ni une pénalité documentés."
+      ]
+    }
+  ],
+  "potentialRecovery": {
+    "amount": 0,
+    "currency": "CAD",
+    "known": 0,
+    "unknown": 0
+  },
+  "confirmedSavings": null
+}

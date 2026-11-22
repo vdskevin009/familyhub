@@ -1,0 +1,26 @@
+{
+  "kind": "synthetic implementation captures, not physical phone acceptance",
+  "baselineCommit": "3710eb1a29caecd06fa0d007277564a9f0915473",
+  "fixtureClock": "2026-11-22T16:00:00Z",
+  "realModelCalls": 0,
+  "privateSourceReads": 0,
+  "candidateSourceSha256": {
+    "apps/web/src/opportunities.ts": "742bcdcca41eb9c2f2cdff76ea4cc9e972f7103b683510381235c8aba6cbe1cc",
+    "apps/web/src/useOpportunities.ts": "8d5b27a1081040c5ff75ea59ada0293b11b39b4f0ef1a39e31f7d5f6fe4dda69",
+    "apps/web/src/views/TodayView.tsx": "1cffb5d3cf2e13f509861d0558bacbf1f3bdfd496fbfa652ff6765ab7aa2ce7c",
+    "apps/web/tests/today-coverage-browser.mjs": "d238dd781c67d32efec3bf4fd63fbbca9af283f567c10b81532b6ca8240d288d",
+    "tests/opportunities.test.ts": "7dd72a4c3b0291aca5069656e0bc68584320f906be1a601db649643d2ab0f208",
+    "package.json": "6e4972c4c212f780aff6c33cafdebd63f2c43f8c04c57d70a39139bc6cde5725"
+  },
+  "artifactsSha256": {
+    "before-390.png": "8a175718f0357007ed568628ff8c473870999a4a9cc9cd4f1d7268efaa11663f",
+    "partial-390.png": "bc58258b50c889c6e38f22ffb688c38502551d5900d736c09c13c91d6ea643cb",
+    "sources-390.png": "620b8692b886b1e1537ddf9d4b18d8533e4505d3b117ac6d0e1cafec6961975b",
+    "known-390.png": "2354dfc17d78c79b259b5ed229ba4779f5e50d9e20cdf13f8fc0b7c8df0e4c5d",
+    "complete-empty-390.png": "3d81ebe76757762576c1ed45d1f3d984fdce0255d416742b7c47758286c16df8",
+    "before-context.json": "83c3730656f6b0ec397249c3eda26920849a6251af23d577ee6d854ebcca4de5",
+    "after-context.json": "36b36592c112793eb08bb188e1b26ca5d6df861aab52d92ef2cfea2355d0729c",
+    "acceptance.json": "1235b4a48f8c3162700a73ed3d21e46c52f7698a9fdfc883e50f3b9360354dd7"
+  },
+  "textHashConvention": "UTF-8 with LF line endings, matching Git blobs"
+}
