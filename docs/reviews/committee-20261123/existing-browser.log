@@ -1,0 +1,10 @@
+npm notice run familyhub@2.0.0 test:proactive:browser
+npm notice run node apps/web/tests/visual-readiness-browser.mjs && node apps/web/tests/proactive-browser.mjs && node apps/web/tests/property-project-browser.mjs && node apps/web/tests/vehicle-project-browser.mjs
+PASS: six widths, unknown freshness, keyboard disclosures, single active navigation, late read and post-unmount sync ignored; one isolated synthetic sync, no external requests.
+PASS proactive home: six widths, source authority, partial/offline/unpaired states, five-tab navigation, exact links, persisted renewal context, delayed reads, restores, rejected writes, and failed-chunk recovery.
+Property UI passed: mobile/desktop, following, filtering, evidence dialog, comparison, offline preservation, empty, navigation/back.
+Vehicle UI passed: mobile/desktop, following, filtering, evidence dialog, comparison, offline preservation, empty, navigation/back.
+PASS notification history, preferences, enrollment lifecycle and source links at 320px
+PASS notification history, preferences, enrollment lifecycle and source links at 390px
+PASS notification history, preferences, enrollment lifecycle and source links at 768px
+PASS notification history, preferences, enrollment lifecycle and source links at 1440px

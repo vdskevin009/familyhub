@@ -29,7 +29,7 @@ import { ACCOUNT_HISTORY_CAPABILITY } from "./finance-account-history-model.js";
 import { importFinanceAccountCapture } from "./finance-account-captures-api.js";
 import { importFinanceSourceInventory } from "./finance-source-inventory-api.js";
 import { readContributionsView } from "./contributions-view.js";
-import { NotificationLibrary, NotificationConflict } from "./notification-library.js";
+import { NotificationLibrary, NotificationConflict, notificationClientSnapshot } from "./notification-library.js";
 import { OpportunityActions, OpportunityActionsConflict } from "./opportunity-actions.js";
 import { PushConfiguration, sendPush } from "./notification-push.js";
 import type { NotificationEvidence } from "./notification-model.js";
@@ -134,6 +134,11 @@ function scanNotifications() {
     evidence.collections = [{ ...getBlueCrossStatus(), id: "bluecross", label: "Blue Cross" }, { ...getDesjardinsStatus(), id: "desjardins", label: "Desjardins" }];
     if (invoices.status === "fulfilled" && !invoices.value.setupRequired) evidence.collections.push({ id: "gmail", label: "Factures", state: invoices.value.busy ? "syncing" : invoices.value.error ? "error" : "idle", lastSuccess: invoices.value.lastSuccess, lastAttempt: invoices.value.lastAttempt });
     try { await groceryPurchaseResolution.reconcile(); } catch { console.error("Purchase resolution enrichment unavailable; existing evidence preserved."); }
+    // Read immutable project evidence only; no collector, intake or following write.
+    const [vehicleEvidence, propertyEvidence] = await Promise.allSettled([vehicleStore.read(), propertyStore.read()]);
+    evidence.projects = {};
+    if (vehicleEvidence.status === "fulfilled") evidence.projects.vehicle = vehicleEvidence.value; else errors.push("projet auto");
+    if (propertyEvidence.status === "fulfilled") evidence.projects.property = propertyEvidence.value; else errors.push("projet immobilier");
     return notifications.scan(evidence, errors);
   })().catch(() => { console.error("Notification scan unavailable; existing records and deduplication preserved."); }).finally(() => { notificationScan = null; });
   return notificationScan;
@@ -379,8 +384,8 @@ const server = createServer(async (request, response) => {
       if (request.method === "POST") { json(response, 200, await opportunityActions.mutate(await readJson(request, 4_000)), origin); return; }
     }
     if (parts[0] === "notifications" && parts.length === 1) {
-      if (request.method === "GET") { json(response, 200, await notifications.read(), origin); return; }
-      if (request.method === "POST") { json(response, 200, await notifications.mutate(await readJson(request, 12_000)), origin); return; }
+      if (request.method === "GET") { json(response, 200, notificationClientSnapshot(await notifications.read(), new URL(request.url || "/", "http://familyhub.local").searchParams.get("projectPrices") === "1"), origin); return; }
+      if (request.method === "POST") { json(response, 200, notificationClientSnapshot(await notifications.mutate(await readJson(request, 12_000)), new URL(request.url || "/", "http://familyhub.local").searchParams.get("projectPrices") === "1"), origin); return; }
     }
     if (parts[0] === "groceries") {
       if (parts.length === 2 && parts[1] === "purchase-resolution") {

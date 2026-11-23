@@ -13,9 +13,9 @@ export function fetchSharedResearch(config: WorkerConfig): Promise<SharedResearc
 export async function fetchNotifications(config: WorkerConfig): Promise<import("../../worker/src/notification-library").NotificationSnapshot> {
   const health = await testWorker(config);
   if (!workerVersionAtLeast(health.version, "2.24.0")) throw new Error("Les notifications nécessitent le worker PC 2.24.0 ou ultérieur. Les données et catégories enregistrées restent disponibles.");
-  return request(config, "/notifications");
+  return request(config, "/notifications?projectPrices=1");
 }
-export const updateNotifications = (config: WorkerConfig, body: object) => request<import("../../worker/src/notification-library").NotificationSnapshot>(config, "/notifications", { method: "POST", body: JSON.stringify(body) });
+export const updateNotifications = (config: WorkerConfig, body: object) => request<import("../../worker/src/notification-library").NotificationSnapshot>(config, "/notifications?projectPrices=1", { method: "POST", body: JSON.stringify(body) });
 export function fetchSharedSavings(config: WorkerConfig): Promise<SharedLibrary> { return request(config, "/savings/contracts"); }
 export function fetchSharedSavingsDocument(config: WorkerConfig, id: string): Promise<SharedDocument> { return request(config, `/savings/documents/${encodeURIComponent(id)}`); }
 async function requireInsuranceSupport(config: WorkerConfig, contracts: SavingsContract[]) {
