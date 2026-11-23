@@ -823,26 +823,26 @@
     "after-notifications-320.png": "5fb744d256b336e25d8ad32555069c36b13a7d1a1e041fb25ce187756b5396f2",
     "after-notifications-390.png": "286166e383ada38bc22b1040a1617e2015c8ba3e4d9ea680acea7d0256ee48a0",
     "baseline-browser.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-    "baseline-build.log": "083a227eea5821b3e0d7ea57ba7482444c46fdeda8474297dd1b174e83bc7a04",
+    "baseline-build.log": "a2d415ff849e9b3438739e114278fea6d5939e8dec8ad05a745888e8c3013c50",
     "before-history-property-390.png": "724fec51382686fa90e4044f6c0f5ba2032147983bea855abc025fdbae68e54e",
     "before-history-vehicle-390.png": "417f78cf0678028cd72a6ec3b0d714d3a27114ab78a819823fe3fd22f18f9160",
     "before-notifications-390.png": "a8ab3fdb16aac83881a3463df134fda21fe3a266c468a7de2014edfdc83afa75",
     "before-result.json": "24b81e344c9eee45e3e1dcce534903bcb15ab90fb48d8d19a5d5cfb35bad8ed9",
-    "build.log": "ae7d922f542918e7d2c855746b21f5a46262c313976d1fe519d7f73be0e09ec7",
+    "build.log": "324410051a09c380bb22a05c21e31da655d6140816d53dfc3056a107748c927a",
     "destination-property-390.png": "f9a2ed9c76b6b2d7374ad215541cda5b1fb315bb3cfc4d187ae8322f57f5ece8",
     "destination-vehicle-390.png": "6fadd4adc758d919f7642ae597a005cce924e773a025450389ccfeb42db75876",
     "empty-390.png": "04bfe8843cc6c5a6080c2488ad9167f284eac55922a2b40add52445fec9b9403",
     "error-390.png": "33c93c8210712351c9a481fd099cafb40e9859f337b09cca98435d86a3e1648e",
     "evidence-property-390.png": "57788ae9190f38138a77f85f81991f08e16c63fe70a30fee3c9622a6b37c8b44",
     "evidence-vehicle-390.png": "bd1c90ef6fda6e40ea72d58f79ecef346e319fa4ef23ac291c0620def733f8d3",
-    "existing-browser.log": "e322d4d4d9d2ebca09b060f9d76ea09504941be612e21eb05f95c55c585abc92",
+    "existing-browser.log": "e9e52c3287709c552e3b2f7c5853dceea6fb18b99ba025a062b17952db333120",
     "missing-390.png": "b4ce3a66744a910518da7f07166e135f5974a8295c32a382d27b7f4584043f8b",
-    "notifications-models.log": "306679a1a9edad743141f0da13d85dfede865a04d1e0d6ec7b41c51f24784c01",
+    "notifications-models.log": "e2a383fe80cb0c9204908376bcace9294a7c1a008ea1fc86bdd38643cd7ca883",
     "old-worker-390.png": "8e9ff640841942647022c5562fc0de74e52e10f23af81e7e9dfbabab0b43cb76",
-    "project-browser.log": "9c8c8adc36088081732b35e6b6329eb5a5b563cbb6b34fa5c3117966100ef2d4",
-    "project-model.log": "1aef6c18bf99887a613171105ef6fc1f73517dbe46a6d95d686b1f43db27b128",
-    "pwa.log": "465c42b1a35b3972dca1abef5f31052e173e77029dce22d88573facc5f3abc5a",
-    "typecheck.log": "eefd75c6b8c120913a87c96c89e897d3883469db66a3d9258793c806674f2e73"
+    "project-browser.log": "301e6d795019efc5b56c35e56a7a67b5ef5adbedea77c14cdc503c2a0bfea44c",
+    "project-model.log": "6e1ad0daf0caba6dabab5db1583fc0914dd98296fe647ee132d70a33fbe3d7f7",
+    "pwa.log": "324ae545fedd0f9b0b61c77c5986ffe3146f4b03faee6afd59e36f2a298c4a8a",
+    "typecheck.log": "429f83f96e998b63697fd71763e6dbf0f14b418cb74b847465efce06368b3f1a"
   },
   "limits": [
     "No installed worker",
@@ -851,5 +851,6 @@
     "No real phone",
     "No screen reader",
     "No combined PR312 candidate"
-  ]
+  ],
+  "artifactHashBasis": "SHA256 of Git blobs (text LF; binary exact)"
 }

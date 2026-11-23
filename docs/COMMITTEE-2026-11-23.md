@@ -55,10 +55,10 @@ Alternative minimale aux avis : conserver l'historique dans chaque fiche. Elle r
 
 Sources publiques consultées le **23 novembre 2026**, sans compte ni données de Kevin :
 
-- [AutoTrader, fiche officielle Trader Corporation](https://play.google.com/store/apps/details?hl=en-CA&id=ca.autotrader.userapp) : favoris, recherches enregistrées et avis de prix ; mise à jour annoncée le 12 novembre 2026. Référence fonctionnelle, pas preuve de qualité mécanique ou de prix juste.
+- [AutoTrader, fiche officielle Trader Corporation](https://play.google.com/store/apps/details?hl=en-CA&id=ca.autotrader.userapp) : favoris, recherches enregistrées et avis de prix ; mise à jour annoncée le 22 novembre 2026, relue lors du contrôle final. Référence fonctionnelle, pas preuve de qualité mécanique ou de prix juste.
 - [REALTOR.ca, recherches sauvegardées](https://www.realtor.ca/my-saved-searches) : critères/favoris et notifications de nouvelles annonces. Ne prouve ni prix vendu ni frais/état/strata du bien. FamilyHub conserve donc les inconnues et ne copie pas un score propriétaire.
 - [RNCan, outil de consommation](https://fcr-ccc.nrcan-rncan.gc.ca/en/Search) : année/modèle mais aussi transmission, carburant, cylindres et hypothèses kilométrage/prix. Une correspondance de nom commercial seule est insuffisante. L'outil public a été lu ; aucun jeu de données complet n'a été téléchargé.
-- [RNCan, interprétation des cotes](https://natural-resources.canada.ca/energy-efficiency/transportation-energy-efficiency/understanding-fuel-consumption-ratings) : repères de comparaison, consommation réelle variable.
+- [RNCan, interprétation des cotes](https://natural-resources.canada.ca/energy-efficiency/transportation-energy-efficiency/understanding-fuel-consumption-ratings) : page explicative refusée HTTP 403 au contrôle final ; elle n’a pas servi à valider un appariement ni un chiffre. L’outil de recherche ci-dessus était accessible.
 - [BCFSA, Form B Information Certificate](https://www.bcfsa.ca/industry-resources/real-estate-professional-resources/knowledge-base/practice-resources/form-b-information-certificate) : documents/état et coûts de strata à vérifier, pas de revenu locatif présumé.
 - [W3C WCAG 2.2, taille des cibles](https://www.w3.org/WAI/WCAG22/Understanding/target-size-minimum.html) : cible minimale ou espacement, complétée ici par contrôle de focus, noms accessibles et absence de dépendance à la couleur. Référence maintenue publique ; les skills locales guident la revue, sans ajouter de code tiers.
 
