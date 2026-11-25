@@ -18,6 +18,8 @@ Guard reads and async continuations when leaving/changing connection; select one
 
 ## Daily reliability audit - issue #305
 
+**FH-UX-002 — Settings connection test, draft candidate (2026-11-25).** A pending connection test belongs to the current settings interaction. Editing either endpoint or pairing-key input, saving settings or leaving the screen invalidates both its success and failure continuations. An obsolete response must not overwrite the newer saved connection or draft inputs, change the connection indicator, or replace a current error. A current successful test retains the existing save behavior. This is a web-only guard, with no installed connection, permission, transport, worker or collector change. Synthetic validation and remaining release gates: `docs/SETTINGS-CONNECTION-RESULTS.md`; tracking #305. Not merged or deployed.
+
 Merged in PR #306 as `1382dcf4d192d747630f3b400f69d9b9827b728c`; full CI, published PWA and scoped existing-worker activation/preservation are verified. Next natural runs and physical-phone receipt remain separate acceptance gates in issue #305.
 
 - **FH-OPS-001:** The daily mail runner uses the existing configured worker and waits briefly for its supervisor to restore health. Failed health/authentication must not spawn another worker or overwrite its logs. An initially busy collection that finishes with an uncertain failure must not be replayed; explicit `continuationReady: true` still permits the established bounded invoice continuation. Existing schedules and independent grocery outcome are preserved.
