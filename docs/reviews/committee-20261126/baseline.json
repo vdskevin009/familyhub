@@ -1,0 +1,247 @@
+{
+  "synthetic": true,
+  "workerStarted": false,
+  "baseline": true,
+  "results": [
+    {
+      "width": 320,
+      "case": "conflictOnly",
+      "omitted": true,
+      "requests": [
+        "/groceries/planning",
+        "/health",
+        "/groceries",
+        "/health",
+        "/groceries/planning",
+        "/health"
+      ],
+      "errors": [],
+      "external": []
+    },
+    {
+      "width": 320,
+      "case": "mixed",
+      "omitted": true,
+      "requests": [
+        "/groceries/planning",
+        "/health",
+        "/groceries",
+        "/groceries/planning",
+        "/health",
+        "/groceries/planning",
+        "/health"
+      ],
+      "errors": [],
+      "external": []
+    },
+    {
+      "width": 320,
+      "case": "unknownOnly",
+      "omitted": true,
+      "requests": [
+        "/groceries/planning",
+        "/health",
+        "/groceries"
+      ],
+      "errors": [],
+      "external": []
+    },
+    {
+      "width": 320,
+      "case": "oldConflict",
+      "omitted": true,
+      "requests": [
+        "/groceries/planning",
+        "/health",
+        "/groceries",
+        "/groceries/planning",
+        "/health",
+        "/groceries/planning"
+      ],
+      "errors": [],
+      "external": []
+    },
+    {
+      "width": 320,
+      "case": "empty",
+      "omitted": false,
+      "requests": [
+        "/groceries/planning",
+        "/health",
+        "/groceries",
+        "/groceries/planning",
+        "/health",
+        "/groceries/planning",
+        "/health"
+      ],
+      "errors": [],
+      "external": []
+    },
+    {
+      "width": 320,
+      "case": "complete",
+      "omitted": false,
+      "requests": [
+        "/groceries/planning",
+        "/health",
+        "/groceries",
+        "/groceries/planning",
+        "/health",
+        "/groceries/planning",
+        "/health"
+      ],
+      "errors": [],
+      "external": []
+    },
+    {
+      "width": 320,
+      "case": "zero",
+      "omitted": false,
+      "requests": [
+        "/groceries/planning",
+        "/health",
+        "/groceries",
+        "/groceries/planning",
+        "/health",
+        "/groceries/planning",
+        "/health"
+      ],
+      "errors": [],
+      "external": []
+    },
+    {
+      "width": 320,
+      "case": "ambiguous",
+      "omitted": true,
+      "requests": [
+        "/groceries/planning",
+        "/health",
+        "/groceries",
+        "/groceries/planning",
+        "/health"
+      ],
+      "errors": [],
+      "external": []
+    },
+    {
+      "width": 390,
+      "case": "conflictOnly",
+      "omitted": true,
+      "requests": [
+        "/groceries/planning",
+        "/health",
+        "/groceries",
+        "/groceries/planning",
+        "/health",
+        "/groceries/planning",
+        "/health"
+      ],
+      "errors": [],
+      "external": []
+    },
+    {
+      "width": 390,
+      "case": "mixed",
+      "omitted": true,
+      "requests": [
+        "/groceries/planning",
+        "/health",
+        "/groceries",
+        "/health",
+        "/groceries/planning",
+        "/health"
+      ],
+      "errors": [],
+      "external": []
+    },
+    {
+      "width": 390,
+      "case": "unknownOnly",
+      "omitted": true,
+      "requests": [
+        "/groceries/planning",
+        "/health",
+        "/groceries"
+      ],
+      "errors": [],
+      "external": []
+    },
+    {
+      "width": 390,
+      "case": "oldConflict",
+      "omitted": true,
+      "requests": [
+        "/groceries/planning",
+        "/health",
+        "/groceries",
+        "/groceries/planning",
+        "/health",
+        "/groceries/planning",
+        "/health"
+      ],
+      "errors": [],
+      "external": []
+    },
+    {
+      "width": 390,
+      "case": "empty",
+      "omitted": false,
+      "requests": [
+        "/groceries/planning",
+        "/health",
+        "/groceries",
+        "/groceries/planning",
+        "/health",
+        "/groceries/planning",
+        "/health"
+      ],
+      "errors": [],
+      "external": []
+    },
+    {
+      "width": 390,
+      "case": "complete",
+      "omitted": false,
+      "requests": [
+        "/groceries/planning",
+        "/health",
+        "/groceries",
+        "/groceries/planning",
+        "/health",
+        "/groceries/planning",
+        "/health"
+      ],
+      "errors": [],
+      "external": []
+    },
+    {
+      "width": 390,
+      "case": "zero",
+      "omitted": false,
+      "requests": [
+        "/groceries/planning",
+        "/health",
+        "/groceries",
+        "/groceries/planning",
+        "/health",
+        "/groceries/planning",
+        "/health"
+      ],
+      "errors": [],
+      "external": []
+    },
+    {
+      "width": 390,
+      "case": "ambiguous",
+      "omitted": true,
+      "requests": [
+        "/groceries/planning",
+        "/health",
+        "/groceries",
+        "/health"
+      ],
+      "errors": [],
+      "external": []
+    }
+  ]
+}

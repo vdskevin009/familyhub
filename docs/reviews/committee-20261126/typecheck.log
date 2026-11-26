@@ -1,0 +1,6 @@
+npm notice run familyhub@2.0.0 typecheck
+npm notice run npm --workspace @familyhub/web run typecheck && npm --workspace @familyhub/worker run typecheck
+npm notice run @familyhub/web@2.0.0 typecheck
+npm notice run tsc -b --pretty false
+npm notice run @familyhub/worker@2.0.0 typecheck
+npm notice run tsc -p tsconfig.json --noEmit

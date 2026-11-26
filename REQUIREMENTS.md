@@ -135,6 +135,8 @@ projection with synthetic regression tests. API/UI integration, approved-image i
 
 ## Purchase-only Courses and monthly PC Express spending - FH-GROCERY-015 (#155)
 
+**2026-11-26 draft follow-up, not deployed:** saved sources excluded from monthly amounts must be signalled before the figures, with reasons on demand and a path to the existing ticket/source review. The count describes cases across all recorded years/currencies, not distinct orders or the selected month. Distinguish no eligible saved sources from sources present with unusable amounts. Preserve existing calculations, source records, imports and unknown payment status. Synthetic evidence and limits: [committee review](docs/COMMITTEE-2026-11-26.md).
+
 Testing. Courses exposes only Achats, retaining per-purchase comparisons and original source tools. A read-only monthly chart separates verified final receipts from confirmation estimates, deduplicates explicit order identities across accounts and excludes contradictory or unusable evidence. Unknown months and incomplete mailbox/refund coverage remain explicit. See [FH-GROCERY-015](docs/requirements/FH-GROCERY-015.md). This supersedes the Catalogue/Moins cher navigation, not the underlying preserved records or comparison logic.
 
 ## Gmail plugin migration - FH-MAIL-008

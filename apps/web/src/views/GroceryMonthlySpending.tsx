@@ -6,6 +6,7 @@ const money = (value: number, currency: string) => new Intl.NumberFormat("fr-CA"
 const label = (month: string, short = false) => new Intl.DateTimeFormat("fr-CA", { month: short ? "short" : "long", ...(short ? {} : {year: "numeric" as const}), timeZone: "UTC" }).format(new Date(month + "-01T12:00:00Z"));
 export default function GroceryMonthlySpending({ records, offline }: { records: GroceryRecord[]; offline: boolean }) {
   const summary = pcExpressMonthlySpending(records);
+  const omitted = summary.excluded + summary.conflicts;
   const years = [...new Set(summary.months.map(m => m.month.slice(0, 4)))].sort().reverse();
   const [selection, setSelection] = useState("");
   const year = years.includes(selection) ? selection : years[0];
@@ -13,9 +14,16 @@ export default function GroceryMonthlySpending({ records, offline }: { records: 
   const currencies = [...new Set(months.map(m => m.currency))];
   return <section className="grocery-spending" aria-label="Dépenses mensuelles PC Express">
     <div className="grocery-section-heading"><div><p className="grocery-spending-eyebrow">PC Express · historique disponible</p><h2>Dépenses par mois</h2></div>{years.length > 1 && <label>Année<select aria-label="Année" value={year} onChange={e => setSelection(e.target.value)}>{years.map(y => <option key={y}>{y}</option>)}</select></label>}</div>
-    <p>Reçus finaux vérifiés et confirmations estimées sont séparés. Une estimation ne prouve pas un débit. Tous les achats PC Express sont inclus, y compris les articles non alimentaires.</p>
+    <p>Reçus finaux vérifiés et confirmations estimées sont séparés. Une estimation ne prouve pas un débit. Le bilan utilise les sources PC Express exploitables, articles non alimentaires compris.</p>
     {offline && <p className="grocery-warning">Données en cache : les derniers courriels ne sont pas vérifiés.</p>}
-    {!months.length ? <p className="grocery-empty">Aucun montant PC Express daté et exploitable. Les achats importés apparaîtront ici, sans inventer de dépense.</p> : currencies.map(currency => {
+    {omitted > 0 && <details className="grocery-warning">
+      <summary>Historique : {omitted} cas écarté{omitted > 1 ? "s" : ""} des montants</summary>
+      <p>Ce nombre concerne toutes les années et devises enregistrées, pas seulement la sélection affichée.</p>
+      {summary.excluded > 0 && <p>{summary.excluded} cas sans date, devise, montant ou type de preuve exploitable.</p>}
+      {summary.conflicts > 0 && <p>{summary.conflicts} cas avec des montants, dates, devises ou références contradictoires.</p>}
+      <p>Les sources sont conservées. Retrouvez les tickets dans les achats récents ou Archives et autres tickets, puis ouvrez Plus d'infos et la provenance. Aucun montant manquant ni règlement n'est déduit.</p>
+    </details>}
+    {!months.length ? <p className="grocery-empty">{summary.sourceCount > 0 ? "Sources présentes, montants non établis. Consultez les cas à vérifier ci-dessus ; aucune dépense de zéro n'est déduite." : "Aucune source PC Express enregistrée et exploitable. Les achats importés apparaîtront ici, sans inventer de dépense."}</p> : currencies.map(currency => {
       const rows = months.filter(m => m.currency === currency), max = Math.max(1, ...rows.flatMap(m => [m.paid, m.estimated]));
       const firstMonth = Math.min(...rows.map(m => Number(m.month.slice(5)))), lastMonth = Math.max(...rows.map(m => Number(m.month.slice(5))));
       const paid = rows.reduce((s, m) => s + Math.round(m.paid * 100), 0) / 100, estimated = rows.reduce((s, m) => s + Math.round(m.estimated * 100), 0) / 100;
@@ -38,6 +46,6 @@ export default function GroceryMonthlySpending({ records, offline }: { records: 
         <details><summary>Montants et commandes par mois · {currency}</summary><ul className="grocery-spending-values">{rows.map(row => <li key={row.month}><strong>{label(row.month)}</strong><span>{row.paidCount ? `${money(row.paid, currency)} payés · ${row.paidCount} reçu(s)` : "Payé : non établi"}</span><span>{row.estimatedCount ? `${money(row.estimated, currency)} estimés · ${row.estimatedCount} commande(s)` : "Aucune confirmation estimée"}</span></li>)}</ul></details>
       </div>;
     })}
-    <details><summary>Couverture et méthode</summary><p>{summary.firstDate ? `Sources datées du ${summary.firstDate} au ${summary.lastDate}.` : "Période couverte inconnue."} Tous les achats PC Express enregistrés disponibles sont utilisés, y compris les archives, quel que soit le compte d'origine. La date du reçu ou de la confirmation détermine le mois.</p><p>L'historique des deux boîtes mail n'est pas certifié exhaustif. Les autorisations de carte ne sont jamais additionnées. Les remboursements et annulations ne sont pas vérifiés par ce graphique : il ne représente pas un débit bancaire net.</p><p>Une référence de commande identique ne compte qu'une fois. Un reçu final vérifié remplace son estimation dans le graphique, sans modifier les sources.</p>{summary.duplicates > 0 && <p>{summary.duplicates} source(s) supplémentaire(s) de la même commande non additionnée(s).</p>}{(summary.excluded > 0 || summary.conflicts > 0) && <p className="grocery-warning">{summary.excluded} commande(s) sans date, devise, total ou type de preuve exploitable ; {summary.conflicts} commande(s) avec sources contradictoires. Exclues des montants.</p>}</details>
+    <details><summary>Couverture et méthode</summary><p>{summary.firstDate ? `Sources datées du ${summary.firstDate} au ${summary.lastDate}.` : "Période couverte inconnue."} Les sources exploitables de l'historique PC Express enregistré sont utilisées, archives comprises, quel que soit le compte d'origine. La date du reçu ou de la confirmation détermine le mois.</p><p>L'historique des deux boîtes mail n'est pas certifié exhaustif. Les autorisations de carte ne sont jamais additionnées. Les remboursements et annulations ne sont pas vérifiés par ce graphique : il ne représente pas un débit bancaire net.</p><p>Une référence de commande identique ne compte qu'une fois. Un reçu final vérifié remplace son estimation dans le graphique, sans modifier les sources.</p>{summary.duplicates > 0 && <p>{summary.duplicates} source(s) supplémentaire(s) de la même commande non additionnée(s).</p>}</details>
   </section>;
 }

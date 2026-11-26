@@ -1,0 +1,16 @@
+Γ£ö separates final verified receipts from estimates and sums integer cents (23.4921ms)
+Γ£ö deduplicates the same order across mailboxes and prefers final receipt (0.5319ms)
+Γ£ö does not invent identity from matching price/date (0.4856ms)
+Γ£ö conflicting same-order sources are excluded (0.3883ms)
+Γ£ö missing fields and unreviewed final receipts do not count as paid (0.4611ms)
+Γ£ö does not add unknown months, drafts, duplicates, other stores, or authorizations (0.4879ms)
+Γ£ö currencies and source years remain separate (0.3541ms)
+Γ£ö conflicting explicit order identities cannot inflate monthly totals (0.2357ms)
+Γä╣ tests 8
+Γä╣ suites 0
+Γä╣ pass 8
+Γä╣ fail 0
+Γä╣ cancelled 0
+Γä╣ skipped 0
+Γä╣ todo 0
+Γä╣ duration_ms 543.0391
