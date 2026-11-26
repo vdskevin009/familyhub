@@ -1,0 +1,89 @@
+{
+  "date": "2026-11-25",
+  "base": "3710eb1a29caecd06fa0d007277564a9f0915473",
+  "candidate": "source tree containing this manifest; commit and exact CI linked in PR",
+  "environment": "kevinpc isolated worktree, static localhost, synthetic intercepted transport",
+  "workerStarted": false,
+  "privateDataUsed": false,
+  "physicalPhoneTested": false,
+  "checks": [
+    {
+      "command": "npm run typecheck",
+      "result": "pass; web and worker",
+      "log": "typecheck.log"
+    },
+    {
+      "command": "npm run build",
+      "result": "pass; compile only",
+      "log": "aggregate-build.log"
+    },
+    {
+      "command": "npm run test:pwa",
+      "result": "pass; 162 tests",
+      "log": "pwa.log"
+    },
+    {
+      "command": "node --test tests/ci-browser-shard.test.mjs",
+      "result": "pass; 5 tests",
+      "log": "shards.log"
+    },
+    {
+      "command": "node apps/web/tests/settings-connection-browser.mjs",
+      "result": "pass; 40 scenarios",
+      "log": "settings-browser.log"
+    },
+    {
+      "command": "npm run test:proactive:browser",
+      "result": "pass; 5 scripts including new 40 scenarios",
+      "log": "proactive-browser.log"
+    }
+  ],
+  "artifacts": [
+    {
+      "path": "acceptance.json",
+      "sha256": "0dcd7bfb93205a5f50ed65863189108b3d9bf50a277dc9552b1f90125c53f42d",
+      "bytes": 10998
+    },
+    {
+      "path": "after-320.png",
+      "sha256": "2f4ecf2b1abf950bfd2dd26576d1841c67a8f2f4ce9a90e2f506ea4c4c5b65e6",
+      "bytes": 22415
+    },
+    {
+      "path": "after-390.png",
+      "sha256": "ba1c096d1fd03d45090b06417ebb593962e2273055a842ff54a3cff6a4f5ef85",
+      "bytes": 22827
+    },
+    {
+      "path": "baseline-race.json",
+      "sha256": "eddb202251981261bb4219545a360026dc06342733e5b81289eeb4e7d14ed34e",
+      "bytes": 2020
+    },
+    {
+      "path": "before-320.png",
+      "sha256": "d53ec7af63836f27a418d23cdb37bfdc8044de7ac1ba46b75c196467b06f9e72",
+      "bytes": 25663
+    },
+    {
+      "path": "before-390.png",
+      "sha256": "c4103913debc1111394bf47cb6d890c66c07b89a875201c015324d3b621f800e",
+      "bytes": 24268
+    },
+    {
+      "path": "error-390.png",
+      "sha256": "bd83f87d855d6a294ad1a686b4d9b65b47204963f9dd43fcbcba5de97839e027",
+      "bytes": 24462
+    },
+    {
+      "path": "normal-390.png",
+      "sha256": "9dab95a49f5c5a9e2f7e27cc3e34228ada7efa807b131ea3b228fbf87d7fafcd",
+      "bytes": 24876
+    }
+  ],
+  "limitations": [
+    "No local .NET SDK; remote CI remains separate.",
+    "Astra reviewed code/tests but did not run them.",
+    "Keyboard check covers two tab transitions, not a screen reader audit."
+  ],
+  "artifactHashScope": "Git canonical staged bytes (text normalized to LF); PNG bytes unchanged."
+}

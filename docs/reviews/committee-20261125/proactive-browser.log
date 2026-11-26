@@ -1,0 +1,46 @@
+npm notice run familyhub@2.0.0 test:proactive:browser
+npm notice run node apps/web/tests/visual-readiness-browser.mjs && node apps/web/tests/proactive-browser.mjs && node apps/web/tests/property-project-browser.mjs && node apps/web/tests/vehicle-project-browser.mjs && node apps/web/tests/settings-connection-browser.mjs
+PASS: six widths, unknown freshness, keyboard disclosures, single active navigation, late read and post-unmount sync ignored; one isolated synthetic sync, no external requests.
+PASS proactive home: six widths, source authority, partial/offline/unpaired states, five-tab navigation, exact links, persisted renewal context, delayed reads, restores, rejected writes, and failed-chunk recovery.
+Property UI passed: mobile/desktop, following, filtering, evidence dialog, comparison, offline preservation, empty, navigation/back.
+Vehicle UI passed: mobile/desktop, following, filtering, evidence dialog, comparison, offline preservation, empty, navigation/back.
+Settings connection PASS 320 normal
+Settings connection PASS 320 normal-error
+Settings connection PASS 320 save-late-success
+Settings connection PASS 320 save-late-error
+Settings connection PASS 320 edit-late-success
+Settings connection PASS 320 edit-late-error
+Settings connection PASS 320 key-late-success
+Settings connection PASS 320 aba-late-success
+Settings connection PASS 320 leave-late-success
+Settings connection PASS 320 new-test-old-error
+Settings connection PASS 390 normal
+Settings connection PASS 390 normal-error
+Settings connection PASS 390 save-late-success
+Settings connection PASS 390 save-late-error
+Settings connection PASS 390 edit-late-success
+Settings connection PASS 390 edit-late-error
+Settings connection PASS 390 key-late-success
+Settings connection PASS 390 aba-late-success
+Settings connection PASS 390 leave-late-success
+Settings connection PASS 390 new-test-old-error
+Settings connection PASS 768 normal
+Settings connection PASS 768 normal-error
+Settings connection PASS 768 save-late-success
+Settings connection PASS 768 save-late-error
+Settings connection PASS 768 edit-late-success
+Settings connection PASS 768 edit-late-error
+Settings connection PASS 768 key-late-success
+Settings connection PASS 768 aba-late-success
+Settings connection PASS 768 leave-late-success
+Settings connection PASS 768 new-test-old-error
+Settings connection PASS 1440 normal
+Settings connection PASS 1440 normal-error
+Settings connection PASS 1440 save-late-success
+Settings connection PASS 1440 save-late-error
+Settings connection PASS 1440 edit-late-success
+Settings connection PASS 1440 edit-late-error
+Settings connection PASS 1440 key-late-success
+Settings connection PASS 1440 aba-late-success
+Settings connection PASS 1440 leave-late-success
+Settings connection PASS 1440 new-test-old-error
