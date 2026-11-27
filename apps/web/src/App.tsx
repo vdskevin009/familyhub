@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { Bell, CalendarDays, CircleDollarSign, Download, FileText, HeartHandshake, Home, Mail, MoreHorizontal, ChevronRight, Settings2, TrendingDown, ShoppingBasket } from "lucide-react";
 import { viewFromQuery } from "./domain";
 import { primaryDestination } from "./navigation";
@@ -54,6 +54,7 @@ const otherViews: Array<{ id: AppView; label: string; description: string; icon:
 
 export default function App() {
   const state = useFamilyHubState();
+  const projectContextKey = useMemo(() => crypto.randomUUID(), [state.worker.Endpoint, state.worker.ApiKey]);
   const [view, setView] = useState<AppView>(viewFromQuery());
   const [routeKey, setRouteKey] = useState(location.search);
   const [commandOpen, setCommandOpen] = useState(false);
@@ -146,8 +147,8 @@ export default function App() {
         {documentKind && <div className="view-stack"><nav className="segment-tabs document-tabs" aria-label="Sources documentaires">{documentViews.map(item => <button type="button" key={item.id} className={documentKind === item.id ? "active" : ""} aria-current={documentKind === item.id ? "page" : undefined} onClick={() => navigate(item.id)}>{item.label}</button>)}</nav><DocumentLibraryView key={documentKind} hub={state} kind={documentKind} /></div>}
         {view === "savings" && <SavingsView key={routeKey} hub={state} onNavigate={navigate} />}
         {view === "projects" && <ProjectsView onNavigate={navigate} />}
-        {view === "vehicle" && <VehicleProjectView config={state.worker} onBack={() => navigate("projects")} />}
-        {view === "property" && <PropertyProjectView config={state.worker} onBack={() => navigate("projects")} />}
+        {view === "vehicle" && <VehicleProjectView key={`${projectContextKey}:${routeKey}`} initialListingId={new URLSearchParams(routeKey).get("record") ?? undefined} config={state.worker} onBack={() => navigate("projects")} />}
+        {view === "property" && <PropertyProjectView key={`${projectContextKey}:${routeKey}`} initialListingId={new URLSearchParams(routeKey).get("record") ?? undefined} config={state.worker} onBack={() => navigate("projects")} />}
         {view === "mortgage" && <MortgageView worker={state.worker} />}
         {(view === "finances" || view === "contributions") && <FinancesView key={routeKey} hub={state} onNavigate={navigate} initialTab={view === "contributions" ? "contributions" : undefined} />}
         {view === "groceries" && <CoursesView key={routeKey} config={state.worker} plannerItems={state.planner.GroceryItems} />}

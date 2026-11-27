@@ -29,7 +29,7 @@ import { ACCOUNT_HISTORY_CAPABILITY } from "./finance-account-history-model.js";
 import { importFinanceAccountCapture } from "./finance-account-captures-api.js";
 import { importFinanceSourceInventory } from "./finance-source-inventory-api.js";
 import { readContributionsView } from "./contributions-view.js";
-import { NotificationLibrary, NotificationConflict } from "./notification-library.js";
+import { NotificationLibrary, NotificationConflict, notificationClientSnapshot } from "./notification-library.js";
 import { OpportunityActions, OpportunityActionsConflict } from "./opportunity-actions.js";
 import { PushConfiguration, sendPush } from "./notification-push.js";
 import type { NotificationEvidence } from "./notification-model.js";
@@ -79,7 +79,7 @@ type ResearchWatch = {
 };
 type PersistedState = { watches: ResearchWatch[] };
 
-const version = "2.30.2";
+const version = "2.30.3";
 let claimOperationBusy = false;
 const host = process.env.FAMILYHUB_WORKER_HOST?.trim() || "127.0.0.1";
 const port = Number(process.env.FAMILYHUB_WORKER_PORT || "4713");
@@ -134,6 +134,11 @@ function scanNotifications() {
     evidence.collections = [{ ...getBlueCrossStatus(), id: "bluecross", label: "Blue Cross" }, { ...getDesjardinsStatus(), id: "desjardins", label: "Desjardins" }];
     if (invoices.status === "fulfilled" && !invoices.value.setupRequired) evidence.collections.push({ id: "gmail", label: "Factures", state: invoices.value.busy ? "syncing" : invoices.value.error ? "error" : "idle", lastSuccess: invoices.value.lastSuccess, lastAttempt: invoices.value.lastAttempt });
     try { await groceryPurchaseResolution.reconcile(); } catch { console.error("Purchase resolution enrichment unavailable; existing evidence preserved."); }
+    // Read validated project projections only; no collection, intake or following writes.
+    const [vehicleEvidence, propertyEvidence] = await Promise.allSettled([vehicleStore.read(), propertyStore.read()]);
+    evidence.projects = {};
+    if (vehicleEvidence.status === "fulfilled") evidence.projects.vehicle = vehicleEvidence.value; else errors.push("projet auto");
+    if (propertyEvidence.status === "fulfilled") evidence.projects.property = propertyEvidence.value; else errors.push("projet immobilier");
     return notifications.scan(evidence, errors);
   })().catch(() => { console.error("Notification scan unavailable; existing records and deduplication preserved."); }).finally(() => { notificationScan = null; });
   return notificationScan;
@@ -379,8 +384,8 @@ const server = createServer(async (request, response) => {
       if (request.method === "POST") { json(response, 200, await opportunityActions.mutate(await readJson(request, 4_000)), origin); return; }
     }
     if (parts[0] === "notifications" && parts.length === 1) {
-      if (request.method === "GET") { json(response, 200, await notifications.read(), origin); return; }
-      if (request.method === "POST") { json(response, 200, await notifications.mutate(await readJson(request, 12_000)), origin); return; }
+      if (request.method === "GET") { json(response, 200, notificationClientSnapshot(await notifications.read(), new URL(request.url || "/", "http://familyhub.local").searchParams.get("actionAlerts") === "1"), origin); return; }
+      if (request.method === "POST") { json(response, 200, notificationClientSnapshot(await notifications.mutate(await readJson(request, 12_000)), new URL(request.url || "/", "http://familyhub.local").searchParams.get("actionAlerts") === "1"), origin); return; }
     }
     if (parts[0] === "groceries") {
       if (parts.length === 2 && parts[1] === "purchase-resolution") {
@@ -713,7 +718,7 @@ const server = createServer(async (request, response) => {
       }
     }
     if (request.method === "GET" && parts.length === 1 && parts[0] === "health") {
-      json(response, 200, { status: "ok", codex: "sdk-ready", version, capabilities: [FINANCE_REGISTER_CAPABILITY, ACCOUNT_HISTORY_CAPABILITY, ACCOUNT_CAPTURES_CAPABILITY, SOURCE_EXPENSES_CAPABILITY, SOURCE_INVENTORY_CAPABILITY, "finance-balance-observations-v1", "contribution-progress-v1", "bluecross-import-jobs-v1", "attachment-preparation-v1", "grocery-purchase-four-retailers-v1", "grocery-purchase-estimates-v1", "grocery-purchase-resolution-v1", "household-events-v1", "opportunity-actions-v1", "notification-lifecycle-v1", "insurance-reference-v1", "vehicle-project-v1", "property-project-v1", "mortgage-evidence-v1", "mortgage-contacts-v1", "mortgage-assistant-v1", "grocery-collection-v1", "grocery-source-type-v1", "grocery-fulfillment-v1", "grocery-comparison-evidence-v1", "grocery-source-estimates-v1", "grocery-receipts-v1", "grocery-planning-v1", "grocery-weekly-v1", groceryExpandedListCapability] }, origin);
+      json(response, 200, { status: "ok", codex: "sdk-ready", version, capabilities: [FINANCE_REGISTER_CAPABILITY, ACCOUNT_HISTORY_CAPABILITY, ACCOUNT_CAPTURES_CAPABILITY, SOURCE_EXPENSES_CAPABILITY, SOURCE_INVENTORY_CAPABILITY, "finance-balance-observations-v1", "contribution-progress-v1", "bluecross-import-jobs-v1", "attachment-preparation-v1", "grocery-purchase-four-retailers-v1", "grocery-purchase-estimates-v1", "grocery-purchase-resolution-v1", "household-events-v1", "opportunity-actions-v1", "notification-lifecycle-v1", "actionable-push-v1", "insurance-reference-v1", "vehicle-project-v1", "property-project-v1", "mortgage-evidence-v1", "mortgage-contacts-v1", "mortgage-assistant-v1", "grocery-collection-v1", "grocery-source-type-v1", "grocery-fulfillment-v1", "grocery-comparison-evidence-v1", "grocery-source-estimates-v1", "grocery-receipts-v1", "grocery-planning-v1", "grocery-weekly-v1", groceryExpandedListCapability] }, origin);
       return;
     }
 
