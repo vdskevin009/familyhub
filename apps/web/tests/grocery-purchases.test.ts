@@ -19,12 +19,12 @@ test("per-purchase format confirmation enables only eligible partial products an
   const c: PurchaseCandidate = { id: "format", recordId: f.record.id, lineIndex: 0, lineKey: purchaseLineKey(line), product: line.product, brand: "Synthetic", productId: "12345678_EA", itemId: "eggs", size: 12, unit: "each", formatLabel: "12 pieces", formatBasis: "public-source", sourceUrl: "https://example.com/source", observedAt: "2026-10-20T12:00:00.000Z", note: "Synthetic evidence" };
   const state = { ...emptyPurchaseResolution(), candidates: [c] }, original = JSON.stringify(f);
   const run = () => purchaseComparison(f.plan, f.record, "2026-10-21", state).find(s => s.retailer.id === "store")!;
-  assert.equal(run().covered, 0); assert.ok(purchaseLineBlockers(f.plan, f.record, 0, state, "2026-10-21").includes("Format d'achat inconnu"));
+  assert.equal(run().covered, 0); assert.ok(purchaseLineBlockers(f.plan, f.record, 0, state, "2026-10-21").includes("Purchased pack size unknown"));
   state.decisions[c.id] = { state: "confirmed", at: "2026-10-21T12:00:00.000Z" };
   const result = run(); assert.equal(result.covered, 1); assert.equal(result.count, 2); assert.equal(result.complete, false); assert.ok(Math.abs(result.normalized! - 4.8) < .0001); assert.equal(result.outlay, 6); assert.equal(result.sourceEstimate, null);
   assert.equal(JSON.stringify(f), original); assert.equal(result.lines[0].line.uncertain, true); assert.equal(result.lines[0].formatEvidence?.id, c.id);
-  f.plan.prices[0].evidence.date = "2026-09-01"; assert.equal(run().covered, 0); assert.ok(purchaseLineBlockers(f.plan, f.record, 0, state, "2026-10-21").some(r => /périmé/.test(r)));
-  f.plan.prices[0].evidence.date = "2026-10-21"; f.plan.prices[0].localityConfirmed = false; assert.equal(run().covered, 0); assert.ok(purchaseLineBlockers(f.plan, f.record, 0, state, "2026-10-21").some(r => /non local/.test(r)));
+  f.plan.prices[0].evidence.date = "2026-09-01"; assert.equal(run().covered, 0); assert.ok(purchaseLineBlockers(f.plan, f.record, 0, state, "2026-10-21").some(r => /outdated/.test(r)));
+  f.plan.prices[0].evidence.date = "2026-10-21"; f.plan.prices[0].localityConfirmed = false; assert.equal(run().covered, 0); assert.ok(purchaseLineBlockers(f.plan, f.record, 0, state, "2026-10-21").some(r => /non-local/.test(r)));
   f.plan.prices[0].localityConfirmed = true; state.decisions[c.id].state = "unconfirmed"; assert.equal(run().covered, 0);
 });
 
@@ -47,7 +47,7 @@ test("estimated source unit quote multiplies quantity once, independent of catal
 });
 test("unit quote capability is required before a source-estimate write", async () => {
   const old = globalThis.fetch; let calls = 0; globalThis.fetch = async () => { calls++; return new Response(JSON.stringify({ capabilities: ["grocery-planning-v1"] }), { status: 200 }); };
-  try { await assert.rejects(groceryRequest({ Endpoint: "https://synthetic.invalid", ApiKey: "synthetic" }, "/groceries/planning", { plan: { sourceEstimates: [{}] } }), /prix unitaires source/); assert.equal(calls, 1); } finally { globalThis.fetch = old; }
+  try { await assert.rejects(groceryRequest({ Endpoint: "https://synthetic.invalid", ApiKey: "synthetic" }, "/groceries/planning", { plan: { sourceEstimates: [{}] } }), /source unit prices/); assert.equal(calls, 1); } finally { globalThis.fetch = old; }
 });
 test("explicit equivalent format comparison preserves raw uncertainty and buying permissions", () => {
   const f = derivedComparisonFixture(); f.record.receipt.items.push({ ...blankItem(), name: "Synthetic unknown line" }); const raw = JSON.stringify(f), r = compare(f);
@@ -67,7 +67,7 @@ test("comparison evidence validates shape, rejects SKU identities and mismatched
 });
 test("old worker cannot silently discard comparison evidence", async () => {
   const old = globalThis.fetch, calls: string[] = []; globalThis.fetch = async input => { calls.push(String(input)); return new Response(JSON.stringify({ capabilities: ["grocery-planning-v1"] }), { status: 200 }); };
-  try { await assert.rejects(groceryRequest({ Endpoint: "https://synthetic.invalid", ApiKey: "synthetic" }, "/groceries/planning", { plan: derivedComparisonFixture().plan }), /preuves de comparaison/); assert.equal(calls.length, 1); assert.match(calls[0], /\/health$/); } finally { globalThis.fetch = old; }
+  try { await assert.rejects(groceryRequest({ Endpoint: "https://synthetic.invalid", ApiKey: "synthetic" }, "/groceries/planning", { plan: derivedComparisonFixture().plan }), /comparison evidence/); assert.equal(calls.length, 1); assert.match(calls[0], /\/health$/); } finally { globalThis.fetch = old; }
 });
 
 export function purchaseFixture() {
@@ -93,7 +93,7 @@ test("recent PCX purchases require dated fulfillment or reviewed final receipt, 
   assert.equal(recentPcExpressPurchases([record], "2026-10-21").length, 0);
   record.receipt.fulfillment = { date: "2026-10-19", evidence: "SOURCE 2: same order delivered" };
   assert.equal(recentPcExpressPurchases([record], "2026-10-21").length, 1);
-  assert.equal(purchaseDate(record), "2026-10-19"); assert.equal(purchaseAmountLabel(record), "Total estimé");
+  assert.equal(purchaseDate(record), "2026-10-19"); assert.equal(purchaseAmountLabel(record), "Estimated total");
   const old = structuredClone(record); old.id = "old"; old.receipt.fulfillment!.date = "2026-09-01";
   const future = structuredClone(record); future.id = "future"; future.receipt.fulfillment!.date = "2026-10-22";
   const draft = { ...record, id: "draft", status: "draft" as const }, duplicate = { ...record, id: "duplicate", duplicateOf: record.id };
@@ -101,7 +101,7 @@ test("recent PCX purchases require dated fulfillment or reviewed final receipt, 
   assert.deepEqual(recentPcExpressPurchases([old, record, future, draft, duplicate], "2026-10-21").map(r => r.id), [record.id]);
   assert.equal(JSON.stringify([old, record, future, draft, duplicate]), before);
   delete record.receipt.fulfillment; record.receipt.sourceType = "final-receipt";
-  assert.equal(recentPcExpressPurchases([record], "2026-10-21").length, 1); assert.equal(purchaseAmountLabel(record), "Total payé");
+  assert.equal(recentPcExpressPurchases([record], "2026-10-21").length, 1); assert.equal(purchaseAmountLabel(record), "Total paid");
 });
 test("fulfillment is additive, evidence-required and never upgrades estimated payment", () => {
   const { record } = purchaseFixture(); record.receipt.sourceType = "confirmation";
@@ -127,7 +127,7 @@ test("delivery metadata cannot be silently dropped by an older worker", async ()
   const f = purchaseFixture(); f.record.receipt.fulfillment = { date: "2026-10-19", evidence: "Delivered source" };
   const original = globalThis.fetch; let calls = 0;
   try { globalThis.fetch = (async () => { calls++; return new Response(JSON.stringify({ capabilities: ["grocery-source-type-v1"] })); }) as typeof fetch;
-    await assert.rejects(reviewGroceries({ Endpoint: "http://127.0.0.1:9999", ApiKey: "synthetic" }, f.record, f.record.receipt, true, true, false), /preuve de livraison/); assert.equal(calls, 1);
+    await assert.rejects(reviewGroceries({ Endpoint: "http://127.0.0.1:9999", ApiKey: "synthetic" }, f.record, f.record.receipt, true, true, false), /delivery evidence/); assert.equal(calls, 1);
   } finally { globalThis.fetch = original; }
 });
 test("12 eggs normalized from actual 15-egg pack, separate whole-pack outlay, no mutation", () => {
@@ -159,25 +159,25 @@ test("tax and fees remain excluded even when unknown; price is not a final order
   assert.equal(compare(f).outlay, 6); assert.equal(compare(f).lines[0].price?.taxPercent, 12);
 });
 test("source type preserves legacy schema and confirmations never claim paid", () => {
-  const f = purchaseFixture(); assert.match(purchaseStatus(f.record), /payé/);
-  delete f.record.receipt.sourceType; assert.match(purchaseStatus(f.record), /à vérifier/); assert.equal(validateReceipt(f.record.receipt).sourceType, undefined);
-  f.record.receipt.sourceType = "confirmation"; assert.match(purchaseStatus(f.record), /Confirmation originale/);
+  const f = purchaseFixture(); assert.match(purchaseStatus(f.record), /paid/);
+  delete f.record.receipt.sourceType; assert.match(purchaseStatus(f.record), /not verified/); assert.equal(validateReceipt(f.record.receipt).sourceType, undefined);
+  f.record.receipt.sourceType = "confirmation"; assert.match(purchaseStatus(f.record), /Original confirmation/);
   assert.equal(monthlySummary([f.record], "2026-10").currencies.length, 0);
   assert.equal(validateReceipt(f.record.receipt).sourceType, "confirmation"); assert.throws(() => validateReceipt({ ...f.record.receipt, sourceType: "paid-order" }));
   delete f.record.receipt.sourceType; f.record.sources[0].name = "original-confirmation.txt";
-  assert.match(purchaseStatus(f.record), /Confirmation originale/); assert.equal(monthlySummary([f.record], "2026-10").currencies.length, 0);
-  f.record.receipt.sourceType = "final-receipt"; assert.match(purchaseStatus(f.record), /payé/);
+  assert.match(purchaseStatus(f.record), /Original confirmation/); assert.equal(monthlySummary([f.record], "2026-10").currencies.length, 0);
+  f.record.receipt.sourceType = "final-receipt"; assert.match(purchaseStatus(f.record), /paid/);
 });
 test("source classification gate prevents an older worker dropping metadata and leaves draft unchanged", async () => {
   const f = purchaseFixture(), before = JSON.stringify(f.record), originalFetch = globalThis.fetch, calls: string[] = [];
   try {
     globalThis.fetch = (async (url: string) => { calls.push(url); return new Response(JSON.stringify({ capabilities: ["grocery-receipts-v1"] }), { status: 200 }); }) as typeof fetch;
-    await assert.rejects(reviewGroceries({ Endpoint: "http://127.0.0.1:9999", ApiKey: "synthetic" }, f.record, f.record.receipt, true, true, false), /worker PC/);
+    await assert.rejects(reviewGroceries({ Endpoint: "http://127.0.0.1:9999", ApiKey: "synthetic" }, f.record, f.record.receipt, true, true, false), /PC worker/);
     assert.equal(calls.length, 1); assert.ok(calls[0].endsWith("/health")); assert.equal(JSON.stringify(f.record), before);
   } finally { globalThis.fetch = originalFetch; }
 });
 test("quality contradictions and ambiguous alternatives remain excluded despite approved flags", () => {
   const f = purchaseFixture(); f.plan.prices[0].product = "Synthetic fresh chicken"; assert.equal(compare(f).normalized, null);
-  const g = purchaseFixture(); g.plan.prices.push({ ...g.plan.prices[0], id: "second-reference" }); assert.equal(compare(g).normalized, null); assert.match(compare(g).lines[0].reason, /Plusieurs/);
-  const h = purchaseFixture(); h.plan.retailers[0].membershipStatus = "unknown"; assert.equal(compare(h).normalized, null); assert.match(compare(h).lines[0].reason, /Adhésion/);
+  const g = purchaseFixture(); g.plan.prices.push({ ...g.plan.prices[0], id: "second-reference" }); assert.equal(compare(g).normalized, null); assert.match(compare(g).lines[0].reason, /Multiple/);
+  const h = purchaseFixture(); h.plan.retailers[0].membershipStatus = "unknown"; assert.equal(compare(h).normalized, null); assert.match(compare(h).lines[0].reason, /membership/);
 });

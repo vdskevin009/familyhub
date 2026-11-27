@@ -210,7 +210,7 @@ export default function MoreView({ hub, installAvailable = false, installed = fa
 
   return (
     <div className="view-stack">
-      <PageHeader title="Settings & tools" subtitle="Connections, research and backup" />
+      <PageHeader title="Settings and tools" subtitle="Connections, research and backup" />
       {error && <div className="banner error">{error}</div>}
       {message && <div className="banner success"><Check size={17} />{message}</div>}
       <section className="surface pwa-install-surface" aria-label="Install FamilyHub">

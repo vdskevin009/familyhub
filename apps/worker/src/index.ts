@@ -117,22 +117,22 @@ function scanNotifications() {
     const evidence: NotificationEvidence = {}, errors: string[] = [];
     const [invoices, finance, contracts, mortgage] = await Promise.allSettled([invoiceSnapshot(), financeLibrary.read(), savingsLibrary.list(), mortgageDaily.due() ? mortgageDaily.run() : Promise.resolve(null)]);
     if (mortgage.status === "fulfilled") {
-      try { const state=await mortgageStore.read(); evidence.mortgage=state.reports??[]; } catch { errors.push("hypothèque"); }
-    } else errors.push("hypothèque");
+      try { const state=await mortgageStore.read(); evidence.mortgage=state.reports??[]; } catch { errors.push("mortgage"); }
+    } else errors.push("mortgage");
     if (invoices.status === "fulfilled" && !invoices.value.busy) evidence.invoices = invoices.value;
-    else errors.push("factures et remboursements");
+    else errors.push("invoices and reimbursements");
     if (finance.status === "fulfilled") evidence.finance = finance.value; else errors.push("finances");
-    if (contracts.status === "fulfilled") evidence.contracts = contracts.value.records.map(r => r.contract); else errors.push("contrats");
+    if (contracts.status === "fulfilled") evidence.contracts = contracts.value.records.map(r => r.contract); else errors.push("contracts");
     const [policy, groceries, deadlines, mortgageContext] = await Promise.allSettled([
       policyRate.read(), Promise.all([groceryStore.list(), groceryPlanning.read()]),
       readClaimDeadlines(join(stateDir, "notifications", "claim-deadlines.json")), mortgageStore.read()
     ]);
-    if (policy.status === "fulfilled") evidence.policy = policy.value; else errors.push("taux directeur officiel");
-    if (groceries.status === "fulfilled") evidence.groceries = { library: groceries.value[0], plan: groceries.value[1] }; else errors.push("preuves de courses");
-    if (deadlines.status === "fulfilled") evidence.claimDeadlines = deadlines.value; else errors.push("délais de réclamation");
+    if (policy.status === "fulfilled") evidence.policy = policy.value; else errors.push("official policy rate");
+    if (groceries.status === "fulfilled") evidence.groceries = { library: groceries.value[0], plan: groceries.value[1] }; else errors.push("grocery evidence");
+    if (deadlines.status === "fulfilled") evidence.claimDeadlines = deadlines.value; else errors.push("claim deadlines");
     if (mortgageContext.status === "fulfilled") evidence.mortgageState = mortgageContext.value;
     evidence.collections = [{ ...getBlueCrossStatus(), id: "bluecross", label: "Blue Cross" }, { ...getDesjardinsStatus(), id: "desjardins", label: "Desjardins" }];
-    if (invoices.status === "fulfilled" && !invoices.value.setupRequired) evidence.collections.push({ id: "gmail", label: "Factures", state: invoices.value.busy ? "syncing" : invoices.value.error ? "error" : "idle", lastSuccess: invoices.value.lastSuccess, lastAttempt: invoices.value.lastAttempt });
+    if (invoices.status === "fulfilled" && !invoices.value.setupRequired) evidence.collections.push({ id: "gmail", label: "Invoices", state: invoices.value.busy ? "syncing" : invoices.value.error ? "error" : "idle", lastSuccess: invoices.value.lastSuccess, lastAttempt: invoices.value.lastAttempt });
     try { await groceryPurchaseResolution.reconcile(); } catch { console.error("Purchase resolution enrichment unavailable; existing evidence preserved."); }
     // Read validated project projections only; no collection, intake or following writes.
     const [vehicleEvidence, propertyEvidence] = await Promise.allSettled([vehicleStore.read(), propertyStore.read()]);
@@ -416,7 +416,7 @@ const server = createServer(async (request, response) => {
         if (parts[2] === "extract") { json(response, 200, await groceryStore.extract(parts[1], body), origin); return; }
         if (parts[2] === "duplicate") { json(response, 200, await groceryStore.linkDuplicate(parts[1], body), origin); return; }
       }
-      if (parts.length === 4 && parts[2] === "sources" && request.method === "GET") { const source = await groceryStore.source(parts[1], parts[3]); if (!source) { json(response, 404, { error: "Source introuvable." }, origin); return; } json(response, 200, source, origin); return; }
+      if (parts.length === 4 && parts[2] === "sources" && request.method === "GET") { const source = await groceryStore.source(parts[1], parts[3]); if (!source) { json(response, 404, { error: "Source not found." }, origin); return; } json(response, 200, source, origin); return; }
     }
     if (parts.length === 2 && parts[0] === "contributions" && parts[1] === "progress" && request.method === "GET") {
       json(response, 200, await readContributionsView(stateDir, await financeLibrary.read()), origin); return;
@@ -439,7 +439,7 @@ const server = createServer(async (request, response) => {
     if (parts[0] === "finances") {
       if (parts.length === 2 && parts[1] === "register-bindings" && request.method === "GET") {
         try { json(response, 200, await readFinanceRegisterBindings(join(stateDir, "finances"), await financeLibrary.read()), origin); }
-        catch { json(response, 503, { error: "Rapprochement indisponible. Les données enregistrées restent conservées." }, origin); }
+        catch { json(response, 503, { error: "Reconciliation unavailable. Saved data is preserved." }, origin); }
         return;
       }
       if (parts.length === 2 && parts[1] === "changes" && request.method === "POST") { json(response, 200, await financeLibrary.change(await readJson(request)), origin); return; }
@@ -559,7 +559,7 @@ const server = createServer(async (request, response) => {
       if (parts[1] === "forget-service-choices") { json(response, 200, await forgetClaimServiceChoices(body.sessionId), origin); return; }
       if (parts[1] === "suggest-service") { json(response, 200, await suggestClaimServiceChoices(body.sessionId, body.revision), origin); return; }
       if (parts[1] === "fill") {
-        if (body.answersReviewed !== true) throw new Error("Review every proposed answer in the updated FamilyHub panel before choosing Valider et préremplir.");
+        if (body.answersReviewed !== true) throw new Error("Review every proposed answer in the updated FamilyHub panel before choosing Validate prepared step.");
         const previous = claimSessionExpense(body.sessionId);
         const fresh = claimPreparation(previous.expenseId, previous.insurer);
         if (fresh.blocked || JSON.stringify(fresh.fields) !== JSON.stringify(previous.fields) || JSON.stringify(fresh.conflicts) !== JSON.stringify(previous.conflicts)) throw new Error("The invoice or duplicate evidence changed. Prepare the claim again.");
@@ -787,7 +787,7 @@ const server = createServer(async (request, response) => {
   } catch (error) {
     const grocery = parts[0] === "groceries";
     const sourceInventory = parts[0] === "finance" && parts[1] === "source-inventory";
-    json(response, error instanceof VehicleConflict || error instanceof PropertyConflict || error instanceof MortgageConflict || error instanceof SavingsConflict || error instanceof FinanceConflict || error instanceof SourceExpensesConflict || error instanceof SourceInventoryConflict || error instanceof AccountCapturesConflict || error instanceof NotificationConflict || error instanceof OpportunityActionsConflict || error instanceof GroceryConflict ? 409 : 400, { error: parts[0] === "finance" && ["account-captures", "account-history"].includes(parts[1]) && !(error instanceof AccountCapturesError) ? "Captures de comptes indisponibles. Les données restent conservées." : parts[0] === "finance" && parts[1] === "source-expenses" && !(error instanceof SourceExpensesError) ? "Dépenses source indisponibles. Les données restent conservées." : sourceInventory && !(error instanceof SourceInventoryError) ? "Inventaire source indisponible. Les données restent conservées." : grocery && !(error instanceof GroceryError) ? "Action Courses indisponible. Les données restent conservées ; actualisez avant de réessayer." : error instanceof Error ? error.message : "Request failed." }, origin);
+    json(response, error instanceof VehicleConflict || error instanceof PropertyConflict || error instanceof MortgageConflict || error instanceof SavingsConflict || error instanceof FinanceConflict || error instanceof SourceExpensesConflict || error instanceof SourceInventoryConflict || error instanceof AccountCapturesConflict || error instanceof NotificationConflict || error instanceof OpportunityActionsConflict || error instanceof GroceryConflict ? 409 : 400, { error: parts[0] === "finance" && ["account-captures", "account-history"].includes(parts[1]) && !(error instanceof AccountCapturesError) ? "Account snapshots unavailable. Saved data is preserved." : parts[0] === "finance" && parts[1] === "source-expenses" && !(error instanceof SourceExpensesError) ? "Source expenses unavailable. Saved data is preserved." : sourceInventory && !(error instanceof SourceInventoryError) ? "Source inventory unavailable. Saved data is preserved." : grocery && !(error instanceof GroceryError) ? "Grocery action unavailable. Saved data is preserved. Refresh before trying again." : error instanceof Error ? error.message : "Request failed." }, origin);
   }
 });
 

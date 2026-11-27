@@ -1,3 +1,4 @@
+import { displayFinanceError } from "../apps/web/src/finance-error-copy";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
@@ -22,4 +23,13 @@ test("incomplete, stale or mismatched acknowledgements cannot advance local stat
         const clone = structuredClone(response); corrupt(clone); assert.throws(() => applyFinanceDelta(s, clone, id));
     }
     assert.equal(s.revision, "initial"); assert.equal(s.decisions.a, undefined);
+});
+
+
+test("older paired Finance errors are translated by exact match without modifying other text", () => {
+    assert.equal(displayFinanceError("Format attendu : préparation financière TD v1."), "Expected format: TD financial preparation v1.");
+    assert.equal(displayFinanceError("Une autre modification a été enregistrée. Rechargez la décision du PC avant de réessayer."), "Another change was saved. Reload the decision from your PC before trying again.");
+    assert.equal(displayFinanceError("Une opération de ce groupe a changé depuis. L’annulation entière est refusée pour préserver la nouvelle décision."), "A transaction in this group has changed. The group cannot be undone without overwriting the newer decision.");
+    assert.equal(displayFinanceError("Référence externe : Décision invalide."), "Référence externe : Décision invalide.");
+    assert.equal(displayFinanceError("Synthetic read unavailable"), "Synthetic read unavailable");
 });

@@ -2,8 +2,8 @@ import { normalizedSize, type GroceryPlan, type ShoppingItem } from "../../worke
 import { storeGroups } from "./grocery-comparison";
 import { articleUnitComparison, unitPercentLabel, type RankedOffer } from "./grocery-unit-comparison";
 
-export const adjustedNumber = (n: number) => n > 0 && n < .0001 ? "<0,0001" : new Intl.NumberFormat("fr-CA", { maximumFractionDigits: 4 }).format(n);
-export const adjustedMoney = (n: number, currency: string) => `${n > 0 && n < .01 ? "<0,01" : new Intl.NumberFormat("fr-CA", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n)} ${currency}`;
+export const adjustedNumber = (n: number) => n > 0 && n < .0001 ? "<0.0001" : new Intl.NumberFormat("en-CA", { maximumFractionDigits: 4 }).format(n);
+export const adjustedMoney = (n: number, currency: string) => `${n > 0 && n < .01 ? "<0.01" : new Intl.NumberFormat("en-CA", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n)} ${currency}`;
 
 type ComparisonBasis = NonNullable<RankedOffer["rate"]>["basis"];
 function target(item: ShoppingItem, basis?: ComparisonBasis | null) {
@@ -34,7 +34,7 @@ export function adjustedOfferQuantity(item: ShoppingItem, offer: RankedOffer): C
   const ratio = need.quantity / pack, packs = offer.p.weighed ? ratio : Math.ceil(ratio - Number.EPSILON * Math.max(1, ratio) * 4);
   const normalized = need.quantity * offer.rate.amount, purchase = packs * offer.p.price;
   if (![need.quantity, pack, normalized, packs, purchase].every(Number.isFinite) || packs <= 0 || purchase > 1_000_000) return null;
-  return { item, offer, quantity: need.quantity, label: need.label, pack, normalized, packs, purchase, reference: need.reference, selection: need.reference ? "Quantité de référence identique entre magasins ; elle ne définit pas le besoin habituel." : need.pack === null ? "Format souhaité inconnu : prix unitaire observé le plus bas, hypothèse à revoir." : "Format compatible le plus proche du format souhaité ; égalité départagée au prix unitaire." };
+  return { item, offer, quantity: need.quantity, label: need.label, pack, normalized, packs, purchase, reference: need.reference, selection: need.reference ? "The same reference quantity is used across stores; it does not define the usual need." : need.pack === null ? "Desired pack size is unknown. Uses the lowest observed unit price as an assumption to review." : "Closest compatible pack size to the desired size, with ties broken by unit price." };
 }
 
 /** Display-only estimate: one identical subset/quantity at every participating store.
@@ -64,17 +64,17 @@ export function commonQuantityComparison(plan: GroceryPlan, now?: string, select
   const stores = groups.map(group => {
     const lines = shared.flatMap(c => { const line = c.rows.find(r => r.group.name === group.name)?.line; return line ? [line] : []; });
     const amount = lines.length ? lines.reduce((n, l) => n + l.normalized, 0) : null;
-    return { group, lines, amount, gap: "Non comparable", percent: null as number | null };
+    return { group, lines, amount, gap: "Not comparable", percent: null as number | null };
   });
   const comparable = stores.filter(s => s.amount !== null), minimum = comparable.length ? Math.min(...comparable.map(s => s.amount!)) : null;
   for (const s of comparable) {
-    if (comparable.length < 2) { s.gap = "Seul montant"; continue; }
-    if (minimum === 0) { s.gap = s.amount === 0 ? "Montant nul" : "Écart inconnu"; continue; }
+    if (comparable.length < 2) { s.gap = "Only amount"; continue; }
+    if (minimum === 0) { s.gap = s.amount === 0 ? "Zero amount" : "Difference unknown"; continue; }
     const gap = (s.amount! / minimum! - 1) * 100;
-    if (!Number.isFinite(gap)) { s.gap = "Écart inconnu"; continue; }
+    if (!Number.isFinite(gap)) { s.gap = "Difference unknown"; continue; }
     const tied = Math.abs(gap) <= Number.EPSILON * 800;
     s.percent = tied ? 0 : gap;
-    s.gap = tied ? comparable.filter(other => Math.abs((other.amount! / minimum! - 1) * 100) <= Number.EPSILON * 800).length > 1 ? "0 % ex æquo" : "0 %" : unitPercentLabel(gap);
+    s.gap = tied ? comparable.filter(other => Math.abs((other.amount! / minimum! - 1) * 100) <= Number.EPSILON * 800).length > 1 ? "0% (tie)" : "0%" : unitPercentLabel(gap);
   }
   // Rank only the identical shared base, never a store's partial raw subtotal.
   stores.sort((a, b) => (a.amount === null ? 1 : 0) - (b.amount === null ? 1 : 0)
@@ -83,7 +83,7 @@ export function commonQuantityComparison(plan: GroceryPlan, now?: string, select
   const excluded = items.filter(i => !shared.some(c => c.item.id === i.id));
   const exclusionDetails = excluded.map(item => {
     const missing = participants.filter(g => !candidates.find(c => c.item.id === item.id)?.rows.some(r => r.group.name === g.name && r.line)).map(g => g.name);
-    return { item, reason: missing.length ? `Référence dans une même unité manquante ou non comparable : ${missing.join(", ")}.` : "Choisissez au moins un magasin pour calculer le total." };
+    return { item, reason: missing.length ? `Reference in the same unit missing or not comparable : ${missing.join(", ")}.` : "Choose at least one store to calculate the total." };
   });
   return { stores, count: shared.length, total: items.length, excluded, exclusionDetails, participants: participants.length, referenceCount: shared.filter(c => c.need?.reference).length, participantNames: participants.map(g => g.name) };
 }

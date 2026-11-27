@@ -1,7 +1,7 @@
 /** Exercise the actual compact filter disclosure instead of selecting hidden controls. */
 export async function openFinanceFilters(page) {
-    const dialog = page.getByRole("dialog", { name: "Filtres des finances", exact: true });
-    if (!await dialog.isVisible()) await page.getByRole("button", { name: /^Filtres/ }).click();
+    const dialog = page.getByRole("dialog", { name: "Finance filters", exact: true });
+    if (!await dialog.isVisible()) await page.getByRole("button", { name: /^Filters/ }).click();
     await dialog.waitFor(); return dialog;
 }
 export async function selectFinanceFilter(page, label, value) {
@@ -10,13 +10,13 @@ export async function selectFinanceFilter(page, label, value) {
     const wasVisible = await control.isVisible();
     if (!wasVisible) await openFinanceFilters(page);
     await control.selectOption(value);
-    if (!wasVisible) await page.getByRole("button", { name: "Voir les résultats", exact: true }).click();
+    if (!wasVisible) await page.getByRole("button", { name: "View results", exact: true }).click();
 }
 export async function fillFinanceFilter(page, label, value) {
     const control = page.getByLabel(label, { exact: true }), wasVisible = await control.isVisible();
     if (!wasVisible) await openFinanceFilters(page);
     await control.fill(value);
-    if (!wasVisible) await page.getByRole("button", { name: "Voir les résultats", exact: true }).click();
+    if (!wasVisible) await page.getByRole("button", { name: "View results", exact: true }).click();
 }
 
 export async function openFinanceRegister(page) {
@@ -25,7 +25,7 @@ export async function openFinanceRegister(page) {
     if (await disclosure.getAttribute("open") === null) await disclosure.locator(":scope > summary").click();
 }
 export async function openFinanceSection(page, label) {
-    const back = page.getByRole("button", { name: "Retour aux dépenses", exact: true });
+    const back = page.getByRole("button", { name: "Back to spending", exact: true });
     if (await back.isVisible()) await back.click();
     const summary = page.locator(".finance-journey-disclosure > summary").filter({ hasText: label }).first();
     if (await summary.count() && !await summary.evaluate(el => el.parentElement.open)) await summary.click();

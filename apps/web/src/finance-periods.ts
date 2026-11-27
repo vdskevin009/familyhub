@@ -29,5 +29,5 @@ export function defaultPeriod(scope?: DateRange): DateRange {
 }
 export function rangeLabel(range: DateRange): string {
     const mode = periodMode(range), year = Number(range.from.slice(0, 4));
-    return mode === "year" ? String(year) : mode === "month" ? new Intl.DateTimeFormat("fr-CA", { month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(range.from + "T12:00:00Z")) : `${range.from} – ${range.to}`;
+    return mode === "year" ? String(year) : mode === "month" ? new Intl.DateTimeFormat("en-CA", { month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(range.from + "T12:00:00Z")) : `${range.from} – ${range.to}`;
 }

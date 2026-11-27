@@ -68,7 +68,7 @@ test("all categories, including reference-only and zero differences, survive or 
   const result = attributeSpendingDifference(input), overview = leadingSpendingDifferences(result, 2);
   assert.equal(result.categories.length, 5);
   assert.equal(overview.length, 3);
-  assert.equal(overview.at(-1)!.label, "Autres catégories");
+  assert.equal(overview.at(-1)!.label, "Other categories");
   assert.equal(new Set(overview.flatMap(row => row.categoryKeys)).size, 5);
   assert.equal(sum(overview.map(row => row.displayDifferenceCents)), result.displayDifferenceCents);
   assert.throws(() => leadingSpendingDifferences(result, 0));

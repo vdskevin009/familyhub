@@ -37,7 +37,7 @@ function money(value: number | null | undefined, code = "CAD"): string {
 }
 
 function SummaryAmount({ label, value, caption }: { label: string; value: ReturnType<typeof sumKnownAmounts>; caption: string }) {
-  return <article><small>{label}</small><strong>{money(value.amount)}{value.unknown > 0 && value.amount !== null ? " + ?" : ""}</strong><span>{value.unknown ? `${value.unknown} montant(s) à confirmer` : caption}</span></article>;
+  return <article><small>{label}</small><strong>{money(value.amount)}{value.unknown > 0 && value.amount !== null ? " + ?" : ""}</strong><span>{value.unknown ? `${value.unknown} amount${value.unknown === 1 ? "" : "s"} to confirm` : caption}</span></article>;
 }
 
 function dateValue(value: string | null | undefined): number {
@@ -48,7 +48,7 @@ function dateValue(value: string | null | undefined): number {
 
 function dossierDate(value: string | null | undefined) {
   const date = new Date((value?.slice(0, 10) || "") + "T12:00:00Z");
-  return Number.isFinite(date.getTime()) ? new Intl.DateTimeFormat("fr-CA", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" }).format(date) : "Date à confirmer";
+  return Number.isFinite(date.getTime()) ? new Intl.DateTimeFormat("en-CA", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" }).format(date) : "Date to confirm";
 }
 
 function unmatchedReason(item: UnmatchedReimbursement): string {
@@ -477,18 +477,18 @@ export default function ReimbursementsView({ hub }: Props) {
     const now = Date.now(), message = insurerCoverageNotice(status, now); return message ? [{ name, status, message, summary: insurerCoverageSummary(status, now) }] : [];
   });
   const coveragePanel = coverageWarnings.length > 0 && <section className="collection-coverage coverage-overview" aria-label="Insurer collection coverage">
-    <details><summary><AlertTriangle size={18} aria-hidden="true" /><span><strong>{coverageWarnings.length} source(s) à vérifier</strong><small>{coverageWarnings.map(entry => `${entry.name} : ${entry.summary}`).join(" · ")}</small></span></summary>
-      {coverageWarnings.map(({ name, status, message }) => <div className="collection-warning" key={name} role="status"><div><strong>{name}</strong><p>{message}</p><small>{status?.lastSuccess ? `Last complete read: ${new Date(status.lastSuccess).toLocaleString()}` : "No complete read confirmed"}</small></div></div>)}
+    <details><summary><AlertTriangle size={18} aria-hidden="true" /><span><strong>{coverageWarnings.length} source{coverageWarnings.length === 1 ? "" : "s"} to review</strong><small>{coverageWarnings.map(entry => `${entry.name}: ${entry.summary}`).join(" · ")}</small></span></summary>
+      {coverageWarnings.map(({ name, status, message }) => <div className="collection-warning" key={name} role="status"><div><strong>{name}</strong><p>{message}</p><small>{status?.lastSuccess ? `Last complete read: ${new Date(status.lastSuccess).toLocaleString("en-CA")}` : "No complete read confirmed"}</small></div></div>)}
     </details><button type="button" className="text-action" onClick={() => setSourcesOpen(true)} aria-haspopup="dialog">Review Sources</button>
   </section>;
   return <div className={`view-stack reimbursement-app-view${linkedRecord ? " reimbursement-dossier-view" : ""}`}>
     {preparingExpense && <PrepareClaim key={preparingExpense} expenseId={preparingExpense}
       initialInsurer={preparingInsurer || (preparingNextInsurer === "Desjardins" ? "desjardins" : preparingNextInsurer === "Blue Cross" ? "blue-cross" : undefined)}
       config={hub.worker} onClose={() => setPreparingExpense("")} />}
-    <Sheet open={Boolean(reviewingExpense)} onClose={() => setReviewingExpense("")} title="Dossier de remboursement" description={reviewingCase ? `${reviewingCase.Member} · ${healthcareTitle(reviewingCase)}` : "Pièces et préparation"}>
+    <Sheet open={Boolean(reviewingExpense)} onClose={() => setReviewingExpense("")} title="Reimbursement details" description={reviewingCase ? `${reviewingCase.Member} · ${healthcareTitle(reviewingCase)}` : "Evidence and preparation"}>
       {reviewingExpense && <ClaimDossier key={reviewingExpense + ":" + reviewingCase?.NextInsurer} expenseId={reviewingExpense} initialInsurer={insurerFor(reviewingCase)} config={hub.worker} remaining={reviewingCase?.PotentialRemaining} sourceRevision={dossierRevision(reviewingCase)} preparationAllowed={Boolean(reviewingCase && reimbursementWorkflowStatus(reviewingCase) === "open" && !reviewingCase.InferredFromInsurer)} onPrepare={insurer => beginPreparation(reviewingExpense, insurer)} />}
     </Sheet>
-    <PageHeader title={linkedRecord ? "Remboursement" : "Claims"} subtitle={linkedCase ? `${healthcareTitle(linkedCase)} · ${linkedCase.Member === "unknown" ? "Personne à confirmer" : linkedCase.Member} · ${dossierDate(linkedCase.ServiceDate)}` : paired ? lastSuccess ? `Updated ${new Date(lastSuccess).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : "Saved results" : "Saved on this device"}>
+    <PageHeader title={linkedRecord ? "Reimbursement" : "Claims"} subtitle={linkedCase ? `${healthcareTitle(linkedCase)} · ${linkedCase.Member === "unknown" ? "Member to confirm" : linkedCase.Member} · ${dossierDate(linkedCase.ServiceDate)}` : paired ? lastSuccess ? `Updated ${new Date(lastSuccess).toLocaleTimeString("en-CA", { hour: "2-digit", minute: "2-digit" })}` : "Saved results" : "Saved on this device"}>
       <button type="button" className="button secondary" onClick={() => setSourcesOpen(true)} aria-haspopup="dialog">Sources{paired && coverageWarnings.length ? " · !" : ""}</button>
       <button type="button" className="icon-button" aria-label="Refresh reimbursements" disabled={!paired || busy || pending.length > 0 || bulkIgnoring} onClick={() => void refresh()}><RefreshCw size={18} className={busy ? "spin" : ""} /></button>
     </PageHeader>
@@ -496,7 +496,7 @@ export default function ReimbursementsView({ hub }: Props) {
     <Sheet open={sourcesOpen} onClose={() => setSourcesOpen(false)} title="Sources & sync" description="Update collects a preview and uses automatic sign-in when configured. Reconnect opens the PC browser for verification. Review before applying changes.">
       <div className="source-tools">
       {error && <Notice error onDismiss={() => setError("")}>{error}</Notice>}
-      <p>Saved records appear in DJ/BC. Claims may move to Closed; only unmatched records enter À réconcilier.</p>
+      <p>Saved records appear in DJ/BC. Claims may move to Closed; only unmatched records enter To reconcile.</p>
       <button type="button" className="button secondary" disabled={!paired || busy} onClick={() => void refresh()}>Refresh saved claims</button>
     <section className="bluecross-sync" aria-label="Blue Cross portal sync">
       <button type="button" className="button secondary compact-button" disabled={!paired || !workerVersionAtLeast(workerVersion, "2.14.0") || pending.length > 0 || blueCrossBusy || desjardinsBusy || portalBusy} onClick={() => void reconnect("bluecross")}>Reconnect Blue Cross on PC</button>
@@ -506,11 +506,11 @@ export default function ReimbursementsView({ hub }: Props) {
       <button type="button" className="button secondary compact-button" disabled={!paired || pending.length > 0 || blueCrossBusy || desjardinsBusy || portalBusy || !!workerVersion && !workerVersionAtLeast(workerVersion, "2.9.0")}
         onClick={() => void runBlueCrossSync(false)}>{blueCrossBusy ? "Synchronisation Blue Cross…" : "Retry / update Blue Cross"}</button>
       {applicableInsurerPreview(blueCrossStatus, blueCrossResult) &&
-        <button type="button" className="button secondary compact-button" disabled={blueCrossBusy || desjardinsBusy || portalBusy || pending.length > 0} onClick={() => void runBlueCrossSync(true)}>Appliquer Blue Cross</button>}
+        <button type="button" className="button secondary compact-button" disabled={blueCrossBusy || desjardinsBusy || portalBusy || pending.length > 0} onClick={() => void runBlueCrossSync(true)}>Apply Blue Cross</button>}
       <small>{blueCrossStatus?.loginConfigured === true ? "Automatic sign-in configured on PC" : blueCrossStatus?.loginConfigured === false ? "Automatic sign-in not configured" : ""}</small>
       <small role="status">{insurerSyncMessage(blueCrossStatus, blueCrossResult, blueCrossBusy)}</small>
-      {blueCrossStatus?.lastSuccess && <small>Last complete read: {new Date(blueCrossStatus.lastSuccess).toLocaleString()}</small>}
-      {blueCrossStatus?.lastAttempt && <small>Dernière tentative : {new Date(blueCrossStatus.lastAttempt).toLocaleString()}</small>}
+      {blueCrossStatus?.lastSuccess && <small>Last complete read: {new Date(blueCrossStatus.lastSuccess).toLocaleString("en-CA")}</small>}
+      {blueCrossStatus?.lastAttempt && <small>Last attempt: {new Date(blueCrossStatus.lastAttempt).toLocaleString("en-CA")}</small>}
     </section>
 
     <section className="bluecross-sync" aria-label="Desjardins portal sync">
@@ -521,19 +521,19 @@ export default function ReimbursementsView({ hub }: Props) {
       <button type="button" className="button secondary compact-button" disabled={!paired || pending.length > 0 || blueCrossBusy || desjardinsBusy || portalBusy || !!workerVersion && !workerVersionAtLeast(workerVersion, "2.10.0")}
         onClick={() => void runDesjardinsSync(false)}>{desjardinsBusy ? "Synchronisation Desjardins…" : "Retry / update Desjardins"}</button>
       {desjardinsStatus?.applicable && applicableInsurerPreview(desjardinsStatus, desjardinsResult) && desjardinsStatus.previewAt && Date.now() - Date.parse(desjardinsStatus.previewAt) < 24 * 60 * 60_000 &&
-        <button type="button" className="button secondary compact-button" disabled={blueCrossBusy || desjardinsBusy || portalBusy || pending.length > 0} onClick={() => void runDesjardinsSync(true)}>Appliquer Desjardins</button>}
+        <button type="button" className="button secondary compact-button" disabled={blueCrossBusy || desjardinsBusy || portalBusy || pending.length > 0} onClick={() => void runDesjardinsSync(true)}>Apply Desjardins</button>}
       <small>{desjardinsStatus?.loginConfigured === true ? "Automatic sign-in configured on PC" : desjardinsStatus?.loginConfigured === false ? "Automatic sign-in not configured" : ""}</small>
       <small role="status">{insurerSyncMessage(desjardinsStatus, desjardinsResult, desjardinsBusy)}</small>
-      {desjardinsStatus?.lastSuccess && <small>Last complete read: {new Date(desjardinsStatus.lastSuccess).toLocaleString()}</small>}
-      {desjardinsStatus?.lastRecoveryAt && <small>Selected payments recovered: {desjardinsStatus.recoveredRows} · {new Date(desjardinsStatus.lastRecoveryAt).toLocaleString()}. Full-history coverage remains separate.</small>}
-      {desjardinsStatus?.lastAttempt && <small>Dernière tentative : {new Date(desjardinsStatus.lastAttempt).toLocaleString()}</small>}
+      {desjardinsStatus?.lastSuccess && <small>Last complete read: {new Date(desjardinsStatus.lastSuccess).toLocaleString("en-CA")}</small>}
+      {desjardinsStatus?.lastRecoveryAt && <small>Selected payments recovered: {desjardinsStatus.recoveredRows} · {new Date(desjardinsStatus.lastRecoveryAt).toLocaleString("en-CA")}. Full-history coverage remains separate.</small>}
+      {desjardinsStatus?.lastAttempt && <small>Last attempt: {new Date(desjardinsStatus.lastAttempt).toLocaleString("en-CA")}</small>}
     </section>
 
         <details className="data-coverage"><summary>Set up automatic sign-in</summary><p>On the PC, run <code>scripts/Set-InsurerLogin.ps1</code> from the worker folder with its existing DataDirectory. Enter your login only in the masked local prompts. The same tool can replace or delete it. Worker 2.16.0 or later is required.</p><p>Update then tries one sign-in when the saved session expires. If verification is requested, use Reconnect on PC; collection continues after you finish signing in.</p></details>
         <details className="data-coverage"><summary>Invoice-search coverage</summary><p>{hub.reimbursements.InvoiceCoverage?.complete
           ? "Potential invoice search completed since June 1, 2025 for connected accounts. Scanned images and unreadable attachments may still need review."
           : "Historical collection since June 1, 2025 is not yet confirmed complete. Run the PC collection to resume it."} Insurance coverage is not confirmed by a receipt.</p></details>
-        {!paired && <p className="privacy-note">Connect your PC in Plus → Réglages et outils to refresh or update sources. Saved records remain available offline.</p>}
+        {!paired && <p className="privacy-note">Connect your PC in More → Settings and tools to refresh or update sources. Saved records remain available offline.</p>}
       </div>
     </Sheet>
 
@@ -545,14 +545,14 @@ export default function ReimbursementsView({ hub }: Props) {
       {model.warnings.map(warning => <p key={warning}>{warning}</p>)}
     </details>}
 
-    {linkedRecord && <div className="claim-dossier-return"><button type="button" className="text-action" onClick={returnToList}>Revenir à la liste</button><small>Filtres conservés</small></div>}
-    {linkedRecord && !busy && !filteredCases.length && !model.unmatched.some(entry => entry.item.Id === linkedRecord) && <Notice>Ce dossier n’est plus disponible ou a été rapproché depuis la création du lien.</Notice>}
+    {linkedRecord && <div className="claim-dossier-return"><button type="button" className="text-action" onClick={returnToList}>Back to list</button><small>Filters saved</small></div>}
+    {linkedRecord && !busy && !filteredCases.length && !model.unmatched.some(entry => entry.item.Id === linkedRecord) && <Notice>This claim is no longer available or has been matched since the link was created.</Notice>}
     {!linkedRecord && <section className="reimbursement-mode-tabs" aria-label="Claims workspace">
       <button type="button" className={(linkedRecord ? !linkedQueue || filteredCases.length > 0 : screen === "claims") ? "active" : ""} aria-pressed={linkedRecord ? !linkedQueue || filteredCases.length > 0 : screen === "claims"} onClick={() => { setLinkedRecord(null); setScreen("claims"); }}>
         Claims
       </button>
       <button type="button" className={(linkedRecord ? linkedQueue && !filteredCases.length : screen === "reconcile") ? "active" : ""} aria-pressed={linkedRecord ? linkedQueue && !filteredCases.length : screen === "reconcile"} onClick={() => { setLinkedRecord(null); setScreen("reconcile"); }}>
-        À réconcilier <span>{model.unmatched.length}</span>
+        To reconcile <span>{model.unmatched.length}</span>
       </button>
     </section>}
 
@@ -573,7 +573,7 @@ export default function ReimbursementsView({ hub }: Props) {
 
     <details className="reimbursement-totals">
       <summary>
-        <span><small>Potential to recover</small><strong>{scopeSummaries.get(personScope)!.knownAmounts || !scopeSummaries.get(personScope)!.open ? money(scopeSummaries.get(personScope)!.potentiallyRecoverable) : "—"}{scopeSummaries.get(personScope)!.unknownAmounts > 0 ? " + ?" : ""}</strong><small>{scopeLabel} · estimation non garantie{scopeSummaries.get(personScope)!.unknownAmounts > 0 ? " · partielle" : ""}</small></span>
+        <span><small>Potential to recover</small><strong>{scopeSummaries.get(personScope)!.knownAmounts || !scopeSummaries.get(personScope)!.open ? money(scopeSummaries.get(personScope)!.potentiallyRecoverable) : "—"}{scopeSummaries.get(personScope)!.unknownAmounts > 0 ? " + ?" : ""}</strong><small>{scopeLabel} · estimate, not guaranteed{scopeSummaries.get(personScope)!.unknownAmounts > 0 ? " · partial" : ""}</small></span>
         <span className="totals-disclosure">Totals <span aria-hidden="true">⌄</span></span>
       </summary>
       <section className="reimbursement-summary" aria-label={`${scopeLabel} reimbursement summary`}>
@@ -645,7 +645,7 @@ export default function ReimbursementsView({ hub }: Props) {
     </Sheet>
 
     {linkedCase && linkedExpenseId && !linkedCase.InferredFromInsurer && reimbursementWorkflowStatus(linkedCase) === "open" && <ClaimDossier key={linkedCase.Id + ":" + linkedCase.NextInsurer} expenseId={linkedExpenseId} initialInsurer={insurerFor(linkedCase)} config={hub.worker} remaining={linkedCase.PotentialRemaining} sourceRevision={dossierRevision(linkedCase)} preparationAllowed onPrepare={insurer => beginPreparation(linkedExpenseId, insurer)} />}
-    {linkedRecord && paired && <details className="claim-dossier-coverage"><summary>{coverageWarnings.length ? `${coverageWarnings.length} collecte(s) à vérifier` : "Collectes et fraîcheur"}</summary>{coveragePanel}<p>Consultez Sources pour les dates et la couverture des dernières lectures.</p></details>}
+    {linkedRecord && paired && <details className="claim-dossier-coverage"><summary>{coverageWarnings.length ? `${coverageWarnings.length} collection${coverageWarnings.length === 1 ? "" : "s"} to review` : "Collection status and freshness"}</summary>{coveragePanel}<p>Check Sources for recent collection dates and coverage.</p></details>}
     <section className="reimbursement-history" aria-labelledby="reimbursement-history-title">
       <div className="reimbursement-history-heading">
         <h2 id="reimbursement-history-title">{filteredCases.length} claims <span>· Newest first</span></h2>

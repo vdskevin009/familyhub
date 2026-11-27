@@ -22,25 +22,25 @@ export function receiptSourceType(record: GroceryRecord): NonNullable<GroceryRec
 export const emptyReceipt = (): GroceryReceipt => ({ store: "", date: null, currency: null, reference: "", total: null,
   delivery: null, service: null, tip: null, tax: null, discount: null, items: [], warnings: [] });
 export const blankItem = (): GroceryItem => ({ name: "", product: "", amount: null, quantity: null, size: null, unit: null, evidence: "", uncertain: true });
-const obj = (v: unknown): Record<string, unknown> => { if (!v || typeof v !== "object" || Array.isArray(v)) throw new GroceryError("Ticket invalide."); return v as Record<string, unknown>; };
-const text = (v: unknown, max = 200): string => { if (typeof v !== "string" || v.length > max) throw new GroceryError("Texte du ticket invalide."); return v.trim(); };
-const money = (v: unknown): number | null => { if (v === null) return null; if (typeof v !== "number" || !Number.isFinite(v) || v < 0 || v > 1_000_000 || Math.abs(v * 100 - Math.round(v * 100)) > 0.0001) throw new GroceryError("Montant invalide (deux décimales maximum)."); return v; };
-const positive = (v: unknown): number | null => { if (v === null) return null; if (typeof v !== "number" || !Number.isFinite(v) || v <= 0 || v > 1_000_000) throw new GroceryError("Quantité ou format invalide."); return v; };
+const obj = (v: unknown): Record<string, unknown> => { if (!v || typeof v !== "object" || Array.isArray(v)) throw new GroceryError("Invalid receipt."); return v as Record<string, unknown>; };
+const text = (v: unknown, max = 200): string => { if (typeof v !== "string" || v.length > max) throw new GroceryError("Invalid receipt text."); return v.trim(); };
+const money = (v: unknown): number | null => { if (v === null) return null; if (typeof v !== "number" || !Number.isFinite(v) || v < 0 || v > 1_000_000 || Math.abs(v * 100 - Math.round(v * 100)) > 0.0001) throw new GroceryError("Invalid amount (up to two decimal places)."); return v; };
+const positive = (v: unknown): number | null => { if (v === null) return null; if (typeof v !== "number" || !Number.isFinite(v) || v <= 0 || v > 1_000_000) throw new GroceryError("Invalid quantity or pack size."); return v; };
 export function validateReceipt(value: unknown): GroceryReceipt {
   const r = obj(value), date = r.date;
   let fulfillment: GroceryReceipt["fulfillment"];
   if (r.fulfillment !== undefined && r.fulfillment !== null) {
     const f = obj(r.fulfillment), evidence = text(f.evidence, 1000);
-    if (typeof f.date !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(f.date) || !Number.isFinite(Date.parse(f.date + "T00:00:00Z")) || new Date(f.date + "T00:00:00Z").toISOString().slice(0, 10) !== f.date || !evidence) throw new GroceryError("Preuve de livraison datée requise.");
+    if (typeof f.date !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(f.date) || !Number.isFinite(Date.parse(f.date + "T00:00:00Z")) || new Date(f.date + "T00:00:00Z").toISOString().slice(0, 10) !== f.date || !evidence) throw new GroceryError("Dated delivery evidence is required.");
     fulfillment = { date: f.date, evidence };
   }
-  if (r.sourceType !== undefined && !["unknown", "confirmation", "final-receipt"].includes(String(r.sourceType))) throw new GroceryError("Type de source invalide.");
-  if (date !== null && (typeof date !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isFinite(Date.parse(date + "T00:00:00Z")) || new Date(date + "T00:00:00Z").toISOString().slice(0, 10) !== date)) throw new GroceryError("Date invalide.");
-  if (r.currency !== null && (typeof r.currency !== "string" || !/^[A-Z]{3}$/.test(r.currency))) throw new GroceryError("Devise invalide.");
-  if (!Array.isArray(r.items) || r.items.length > 200 || !Array.isArray(r.warnings) || r.warnings.length > 30) throw new GroceryError("Lignes du ticket invalides.");
-  const items = r.items.map(v => { const i = obj(v); if (typeof i.uncertain !== "boolean" || i.unit !== null && !["g", "kg", "ml", "l", "each"].includes(String(i.unit))) throw new GroceryError("Unité ou incertitude invalide.");
+  if (r.sourceType !== undefined && !["unknown", "confirmation", "final-receipt"].includes(String(r.sourceType))) throw new GroceryError("Invalid source type.");
+  if (date !== null && (typeof date !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isFinite(Date.parse(date + "T00:00:00Z")) || new Date(date + "T00:00:00Z").toISOString().slice(0, 10) !== date)) throw new GroceryError("Invalid date.");
+  if (r.currency !== null && (typeof r.currency !== "string" || !/^[A-Z]{3}$/.test(r.currency))) throw new GroceryError("Invalid currency.");
+  if (!Array.isArray(r.items) || r.items.length > 200 || !Array.isArray(r.warnings) || r.warnings.length > 30) throw new GroceryError("Invalid receipt line items.");
+  const items = r.items.map(v => { const i = obj(v); if (typeof i.uncertain !== "boolean" || i.unit !== null && !["g", "kg", "ml", "l", "each"].includes(String(i.unit))) throw new GroceryError("Invalid unit or uncertain-item flag.");
     let productReference: GroceryItem["productReference"];
-    if (i.productReference !== undefined) { const ref = obj(i.productReference); if (ref.provider !== "pcexpress" || typeof ref.id !== "string" || !/^\d{6,14}_(?:EA|KG)$/.test(ref.id)) throw new GroceryError("Référence produit source invalide."); productReference = { provider: "pcexpress", id: ref.id }; }
+    if (i.productReference !== undefined) { const ref = obj(i.productReference); if (ref.provider !== "pcexpress" || typeof ref.id !== "string" || !/^\d{6,14}_(?:EA|KG)$/.test(ref.id)) throw new GroceryError("Invalid source product reference."); productReference = { provider: "pcexpress", id: ref.id }; }
     return { name: text(i.name), product: text(i.product), amount: money(i.amount), quantity: positive(i.quantity), size: positive(i.size), unit: i.unit as GroceryUnit | null, evidence: text(i.evidence, 1000), uncertain: i.uncertain, ...(productReference ? { productReference } : {}) }; });
   return { ...(r.sourceType === undefined ? {} : { sourceType: r.sourceType as GroceryReceipt["sourceType"] }), ...(fulfillment ? { fulfillment } : {}), store: text(r.store), date: date as string | null, currency: r.currency as string | null, reference: text(r.reference),
     total: money(r.total), delivery: money(r.delivery), service: money(r.service), tip: money(r.tip), tax: money(r.tax), discount: money(r.discount), items, warnings: r.warnings.map(v => text(v, 1000)) };
@@ -55,11 +55,11 @@ export function unitPrice(item: GroceryItem): { price: number; unit: string } | 
 }
 export function receiptWarnings(r: GroceryReceipt): string[] {
   const warnings = [...r.warnings];
-  if (!r.store || !r.date || !r.currency || r.total === null) warnings.push("Magasin, date, devise ou total manquant : l'analyse restera partielle.");
-  if (!r.items.length || r.items.some(i => !i.name || i.amount === null || i.uncertain)) warnings.push("Des produits ou prix restent incertains. Vérifiez les sources et corrigez les lignes.");
+  if (!r.store || !r.date || !r.currency || r.total === null) warnings.push("The store, date, currency or total is missing. The analysis will be incomplete.");
+  if (!r.items.length || r.items.some(i => !i.name || i.amount === null || i.uncertain)) warnings.push("Some items or prices are uncertain. Check the sources and correct the line items.");
   if (r.items.length && r.items.every(i => i.amount !== null) && r.total !== null) {
     const sum = r.items.reduce((s, i) => s + i.amount!, 0) + (r.delivery ?? 0) + (r.service ?? 0) + (r.tip ?? 0) + (r.tax ?? 0) - (r.discount ?? 0);
-    if (Math.abs(sum - r.total) > .02) warnings.push("Les produits, frais, taxes et remises ne correspondent pas au total. Un chevauchement de photos ou une ligne manquante est possible.");
+    if (Math.abs(sum - r.total) > .02) warnings.push("Items, fees, taxes and discounts do not add up to the total. Check for overlapping photos or missing line items.");
   }
   return [...new Set(warnings)];
 }

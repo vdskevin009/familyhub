@@ -26,8 +26,8 @@ export class FinanceAccountCapturesStore {
       file=await open(this.path,"r");if((await file.stat()).size>ACCOUNT_CAPTURES_LIMITS.historyBytes)throw new AccountCapturesError("Historique trop volumineux.");
       const chunks:Buffer[]=[];let size=0;while(true){const b=Buffer.alloc(Math.min(65536,ACCOUNT_CAPTURES_LIMITS.historyBytes+1-size));const r=await file.read(b,0,b.length,null);if(!r.bytesRead)break;size+=r.bytesRead;if(size>ACCOUNT_CAPTURES_LIMITS.historyBytes)throw new AccountCapturesError("Historique trop volumineux.");chunks.push(b.subarray(0,r.bytesRead));}
       const state=validateFinanceAccountCapturesState(JSON.parse(Buffer.concat(chunks).toString("utf8")),now);
-      if(state.captures.some(c=>c.id!==accountCaptureId(c.origin,c.snapshot))||JSON.stringify(state)!==JSON.stringify(stateOf(state.captures)))throw new AccountCapturesError("Révision invalide.");return state;
-    }catch(e){if((e as NodeJS.ErrnoException).code==="ENOENT")return stateOf([]);throw new AccountCapturesError("Historique des comptes illisible. Les fichiers sont conservés.");}finally{await file?.close();}
+      if(state.captures.some(c=>c.id!==accountCaptureId(c.origin,c.snapshot))||JSON.stringify(state)!==JSON.stringify(stateOf(state.captures)))throw new AccountCapturesError("Invalid revision.");return state;
+    }catch(e){if((e as NodeJS.ErrnoException).code==="ENOENT")return stateOf([]);throw new AccountCapturesError("Account history could not be read. The files have been kept.");}finally{await file?.close();}
   }
   private async readUnlocked(now:Date):Promise<FinanceAccountCapturesState>{
     const state=await this.persisted(now),legacy=await this.legacy.read(now);
@@ -36,12 +36,12 @@ export class FinanceAccountCapturesStore {
   }
   read(now=new Date()):Promise<FinanceAccountCapturesState>{const run=this.queue.then(()=>this.readUnlocked(now));this.queue=run.catch(()=>{});return run;}
   private plan(snapshot:FinanceAccountCaptureSnapshot,current:FinanceAccountCapturesState,expectedRevision:string,now:Date){
-    if(expectedRevision!==current.revision)throw new AccountCapturesConflict("Les captures ont changé. Relisez avant de réessayer.");
+    if(expectedRevision!==current.revision)throw new AccountCapturesConflict("Account snapshots have changed. Reload before trying again.");
     const capture:FinanceAccountCapture={id:accountCaptureId("source-capture",snapshot),origin:"source-capture",snapshot};
     if(current.captures.some(c=>c.id===capture.id))return {capture,proposedRevision:current.revision,alreadyImported:true,next:current};
     const same=current.captures.filter(c=>c.origin==="source-capture"&&c.snapshot.collectedAt===snapshot.collectedAt);
-    if(snapshot.supersedesCaptureId!==null){const target=same.find(c=>c.id===snapshot.supersedesCaptureId);if(!target||current.captures.some(c=>c.snapshot.supersedesCaptureId===target.id))throw new AccountCapturesConflict("La version à corriger doit être la version courante de cette capture.");}
-    else if(same.length)throw new AccountCapturesConflict("Une capture différente porte cet horodatage. Une correction explicite est requise.");
+    if(snapshot.supersedesCaptureId!==null){const target=same.find(c=>c.id===snapshot.supersedesCaptureId);if(!target||current.captures.some(c=>c.snapshot.supersedesCaptureId===target.id))throw new AccountCapturesConflict("Only the current version of a snapshot can be corrected.");}
+    else if(same.length)throw new AccountCapturesConflict("A different snapshot has this timestamp. An explicit correction is required.");
     const next=validateFinanceAccountCapturesState(stateOf([...current.captures,capture]),now);
     return {capture,proposedRevision:next.revision,alreadyImported:false,next};
   }
@@ -53,7 +53,7 @@ export class FinanceAccountCapturesStore {
   }
   save(value:unknown,expectedRevision:string,now=new Date()):Promise<FinanceAccountCapturesState>{
     let snapshot:FinanceAccountCaptureSnapshot;try{snapshot=validateFinanceAccountCaptureSnapshot(value,now);}catch(e){return Promise.reject(e);}
-    const run=this.queue.then(async()=>{const plan=this.plan(snapshot,await this.readUnlocked(now),expectedRevision,now);if(plan.alreadyImported)return plan.next;await this.write(plan.next);const confirmed=await this.readUnlocked(now);if(confirmed.revision!==plan.proposedRevision)throw new AccountCapturesError("Enregistrement non confirmé. Relisez avant de réessayer.");return confirmed;});this.queue=run.catch(()=>{});return run;
+    const run=this.queue.then(async()=>{const plan=this.plan(snapshot,await this.readUnlocked(now),expectedRevision,now);if(plan.alreadyImported)return plan.next;await this.write(plan.next);const confirmed=await this.readUnlocked(now);if(confirmed.revision!==plan.proposedRevision)throw new AccountCapturesError("The save was not confirmed. Reload before trying again.");return confirmed;});this.queue=run.catch(()=>{});return run;
   }
   /** Serialize the entire legacy replacement with capture writes. Reserve projected incoming capacity
    * before changing either file. Archive only actual previous facts; never fabricate a failed incoming capture. */

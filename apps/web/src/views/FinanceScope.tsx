@@ -15,18 +15,18 @@ export default function FinanceScope({ data, range, onPeriod, account, currency,
     return <div className="finance-scope">
         <div className="finance-scope-copy">
             {range && <div className="compact-period">
-                {mode !== "custom" && <button type="button" className="icon-button" aria-label={mode === "year" ? "Année précédente" : "Mois précédent"} disabled={previous!.to < data.scope.from} onClick={() => onPeriod(previous!)}><ChevronLeft size={18} aria-hidden="true" /></button>}
+                {mode !== "custom" && <button type="button" className="icon-button" aria-label={mode === "year" ? "Previous year" : "Previous month"} disabled={previous!.to < data.scope.from} onClick={() => onPeriod(previous!)}><ChevronLeft size={18} aria-hidden="true" /></button>}
                 <strong aria-live="polite">{rangeLabel(range)}</strong>
-                {mode !== "custom" && <button type="button" className="icon-button" aria-label={mode === "year" ? "Année suivante" : "Mois suivant"} disabled={next!.from > data.scope.to} onClick={() => onPeriod(next!)}><ChevronRight size={18} aria-hidden="true" /></button>}
+                {mode !== "custom" && <button type="button" className="icon-button" aria-label={mode === "year" ? "Next year" : "Next month"} disabled={next!.from > data.scope.to} onClick={() => onPeriod(next!)}><ChevronRight size={18} aria-hidden="true" /></button>}
             </div>}
-            <small>{[...data.accounts,...additionalAccounts].find(a => a.id === account)?.name ?? "Tous les comptes"} · {currency}</small>
+            <small>{[...data.accounts,...additionalAccounts].find(a => a.id === account)?.name ?? "All accounts"} · {currency}</small>
         </div>
-        <button type="button" className="button secondary compact-filter-button" ref={trigger} aria-haspopup="dialog" aria-controls={id} aria-expanded={open} onClick={() => setOpen(true)}><SlidersHorizontal size={17} aria-hidden="true" />Filtres{account && <span className="count-badge">1</span>}</button>
-        <CompactDialog id={id} title="Filtres des finances" open={open} onClose={() => setOpen(false)} anchor={trigger}>
+        <button type="button" className="button secondary compact-filter-button" ref={trigger} aria-haspopup="dialog" aria-controls={id} aria-expanded={open} onClick={() => setOpen(true)}><SlidersHorizontal size={17} aria-hidden="true" />Filters{account && <span className="count-badge">1</span>}</button>
+        <CompactDialog id={id} title="Finance filters" open={open} onClose={() => setOpen(false)} anchor={trigger}>
             {range && <PeriodNavigator range={range} scope={data.scope} onChange={onPeriod} />}
-            <label>Compte<select aria-label="Compte" value={account} onChange={e => onAccount(e.target.value)}><option value="">Tous les comptes</option>{[...data.accounts,...additionalAccounts].map(a => <option key={a.id} value={a.id}>{a.name}</option>)}</select></label>
-            <label>Devise<select aria-label="Devise" value={currency} onChange={e => onCurrency(e.target.value)}>{[...new Set(["CAD", ...data.accounts.map(a => a.currency), ...currencies])].map(c => <option key={c}>{c}</option>)}</select></label>
-            <button className="button" type="button" onClick={() => setOpen(false)}>Voir les résultats</button>
+            <label>Account<select aria-label="Account" value={account} onChange={e => onAccount(e.target.value)}><option value="">All accounts</option>{[...data.accounts,...additionalAccounts].map(a => <option key={a.id} value={a.id}>{a.name}</option>)}</select></label>
+            <label>Currency<select aria-label="Currency" value={currency} onChange={e => onCurrency(e.target.value)}>{[...new Set(["CAD", ...data.accounts.map(a => a.currency), ...currencies])].map(c => <option key={c}>{c}</option>)}</select></label>
+            <button className="button" type="button" onClick={() => setOpen(false)}>View results</button>
         </CompactDialog>
     </div>;
 }

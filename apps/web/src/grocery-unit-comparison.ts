@@ -13,14 +13,14 @@ const equalRate = (a: number, b: number) => Math.abs(a - b) <= Number.EPSILON * 
 
 function countLabel(item: ShoppingItem) {
   const labels: Record<string, string> = { "œufs": "œuf", "tranches": "tranche", "poitrines": "poitrine", "muffins entiers équivalents": "muffin", "muffins": "muffin" };
-  return labels[item.countUnit ?? ""] ?? "unité";
+  return labels[item.countUnit ?? ""] ?? "unit";
 }
 /** A sourced physical format or labelled capacity; never guesses density, slices or dose. */
 export function observedUnitRate(item: ShoppingItem, p: GroceryPrice): UnitRate | null {
   if (!Number.isFinite(p.price) || p.price < 0 || !Number.isFinite(p.size) || p.size <= 0 || uncertainFormat.test(p.matchNote ?? "") || estimatedPackage.test(p.matchNote ?? "")) return null;
   if (item.measure === "uses" && p.usesPerPack !== null && p.usesPerPack !== undefined) {
     if (!Number.isFinite(p.usesPerPack) || p.usesPerPack <= 0) return null;
-    const label = item.countUnit === "charges" ? "charge (étiquette)" : item.countUnit === "cycles" ? "cycle (étiquette)" : "utilisation (étiquette)";
+    const label = item.countUnit === "charges" ? "charge (label)" : item.countUnit === "cycles" ? "cycle (label)" : "use (label)";
     const amount = p.price / p.usesPerPack;
     return Number.isFinite(amount) ? { amount, basis: "uses", label } : null;
   }
@@ -30,24 +30,24 @@ export function observedUnitRate(item: ShoppingItem, p: GroceryPrice): UnitRate 
   return Number.isFinite(amount) ? { amount, basis: size.unit as Basis, label: size.unit === "each" ? countLabel(item) : size.unit } : null;
 }
 function eligibilityReason(plan: GroceryPlan, r: GroceryRetailer, p: GroceryPrice, now?: string) {
-  if (r.enabled === false) return "Magasin hors comparaison";
-  if (p.currency !== plan.currency) return "Devise différente";
-  if (p.available === "no") return "Indisponible selon source";
-  if (!datedPrice(p, now)) return "Prix historique ou à actualiser";
-  if ((Date.parse(now ?? new Date().toISOString().slice(0, 10)) - Date.parse(p.evidence.date)) / 86400000 > 7) return "Observation ancienne, à actualiser";
-  if (/catalogue par défaut/i.test(r.name)) return "Catalogue non local";
-  if (!p.mode || p.mode === "unknown" || p.mode !== r.mode) return "Mode du prix à confirmer";
-  if (uncertainFormat.test(p.matchNote ?? "")) return "Format non confirmé";
-  if (estimatedPackage.test(p.matchNote ?? "")) return "Prix de paquet estimé";
+  if (r.enabled === false) return "Store excluded from comparison";
+  if (p.currency !== plan.currency) return "Different currency";
+  if (p.available === "no") return "Unavailable according to the source";
+  if (!datedPrice(p, now)) return "Historical price or refresh needed";
+  if ((Date.parse(now ?? new Date().toISOString().slice(0, 10)) - Date.parse(p.evidence.date)) / 86400000 > 7) return "Historical observation needs refreshing";
+  if (/catalogue par défaut/i.test(r.name)) return "Non-local catalogue";
+  if (!p.mode || p.mode === "unknown" || p.mode !== r.mode) return "Price method not confirmed";
+  if (uncertainFormat.test(p.matchNote ?? "")) return "Pack size not confirmed";
+  if (estimatedPackage.test(p.matchNote ?? "")) return "Estimated pack price";
   return "";
 }
 /** Positive gaps never round to a misleading +0%. The zero minimum has no ratio. */
 export function unitPercentLabel(percent: number) {
-  if (percent > 0 && percent + 1e-10 < .1) return "+<0,1 %";
-  return "+" + new Intl.NumberFormat("fr-CA", { maximumFractionDigits: 1 }).format(percent) + " %";
+  if (percent > 0 && percent + 1e-10 < .1) return "+<0.1%";
+  return "+" + new Intl.NumberFormat("en-CA", { maximumFractionDigits: 1 }).format(percent) + "%";
 }
 export function formatUnitRate(rate: UnitRate, currency: string) {
-  const amount = rate.amount > 0 && rate.amount < .0001 ? "<0,0001" : new Intl.NumberFormat("fr-CA", { maximumFractionDigits: 4 }).format(rate.amount);
+  const amount = rate.amount > 0 && rate.amount < .0001 ? "<0.0001" : new Intl.NumberFormat("en-CA", { maximumFractionDigits: 4 }).format(rate.amount);
   return `${amount} ${currency}/${rate.label}`;
 }
 
@@ -61,7 +61,7 @@ export function articleUnitComparison(plan: GroceryPlan, item: ShoppingItem, gro
     const visible = all.some(o => !/catalogue par défaut/i.test(o.r.name)) ? all.filter(o => !/catalogue par défaut/i.test(o.r.name)) : all;
     const offers: RankedOffer[] = visible.map(({ r, p }) => {
       const rate = observedUnitRate(item, p);
-      return { r, p, rate, reason: eligibilityReason(plan, r, p, now) || (!rate ? "Format ou capacité non calculable" : ""), percent: null, gap: "Non comparable", tone: "neutral" };
+      return { r, p, rate, reason: eligibilityReason(plan, r, p, now) || (!rate ? "Pack size or capacity cannot be calculated" : ""), percent: null, gap: "Not comparable", tone: "neutral" };
     });
     return { group, index, offers, rank: null as number | null };
   });
@@ -75,17 +75,17 @@ export function articleUnitComparison(plan: GroceryPlan, item: ShoppingItem, gro
   const ties = minimum === null ? 0 : comparable.filter(o => equalRate(o.rate!.amount, minimum)).length;
   for (const row of rows) {
     for (const offer of row.offers) {
-      if (!offer.reason && offer.rate?.basis !== basis) offer.reason = "Unité différente";
+      if (!offer.reason && offer.rate?.basis !== basis) offer.reason = "Different unit";
       if (offer.reason || !offer.rate || minimum === null) continue;
       row.rank = row.rank === null ? offer.rate.amount : Math.min(row.rank, offer.rate.amount);
-      if (comparable.length < 2) { offer.gap = "Seul prix comparable"; continue; }
-      if (minimum === 0) { offer.gap = offer.rate.amount === 0 ? "Prix nul observé" : "Écart non calculable"; continue; }
+      if (comparable.length < 2) { offer.gap = "Only comparable price"; continue; }
+      if (minimum === 0) { offer.gap = offer.rate.amount === 0 ? "Zero price observed" : "Difference cannot be calculated"; continue; }
       const percent = (offer.rate.amount / minimum - 1) * 100;
       if (equalRate(offer.rate.amount, minimum)) {
-        offer.percent = 0; offer.gap = ties > 1 ? "Ex æquo · 0 %" : "Plus bas observé · 0 %"; offer.tone = "minimum";
+        offer.percent = 0; offer.gap = ties > 1 ? "Tie · 0%" : "Lowest observed · 0%"; offer.tone = "minimum";
       } else if (Number.isFinite(percent) && percent > 0) {
         offer.percent = percent; offer.gap = unitPercentLabel(percent); offer.tone = "higher";
-      } else { offer.gap = "Écart non calculable"; }
+      } else { offer.gap = "Difference cannot be calculated"; }
     }
     // Sort variants without merging their formats or modes.
     row.offers = row.offers.map((offer, index) => ({ offer, index })).sort((a, b) => {

@@ -107,7 +107,7 @@ test("legacy history upgrades silently, preserves device/preferences and rejects
   for (const date of ["invalid", now.toISOString(), "2027-12-31"]) await assert.rejects(lib.mutate({ action: "snooze", id: s.events[0].id, expectedRevision: s.revision, snoozedUntil: date }, now));
   assert.equal(await readFile(path, "utf8"), before);
   const invalid = JSON.stringify({ ...after, decisions: { [s.events[0].groupId]: { state: "snoozed", at: now.toISOString(), evidenceVersion: s.events[0].evidenceVersion, snoozedUntil: "bad" } } });
-  await writeFile(path, invalid); await assert.rejects(lib.read(), /Aucun fichier remplacé/); await assert.rejects(lib.scan({ contracts: [] }, [], now)); assert.equal(await readFile(path, "utf8"), invalid);
+  await writeFile(path, invalid); await assert.rejects(lib.read(), /No file was replaced/); await assert.rejects(lib.scan({ contracts: [] }, [], now)); assert.equal(await readFile(path, "utf8"), invalid);
 }));
 
 test("new devices do not receive an older pending group; recipients and event links stay scoped", () => sandbox(async path => {
@@ -216,7 +216,7 @@ test("unreadable Today decisions defer only insurance renewal pushes and preserv
   const telecom = { ...contractEvidence(), id: "other-contract", renewal: "2026-11-20" };
   let s = await t.lib.scan({ contracts: [t.contract, telecom] }, [], new Date("2026-10-22T17:00:00Z"));
   assert.equal(t.deliveries.length, 1); assert.equal(s.events.find(e => e.id === t.deliveries[0]).target.recordId, telecom.id);
-  assert.ok(s.sourceErrors.includes("suivi des actions d’accueil")); assert.ok(!JSON.stringify(s).includes("private failure"));
+  assert.ok(s.sourceErrors.includes("home action tracking")); assert.ok(!JSON.stringify(s).includes("private failure"));
   assert.equal(s.events.find(e => e.target.recordId === t.contract.id).pushState, "pending");
   assert.equal(s.events.find(e => e.target.recordId === t.contract.id).active, true);
   assert.equal(s.events.find(e => e.target.recordId === t.contract.id).decision, undefined);

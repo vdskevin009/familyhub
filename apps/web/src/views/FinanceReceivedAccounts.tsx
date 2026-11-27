@@ -5,7 +5,7 @@ import { latestBalanceObservation } from "../../../worker/src/finance-observatio
 import { displayFinanceCapture } from "./FinanceCollectionNote";
 import FinanceSourceInventory from "./FinanceSourceInventory";
 
-const money = (cents: number, currency: string) => new Intl.NumberFormat("fr-CA", { style: "currency", currency, currencyDisplay: "code" }).format(cents / 100);
+const money = (cents: number, currency: string) => new Intl.NumberFormat("en-CA", { style: "currency", currency, currencyDisplay: "code" }).format(cents / 100);
 type InventoryRead = { status: "loading" | "ready" | "unsupported" | "error"; snapshot: Inventory | null };
 /** Two evidence groups, never an inferred identity crosswalk or a consolidated balance. */
 export default function FinanceReceivedAccounts({ data, inventory, onOpen, historicalOpen, onHistoricalOpen }: {
@@ -21,31 +21,31 @@ export default function FinanceReceivedAccounts({ data, inventory, onOpen, histo
         const holdings = data?.holdings.filter(h => h.accountId === account.id).sort((a, b) => b.asOf.localeCompare(a.asOf))[0];
         const cents = holdings?.totalCents ?? account.balanceCents;
         return <button key={account.id} type="button" data-investment-account={account.id} className="finance-service" onClick={() => onOpen(account.id)}>
-            <span><strong>{account.name}</strong><small>{account.type} · Observation historique · {(holdings?.asOf ?? account.asOf) || "date source inconnue"}</small></span>
-            <strong>{cents === null ? "Valeur manquante" : money(cents, holdings?.currency ?? account.currency)}</strong>
+            <span><strong>{account.name}</strong><small>{account.type} · Historical observation · {(holdings?.asOf ?? account.asOf) || "source date unknown"}</small></span>
+            <strong>{cents === null ? "Missing value" : money(cents, holdings?.currency ?? account.currency)}</strong>
         </button>;
     };
     return <div className="finance-received-accounts view-stack">
         <section className="surface view-stack" aria-labelledby={heading}>
-            <h2 id={heading}>Soldes reçus</h2>
-            <p>Chaque montant garde sa date de réception réelle. Elle ne prouve pas la date de mise à jour bancaire. Les groupes ci-dessous restent séparés, sans total commun ni correspondance supposée.</p>
-            {inventory.status === "ready" && Boolean(inventory.snapshot?.accounts.length) && <a href={"#" + sourceSection}>Voir les {inventory.snapshot!.accounts.length} comptes source non rapprochés</a>}
-            <h3>Comptes rapprochés du registre</h3>
-            <p className="muted">{received.length ? `${received.length} compte${received.length === 1 ? "" : "s"} avec un solde reçu daté.` : "Aucun solde reçu daté disponible dans ce groupe. Les valeurs du registre restent accessibles séparément."}</p>
+            <h2 id={heading}>Received balances</h2>
+            <p>Each amount retains the date it was received, which does not indicate when the bank last updated it. The groups below stay separate. Their amounts are not combined and no match is assumed.</p>
+            {inventory.status === "ready" && Boolean(inventory.snapshot?.accounts.length) && <a href={"#" + sourceSection}>View {inventory.snapshot!.accounts.length} unreconciled source accounts</a>}
+            <h3>Accounts reconciled with the register</h3>
+            <p className="muted">{received.length ? `${received.length} account${ received.length === 1 ? "" : "s"} with a dated balance.` : "No dated balances were received for this group. The register values are available separately."}</p>
             <div className="finance-register">{received.map(({ account, observation }) => <button key={account.id} type="button" data-investment-account={account.id} data-received-account="true" className="finance-service" onClick={() => onOpen(account.id)}>
-                <span><strong>{account.name}</strong><small>Reçu le <time dateTime={observation.capturedAt}>{displayFinanceCapture(observation.capturedAt)}</time></small><small>{observation.sourceAsOf ? <>Date bancaire : <time dateTime={observation.sourceAsOf}>{observation.sourceAsOf}</time></> : "Date bancaire inconnue"}</small><small>Voir les réceptions et l'historique</small></span>
+                <span><strong>{account.name}</strong><small>Received on <time dateTime={observation.capturedAt}>{displayFinanceCapture(observation.capturedAt)}</time></small><small>{observation.sourceAsOf ? <>Bank date: <time dateTime={observation.sourceAsOf}>{observation.sourceAsOf}</time></> : "Bank date unknown"}</small><small>View received balances and history</small></span>
                 <strong>{money(observation.balanceCents, observation.currency)}</strong>
             </button>)}</div>
         </section>
         <section id={sourceSection} tabIndex={-1} className="surface finance-received-source">
-            <div role="status">{inventory.status === "loading" ? "Chargement de l'inventaire enregistré sur le PC." : inventory.status === "unsupported" ? "L'inventaire source nécessite une mise à jour du worker PC. Le registre existant reste disponible." : inventory.status === "error" ? "Inventaire source indisponible. Actualisez pour relire le PC; aucune valeur historique ne remplace les comptes source." : ""}</div>
-            {inventory.status === "ready" && <FinanceSourceInventory snapshot={inventory.snapshot} title="Comptes source non rapprochés" />}
+            <div role="status">{inventory.status === "loading" ? "Loading the inventory saved on your PC." : inventory.status === "unsupported" ? "Update the worker on your PC to view the source inventory. The existing register is still available." : inventory.status === "error" ? "Source inventory unavailable. Refresh to reload from your PC. Historical values do not substitute for source account data." : ""}</div>
+            {inventory.status === "ready" && <FinanceSourceInventory snapshot={inventory.snapshot} title="Unreconciled source accounts" />}
         </section>
         {historical.length > 0 && <details className="surface finance-historical-accounts" open={historicalOpen ?? !hasReceived} onToggle={event => onHistoricalOpen(event.currentTarget.open)}>
-            <summary>Valeurs du registre ({historical.length})</summary>
-            <p>Ces valeurs conservent leurs dates historiques. Elles ne sont pas ajoutées aux soldes reçus ci-dessus. Aucune ancienne date n'est remplacée par une date de chargement.</p>
+            <summary>Register values ({historical.length})</summary>
+            <p>These values retain their historical dates and are not added to the balances above. Reloading does not replace historical dates.</p>
             <div className="finance-register">{historical.map(historicalRow)}</div>
         </details>}
-        <aside className="finance-observation-note"><h3>À ne pas confondre</h3><p>Cotisations : montants versés. Performance : gains et pertes. Patrimoine : actifs moins dettes.</p><p>Aucun total consolidé entre sources, dates ou devises différentes. Les positions et activités historiques restent accessibles dans chaque compte du registre.</p></aside>
+        <aside className="finance-observation-note"><h3>What these terms mean</h3><p>Contributions are amounts paid in. Performance is gains and losses. Net worth is assets minus debts.</p><p>Totals do not combine different sources, dates or currencies. Historical holdings and activity remain available in each register account.</p></aside>
     </div>;
 }

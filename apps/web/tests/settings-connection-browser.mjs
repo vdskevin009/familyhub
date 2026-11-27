@@ -82,7 +82,7 @@ try {
     else if (scenario === 'key-late-success') await key.fill('synthetic-key-b');
     else if (scenario === 'aba-late-success') { await endpoint.fill(B); await endpoint.fill(A); }
     else if (scenario === 'leave-late-success') {
-      await page.getByRole('button', { name: 'Projets', exact: true }).first().click();
+      await page.getByRole('button', { name: 'Projects', exact: true }).first().click();
       await page.locator('.project-tiles').waitFor();
     }
     if (scenario === 'new-test-old-error') {

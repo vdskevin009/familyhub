@@ -36,7 +36,7 @@ export async function collectOpportunitySources(loaders: OpportunityLoaders, pub
       publish({ id, label: sourceLabels[id], status: "ready", data, checkedAt: now(), sourceDate, error: null, ...(id === "claims" ? { coverage: claimCoverage(data as NonNullable<OpportunityInputs["claims"]["data"]>) } : {}) });
     } catch {
       // Remote errors may include private URLs or internal details. Keep the card message generic.
-      publish({ id, label: sourceLabels[id], status: "error", data: null, checkedAt: now(), sourceDate: null, error: "Source indisponible. Vérifiez le PC puis actualisez." });
+      publish({ id, label: sourceLabels[id], status: "error", data: null, checkedAt: now(), sourceDate: null, error: "Source unavailable. Check your PC and refresh." });
     } finally { if (timeout !== undefined) clearTimeout(timeout); }
   }));
 }
@@ -46,9 +46,9 @@ async function actionRequest(config: WorkerConfig, body?: object): Promise<Oppor
     method: body ? "POST" : "GET", headers: workerRequestHeaders(config),
     ...(body ? { body: JSON.stringify(body) } : {}), cache: "no-store", redirect: "error", signal: AbortSignal.timeout(30_000)
   });
-  if (!response.ok) throw new Error(response.status === 409 ? "La liste a changé sur un autre appareil. Actualisez avant de réessayer." : response.status === 404 ? "Le suivi des actions nécessite la mise à jour du PC." : "Le suivi n’a pas été enregistré. Actualisez avant de réessayer.");
+  if (!response.ok) throw new Error(response.status === 409 ? "The list changed on another device. Refresh before retrying." : response.status === 404 ? "Update your PC service to track actions." : "The action was not saved. Refresh before retrying.");
   const result = await response.json() as OpportunityActionsSnapshot;
-  if (result.schema !== 1 || typeof result.revision !== "string" || !result.decisions || typeof result.decisions !== "object" || Array.isArray(result.decisions)) throw new Error("Le suivi reçu n’est pas lisible. Aucune action enregistrée.");
+  if (result.schema !== 1 || typeof result.revision !== "string" || !result.decisions || typeof result.decisions !== "object" || Array.isArray(result.decisions)) throw new Error("The response could not be read. No action was recorded.");
   return result;
 }
 export function saveOpportunityAction(config: WorkerConfig, expectedRevision: string, opportunity: Opportunity, action: OpportunityAction, options: { snoozedUntil?: string; reason?: string } = {}) {
@@ -82,7 +82,7 @@ export function useOpportunities(config: WorkerConfig, reviews: SavingsState["Re
       if (active.current === generation) setInputs(previous => ({ ...previous, [source.id]: source }) as OpportunityInputs);
     });
     void actionRequest(config).then(snapshot => { if (active.current === generation) setActions(snapshot); }).catch(error => {
-      if (active.current === generation) setActionError(error instanceof Error ? error.message : "Le suivi des actions est indisponible.");
+      if (active.current === generation) setActionError(error instanceof Error ? error.message : "Action tracking is unavailable.");
     }).finally(() => { if (active.current === generation) setActionsLoading(false); });
     return () => { if (active.current === generation) active.current++; };
   }, [config.Endpoint, config.ApiKey, configured, refreshId]);
@@ -92,7 +92,7 @@ export function useOpportunities(config: WorkerConfig, reviews: SavingsState["Re
       if (!cancelled) {
         // A malformed projection must not create an all-clear or retain unqualified totals.
         setFeed({ opportunities: [], recoverable: { amount: null, currency: "CAD", known: 0, unknown: 0 } });
-        setActionError("Certaines preuves ne peuvent pas être interprétées. Actualisez les sources avant de décider.");
+        setActionError("Some evidence could not be read. Refresh the sources before making a decision.");
       }
     });
     return () => { cancelled = true; };
@@ -104,7 +104,7 @@ export function useOpportunities(config: WorkerConfig, reviews: SavingsState["Re
   const setAction = useCallback(async (opportunity: Opportunity, action: OpportunityAction, options: { snoozedUntil?: string; reason?: string } = {}) => {
     if (actionLock.current) return false;
     const snapshot = currentActions.current;
-    if (!snapshot || !configured) { setActionError("Reconnectez le PC pour enregistrer cette action."); return false; }
+    if (!snapshot || !configured) { setActionError("Reconnect your PC to save this action."); return false; }
     actionLock.current = true; setActionBusy(true); setActionError("");
     const generation = active.current;
     try {
@@ -112,7 +112,7 @@ export function useOpportunities(config: WorkerConfig, reviews: SavingsState["Re
       if (generation === active.current) { currentActions.current = result; setActions(result); return true; }
       return false;
     } catch (error) {
-      if (generation === active.current) setActionError(error instanceof Error ? error.message : "Action non confirmée. Actualisez avant de réessayer.");
+      if (generation === active.current) setActionError(error instanceof Error ? error.message : "Action not confirmed. Refresh before retrying.");
       return false;
     } finally {
       // A refresh/config change discards the response, but must still release the single in-flight action.

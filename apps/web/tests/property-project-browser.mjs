@@ -31,14 +31,14 @@ try {
   });
   await page.goto(base+'?view=property');await page.locator('.property-card').first().waitFor();assert.equal(await page.locator('.property-card').count(),2);assert.equal(writes,0);
   assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
-  await page.getByRole('button',{name:'Suivre Adresse fictive a',exact:true}).click();await page.getByRole('button',{name:'Ne plus suivre Adresse fictive a',exact:true}).waitFor();assert.equal(writes,1);
-  await page.getByRole('button',{name:'Suivis',exact:true}).click();assert.equal(await page.locator('.property-card').count(),1);await page.getByRole('button',{name:'Tous',exact:true}).click();
-  await page.getByRole('button',{name:'Adresse fictive a',exact:true}).click();await page.getByRole('dialog').waitFor();assert.ok(await page.getByRole('dialog').getByText('Les annonces enregistrées documentent des prix affichés. Pour situer le prix, examinez des ventes conclues.').isVisible());await page.keyboard.press('Escape');assert.equal(await page.locator('dialog[open]').count(),0);
-  await page.getByLabel('Comparer ce bien').nth(0).check();await page.getByLabel('Comparer ce bien').nth(1).check();await page.getByRole('button',{name:'Comparer (2/3)',exact:true}).click();await page.getByRole('dialog').waitFor();assert.ok(await page.getByText('Sous le budget',{exact:true}).isVisible());await page.getByRole('button',{name:'Fermer',exact:true}).click();
+  await page.getByRole('button',{name:'Follow Adresse fictive a',exact:true}).click();await page.getByRole('button',{name:'Unfollow Adresse fictive a',exact:true}).waitFor();assert.equal(writes,1);
+  await page.getByRole('button',{name:'Following',exact:true}).click();assert.equal(await page.locator('.property-card').count(),1);await page.getByRole('button',{name:'All',exact:true}).click();
+  await page.getByRole('button',{name:'Adresse fictive a',exact:true}).click();await page.getByRole('dialog').waitFor();assert.ok(await page.getByRole('dialog').getByText('Saved listings show asking prices. Use completed sales to assess the asking price.').isVisible());await page.keyboard.press('Escape');assert.equal(await page.locator('dialog[open]').count(),0);
+  await page.getByLabel('Compare this property').nth(0).check();await page.getByLabel('Compare this property').nth(1).check();await page.getByRole('button',{name:'Compare (2/3)',exact:true}).click();await page.getByRole('dialog').waitFor();assert.ok(await page.getByText('Below budget',{exact:true}).isVisible());await page.getByRole('button',{name:'Close',exact:true}).click();
   await mkdir('output/property-ui',{recursive:true});await page.screenshot({path:`output/property-ui/property-${width}.png`,fullPage:true});
-  mode='offline';await page.getByRole('button',{name:'Actualiser les biens'}).click();await page.getByRole('alert').waitFor();assert.equal(await page.locator('.property-card').count(),2);assert.equal(writes,1);
-  mode='empty';await page.getByRole('button',{name:'Actualiser les biens'}).click();await page.getByText('Aucun bien dans cette sélection.').waitFor();assert.equal(await page.locator('.property-card').count(),0);
-  await page.getByRole('button',{name:'Projets',exact:true}).first().click();await page.getByRole('button',{name:'Nouveau bien',exact:true}).waitFor();await page.goBack();await page.getByRole('heading',{name:'Nouveau bien',exact:true}).waitFor();
+  mode='offline';await page.getByRole('button',{name:'Refresh properties'}).click();await page.getByRole('alert').waitFor();assert.equal(await page.locator('.property-card').count(),2);assert.equal(writes,1);
+  mode='empty';await page.getByRole('button',{name:'Refresh properties'}).click();await page.getByText('No properties in this selection.').waitFor();assert.equal(await page.locator('.property-card').count(),0);
+  await page.getByRole('button',{name:'Projects',exact:true}).first().click();await page.getByRole('button',{name:'Property search',exact:true}).waitFor();await page.goBack();await page.getByRole('heading',{name:'Property search',exact:true}).waitFor();
   assert.deepEqual(errors,[]);await context.close();
  }
  console.log('Property UI passed: mobile/desktop, following, filtering, evidence dialog, comparison, offline preservation, empty, navigation/back.');

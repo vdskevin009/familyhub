@@ -30,7 +30,7 @@ test("last observed movement exposes the unresolved dates without asserting miss
     const s = state(); s.data!.coverage.find(c => c.accountId === "card")!.latest = "2026-08-22";
     const result = trend(s, "2026-08");
     assert.equal(result.comparable, false); assert.equal(result.comparisonReady, false); assert.notEqual(result.baselineCents, null);
-    assert.match(result.reasons.join(" "), /dernier mouvement importé le 2026-08-22; couverture du 2026-08-23 au 2026-08-31 non établie/);
+    assert.match(result.reasons.join(" "), /last imported transaction 2026-08-22; coverage from 2026-08-23 to 2026-08-31 is not established/);
     assert.doesNotMatch(result.reasons.join(" "), /manquant|catégorie|classification/);
     assert.equal(trend({ ...s, decisions: {} }, "2026-08").reasons.join(" "), result.reasons.join(" "));
 });
@@ -142,7 +142,7 @@ test("month boundaries respect leap years, year changes and a shorter baseline m
     s.data!.coverage = s.data!.accounts.map(a => ({ accountId: a.id, earliest: "2025-09-01", latest: "2026-03-30", warning: null }));
     const t = trend(s, "2026-03");
     assert.equal(t.partial, true); assert.equal(t.qualifiedMonths.length, 5);
-    assert.equal(t.qualifiedMonths.includes("2026-02"), false); assert.match(t.candidates.at(-1)!.reasons.join(" "), /court/);
+    assert.equal(t.qualifiedMonths.includes("2026-02"), false); assert.match(t.candidates.at(-1)!.reasons.join(" "), /too short/);
     assert.throws(() => trend(s, "invalid"), /Mois invalide/);
 });
 

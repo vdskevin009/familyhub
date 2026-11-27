@@ -16,58 +16,58 @@ export class GroceryPurchaseResolutionStore {
   private path: string;
   constructor(directory: string, private records: () => Promise<{ records: GroceryRecord[] }>, private plan: () => Promise<GroceryPlan>) { this.path = join(directory, "purchase-resolution.json"); }
   async read(): Promise<PurchaseResolution> {
-    try { const raw = await readFile(this.path, "utf8"); if (Buffer.byteLength(raw) > 6_000_000) throw new GroceryError("Fichier de résolution trop volumineux."); return validatePurchaseResolution(JSON.parse(raw)); }
-    catch (e) { if ((e as NodeJS.ErrnoException).code === "ENOENT") return emptyPurchaseResolution(); throw new GroceryError("Les confirmations de comparaison sont illisibles. Le fichier est conservé."); }
+    try { const raw = await readFile(this.path, "utf8"); if (Buffer.byteLength(raw) > 6_000_000) throw new GroceryError("The resolution file is too large."); return validatePurchaseResolution(JSON.parse(raw)); }
+    catch (e) { if ((e as NodeJS.ErrnoException).code === "ENOENT") return emptyPurchaseResolution(); throw new GroceryError("The comparison confirmations cannot be read. The file was retained."); }
   }
   mutate(value: unknown, now = new Date()) {
     const run = this.queue.then(async () => {
       const state = await this.read(), body = value as Record<string, unknown>;
-      if (!body || body.expectedRevision !== state.revision) throw new GroceryConflict("Les confirmations ont changé. Actualisez avant de réessayer.");
+      if (!body || body.expectedRevision !== state.revision) throw new GroceryConflict("The confirmations changed. Refresh before retrying.");
       if (body.action === "add-candidates") {
-        if (Object.keys(body).some(k => !["action", "expectedRevision", "candidates"].includes(k)) || !Array.isArray(body.candidates) || !body.candidates.length || body.candidates.length > 20) throw new GroceryError("Lot de candidats invalide.");
+        if (Object.keys(body).some(k => !["action", "expectedRevision", "candidates"].includes(k)) || !Array.isArray(body.candidates) || !body.candidates.length || body.candidates.length > 20) throw new GroceryError("Invalid candidate batch.");
         const candidates = body.candidates.map(validatePurchaseCandidate), [library, plan] = await Promise.all([this.records(), this.plan()]);
         for (const c of candidates) {
           const old = state.candidates.find(x => x.id === c.id);
-          if (old) { if (JSON.stringify(old) !== JSON.stringify(c)) throw new GroceryConflict("La preuve candidate conservée ne peut pas être remplacée."); continue; }
+          if (old) { if (JSON.stringify(old) !== JSON.stringify(c)) throw new GroceryConflict("The saved candidate evidence cannot be replaced."); continue; }
           const record = library.records.find(r => r.id === c.recordId), reason = record ? purchaseCandidateReason(c, record, now.getTime()) : "Achat source absent.";
           if (reason) throw new GroceryError(reason);
-          if (c.itemId && !plan.items.some(i => i.id === c.itemId)) throw new GroceryError("Article du catalogue absent.");
+          if (c.itemId && !plan.items.some(i => i.id === c.itemId)) throw new GroceryError("Catalogue item not found.");
           state.candidates.push(c);
         }
       } else if (body.action === "add-scenario-hints") {
-        if (Object.keys(body).some(k => !["action", "expectedRevision", "hints", "reviewedSources"].includes(k)) || body.reviewedSources !== true || !Array.isArray(body.hints) || !body.hints.length || body.hints.length > 20) throw new GroceryError("Sources estimatives revues requises.");
+        if (Object.keys(body).some(k => !["action", "expectedRevision", "hints", "reviewedSources"].includes(k)) || body.reviewedSources !== true || !Array.isArray(body.hints) || !body.hints.length || body.hints.length > 20) throw new GroceryError("Reviewed estimate sources are required.");
         const hints = validateScenarioHints(body.hints), plan = await this.plan();
         state.scenarioHints ??= [];
         for (const hint of hints) {
-          if (Date.parse(hint.observedAt) > now.getTime()) throw new GroceryError("Date de référence future.");
-          if (hint.purpose !== "source-format" && !plan.prices.some(p => p.id === hint.priceId && purchasePriceKey(p) === hint.priceKey)) throw new GroceryError("Prix de référence absent ou modifié.");
+          if (Date.parse(hint.observedAt) > now.getTime()) throw new GroceryError("The reference date is in the future.");
+          if (hint.purpose !== "source-format" && !plan.prices.some(p => p.id === hint.priceId && purchasePriceKey(p) === hint.priceKey)) throw new GroceryError("The reference price is missing or has changed.");
           const old = state.scenarioHints.find(h => h.id === hint.id);
-          if (old) { if (JSON.stringify(old) !== JSON.stringify(hint)) throw new GroceryConflict("Une référence estimative conservée ne peut pas être remplacée."); } else state.scenarioHints.push(hint);
+          if (old) { if (JSON.stringify(old) !== JSON.stringify(hint)) throw new GroceryConflict("A saved estimate reference cannot be replaced."); } else state.scenarioHints.push(hint);
         }
       } else if (body.action === "add-reference-leads") {
-        if (Object.keys(body).some(k => !["action", "expectedRevision", "leads", "reviewedSources"].includes(k)) || body.reviewedSources !== true || !Array.isArray(body.leads) || !body.leads.length || body.leads.length > 20) throw new GroceryError("Pistes sourcées revues requises.");
+        if (Object.keys(body).some(k => !["action", "expectedRevision", "leads", "reviewedSources"].includes(k)) || body.reviewedSources !== true || !Array.isArray(body.leads) || !body.leads.length || body.leads.length > 20) throw new GroceryError("Reviewed, documented leads are required.");
         const leads = validateReferenceLeads(body.leads); state.referenceLeads ??= [];
         for (const lead of leads) {
-          if (lead.date > now.toISOString().slice(0,10)) throw new GroceryError("Date de piste future.");
+          if (lead.date > now.toISOString().slice(0,10)) throw new GroceryError("The lead date is in the future.");
           const old = state.referenceLeads.find(x => x.id === lead.id);
-          if (old) { if (JSON.stringify(old) !== JSON.stringify(lead)) throw new GroceryConflict("Une piste conservée ne peut pas être remplacée."); } else state.referenceLeads.push(lead);
+          if (old) { if (JSON.stringify(old) !== JSON.stringify(lead)) throw new GroceryConflict("A saved lead cannot be replaced."); } else state.referenceLeads.push(lead);
         }
       } else if (body.action === "confirm" || body.action === "unconfirm") {
-        if (Object.keys(body).some(k => !["action", "expectedRevision", "id", "confirmed", "confirmationEvidence"].includes(k)) || typeof body.id !== "string") throw new GroceryError("Décision de comparaison invalide.");
+        if (Object.keys(body).some(k => !["action", "expectedRevision", "id", "confirmed", "confirmationEvidence"].includes(k)) || typeof body.id !== "string") throw new GroceryError("Invalid comparison decision.");
         const c = state.candidates.find(x => x.id === body.id);
-        if (!c) throw new GroceryError("Candidat absent. Actualisez les achats.");
+        if (!c) throw new GroceryError("Candidate not found. Refresh Purchases.");
         if (body.action === "confirm") {
-          if (body.confirmed !== true) throw new GroceryError("Confirmez explicitement le produit et le format de cet achat.");
+          if (body.confirmed !== true) throw new GroceryError("Confirm the product and pack size for this purchase.");
           const record = (await this.records()).records.find(r => r.id === c.recordId), reason = record ? purchaseCandidateReason(c, record, now.getTime()) : "Achat source absent.";
           if (reason) throw new GroceryError(reason);
-          if (c.size === null || c.unit === null) throw new GroceryError("Le format public ne suffit pas pour confirmer une quantité comparable.");
-          if (state.candidates.some(x => x.id !== c.id && x.recordId === c.recordId && x.lineIndex === c.lineIndex && state.decisions[x.id]?.state === "confirmed")) throw new GroceryConflict("Retirez la confirmation précédente avant de choisir un autre candidat.");
+          if (c.size === null || c.unit === null) throw new GroceryError("The public pack size is not enough to confirm a comparable quantity.");
+          if (state.candidates.some(x => x.id !== c.id && x.recordId === c.recordId && x.lineIndex === c.lineIndex && state.decisions[x.id]?.state === "confirmed")) throw new GroceryConflict("Remove the previous confirmation before choosing another candidate.");
         }
         const evidence = body.confirmationEvidence as { at?: unknown; source?: unknown } | undefined;
-        if (evidence !== undefined && (!evidence || typeof evidence.at !== "string" || !Number.isFinite(Date.parse(evidence.at)) || new Date(evidence.at).toISOString() !== evidence.at || Date.parse(evidence.at) > now.getTime() || typeof evidence.source !== "string" || !evidence.source.trim() || evidence.source.length > 1000)) throw new GroceryError("Provenance de la confirmation invalide.");
+        if (evidence !== undefined && (!evidence || typeof evidence.at !== "string" || !Number.isFinite(Date.parse(evidence.at)) || new Date(evidence.at).toISOString() !== evidence.at || Date.parse(evidence.at) > now.getTime() || typeof evidence.source !== "string" || !evidence.source.trim() || evidence.source.length > 1000)) throw new GroceryError("Invalid confirmation evidence.");
         state.decisions[c.id] = { state: body.action === "confirm" ? "confirmed" : "unconfirmed", at: now.toISOString(), ...(body.action === "confirm" ? { evidence: evidence ? { at: evidence.at as string, source: evidence.source as string } : { at: now.toISOString(), source: "Confirmation explicite dans FamilyHub" } } : {}) };
-      } else throw new GroceryError("Action de comparaison inconnue.");
-      const validated = validatePurchaseResolution(state); validated.revision = randomUUID(); if (Buffer.byteLength(JSON.stringify(validated)) > 6_000_000) throw new GroceryError("Limite de preuves atteinte ; données conservées."); await atomicJson(this.path, validated); return validated;
+      } else throw new GroceryError("Unknown comparison action.");
+      const validated = validatePurchaseResolution(state); validated.revision = randomUUID(); if (Buffer.byteLength(JSON.stringify(validated)) > 6_000_000) throw new GroceryError("Evidence limit reached. Existing data was retained."); await atomicJson(this.path, validated); return validated;
     });
     this.queue = run.catch(() => {}); return run;
   }
@@ -107,7 +107,7 @@ export class GroceryPurchaseResolutionStore {
       // Keep the existing bounded private file readable even at the worst schema limits.
       while (state.scenarios?.length && Buffer.byteLength(JSON.stringify(state)) > 5_900_000) { state.scenarios.pop(); changed = true; }
       if (!changed) return state;
-      const next = validatePurchaseResolution(state); next.revision = randomUUID(); if (Buffer.byteLength(JSON.stringify(next)) > 6_000_000) throw new GroceryError("Limite de preuves atteinte ; données conservées."); await atomicJson(this.path, next); return next;
+      const next = validatePurchaseResolution(state); next.revision = randomUUID(); if (Buffer.byteLength(JSON.stringify(next)) > 6_000_000) throw new GroceryError("Evidence limit reached. Existing data was retained."); await atomicJson(this.path, next); return next;
     });
     this.queue = run.catch(() => {}); return run;
   }

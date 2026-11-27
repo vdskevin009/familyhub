@@ -44,7 +44,7 @@ export function purchaseScenarioStores(plan: GroceryPlan, record: GroceryRecord,
         && !scenarioReferenceReason(l.price,plan,record,index,today,records,false));
       if (verified) return {...verified, confidence:verified.comparisonEvidence || verified.formatEvidence?.formatBasis === "household-assumption" ? "estimated" : "verified"};
       const scenario = estimates.find(s => s.lineIndex === index && scenarioPriceContext(plan.prices.find(p => p.id === s.priceId)!) === context);
-      if (!scenario) return estimates.some(s => s.lineIndex === index) ? {...missing,diagnostic:{...diagnostic,reasons:["context-mismatch"]},reason:"Référence disponible dans une autre localité ou un autre canal ; elle n’est pas additionnée à ce panier."} : missing;
+      if (!scenario) return estimates.some(s => s.lineIndex === index) ? {...missing,diagnostic:{...diagnostic,reasons:["context-mismatch"]},reason:"The reference price is for a different location or purchase channel. It is excluded from this basket."} : missing;
       const price = plan.prices.find(p => p.id === scenario.priceId)!;
       return {...base,price,reason:"",confidence:"estimated",scenario,normalized:scenario.normalized,outlay:scenario.outlay,packs:scenario.packs,ratio:scenario.ratio,calculated:Math.abs(scenario.ratio-Math.round(scenario.ratio))>1e-10};
     });

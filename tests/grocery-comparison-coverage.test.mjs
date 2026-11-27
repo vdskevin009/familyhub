@@ -171,12 +171,12 @@ test('invalid and old dates block; recent expired price stays explicitly histori
  const f=onlyLine(fixture());Object.assign(f.plan.prices[0].evidence,{date:'2026-11-10',until:'2026-11-12'});assert.equal(wm(f).covered,1);assert.equal(wm(f).historical,true);assert.equal(wm(f).limited,true);
 });
 test('nonlocal and unavailable references never become verified current offers',()=>{
- const f=onlyLine(fixture());Object.assign(f.plan.prices[0],{localityConfirmed:false,available:'no',mode:'unknown'});const s=wm(f);assert.equal(s.estimated,1);assert.equal(s.verified,0);assert.equal(s.nonlocal,true);assert.equal(s.limited,true);assert.match(s.lines[0].scenario.limits.join(' '),/Indisponible.*Canal|Canal.*Indisponible/);
+ const f=onlyLine(fixture());Object.assign(f.plan.prices[0],{localityConfirmed:false,available:'no',mode:'unknown'});const s=wm(f);assert.equal(s.estimated,1);assert.equal(s.verified,0);assert.equal(s.nonlocal,true);assert.equal(s.limited,true);assert.match(s.lines[0].scenario.limits.join(' '),/Purchase channel unknown or different/);assert.match(s.lines[0].scenario.limits.join(' '),/Unavailable according to the source/);
 });
 test('separate localities cannot manufacture a complete basket',()=>{
  const f=fixture();f.record.receipt.items[1]={...f.record.receipt.items[0],product:'Plain Greek 2%'};
  f.plan.prices.push({...f.plan.prices[0],id:'other',product:'Plain Greek 2%',locality:'Another branch'});
- const s=wm(f);assert.equal(s.covered,1);assert.equal(s.complete,false);assert.equal(s.multiContext,false);assert.match(s.lines.find(l=>l.normalized===null).reason,/autre localité/);
+ const s=wm(f);assert.equal(s.covered,1);assert.equal(s.complete,false);assert.equal(s.multiContext,false);assert.match(s.lines.find(l=>l.normalized===null).reason,/different location or purchase channel/);
  assert.equal(derivePurchaseScenarios([f.record],f.plan,undefined,today).length,1);
 });
 test('a coherent context covering more rows wins over isolated newer prices',()=>{

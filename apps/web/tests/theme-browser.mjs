@@ -58,8 +58,8 @@ try {
       else if (view === 'finances') assert.ok(titleSize >= 26 && titleSize <= 34, 'Approved finance title remains legible across viewport sizes');
       else assert.equal(titleSize, 20);
       if (['invoices', 'desjardins', 'blue-cross'].includes(view)) {
-        const bell = await page.getByRole('button', { name: 'Ouvrir les notifications', exact: true }).boundingBox();
-        const tabs = page.getByRole('navigation', { name: 'Sources documentaires', exact: true });
+        const bell = await page.getByRole('button', { name: 'Open notifications', exact: true }).boundingBox();
+        const tabs = page.getByRole('navigation', { name: 'Document sources', exact: true });
         for (const button of await tabs.getByRole('button').all()) {
           const box = await button.boundingBox();
           assert.ok(box.x + box.width <= bell.x || box.y >= bell.y + bell.height, 'Source tab label/control must not sit beneath notification bell');
@@ -86,18 +86,18 @@ try {
     // Use actual navigation controls and browser history; no storage/route hacks.
     page = await context.newPage(); await page.goto(base + '?view=other');
     const nav = page.locator('.bottom-nav:visible, .app-rail nav:visible');
-    await nav.getByRole('button', { name: 'Projets', exact: true }).click();
-    await page.locator('.project-tiles').getByRole('button', { name: 'Courses', exact: true }).click();
-    await page.getByRole('button', { name: 'Achats', exact: true }).click();
+    await nav.getByRole('button', { name: 'Projects', exact: true }).click();
+    await page.locator('.project-tiles').getByRole('button', { name: 'Groceries', exact: true }).click();
+    await page.getByRole('button', { name: 'Purchases', exact: true }).click();
     assert.equal(await page.evaluate(() => getComputedStyle(document.body).backgroundColor), 'rgb(245, 246, 248)');
     assert.equal(await page.locator('main h1').first().evaluate(e => getComputedStyle(e).fontSize), '20px');
     assert.equal(await page.getByRole('button', { name: 'Catalogue', exact: true }).count(), 0);
-    assert.equal(await page.getByRole('button', { name: 'Moins cher ailleurs', exact: true }).count(), 0);
-    await nav.getByRole('button', { name: 'Plus', exact: true }).click();
+    assert.equal(await page.getByRole('button', { name: 'Cheaper elsewhere', exact: true }).count(), 0);
+    await nav.getByRole('button', { name: 'More', exact: true }).click();
     await nav.getByRole('button', { name: 'Finances', exact: true }).click();
-    await page.goBack(); await page.getByRole('heading', { name: 'Plus', exact: true }).waitFor();
-    await page.goBack(); await page.getByRole('heading', { name: 'Courses', exact: true }).waitFor();
-    await page.goForward(); await page.getByRole('heading', { name: 'Plus', exact: true }).waitFor();
+    await page.goBack(); await page.getByRole('heading', { name: 'More', exact: true }).waitFor();
+    await page.goBack(); await page.getByRole('heading', { name: 'Groceries', exact: true }).waitFor();
+    await page.goForward(); await page.getByRole('heading', { name: 'More', exact: true }).waitFor();
     await page.goForward(); await page.getByRole('heading', { name: 'Finances', exact: true }).waitFor();
     await context.close();
   }

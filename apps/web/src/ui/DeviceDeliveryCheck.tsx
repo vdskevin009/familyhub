@@ -31,18 +31,18 @@ export function DeviceDeliveryCheck({snapshot,permission,version}:{snapshot:Noti
     return ()=>{current=false;window.removeEventListener('focus',read);serviceWorkers.removeEventListener('controllerchange',read);};
   },[snapshot?.revision,snapshot?.publicKey,version,permission]);
   const device=local.state==='subscribed'?snapshot?.devices.find(d=>d.id===local.id):undefined;
-  let message='Vérification de cet appareil…';
-  if(permission==='denied')message='Autorisation bloquée. Vérifier les notifications du site et celles de Chrome ou de l’application dans Android.';
-  else if(permission!=='granted')message='Permission à accorder sur cet appareil pour recevoir des avis.';
-  else if(local.state==='inactive')message='Service worker inactif. Rouvrir FamilyHub en ligne et vérifier à nouveau.';
-  else if(local.state==='error')message='Lecture de l’abonnement impossible sur cet appareil.';
-  else if(local.state==='missing')message='Permission accordée, mais aucun abonnement Push local. Activer sur cet appareil pour le créer.';
+  let message='Checking this device…';
+  if(permission==='denied')message='Permission is blocked. Check site notifications and Chrome or app notifications in Android.';
+  else if(permission!=='granted')message='Allow notifications on this device to receive alerts.';
+  else if(local.state==='inactive')message='The service worker is inactive. Open FamilyHub while online and check again.';
+  else if(local.state==='error')message='The subscription could not be read on this device.';
+  else if(local.state==='missing')message='Permission granted, but there is no local Push subscription. Enable notifications on this device to create one.';
   else if(local.state==='subscribed'){
-    if(!snapshot)message='Abonnement local présent. Inscription auprès du PC à vérifier après reconnexion.';
-    else if(!snapshot.pushConfigured)message='Abonnement local présent. Identité d’envoi du PC indisponible.';
-    else if(local.keyMismatch)message='L’abonnement local utilise une autre identité d’envoi. Vérifier la configuration avant de réinscrire cet appareil.';
-    else if(!device?.enabled)message='Abonnement local présent, mais aucune inscription active correspondante sur le PC. Vérifier puis réactiver cet appareil.';
-    else message='Cet abonnement correspond à une inscription active sur le PC. La réception sur ce téléphone reste à vérifier.';
+    if(!snapshot)message='A local subscription exists. Reconnect to your PC to verify its registration.';
+    else if(!snapshot.pushConfigured)message='A local subscription exists. Your PC’s sending identity is unavailable.';
+    else if(local.keyMismatch)message='The local subscription uses a different sending identity. Check the configuration before registering this device again.';
+    else if(!device?.enabled)message='A local subscription exists, but there is no matching active PC registration. Check and re-enable this device.';
+    else message='This subscription matches an active registration on the PC. Receipt on this phone still needs confirmation.';
   }
-  return <div role="status"><p>{message}</p>{device?.lastDelivery?.confirmedAt&&<p>Dernière réception déclarée sur cet appareil le {new Date(device.lastDelivery.confirmedAt).toLocaleString('fr-CA')}.</p>}</div>;
+  return <div role="status"><p>{message}</p>{device?.lastDelivery?.confirmedAt&&<p>Last confirmed receipt on this device: {new Date(device.lastDelivery.confirmedAt).toLocaleString('en-CA')}.</p>}</div>;
 }

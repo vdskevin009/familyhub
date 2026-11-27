@@ -80,7 +80,7 @@ export class NotificationLibrary {
         if (delivery && (!timestamp(delivery.at) || !idPattern.test(delivery.eventId) || !["accepted", "expired", "failed", "unconfirmed"].includes(delivery.outcome) || delivery.confirmedAt !== undefined && (!timestamp(delivery.confirmedAt) || delivery.outcome !== "accepted"))) throw new Error();
       }
       return data;
-    } catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return empty(); throw new Error("Historique de notifications illisible. Aucun fichier remplacé; vérifiez la sauvegarde privée."); }
+    } catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return empty(); throw new Error("Notification history is unreadable. No file was replaced. Check the private backup."); }
   }
   private validDecision(d: NotificationDecision): boolean {
     return !!d && idPattern.test(d.evidenceVersion) && ["snoozed", "resolved", "dismissed"].includes(d.state) && timestamp(d.at)
@@ -109,7 +109,7 @@ export class NotificationLibrary {
   }
   private async pushConfiguration() {
     try { return { config: await this.configuration(), error: "" }; }
-    catch { return { config: null, error: "Web Push indisponible sur ce PC. L'historique reste accessible; aucune identité d'envoi remplacée." }; }
+    catch { return { config: null, error: "Web Push is unavailable on this PC. History is still available, and the sending identity was not replaced." }; }
   }
   read() { return this.serialize(async () => this.expose(await this.load())); }
   scan(evidence: NotificationEvidence, errors: string[] = [], now = new Date()) {
@@ -180,7 +180,7 @@ export class NotificationLibrary {
       let actionSnapshot: OpportunityActionsSnapshot | undefined, actionReadFailed = false;
       if (this.opportunityActions) {
         try { actionSnapshot = await this.opportunityActions(); }
-        catch { actionReadFailed = true; state.sourceErrors.push("suivi des actions d’accueil"); }
+        catch { actionReadFailed = true; state.sourceErrors.push("home action tracking"); }
       }
       const insuranceRenewal = (candidate: Candidate) => candidate.source === "contracts" && candidate.kind === "deadline"
         && candidate.target.recordId && candidate.groupKey === `deadline:${candidate.target.recordId}:renewal`
@@ -240,24 +240,24 @@ export class NotificationLibrary {
     return this.serialize(async () => {
       const state = await this.load();
       const body = input as Record<string, unknown>;
-      if (!body || typeof body !== "object" || body.expectedRevision !== state.revision) throw new NotificationConflict("Les notifications ont changé. Actualisez avant de réessayer.");
+      if (!body || typeof body !== "object" || body.expectedRevision !== state.revision) throw new NotificationConflict("Notifications changed. Refresh before trying again.");
       if (body.action === "preferences") {
         const submitted = body.preferences as NotificationPreferences;
         const value = submitted && { ...submitted };
         // An already-open older PWA may omit only the new categories; preserve their saved choices.
         for (const kind of ["policy", "grocery", "claim-deadline", ...actionCategories] as const) if (value && value[kind] === undefined) value[kind] = state.preferences[kind];
-        if (!value || notificationKinds.some(k => typeof value[k] !== "boolean") || Object.keys(value).some(k => !notificationKinds.includes(k as typeof notificationKinds[number]))) throw new Error("Préférences invalides.");
+        if (!value || notificationKinds.some(k => typeof value[k] !== "boolean") || Object.keys(value).some(k => !notificationKinds.includes(k as typeof notificationKinds[number]))) throw new Error("Invalid preferences.");
         state.preferences = { ...value };
         for (const event of state.events) if (event.pushState === "pending" && !value[event.kind]) event.pushState = "handled";
       } else if (["read", "snooze", "resolve", "dismiss", "restore"].includes(String(body.action))) {
-        if (Object.keys(body).some(k => !["expectedRevision", "action", "id", "snoozedUntil"].includes(k)) || body.action !== "snooze" && body.snoozedUntil !== undefined || typeof body.id !== "string" || !idPattern.test(body.id)) throw new Error("Notification invalide.");
+        if (Object.keys(body).some(k => !["expectedRevision", "action", "id", "snoozedUntil"].includes(k)) || body.action !== "snooze" && body.snoozedUntil !== undefined || typeof body.id !== "string" || !idPattern.test(body.id)) throw new Error("Invalid notification.");
         const event = state.events.find(e => e.id === body.id);
-        if (!event) throw new Error("Cette notification n’est plus dans l’historique.");
+        if (!event) throw new Error("This notification is no longer in the history.");
         if (body.action === "read") { event.readAt = now.toISOString(); event.pushState = "handled"; }
         else {
           state.decisions ??= {};
           const group = event.groupId ?? event.id, evidenceVersion = event.evidenceVersion ?? event.id;
-          if (!event.active && state.decisions[group] && state.decisions[group].evidenceVersion !== evidenceVersion || state.events.some(other => other.active && other.groupId === group && other.evidenceVersion !== evidenceVersion)) throw new NotificationConflict("Les preuves ont changé. Ouvrez le rappel actuel avant de décider.");
+          if (!event.active && state.decisions[group] && state.decisions[group].evidenceVersion !== evidenceVersion || state.events.some(other => other.active && other.groupId === group && other.evidenceVersion !== evidenceVersion)) throw new NotificationConflict("The evidence changed. Open the current reminder before deciding.");
           if (body.action === "restore") {
             delete state.decisions[group]; event.pushState = "handled";
             // Explicitly surface one current policy baseline in-app. Never replay it through Push,
@@ -266,23 +266,23 @@ export class NotificationLibrary {
               && event.expiresAt && Date.parse(event.expiresAt) > now.getTime()) event.baseline = false;
           }
           else {
-            if (!state.decisions[group] && Object.keys(state.decisions).length >= 5000) throw new Error("La limite de décisions est atteinte. Les décisions existantes sont conservées.");
-            if (body.action === "snooze" && (!timestamp(body.snoozedUntil) || Date.parse(body.snoozedUntil as string) <= now.getTime() || Date.parse(body.snoozedUntil as string) > now.getTime() + 90 * 86_400_000)) throw new Error("Choisissez un report futur, dans les 90 prochains jours.");
+            if (!state.decisions[group] && Object.keys(state.decisions).length >= 5000) throw new Error("The decision limit was reached. Existing decisions are preserved.");
+            if (body.action === "snooze" && (!timestamp(body.snoozedUntil) || Date.parse(body.snoozedUntil as string) <= now.getTime() || Date.parse(body.snoozedUntil as string) > now.getTime() + 90 * 86_400_000)) throw new Error("Choose a future date within the next 90 days.");
             state.decisions[group] = { evidenceVersion, at: now.toISOString(), state: body.action === "snooze" ? "snoozed" : body.action === "resolve" ? "resolved" : "dismissed", ...(body.action === "snooze" ? { snoozedUntil: new Date(body.snoozedUntil as string).toISOString() } : {}) };
             if (body.action !== "snooze") event.pushState = "handled";
           }
         }
       } else if (body.action === "enroll") {
         const config = await this.configuration();
-        if (!config || body.publicKey !== config.publicKey) throw new Error("Configuration Web Push absente ou modifiée. Actualisez avant l’inscription.");
-        if (body.permission !== "granted" || typeof body.label !== "string" || !body.label.trim() || body.label.length > 60) throw new Error("Confirmez l’autorisation et le nom de cet appareil.");
+        if (!config || body.publicKey !== config.publicKey) throw new Error("Web Push configuration is missing or changed. Refresh before registering.");
+        if (body.permission !== "granted" || typeof body.label !== "string" || !body.label.trim() || body.label.length > 60) throw new Error("Confirm this device’s permission and name.");
         const subscription = validateSubscription(body.subscription), id = hash(subscription.endpoint);
         const previous = state.devices.find(d => d.id === id);
-        if (!previous && state.devices.length >= 20) throw new Error("Retirez un ancien appareil avant d’en ajouter un autre.");
+        if (!previous && state.devices.length >= 20) throw new Error("Remove a device before adding another.");
         state.devices = [...state.devices.filter(d => d.id !== id), { id, label: body.label.trim(), subscription, enabled: true, publicKey: config.publicKey, createdAt: previous?.createdAt ?? now.toISOString(), lastDelivery: previous?.lastDelivery }];
       } else if (["disable", "remove", "test", "receipt"].includes(String(body.action))) {
         const device = state.devices.find(d => d.id === body.id);
-        if (!device) throw new Error("Appareil introuvable. Actualisez cette liste.");
+        if (!device) throw new Error("Device not found. Refresh the list.");
         if (body.action === "remove") state.devices = state.devices.filter(d => d.id !== device.id);
         if (body.action === "disable") device.enabled = false;
         if (body.action === "remove" || body.action === "disable") for (const event of state.events) {
@@ -290,19 +290,19 @@ export class NotificationLibrary {
           if (event.pushState === "pending" && !event.pendingDeviceIds?.length) event.pushState = "handled";
         }
         if (body.action === "receipt") {
-          if (!device.lastDelivery || device.lastDelivery.eventId !== body.eventId || device.lastDelivery.outcome !== "accepted") throw new Error("Aucun envoi accepté à confirmer.");
+          if (!device.lastDelivery || device.lastDelivery.eventId !== body.eventId || device.lastDelivery.outcome !== "accepted") throw new Error("There is no accepted delivery to confirm.");
           device.lastDelivery.confirmedAt = new Date().toISOString();
         }
         if (body.action === "test") {
           const config = await this.configuration();
-          if (!config || !device.enabled || device.publicKey !== config.publicKey) throw new Error("Réactivez cet appareil avant un test.");
-          if (device.lastDelivery && Date.now() - Date.parse(device.lastDelivery.at) < 60_000) throw new Error("Attendez une minute avant un autre test.");
+          if (!config || !device.enabled || device.publicKey !== config.publicKey) throw new Error("Enable this device before testing.");
+          if (device.lastDelivery && Date.now() - Date.parse(device.lastDelivery.at) < 60_000) throw new Error("Wait one minute before testing again.");
           const id = hash(randomUUID());
-          state.events.push({ id, kind: "collection", title: "Test de notification", detail: "Test demandé depuis un appareil associé. L’acceptation par le service Push ne prouve pas sa réception sur le téléphone.", target: { view: "reimbursements" }, createdAt: new Date().toISOString(), active: true, baseline: false });
+          state.events.push({ id, kind: "collection", title: "Notification test", detail: "A paired device requested this test. Push service acceptance does not prove it arrived on the phone.", target: { view: "reimbursements" }, createdAt: new Date().toISOString(), active: true, baseline: false });
           state.events = state.events.slice(-500);
           await this.deliver(state, [device], id, config, new Date());
         }
-      } else throw new Error("Action de notification invalide.");
+      } else throw new Error("Invalid notification action.");
       await this.save(state);
       return this.expose(state);
     });

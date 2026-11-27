@@ -3,11 +3,11 @@ import { workerRequestHeaders } from "./worker-transport";
 import { validateContributions, type ContributionsSnapshot, type InferredContributionPayment } from "./contributions";
 
 export async function fetchContributions(config: WorkerConfig, signal: AbortSignal): Promise<ContributionsSnapshot> {
-  if (!config.Endpoint || !config.ApiKey) throw new Error("Associez votre PC dans Plus pour consulter vos contributions.");
+  if (!config.Endpoint || !config.ApiKey) throw new Error("Pair your PC in More to view your contributions.");
   const response = await fetch(config.Endpoint.replace(/\/$/, "") + "/contributions/progress", {
     headers: workerRequestHeaders(config, false), cache: "no-store", signal,
   });
-  if (!response.ok) throw new Error(response.status === 404 ? "Contributions indisponibles sur ce PC. Une mise à jour du worker est nécessaire." : "Contributions indisponibles. Vérifiez la connexion au PC puis réessayez.");
+  if (!response.ok) throw new Error(response.status === 404 ? "Contributions are unavailable on this PC. Update the worker to continue." : "Contributions are unavailable. Check the connection to your PC, then try again.");
   const raw = await response.json();
   try {
     if (raw.schema !== 1 || !Array.isArray(raw.plans)) throw new Error();
@@ -21,9 +21,9 @@ export async function fetchContributions(config: WorkerConfig, signal: AbortSign
         sourceAsOf: (p as {sourceAsOf?: string | null}).sourceAsOf ?? null, retrievedAt: (p as {retrievedAt?: string | null}).retrievedAt ?? null,
         inferredCents: p.inferredCents, inferenceStatus: p.inferenceStatus, inferredPayments: p.inferredPayments,
         weeklyPaid: p.payments.filter(r => r.kind === "weekly"), oneOffPaid: p.payments.filter(r => r.kind === "one-off"), unassigned: p.unassigned,
-        warnings: [...p.warnings, ...(p.sourceFreshness !== "dated" ? ["Fraîcheur de la source non confirmée."] : [])],
+        warnings: [...p.warnings, ...(p.sourceFreshness !== "dated" ? ["source-freshness-unverified"] : [])],
         weeklyForecast: p.weeklyProjection === null ? null : { amountCents: p.weeklyProjection.amountCents, count: p.weeklyProjection.remainingOccurrences, totalCents: p.weeklyProjection.futureCents, assumption: p.weeklyProjection.assumption },
       })),
     });
-  } catch { throw new Error("Données de contributions invalides. Aucun montant n’a été retenu."); }
+  } catch { throw new Error("Contribution data was invalid. No amounts were used."); }
 }

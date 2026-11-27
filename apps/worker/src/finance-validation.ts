@@ -9,7 +9,7 @@ import { financeTimestamp, financeCollection } from "./finance-observations.js";
 export function validateFinanceState(value: unknown): FinanceState {
     const bad = (): never => {
         throw new Error(
-            "Registre financier invalide. Fichier conservé; restauration requise.",
+            "The financial register is invalid. The file was kept and must be restored.",
         );
     };
     const object = (v: unknown): Record<string, any> =>

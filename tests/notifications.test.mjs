@@ -10,12 +10,33 @@ import { now, pushFixture, invoiceEvidence, financeEvidence, contractEvidence } 
 const candidates = (e, date = now) => notificationCandidates(e, date).candidates;
 test("payments require a trusted match and explicit paid amount; no bank-deposit claim or guessed balance", () => {
   const invoices = invoiceEvidence(), original = JSON.stringify(invoices);
-  let paid = candidates({ invoices }); assert.equal(paid.length, 1); assert.match(paid[0].title, /partiel/); assert.match(paid[0].detail, /pas d[’']une confirmation du dépôt bancaire/); assert.equal(paid[0].target.recordId, "claim-synthetic");
+  let paid = candidates({ invoices }); assert.equal(paid.length, 1); assert.match(paid[0].title, /Partial reimbursement recorded/); assert.match(paid[0].detail, /bank deposit is not confirmed/); assert.equal(paid[0].target.recordId, "claim-synthetic");
   assert.equal(JSON.stringify(invoices), original);
   for (const alter of [i => i.reconciliations[0].MatchAssignments[0].Verification = "review-recommended", i => { i.reconciliations[0].MatchAssignments[0].Verification = "auto"; }, i => i.reconciliations[0].HasUnresolvedReimbursementEvidence = true, i => i.reconciliations[0].WorkflowStatus = "ignore", i => i.items[0].NeedsReview = true, i => i.items[0].IgnoredAt = "2026-10-11", i => i.items[0].Status = 4, i => i.items[0].ReimbursedAmount = null, i => i.items[0].ReimbursedAmount = -20, i => i.items[0].Currency = "USD"]) { const i = invoiceEvidence(); alter(i); assert.equal(candidates({ invoices: i }).length, 0); }
   invoices.reconciliations[0].MatchAssignments[0] = { ...invoices.reconciliations[0].MatchAssignments[0], Verification: "auto", Confidence: 95 }; invoices.reconciliations[0].PotentialRemaining = 0;
-  assert.equal(candidates({ invoices })[0].title, "Remboursement enregistré");
+  assert.equal(candidates({ invoices })[0].title, "Reimbursement recorded");
 });
+test("mortgage notifications localize generated report copy without changing the signal identity, dates or source evidence", () => {
+  const signal = {
+    id: "gain:synthetic-offer", kind: "net-gain", evidenceFingerprint: "synthetic-fingerprint", notify: true,
+    title: "Offre confirmée à examiner",
+    changed: "Validité documentée jusqu’au 2026-10-25.",
+    nextAction: "Vérifier les conditions et décider avant le 2026-10-25.",
+    uncertainties: ["Note du prêteur : échéance à confirmer."]
+  };
+  const report = { generatedAt: now.toISOString(), localDate: localDate(now), signals: [signal] };
+  const before = structuredClone(report);
+  const [event] = candidates({ mortgage: [report] });
+  assert.equal(event.key, "mortgage:gain:synthetic-offer:synthetic-fingerprint");
+  assert.equal(event.groupKey, "mortgage:gain:synthetic-offer");
+  assert.equal(event.evidenceKey, signal.evidenceFingerprint);
+  assert.equal(event.sourceDate, now.toISOString());
+  assert.equal(event.title, "Confirmed offer to review");
+  assert.match(event.detail, /^Documented validity through 2026-10-25\. Verify the terms and decide before 2026-10-25\./);
+  assert.ok(event.detail.endsWith(signal.uncertainties[0]));
+  assert.deepEqual(report, before);
+});
+
 test("unmatched payments retain a direct review link; unavailable sources are not marked initialized", () => {
   const invoices = invoiceEvidence(); invoices.reconciliations = []; invoices.unmatchedReimbursements = [{ DocumentId: "unmatched-synthetic", Reason: "ambiguous-match" }];
   assert.deepEqual(candidates({ invoices })[0].target, { view: "reimbursements", recordId: "unmatched-synthetic", queue: "unmatched" });
@@ -24,7 +45,7 @@ test("unmatched payments retain a direct review link; unavailable sources are no
 });
 test("blocked and seven-day stale collections use status evidence and never copy provider errors", () => {
   const e = { collections: [{ id: "a", label: "Synthetic collector", state: "error", error: "PRIVATE RAW ERROR", lastSuccess: "2026-10-10" }, { id: "b", label: "Other", state: "idle", lastSuccess: "2026-10-01" }, { id: "c", label: "Running", state: "syncing", lastSuccess: "2026-01-01" }, { id: "d", label: "Never", state: "idle" }] };
-  const c = candidates(e); assert.equal(c.length, 2); assert.equal(JSON.stringify(c).includes("PRIVATE RAW ERROR"), false); assert.ok(c.every(x => x.target.sources)); assert.match(c[1].detail, /ne prouve pas/);
+  const c = candidates(e); assert.equal(c.length, 2); assert.equal(JSON.stringify(c).includes("PRIVATE RAW ERROR"), false); assert.ok(c.every(x => x.target.sources)); assert.match(c[1].detail, /does not mean/);
 });
 test("deadlines use explicit dates, Vancouver day and 30/7/1-day milestones; duration is not an end date", () => {
   assert.equal(localDate(new Date("2026-10-13T02:00:00Z")), "2026-10-12");
@@ -39,7 +60,7 @@ test("deadlines use explicit dates, Vancouver day and 30/7/1-day milestones; dur
 });
 test("charge increases require posted nonduplicate monthly-sized payments and a material difference", () => {
   const f = financeEvidence(), original = JSON.stringify(f), events = candidates({ finance: f }).filter(c => c.kind === "price");
-  assert.equal(events.length, 1); assert.equal(events[0].target.recordId, "subscription2"); assert.match(events[0].detail, /ne prouve pas une hausse de tarif/); assert.equal(JSON.stringify(f), original);
+  assert.equal(events.length, 1); assert.equal(events[0].target.recordId, "subscription2"); assert.match(events[0].detail, /does not prove a higher rate/); assert.equal(JSON.stringify(f), original);
   for (const alter of [r => r.status = "pending", r => r.duplicateCandidate = true, r => r.outflowCents = 1900, r => r.date = "2026-09-11", r => r.date = "2026-10-30"]) { const s = financeEvidence(); alter(s.data.transactions.find(r => r.id === "subscription2")); assert.equal(candidates({ finance: s }).filter(c => c.kind === "price").length, 0); }
   f.decisions.subscription2 = { nature: "transfer", category: "savings-investments", note: "Explicit synthetic decision", updatedAt: now.toISOString() }; assert.equal(candidates({ finance: f }).filter(c => c.kind === "price").length, 0);
 });
@@ -48,7 +69,7 @@ test("weekly summaries exclude transfers, repayments, duplicate/pending rows and
   const base = f.data.transactions.find(r => r.id === "groceries");
   f.data.transactions = [{ ...base, id: "expense", outflowCents: 10000 }, { ...base, id: "refund", outflowCents: -2000 }, { ...base, id: "transfer", outflowCents: 90000 }, { ...base, id: "repayment", outflowCents: 90000 }, { ...base, id: "pending", outflowCents: 90000, status: "pending" }, { ...base, id: "duplicate", outflowCents: 90000, duplicateCandidate: true }, { ...base, id: "usd", currency: "USD", outflowCents: 3000 }];
   for (const [id, nature] of [["expense", "expense"], ["refund", "refund"], ["transfer", "transfer"], ["repayment", "repayment"], ["usd", "expense"]]) f.decisions[id] = { nature, category: "groceries", note: "Synthetic", updatedAt: now.toISOString() };
-  const e = candidates({ finance: f }).filter(c => c.kind === "weekly"); assert.equal(e.length, 2); assert.match(e[0].detail, /80,00/); assert.match(e[1].detail, /30,00/); assert.deepEqual(e.map(c => c.target.currency).sort(), ["CAD", "USD"]); assert.ok(e.every(c => c.target.from === "2026-10-05" && c.target.to === "2026-10-11")); assert.match(e[0].detail, /limité.*sources importées/);
+  const e = candidates({ finance: f }).filter(c => c.kind === "weekly"); assert.equal(e.length, 2); assert.match(e[0].detail, /80\.00/); assert.match(e[1].detail, /30\.00/); assert.deepEqual(e.map(c => c.target.currency).sort(), ["CAD", "USD"]); assert.ok(e.every(c => c.target.from === "2026-10-05" && c.target.to === "2026-10-11")); assert.match(e[0].detail, /Includes imported sources only/);
   f.data.scope.to = "2026-10-10"; assert.equal(candidates({ finance: f }).filter(c => c.kind === "weekly").length, 0);
   f.data.scope.to = "2026-10-12"; f.data.collectedOn = "2026-10-10"; assert.equal(candidates({ finance: f }).filter(c => c.kind === "weekly").length, 0);
 });
@@ -102,7 +123,7 @@ test("explicit test distinguishes provider acceptance from user receipt, rate li
 }));
 test("unavailable push credentials leave in-app history usable and corrupt history is never replaced", () => sandbox(async dir => {
   const path = join(dir, "history.json"), lib = new NotificationLibrary(path, async () => { throw Error("PRIVATE credential failure"); }, async () => "accepted");
-  const s = await lib.scan({ contracts: [contractEvidence()] }, [], now); assert.equal(s.pushConfigured, false); assert.match(s.pushSetupError, /historique reste accessible/); assert.equal(JSON.stringify(s).includes("PRIVATE"), false);
+  const s = await lib.scan({ contracts: [contractEvidence()] }, [], now); assert.equal(s.pushConfigured, false); assert.match(s.pushSetupError, /History is still available/); assert.equal(JSON.stringify(s).includes("PRIVATE"), false);
   assert.equal((await lib.read()).events.length, 1);
-  for (const invalid of ["{", JSON.stringify({ ...JSON.parse(await readFile(path)), events: [{ ...s.events[0], target: { view: "external" } }] })]) { await writeFile(path, invalid); await assert.rejects(lib.read(), /Aucun fichier remplacé/); await assert.rejects(lib.scan({ contracts: [] }, [], now)); assert.equal(await readFile(path, "utf8"), invalid); }
+  for (const invalid of ["{", JSON.stringify({ ...JSON.parse(await readFile(path)), events: [{ ...s.events[0], target: { view: "external" } }] })]) { await writeFile(path, invalid); await assert.rejects(lib.read(), /No file was replaced/); await assert.rejects(lib.scan({ contracts: [] }, [], now)); assert.equal(await readFile(path, "utf8"), invalid); }
 }));
