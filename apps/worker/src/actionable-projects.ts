@@ -55,7 +55,7 @@ export function newProjectActions(domain:Domain,evidence:ProjectActionEvidence,n
     const card=domain==='property'?propertyCard(row,now):vehicleCard(row,now);
     if(!card.criteria.every(c=>c.pass===true && fresh(c.evidence.checkedAt)))continue;
     let detail:string;
-    let links=[{label:'Annonce et prix relevé',url:row.priceCad.sourceUrl!}];
+    let links=[{label:'Listing and observed price',url:row.priceCad.sourceUrl!}];
     if(domain==='vehicle') {
       const car=row as VehicleObservation;
       const keys=['make','model','year','trim','awd'] as const;
@@ -67,12 +67,12 @@ export function newProjectActions(domain:Domain,evidence:ProjectActionEvidence,n
       const independentUrls=others.filter((p,i)=>sources[i]!==listingURL(car.priceCad.sourceUrl!) && sources.indexOf(sources[i])===sources.lastIndexOf(sources[i]));
       const references=independentUrls.sort((a,b)=>a.priceCad.value!-b.priceCad.value!).slice(0,3);
       if(references.length<3 || car.priceCad.value!>references[0].priceCad.value!*0.90)continue;
-      links=references.map(p=>({label:'Référence affichée · '+p.priceCad.value+' CAD · '+p.priceCad.checkedAt!.slice(0,10),url:p.priceCad.sourceUrl!}));
-      detail='SUV d’occasion AWD dans le budget. Prix avant taxes au moins 10 % sous chacune des trois annonces locales de référence ou plus, de même année et version, à 10 000 km près. Vérifier NIV, frais et inspection.';
-    } else detail='Prix affiché dans le budget, au moins trois chambres, secteur recherché et deux entrées documentées. Vérifier le plan et les coûts avant une visite.';
+      links=references.map(p=>({label:'Comparable listing · '+p.priceCad.value+' CAD · '+p.priceCad.checkedAt!.slice(0,10),url:p.priceCad.sourceUrl!}));
+      detail='Used AWD SUV within budget. The pre-tax price is at least 10% below each of three or more local comparable listings for the same model year and trim, within 10,000 km. Check the VIN, fees and inspection.';
+    } else detail='Asking price within budget, at least three bedrooms, in the target area, with two documented entrances. Check the floor plan and costs before viewing.';
     const dates=[first,Date.parse(row.priceCad.checkedAt!),Date.parse(row.statusEvidence.checkedAt!),...card.criteria.map(c=>Date.parse(c.evidence.checkedAt!))];
     results.push({key:'new-project:'+domain+':'+row.listingId,source:domain==='vehicle'?'new-vehicle':'new-property',kind:domain==='vehicle'?'new-vehicle':'new-property',
-      actionable:true,pushEligible:true,priority:1,expiresAt:new Date(Math.min(...dates)+horizon).toISOString(),title:domain==='vehicle'?'Nouvelle auto à examiner':'Nouveau bien correspondant au projet',
+      actionable:true,pushEligible:true,priority:1,expiresAt:new Date(Math.min(...dates)+horizon).toISOString(),title:domain==='vehicle'?'New vehicle listing to review':'New property matching your search',
       detail,target:{view:domain,recordId:row.listingId},sourceDate:row.priceCad.checkedAt!,links});
   }
   return results;
@@ -87,7 +87,7 @@ export function openClaimActions(snapshot:NotificationEvidence['invoices'],now:D
       claim.HasUnresolvedReimbursementEvidence || claim.OriginalInvoiceMissing || !(Number(claim.PotentialRemaining)>0) ||
       !snapshot.items.some(item=>item.Id===claim.ExpenseDocumentId && !item.IgnoredAt && !item.NeedsReview))return [];
     return [{key:'open-claim:'+claim.Id+':'+since,kind:'open-claim',source:'open-claim',actionable:true,pushEligible:true,priority:2,expiresAt:new Date(until).toISOString(),
-      title:'Dossier de remboursement à vérifier',detail:'Dossier ouvert depuis au moins 14 jours avec solde potentiel. Vérifier si la demande a été transmise et si une réponse manque. La date d’ouverture ne prouve pas l’envoi à l’assureur.',
+      title:'Reimbursement claim to review',detail:'This claim has been open for at least 14 days and has a potential balance. Check whether it was submitted and whether a response is missing. The opening date does not establish submission to the insurer.',
       sourceDate:since,target:{view:'reimbursements',recordId:claim.Id}}];
   });
 }

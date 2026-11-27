@@ -68,12 +68,12 @@ export function attributeSpendingDifference(trend: Trend): TrendAttribution {
 
 /** Compact A overview; B can use all categories. The remainder is never silently dropped. */
 export function leadingSpendingDifferences(attribution: TrendAttribution, limit = 3): CategoryDifference[] {
-  if (!Number.isInteger(limit) || limit < 1) throw new Error("Nombre de catégories invalide");
+  if (!Number.isInteger(limit) || limit < 1) throw new Error("Invalid category count");
   if (!attribution.available) return [];
   const leaders = attribution.categories.slice(0, limit), remainder = attribution.categories.slice(limit);
   if (!remainder.length) return leaders;
   return [...leaders, {
-    key: "remaining-categories", label: "Autres catégories", categoryKeys: remainder.flatMap(row => row.categoryKeys),
+    key: "remaining-categories", label: "Other categories", categoryKeys: remainder.flatMap(row => row.categoryKeys),
     actualCents: sum(remainder.map(row => row.actualCents)), baselineCents: sum(remainder.map(row => row.baselineCents)), differenceCents: sum(remainder.map(row => row.differenceCents)),
     displayActualCents: sum(remainder.map(row => row.displayActualCents)), displayBaselineCents: sum(remainder.map(row => row.displayBaselineCents)), displayDifferenceCents: sum(remainder.map(row => row.displayDifferenceCents)),
   }];

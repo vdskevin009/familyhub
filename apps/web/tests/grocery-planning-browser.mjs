@@ -397,8 +397,8 @@ try {
   await articleDetails.locator(".grocery-offer-prices").getByText("9,00 CAD", { exact: true }).waitFor();
   await articleDetails.getByText(/Taxes produits/).first().waitFor();
   await articleDetails.getByText(/Abonnement/).first().waitFor();
-  const productLink = articleDetails.getByRole("link", { name: /Ouvrir le produit/ });
-  const searchLink = articleDetails.getByRole("link", { name: /Ouvrir la recherche/ });
+  const productLink = articleDetails.getByRole("link", { name: /View product/ });
+  const searchLink = articleDetails.getByRole("link", { name: /View search results/ });
   assert.equal(await productLink.getAttribute("href"), "https://www.walmart.ca/en/ip/eggs/10052944");
   assert.equal(await searchLink.getAttribute("href"), "https://freshstmarket.com/results?q=eggs");
   assert.equal(await productLink.getAttribute("rel"), "noopener noreferrer");
@@ -436,7 +436,7 @@ try {
     assert.equal(await cards.first().locator("details").getAttribute("open"), "");
     await details.getByText("Observation non approuvée", { exact: false }).waitFor();
     await details.getByText(/Taxes produits/).waitFor();
-    assert.equal(await details.getByRole("link", { name: /Ouvrir le produit/ }).getAttribute("href"), "https://www.walmart.ca/en/ip/eggs/10052944");
+    assert.equal(await details.getByRole("link", { name: /View product/ }).getAttribute("href"), "https://www.walmart.ca/en/ip/eggs/10052944");
     const sourceColors = await source.evaluate(el => ({ foreground: getComputedStyle(el).color, background: getComputedStyle(el.closest("article")).backgroundColor }));
     assert.ok(ratio(sourceColors.foreground, sourceColors.background) >= 4.5);
     assert.equal(await source.evaluate(el => getComputedStyle(el).outlineStyle), "solid");

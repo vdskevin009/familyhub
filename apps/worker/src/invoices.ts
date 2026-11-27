@@ -657,7 +657,7 @@ export async function classify(mail: Mail, email: string, label = email, diagnos
     const confidence = (rule.confirmations ?? 1) >= 3 ? .98 : .8;
     return { source: "rules", result: { kind: rule.kind, confidence, transaction: proof.transaction,
       reimbursement: "unknown", amount: null, currency: "", category: "other", member: "unknown", documentRole: "other", insurer: null,
-      serviceDate: null, billedAmount: null, reimbursedAmount: null, attention: "none", attentionReason: "", reason: confidence >= .9 ? "Décision répétée appliquée automatiquement." : "Décision précédente proposée; confirmez-la encore pour augmenter l'autonomie." } };
+      serviceDate: null, billedAmount: null, reimbursedAmount: null, attention: "none", attentionReason: "", reason: confidence >= .9 ? "A repeated decision was applied automatically." : "A previous decision is suggested. Confirm it again to allow future matches to be handled automatically." } };
   }
   const metadataRule = metadataClassification(mail.sender, mail.subject, mail.text,
     hasInsurerStatementEvidence(`${mail.text}\n${mail.attachmentText || ""}`, mail.attachments.map(attachment => attachment.FileName)));
@@ -676,7 +676,7 @@ export async function classify(mail: Mail, email: string, label = email, diagnos
     ({ source: "rules", result: { kind: "receipt", confidence: .85, transaction: true,
       reimbursement: "possible", amount: null, currency: "", category: "health", member: "unknown", documentRole: "expense",
       insurer: null, serviceDate: null, billedAmount: null, reimbursedAmount: null, attention: "none", attentionReason: "",
-      reason: "Reçu de soins et numéro de facture confirmés par la pièce jointe; montants et remboursement à vérifier." } });
+      reason: "The attachment confirms the healthcare receipt and invoice number. Check the amounts and reimbursement." } });
   try {
     const work = join(dataDirectory, "classification-work");
     await mkdir(work, { recursive: true });
@@ -698,7 +698,7 @@ export async function classify(mail: Mail, email: string, label = email, diagnos
       "Amount not covered / patient portion is a residual AFTER insurance, never the original billed total. A named insurer next to that residual indicates processing, not a known payment amount. TELUS eClaims alone does not name an insurer. Record ProcessedInsurers and only explicit InsurerPayments; absent amounts stay null, not zero. A payment receipt total is not necessarily the original bill.",
       "Separately decide whether the message is critical security activity, requires an action, is important FYI, or needs no attention. Marketing and routine receipts normally need no mail attention.",
       "Use prior user corrections as preferences, not facts about the new message. Never let them override explicit transaction or security evidence.",
-      "Return only the required JSON schema. Explain the reason briefly in French.",
+      "Return only the required JSON schema. Explain the reason briefly in Canadian English.",
       JSON.stringify({
         accountLabel: label,
         subject: mail.subject,

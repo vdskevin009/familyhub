@@ -27,7 +27,7 @@ test("real encrypted request construction uses opaque payload, bounded fetch, no
 test("unconfigured identity read never creates keys, and corrupt existing state is preserved", async () => {
   const dir = await mkdtemp(join(tmpdir(), "familyhub-push-config-")), previous = { publicKey: process.env.FAMILYHUB_PUSH_PUBLIC_KEY, privateKey: process.env.FAMILYHUB_PUSH_PRIVATE_KEY };
   delete process.env.FAMILYHUB_PUSH_PUBLIC_KEY; delete process.env.FAMILYHUB_PUSH_PRIVATE_KEY;
-  try { const config = new PushConfiguration(dir), path = join(dir, "notifications-vapid.private.json"); assert.equal(await config.read(), null); await assert.rejects(readFile(path), { code: "ENOENT" }); await writeFile(path, "{invalid"); await assert.rejects(config.read(), /Aucune clé/); assert.equal(await readFile(path, "utf8"), "{invalid"); }
+  try { const config = new PushConfiguration(dir), path = join(dir, "notifications-vapid.private.json"); assert.equal(await config.read(), null); await assert.rejects(readFile(path), { code: "ENOENT" }); await writeFile(path, "{invalid"); await assert.rejects(config.read(), /No key was replaced/); assert.equal(await readFile(path, "utf8"), "{invalid"); }
   finally { for (const [key, value] of [["FAMILYHUB_PUSH_PUBLIC_KEY", previous.publicKey], ["FAMILYHUB_PUSH_PRIVATE_KEY", previous.privateKey]]) if (value === undefined) delete process.env[key]; else process.env[key] = value; await rm(dir, { recursive: true, force: true }); }
 });
 test("a competing or interrupted setup lock cannot replace a notification identity", async () => {
@@ -35,7 +35,7 @@ test("a competing or interrupted setup lock cannot replace a notification identi
   try {
     const config = new PushConfiguration(dir), lock = join(dir, "notifications-vapid.setup.lock");
     await writeFile(lock, "synthetic existing operator setup");
-    await assert.rejects(config.createAfterApproval(), /verrouillée/);
+    await assert.rejects(config.createAfterApproval(), /locked/);
     assert.equal(await readFile(lock, "utf8"), "synthetic existing operator setup");
     await assert.rejects(readFile(join(dir, "notifications-vapid.private.json")), { code: "ENOENT" });
   } finally { await rm(dir, { recursive: true, force: true }); }
@@ -50,7 +50,7 @@ test("Windows push identity creation is protected and concurrent setup preserves
     assert.equal(attempts.filter(result => result.status === "fulfilled").length, 1);
     const stored = await readFile(path, "utf8"), identity = await config.read();
     assert.equal(stored.includes(identity.privateKey), false);
-    await assert.rejects(config.createAfterApproval(), /déjà configuré/);
+    await assert.rejects(config.createAfterApproval(), /already configured/);
     assert.equal(await readFile(path, "utf8"), stored);
     assert.deepEqual(await config.read(), identity);
   } finally {
@@ -70,7 +70,7 @@ async function workerHarness(windows = []) {
 test("service worker displays only generic content and opens only its same-origin app scope", async () => {
   const h = await workerHarness(), eventId = "a".repeat(64);
   await h.dispatch("push", { data: { json: () => ({ eventId, title: "PRIVATE TITLE", body: "PRIVATE AMOUNT", url: "https://evil.invalid" }) } });
-  assert.equal(h.shown[0].title, "FamilyHub"); assert.equal(h.shown[0].body, "Une mise à jour est disponible"); assert.equal(JSON.stringify(h.shown).includes("PRIVATE"), false); assert.equal(JSON.stringify(h.shown).includes("evil"), false);
+  assert.equal(h.shown[0].title, "FamilyHub"); assert.equal(h.shown[0].body, "An update is available"); assert.equal(JSON.stringify(h.shown).includes("PRIVATE"), false); assert.equal(JSON.stringify(h.shown).includes("evil"), false);
   let closed = false; await h.dispatch("notificationclick", { notification: { data: { eventId, url: "https://evil.invalid" }, close: () => closed = true } }); assert.ok(closed); assert.equal(h.opened[0], "https://vdskevin009.github.io/familyhub/?view=notifications&notice=" + eventId);
   await h.dispatch("push", { data: { json: () => { throw Error("malformed"); } } }); assert.equal(h.shown[1].data.eventId, "");
   await h.dispatch("notificationclick", { notification: { data: { eventId: "https://evil.invalid" }, close() {} } }); assert.equal(h.opened[1], "https://vdskevin009.github.io/familyhub/?view=notifications");

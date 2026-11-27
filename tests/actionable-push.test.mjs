@@ -119,7 +119,7 @@ test('compatible disk extension isolates new types and preserves all 500 legacy 
 
     const invalid = JSON.stringify({ ...saved, actionableAlerts: { ...saved.actionableAlerts, schema: 99 } });
     await writeFile(path, invalid);
-    await assert.rejects(() => lib.read(), /Historique de notifications illisible/);
+    await assert.rejects(() => lib.read(), /Notification history is unreadable/);
     assert.equal(await readFile(path, 'utf8'), invalid);
   } finally { await rm(dir, { recursive: true, force: true }); }
 });

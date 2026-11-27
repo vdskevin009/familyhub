@@ -216,7 +216,7 @@ test("corrupt stores fail closed and are never replaced with an automatic import
   await mkdir(groceries, { recursive: true });
   await writeFile(file, '{"schema":1,"records":[invalid-json');
   const before = await bytes(file);
-  await assert.rejects(store.importDeliveredConfirmation(pair()), /illisible/);
+  await assert.rejects(store.importDeliveredConfirmation(pair()), /grocery library cannot be read/);
   assert.deepEqual(await bytes(file), before);
 });
 
@@ -233,7 +233,7 @@ test("saved records cannot claim automatic validation with missing or malformed 
     const state = structuredClone(original); modify(state);
     await writeFile(file, JSON.stringify(state));
     const before = await bytes(file);
-    await assert.rejects(restart().list(), /illisible/);
+    await assert.rejects(restart().list(), /grocery library cannot be read/);
     assert.deepEqual(await bytes(file), before);
   }
 });

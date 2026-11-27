@@ -1,37 +1,37 @@
 /** Private, deterministic finance model. Money is integer cents; source facts are never decisions. */
 export const expenseCategories = {
-    groceries: "Courses alimentaires",
-    restaurants: "Restaurants et livraison",
-    housing: "Logement",
-    mortgage: "Hypothèque (versement)",
-    utilities: "Énergie et services publics",
-    transport: "Transport",
-    childcare: "Garde d’enfants",
-    children: "Enfant et famille",
+    groceries: "Groceries",
+    restaurants: "Restaurants and delivery",
+    housing: "Housing",
+    mortgage: "Mortgage payment",
+    utilities: "Energy and utilities",
+    transport: "Transportation",
+    childcare: "Child care",
+    children: "Children and family",
     "jasmine-school": "Jasmine school",
-    pets: "Animaux de compagnie",
-    subscriptions: "Abonnements",
-    communications: "Téléphone et internet",
-    health: "Santé",
-    recreation: "Loisirs et sport",
-    clothing: "Vêtements",
-    household: "Maison et achats",
-    travel: "Voyages",
-    fees: "Frais financiers",
-    exceptional: "Projets exceptionnels",
-    "savings-investments": "Épargne / Investissements",
-    other: "À catégoriser",
+    pets: "Pets",
+    subscriptions: "Subscriptions",
+    communications: "Phone and internet",
+    health: "Health",
+    recreation: "Recreation and sports",
+    clothing: "Clothing",
+    household: "Household and shopping",
+    travel: "Travel",
+    fees: "Financial fees",
+    exceptional: "One-time projects",
+    "savings-investments": "Savings and investments",
+    other: "Uncategorized",
 } as const;
 export type ExpenseCategory = keyof typeof expenseCategories;
 export const natures = {
-    expense: "Dépense",
-    refund: "Remboursement",
-    income: "Revenu",
-    transfer: "Transfert",
-    repayment: "Paiement de carte",
-    investment: "Placement / cotisation",
-    duplicate: "Doublon confirmé",
-    review: "À vérifier",
+    expense: "Expense",
+    refund: "Refund",
+    income: "Income",
+    transfer: "Transfer",
+    repayment: "Card payment",
+    investment: "Investment or contribution",
+    duplicate: "Confirmed duplicate",
+    review: "Needs review",
 } as const;
 export type Nature = keyof typeof natures;
 export function decisionCategoryAllowed(category: string, nature: string): boolean {
@@ -223,7 +223,7 @@ export function suggestClassification(
         return {
             nature: "review",
             category: "other",
-            reason: "Source similaire : doublon possible, décision requise",
+            reason: "Similar source: possible duplicate, decision needed",
         };
     if (
         /PAYMENT.*THANK|PAIEMENT.*MERCI|VISA.*(PAYMENT|PYMT)|PAYMENT.*VISA|CARD PAYMENT/i.test(
@@ -234,19 +234,19 @@ export function suggestClassification(
         return {
             nature: "repayment",
             category: "other",
-            reason: "Paiement de carte proposé",
+            reason: "Suggested card payment",
         };
     if (/\b(TFR|TRANSFER TO|TRANSFER FROM|XFER|TRSF)\b/i.test(d))
         return {
             nature: "transfer",
             category: "other",
-            reason: "Transfert proposé, à vérifier",
+            reason: "Suggested transfer, needs review",
         };
     if (row.hints.includes("transfer-or-investment-review"))
         return {
             nature: "review",
             category: "other",
-            reason: "Transfert, cotisation ou dépense à déterminer",
+            reason: "Review to determine whether this is a transfer, contribution or expense",
         };
     const category = categoryRules.find(([, re]) => re.test(d))?.[0] ?? "other";
     if (row.outflowCents < 0) {
@@ -254,12 +254,12 @@ export function suggestClassification(
             return {
                 nature: "refund",
                 category,
-                reason: "Crédit commerçant proposé, à vérifier",
+                reason: "Suggested merchant credit, needs review",
             };
         return {
             nature: "review",
             category,
-            reason: "Crédit : revenu, remboursement ou transfert à déterminer",
+            reason: "Credit: review to determine whether this is income, a refund or a transfer",
         };
     }
     return {
@@ -267,8 +267,8 @@ export function suggestClassification(
         category,
         reason:
             category === "other"
-                ? "Catégorie inconnue"
-                : "Suggestion à partir du libellé, à vérifier",
+                ? "Unknown category"
+                : "Suggested from the transaction description, needs review",
     };
 }
 export function classifiedRows(state: FinanceState) {

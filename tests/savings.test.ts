@@ -119,7 +119,7 @@ test("included service charges, unknown credits, duplicates and ambiguous provid
   s.decisions.duplicate = { nature: "expense", category: "communications", note: "Distinct confirmed occurrence", updatedAt: "" };
   assert.equal(reconcilePayments([c], s, "2026-09-01", "2026-09-30").totals.CAD.cents, 21000);
   const ambiguous = reconcilePayments([c, { ...c, id: "second-policy" }], s, "2026-09-01", "2026-09-30");
-  assert.equal(ambiguous.totals.CAD.matched, 0); assert.ok(ambiguous.reviews.some(r => r.reason.includes("Plusieurs contrats")));
+  assert.equal(ambiguous.totals.CAD.matched, 0); assert.ok(ambiguous.reviews.some(r => r.reason.includes("Several contracts")));
 });
 test("payment reconciliation separates currencies and never turns missing or unknown-tax costs into zero TTC", () => {
   const cad = { ...newContract("subscription", "cad"), provider: "Spotify", price: 15 };
@@ -281,7 +281,7 @@ test("a matched standalone charge retains the included-service review without do
   assert.equal(result.reviews.length, 1);
   assert.equal(result.reviews[0].matchedContractId, standalone.id);
   assert.deepEqual(result.reviews[0].contractIds, [standalone.id, bundle.id]);
-  assert.match(result.reviews[0].reason, /dates d’effet/);
+  assert.match(result.reviews[0].reason, /effective dates/);
   assert.deepEqual(result.reviews[0].row.sources, state.data!.transactions[0].sources);
   assert.equal(reconcilePayments([bundle, standalone], state, "2026-10-01", "2026-10-31").reviews.length, 0);
   assert.equal(reconcilePayments([standalone], state, "2026-09-01", "2026-09-30").reviews.length, 0);

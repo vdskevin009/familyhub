@@ -18,19 +18,19 @@ function validAutomaticImport(r: GroceryRecord): boolean {
     && a.sourceMessageIds.every(id => typeof id === "string" && /^[a-f0-9]{8,64}$/i.test(id));
 }
 export function validateSource(value: unknown): StoredGrocerySource {
-  if (!value || typeof value !== "object") throw new GroceryError("Source invalide.");
+  if (!value || typeof value !== "object") throw new GroceryError("Invalid source.");
   const v = value as Record<string, unknown>;
   if (typeof v.name !== "string" || !v.name.trim() || v.name.length > 200 || typeof v.data !== "string" || v.data.length > 7_000_000
-    || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(v.data)) throw new GroceryError("Source invalide.");
+    || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(v.data)) throw new GroceryError("Invalid source.");
   const bytes = Buffer.from(v.data, "base64");
-  if (!bytes.length || bytes.length > 5 * 1024 * 1024) throw new GroceryError("Chaque source doit faire entre 1 octet et 5 Mo.");
+  if (!bytes.length || bytes.length > 5 * 1024 * 1024) throw new GroceryError("Each source must be between 1 byte and 5 MB.");
   const type = v.type;
   const valid = type === "image/jpeg" ? bytes.subarray(0, 3).equals(Buffer.from([255, 216, 255]))
     : type === "image/png" ? bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))
     : type === "image/webp" ? bytes.subarray(0, 4).toString() === "RIFF" && bytes.subarray(8, 12).toString() === "WEBP"
     : type === "application/pdf" ? bytes.subarray(0, 5).toString() === "%PDF-"
     : type === "text/plain" ? !bytes.includes(0) : false;
-  if (!valid) throw new GroceryError("Format non reconnu. Choisissez JPG, PNG, WebP, PDF ou texte.");
+  if (!valid) throw new GroceryError("Unrecognised format. Choose JPG, PNG, WebP, PDF or text.");
   return { hash: createHash("sha256").update(bytes).digest("hex"), name: v.name.trim(), type: type as string, size: bytes.length, data: v.data };
 }
 export class GroceryStore {
@@ -57,12 +57,12 @@ export class GroceryStore {
       return state;
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") return { schema: 1, records: [], sources: [] };
-      throw new GroceryError("La base Courses est illisible. Elle a été préservée ; restaurez une copie valide sur le PC.");
+      throw new GroceryError("The grocery library cannot be read. It was retained. Restore a valid copy on the PC.");
     }
   }
   private serialized<T>(action: () => Promise<T>): Promise<T> { const result = this.queue.then(action); this.queue = result.catch(() => {}); return result; }
   private async persist(state: State) {
-    if (state.records.length > 2000 || state.sources.reduce((s, x) => s + x.size, 0) > 100 * 1024 * 1024) throw new GroceryError("La base Courses atteint sa limite (2 000 tickets / 100 Mo). Sauvegardez-la sur le PC avant de poursuivre.");
+    if (state.records.length > 2000 || state.sources.reduce((s, x) => s + x.size, 0) > 100 * 1024 * 1024) throw new GroceryError("The grocery library has reached its limit (2,000 receipts or 100 MB). Back it up on the PC before continuing.");
     await atomicJson(this.path, state);
   }
   async list() {
@@ -70,7 +70,7 @@ export class GroceryStore {
     return { records: state.records.map(r => r.extraction === "running" && !this.running.has(r.id) ? { ...r, extraction: "failed" as const } : r) };
   }
   async source(id: string, hash: string) {
-    if (!idPattern.test(id) || !hashPattern.test(hash)) throw new GroceryError("Source invalide.");
+    if (!idPattern.test(id) || !hashPattern.test(hash)) throw new GroceryError("Invalid source.");
     const state = await this.read();
     return state.records.find(r => r.id === id)?.sources.some(s => s.hash === hash) ? state.sources.find(s => s.hash === hash) : undefined;
   }
@@ -80,10 +80,10 @@ export class GroceryStore {
       if (messages.length !== 2 || messages.some(m => !timestamp(m.receivedAt) || !m.accountId || !/^\d{15}$/.test(m.orderId)
         || !/^[a-f0-9]{8,64}$/i.test(m.messageId)) || new Set(messages.map(m => m.accountId)).size !== 1
         || new Set(messages.map(m => m.orderId)).size !== 1 || new Set(messages.map(m => m.messageId)).size !== 2)
-        throw new GroceryError("Preuves de commande incompatibles.");
+        throw new GroceryError("The order evidence does not match.");
       const confirmation = messages.find(m => m.kind === "confirmation"), delivery = messages.find(m => m.kind === "delivered");
       if (!confirmation?.receipt || !delivery || delivery.receivedAt < confirmation.receivedAt)
-        throw new GroceryError("Confirmation et livraison de la même commande requises.");
+        throw new GroceryError("Confirmation and delivery evidence for the same order are required.");
       const receipt = validateReceipt({ ...confirmation.receipt, fulfillment: {
         date: pcExpressLocalDate(delivery.receivedAt),
         evidence: `Gmail ${delivery.messageId}: avis de livraison de la commande ${delivery.orderId}; date locale America/Vancouver de réception ${delivery.receivedAt}. Total et lignes restent ceux de la confirmation estimée.`
@@ -91,9 +91,9 @@ export class GroceryStore {
       if (receipt.sourceType !== "confirmation" || receipt.store !== "PC Express" || receipt.reference !== confirmation.orderId
         || receipt.currency !== "CAD" || !receipt.date || !receipt.items.length || receipt.total === null
         || receipt.items.some(item => !item.name || item.quantity === null))
-        throw new GroceryError("Confirmation complète requise pour l'import automatique.");
+        throw new GroceryError("A complete confirmation is required for automatic import.");
       const incoming = messages.map(m => validateSource(m.source));
-      if (new Set(incoming.map(s => s.hash)).size !== 2) throw new GroceryError("Deux preuves distinctes requises.");
+      if (new Set(incoming.map(s => s.hash)).size !== 2) throw new GroceryError("Two distinct pieces of evidence are required.");
       const state = await this.read();
       const matching = state.records.filter(r => r.receipt.reference.trim() === confirmation.orderId
         || r.automaticImport?.orderId === confirmation.orderId || incoming.some(s => r.sources.some(x => x.hash === s.hash)));
@@ -119,13 +119,13 @@ export class GroceryStore {
   }
   import(value: { sources?: unknown }) {
     return this.serialized(async () => {
-      if (!Array.isArray(value.sources) || !value.sources.length || value.sources.length > 8) throw new GroceryError("Choisissez de 1 à 8 photos d'un même ticket.");
+      if (!Array.isArray(value.sources) || !value.sources.length || value.sources.length > 8) throw new GroceryError("Choose 1 to 8 photos of the same receipt.");
       const incoming = [...new Map(value.sources.map(validateSource).map(s => [s.hash, s])).values()];
-      if (incoming.reduce((s, x) => s + x.size, 0) > 20 * 1024 * 1024) throw new GroceryError("Un ticket doit faire au maximum 20 Mo.");
+      if (incoming.reduce((s, x) => s + x.size, 0) > 20 * 1024 * 1024) throw new GroceryError("A receipt must be no larger than 20 MB.");
       const state = await this.read();
       const existing = state.records.find(r => (r.sources.length === incoming.length || r.status === "saved") && incoming.every(s => r.sources.some(x => x.hash === s.hash)));
       if (existing) return { record: existing.duplicateOf ? state.records.find(r => r.id === existing.duplicateOf)! : existing, duplicate: true };
-      if (state.records.some(r => incoming.some(s => r.sources.some(x => x.hash === s.hash)))) throw new GroceryConflict("Une photo appartient déjà à un autre ticket. Ouvrez le ticket existant ; ne l'enregistrez pas à nouveau.");
+      if (state.records.some(r => incoming.some(s => r.sources.some(x => x.hash === s.hash)))) throw new GroceryConflict("A photo already belongs to another receipt. Open the existing receipt rather than saving it again.");
       const record: GroceryRecord = { id: randomUUID(), revision: randomUUID(), status: "draft", createdAt: new Date().toISOString(),
         sources: incoming.map(({ data: _data, ...metadata }) => metadata), receipt: emptyReceipt(), extraction: "pending", reviewedAt: null, duplicateOf: null };
       state.records.push(record);
@@ -136,11 +136,11 @@ export class GroceryStore {
   review(id: string, value: { receipt?: unknown; expectedRevision?: unknown; save?: unknown; confirmed?: unknown; distinctPurchase?: unknown }) {
     return this.serialized(async () => {
       const receipt = validateReceipt(value.receipt), state = await this.read(), r = state.records.find(r => r.id === id);
-      if (!r || value.expectedRevision !== r.revision) throw new GroceryConflict("Le ticket a changé sur le PC. Vos corrections restent affichées ; actualisez et comparez avant de réessayer.");
-      if (this.running.has(id)) throw new GroceryConflict("L'extraction est en cours. Attendez son résultat avant de corriger.");
-      if (r.duplicateOf) throw new GroceryConflict("Ce ticket est rattaché à un achat existant.");
-      if ((value.save === true || r.status === "saved") && (value.confirmed !== true || !receipt.items.length || receipt.items.some(i => !i.name))) throw new GroceryError("Ajoutez les produits et confirmez la revue des sources et des incertitudes.");
-      if ((value.save === true || r.status === "saved") && possibleDuplicates({ ...r, receipt }, state.records).length && value.distinctPurchase !== true) throw new GroceryConflict("Même magasin, date, devise et total qu'un achat enregistré. Ouvrez-le ou confirmez qu'il s'agit d'un achat distinct.");
+      if (!r || value.expectedRevision !== r.revision) throw new GroceryConflict("The receipt changed on the PC. Your edits are still shown. Refresh and compare before retrying.");
+      if (this.running.has(id)) throw new GroceryConflict("Extraction is in progress. Wait for it to finish before making corrections.");
+      if (r.duplicateOf) throw new GroceryConflict("This receipt is linked to an existing purchase.");
+      if ((value.save === true || r.status === "saved") && (value.confirmed !== true || !receipt.items.length || receipt.items.some(i => !i.name))) throw new GroceryError("Add the items and confirm that you reviewed the sources and any uncertainties.");
+      if ((value.save === true || r.status === "saved") && possibleDuplicates({ ...r, receipt }, state.records).length && value.distinctPurchase !== true) throw new GroceryConflict("The store, date, currency and total match a saved purchase. Open it or confirm that this is a separate purchase.");
       // Older clients may omit the additive ID while editing the same source line.
       for (const [index, line] of receipt.items.entries()) { const old = r.receipt.items[index]; if (!line.productReference && old?.productReference && line.name === old.name && line.product === old.product && line.evidence === old.evidence) line.productReference = { ...old.productReference }; }
       r.receipt = receipt; r.revision = randomUUID();
@@ -152,7 +152,7 @@ export class GroceryStore {
   linkDuplicate(id: string, value: { expectedRevision?: unknown; targetId?: unknown }) {
     return this.serialized(async () => {
       const state = await this.read(), r = state.records.find(r => r.id === id), target = state.records.find(r => r.id === value.targetId);
-      if (!r || r.status !== "draft" || r.revision !== value.expectedRevision || !target || target.status !== "saved" || !possibleDuplicates(r, [target]).length || this.running.has(id)) throw new GroceryConflict("Actualisez les tickets avant de rattacher le doublon.");
+      if (!r || r.status !== "draft" || r.revision !== value.expectedRevision || !target || target.status !== "saved" || !possibleDuplicates(r, [target]).length || this.running.has(id)) throw new GroceryConflict("Refresh receipts before linking the duplicate.");
       for (const source of r.sources) if (!target.sources.some(s => s.hash === source.hash)) target.sources.push(source);
       target.revision = randomUUID(); r.duplicateOf = target.id; r.revision = randomUUID();
       await this.persist(state); return target;
@@ -161,8 +161,8 @@ export class GroceryStore {
   async extract(id: string, value: { expectedRevision?: unknown }) {
     const start = await this.serialized(async () => {
       const state = await this.read(), r = state.records.find(r => r.id === id);
-      if (!r || r.revision !== value.expectedRevision || r.status !== "draft" || r.duplicateOf || this.running.has(id) || r.receipt.items.length) throw new GroceryConflict("Actualisez le ticket. L'extraction ne remplace pas des corrections ou un achat enregistré.");
-      if (this.running.size) throw new GroceryConflict("Une extraction est en cours sur le PC. Réessayez après son résultat.");
+      if (!r || r.revision !== value.expectedRevision || r.status !== "draft" || r.duplicateOf || this.running.has(id) || r.receipt.items.length) throw new GroceryConflict("Refresh the receipt. Extraction does not replace edits or a saved purchase.");
+      if (this.running.size) throw new GroceryConflict("An extraction is running on the PC. Retry when it finishes.");
       r.extraction = "running"; await this.persist(state); this.running.add(id);
       return r.sources.map(s => state.sources.find(x => x.hash === s.hash)!);
     });
@@ -170,7 +170,7 @@ export class GroceryStore {
       await mkdir(this.directory, { recursive: true });
       const receipt = validateReceipt(await this.extractor(start, this.directory));
       return await this.finishExtraction(id, receipt);
-    } catch { await this.finishExtraction(id, null); throw new GroceryError("Extraction indisponible. Les sources sont conservées. Actualisez puis réessayez ou saisissez les produits."); }
+    } catch { await this.finishExtraction(id, null); throw new GroceryError("Extraction unavailable. Your sources are saved. Refresh and retry, or enter the items manually."); }
     finally { this.running.delete(id); }
   }
   private finishExtraction(id: string, receipt: GroceryReceipt | null) {

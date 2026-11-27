@@ -56,30 +56,30 @@ export class OpportunityActions {
       return data;
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") return empty();
-      throw new Error("Décisions d’accueil illisibles. Aucun fichier remplacé ; vérifiez la sauvegarde privée.");
+      throw new Error("Today’s saved decisions are unreadable. No file was replaced. Check the private backup.");
     }
   }
   read() { return this.serialize(() => this.load()); }
   mutate(input: unknown, now = new Date()) {
     return this.serialize(async () => {
       const state = await this.load(), body = input as Record<string, unknown>;
-      if (!body || typeof body !== "object" || Array.isArray(body)) throw new Error("Action d’accueil invalide.");
-      if (body.expectedRevision !== state.revision) throw new OpportunityActionsConflict("Les actions d’accueil ont changé. Actualisez avant de réessayer.");
+      if (!body || typeof body !== "object" || Array.isArray(body)) throw new Error("Invalid Today action.");
+      if (body.expectedRevision !== state.revision) throw new OpportunityActionsConflict("Today’s actions changed. Refresh before trying again.");
       if (Object.keys(body).some(k => !["expectedRevision", "opportunityId", "evidenceVersion", "action", "snoozedUntil", "reason", "context"].includes(k))
         || !identity(body.opportunityId) || !identity(body.evidenceVersion) || body.context !== undefined && !validContext(body.context, body.opportunityId) || !["seen", "snooze", "dismiss", "resolve", "restore"].includes(String(body.action))
-        || body.reason !== undefined && (typeof body.reason !== "string" || body.reason.length > 240)) throw new Error("Action d’accueil invalide.");
+        || body.reason !== undefined && (typeof body.reason !== "string" || body.reason.length > 240)) throw new Error("Invalid Today action.");
       const id = body.opportunityId, previous = state.decisions[id], at = now.toISOString(), evidenceVersion = body.evidenceVersion;
       const context = (body.context ?? (previous?.evidenceVersion === evidenceVersion ? previous.context : undefined)) as OpportunityActionContext | undefined;
-      if (body.action !== "snooze" && body.snoozedUntil !== undefined) throw new Error("Date de report inattendue.");
+      if (body.action !== "snooze" && body.snoozedUntil !== undefined) throw new Error("Unexpected snooze date.");
       if (body.action === "snooze" && (!timestamp(body.snoozedUntil) || Date.parse(body.snoozedUntil) <= now.getTime()
-        || Date.parse(body.snoozedUntil) > now.getTime() + 90 * day)) throw new Error("Choisissez un report futur, dans les 90 prochains jours.");
+        || Date.parse(body.snoozedUntil) > now.getTime() + 90 * day)) throw new Error("Choose a future date within the next 90 days.");
       // Viewing an item never silently restores a decision already made for the same evidence.
       if (body.action === "seen" && previous?.evidenceVersion === evidenceVersion) return state;
       if (body.action === "restore") {
-        if (previous && previous.evidenceVersion !== evidenceVersion) throw new OpportunityActionsConflict("Les preuves ont changé. Actualisez avant de rétablir cette action.");
+        if (previous && previous.evidenceVersion !== evidenceVersion) throw new OpportunityActionsConflict("The evidence changed. Refresh before restoring this action.");
         delete state.decisions[id];
       } else {
-        if (!previous && Object.keys(state.decisions).length >= 5000) throw new Error("La limite des décisions d’accueil est atteinte. Les décisions existantes sont conservées.");
+        if (!previous && Object.keys(state.decisions).length >= 5000) throw new Error("Today’s decision limit was reached. Existing decisions are preserved.");
         const decision: OpportunityDecision = { opportunityId: id, evidenceVersion, at, ...(context ? { context } : {}),
           state: body.action === "snooze" ? "snoozed" : body.action === "dismiss" ? "dismissed" : body.action === "resolve" ? "resolved" : "seen",
           ...(body.action === "snooze" ? { snoozedUntil: new Date(body.snoozedUntil as string).toISOString() } : {}),
@@ -88,7 +88,7 @@ export class OpportunityActions {
       }
       state.history.push(body.action === "restore" ? { opportunityId: id, evidenceVersion, at, state: "restored", ...(context ? { context } : {}) } : { ...state.decisions[id] });
       const countKey = state.history.at(-1)!.state;
-      if (state.totals[countKey] === Number.MAX_SAFE_INTEGER) throw new Error("La limite du compteur est atteinte. Aucun fichier remplacé.");
+      if (state.totals[countKey] === Number.MAX_SAFE_INTEGER) throw new Error("The counter limit was reached. No file was replaced.");
       state.totals[countKey]++;
       state.history = state.history.slice(-2000);
       state.revision = randomUUID();

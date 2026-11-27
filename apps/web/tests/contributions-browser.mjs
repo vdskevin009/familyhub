@@ -14,10 +14,10 @@ const server = createServer(async (req, res) => {
 });
 server.listen(0, "127.0.0.1"); await once(server, "listening");
 const base = `http://127.0.0.1:${server.address().port}/familyhub/`;
-const plan = {id:"synthetic-plan",kind:"rrsp",currency:"CAD",personalGoalCents:600000,identifiedCents:100000,deadline:"2030-03-01",attribution:"confirmed",beneficiaryConfirmed:false,payments:[{id:"synthetic-row",date:"2030-01-01",amountCents:100000,kind:"weekly"}],unassigned:[{id:"excluded",date:"2030-01-01",amountCents:12300,currency:"CAD"}],warnings:[],sourceFreshness:"unknown",weeklyProjection:{amountCents:25000,remainingOccurrences:4,futureCents:100000,assumption:"Hypothèse fictive : rythme hebdomadaire maintenu."}};
+const plan = {id:"synthetic-plan",kind:"rrsp",currency:"CAD",personalGoalCents:600000,identifiedCents:100000,deadline:"2030-03-01",attribution:"confirmed",beneficiaryConfirmed:false,payments:[{id:"synthetic-row",date:"2030-01-01",amountCents:100000,kind:"weekly"}],unassigned:[{id:"excluded",date:"2030-01-01",amountCents:12300,currency:"CAD"}],warnings:[],sourceFreshness:"unknown",weeklyProjection:{amountCents:25000,remainingOccurrences:4,futureCents:100000,assumption:"Example assumption: weekly contributions continue."}};
 plan.inferredCents=12345;
-plan.inferredPayments=[{id:"inferred-source",date:"2030-01-01",amountCents:12345,attribution:"inferred",rationale:"Même référence que des virements précédents.",evidenceTransactionIds:["historic-1","historic-2"],sourceKey:"fsi_"+"a".repeat(64),collectedAt:"2030-01-01T12:00:00Z",bankReceiptConfirmed:false}];
-const snapshot = {schema:1,evaluatedOn:"2030-01-01",daysPerMonth:30,plans:[plan,{...plan,id:"synthetic-resp",kind:"resp",beneficiaryName:"Enfant fictif",attribution:"unconfirmed",personalGoalCents:100000,weeklyProjection:null}]};
+plan.inferredPayments=[{id:"inferred-source",date:"2030-01-01",amountCents:12345,attribution:"inferred",rationale:"Même référence de destination que des virements antérieurs explicitement attribués. Réception bancaire non vérifiée.",evidenceTransactionIds:["historic-1","historic-2"],sourceKey:"fsi_"+"a".repeat(64),collectedAt:"2030-01-01T12:00:00Z",bankReceiptConfirmed:false}];
+const snapshot = {schema:1,evaluatedOn:"2030-01-01",daysPerMonth:30,plans:[plan,{...plan,id:"synthetic-resp",kind:"resp",beneficiaryName:"Example child",attribution:"unconfirmed",personalGoalCents:100000,weeklyProjection:null}]};
 let browser;
 try {
   browser = await chromium.launch({headless:true, ...(process.platform === "win32" ? {channel:"chrome"} : {})});
@@ -33,15 +33,18 @@ try {
       if(path!=='/contributions/progress')return route.fulfill({json:{items:[],records:[],jobs:[],state:'idle'}});
       return route.fulfill({status:mode==="offline"?503:200,contentType:"application/json",body:JSON.stringify(mode==="invalid"?{schema:0}:mode==="empty"?{...snapshot,plans:[]}:snapshot)});});
     await page.goto(base+"?view=contributions");
-    const trigger = page.getByRole("button",{name:"Voir les versements REER",exact:true}); await trigger.waitFor();
+    const trigger = page.getByRole("button",{name:"View RRSP contributions",exact:true}); await trigger.waitFor();
     if (process.env.CONTRIBUTIONS_TEST_FONT) await page.addStyleTag({content:`body { font-family: ${process.env.CONTRIBUTIONS_TEST_FONT} !important; }`});
     assert.equal(await page.locator(".contribution-card").count(),2);
+    assert.equal(await page.getByRole("heading", { name: "RRSP", exact: true }).count(), 1);
+    assert.equal(await page.getByRole("heading", { name: "RESP", exact: true }).count(), 1);
+    assert.match(await page.getByRole("progressbar").first().getAttribute("aria-label"), /^RRSP: identified contributions/);
     assert.equal(await page.locator(".contribution-card.reached").count(),0);
     assert.equal(await page.locator(".contribution-card.effort").count(),1);
     assert.equal(await page.locator(".contribution-card time").count(),0);
     assert.equal(await page.getByRole("progressbar").count(),2);
     assert.equal(await page.locator('.contribution-forecast-summary').count(),1);
-    assert.match(await page.locator('.contribution-forecast-summary').innerText(),/1.?000,00.*Hors progression/s);
+    assert.match(await page.locator('.contribution-forecast-summary').innerText(),/1,000\.00.*Not counted toward progress/s);
     assert.equal(await page.getByRole('progressbar').first().getAttribute('value'), String(100000/600000*100));
     assert.equal(await page.locator(".contribution-inferred-summary").count(),2);
     assert.match(await page.getByRole("progressbar").first().getAttribute("aria-valuetext"), /1.?000/);
@@ -51,11 +54,11 @@ try {
     for(let i=0;i<2;i++) {
       await trigger.focus(); await page.keyboard.press("Enter");
       const dialog=page.getByRole("dialog"); await dialog.waitFor();
-      assert.ok(await dialog.getByText("Hebdomadaires réalisés",{exact:true}).isVisible());
-      assert.ok(await dialog.getByText("Virements non attribués · exclus",{exact:true}).isVisible());
-      assert.ok(await dialog.getByRole("heading",{name:/Attribution déduite/}).isVisible());
-      assert.ok(await dialog.getByText("Même référence que des virements précédents.",{exact:true}).isVisible());
-      assert.ok(await dialog.getByText(/Réception bancaire non confirmée/).isVisible());
+      assert.ok(await dialog.getByText("Completed weekly contributions",{exact:true}).isVisible());
+      assert.ok(await dialog.getByText("Excluded, unallocated transfers",{exact:true}).isVisible());
+      assert.ok(await dialog.getByRole("heading",{name:/Inferred allocation/}).isVisible());
+      assert.ok(await dialog.getByText("The destination reference matches earlier transfers with confirmed allocation. Bank receipt has not been verified.",{exact:true}).isVisible());
+      assert.ok(await dialog.getByText(/The bank has not confirmed receipt/).isVisible());
       for(let j=0;j<5;j++) await page.keyboard.press("Tab");
       assert.ok(await page.evaluate(()=>document.querySelector("dialog[open]").contains(document.activeElement)));
       await page.keyboard.press("Escape");
@@ -65,13 +68,13 @@ try {
     await mkdir("output/playwright/contributions",{recursive:true});
     await page.screenshot({path:`output/playwright/contributions/cards-${width}${process.env.CONTRIBUTIONS_TEST_FONT ? "-fallback" : ""}.png`,fullPage:true});
     for(const next of ["empty","invalid","offline","ready"]) {
-      mode=next; await page.getByRole("button",{name:"Actualiser les contributions",exact:true}).click();
+      mode=next; await page.getByRole("button",{name:"Refresh contributions",exact:true}).click();
       if(next==="ready") await trigger.waitFor();
-      else { await page.getByText(next==="empty"?"Objectif privé non configuré":"Données indisponibles",{exact:true}).first().waitFor(); assert.equal(await page.getByRole("progressbar").count(),0); }
+      else { await page.getByText(next==="empty"?"Private goal not configured":"Data unavailable",{exact:true}).first().waitFor(); assert.equal(await page.getByRole("progressbar").count(),0); }
     }
-    const more = page.getByRole("button",{name: "Plus",exact:true}); await more.last().click();
+    const more = page.getByRole("button",{name: "More",exact:true}); await more.last().click();
     await page.getByRole("button",{name:"Finances",exact:true}).last().click(); await page.getByRole("button",{name:"Contributions",exact:true}).click(); await trigger.waitFor();
-    await page.goBack(); await page.getByRole("heading",{name:"Plus",exact:true}).waitFor();
+    await page.goBack(); await page.getByRole("heading",{name:"More",exact:true}).waitFor();
     await page.goForward(); await page.getByRole("button",{name:"Contributions",exact:true}).click(); await trigger.waitFor();
     assert.deepEqual(errors,[]); await context.close();
     console.log(`Contributions ${width}px: cards, modal keyboard/focus, error/empty, history passed.`);

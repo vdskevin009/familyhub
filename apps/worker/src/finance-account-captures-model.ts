@@ -18,7 +18,7 @@ export type FinanceAccountCaptureImportResult = {
   expectedRevision: string; proposedRevision: string; capture: FinanceAccountCapture; state: FinanceAccountCapturesState | null;
 };
 export class AccountCapturesError extends Error {}
-export const accountCapturesFail = (): never => { throw new AccountCapturesError("Capture de comptes invalide. Les données existantes sont conservées."); };
+export const accountCapturesFail = (): never => { throw new AccountCapturesError("Invalid account snapshot. Existing data has been kept."); };
 export function captureObject(value: unknown, keys: string[]): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value) || ![Object.prototype, null].includes(Object.getPrototypeOf(value))) return accountCapturesFail();
   const v = value as Record<string, unknown>;

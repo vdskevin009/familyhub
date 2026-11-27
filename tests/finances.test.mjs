@@ -55,8 +55,8 @@ test("each card settlement leg stays outside spending independently, including s
 });
 
 test("one explicit pets category covers animal care without guessing ambiguous purchases", async () => {
-    assert.equal(expenseCategories.pets, "Animaux de compagnie");
-    assert.equal(Object.values(expenseCategories).filter(label => label === "Animaux de compagnie").length, 1);
+    assert.equal(expenseCategories.pets, "Pets");
+    assert.equal(Object.values(expenseCategories).filter(label => label === "Pets").length, 1);
     const s = state(), row = s.data.transactions[0];
     assert.notEqual(suggestClassification({ ...row, description: "BAKERY SYNTHETIC" }).category, "pets");
     const before = JSON.stringify(s.data);
@@ -105,7 +105,7 @@ test("savings category decisions persist across restart/reimport, preserve earli
         assert.deepEqual(await new FinanceLibrary(dir).read(), saved);
         const repeat = await lib.import({ bundle, apply: true, expectedRevision: saved.revision });
         assert.equal(repeat.alreadyImported, true); assert.deepEqual(repeat.state.decisions, saved.decisions);
-        for (const nature of ["expense", "refund", "income", "repayment"]) await assert.rejects(lib.decide({ id: "transfer", expectedRevision: saved.revision, decision: { nature, category: "savings-investments", note: "Invalid mixture" } }), /invalide/);
+        for (const nature of ["expense", "refund", "income", "repayment"]) await assert.rejects(lib.decide({ id: "transfer", expectedRevision: saved.revision, decision: { nature, category: "savings-investments", note: "Invalid mixture" } }), /invalid/i);
         assert.deepEqual(await lib.read(), saved);
     } finally { await rm(dir, { recursive: true, force: true }); }
 });
@@ -226,7 +226,7 @@ test("private import previews without writing, archives source extensions and pr
                 apply: true,
                 expectedRevision: changed.revision,
             }),
-            /modifie/,
+            /changes an existing transaction/,
         );
         assert.equal(
             await readFile(join(dir, "ledger.json"), "utf8"),
@@ -242,7 +242,7 @@ test("private import previews without writing, archives source extensions and pr
                     note: "",
                 },
             }),
-            /sens/,
+            /direction/,
         );
         await assert.rejects(
             library.decide({
@@ -250,7 +250,7 @@ test("private import previews without writing, archives source extensions and pr
                 expectedRevision: "stale",
                 decision: { nature: "expense", category: "other", note: "" },
             }),
-            /Actualisez/,
+            /Refresh/,
         );
     } finally {
         await rm(dir, { recursive: true, force: true });
@@ -325,7 +325,7 @@ test("concurrent stale edits cannot overwrite each other and corrupt nested valu
         saved.data.holdings[0].totalCents = "bad";
         const bytes = JSON.stringify(saved);
         await writeFile(join(dir, "ledger.json"), bytes);
-        await assert.rejects(lib.read(), /Registre financier invalide/);
+        await assert.rejects(lib.read(), /financial register is invalid/);
         assert.equal(await readFile(join(dir, "ledger.json"), "utf8"), bytes);
     } finally {
         await rm(dir, { recursive: true, force: true });
@@ -419,7 +419,7 @@ test("source identity conflicts stop safely; older imports preserve newer observ
         const { state: first } = await lib.import({ bundle, apply: true, expectedRevision: "empty" });
         const changed = structuredClone(bundle);
         changed.accounts[0].identityFingerprint = "a-different-account";
-        await assert.rejects(lib.import({ bundle: changed }), /Identité/);
+        await assert.rejects(lib.import({ bundle: changed }), /account identity/);
         const older = structuredClone(bundle);
         older.collectedOn = "2026-10-08";
         older.accounts[0].observedBalanceCents = 100;
@@ -432,7 +432,7 @@ test("source identity conflicts stop safely; older imports preserve newer observ
         const duplicate = structuredClone(bundle);
         duplicate.brokerageActivities[0].matchingFingerprint = "same-source";
         duplicate.brokerageActivities[1].matchingFingerprint = "same-source";
-        await assert.rejects(new FinanceLibrary(join(dir,"isolated")).import({ bundle: duplicate }), /dupliquée/);
+        await assert.rejects(new FinanceLibrary(join(dir,"isolated")).import({ bundle: duplicate }), /duplicate/i);
         assert.equal((await lib.read()).revision, second.revision);
     } finally { await rm(dir, { recursive: true, force: true }); }
 });

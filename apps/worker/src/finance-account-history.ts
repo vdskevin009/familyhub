@@ -8,7 +8,7 @@ const MAX_ARCHIVE_BYTES=20_000_000,MAX_TOTAL_BYTES=128_000_000;
 /** Read-only projection of original imported bundles. No mutable ledger balances, source-date fallback,
  * holdings, inferred semantics, provider identities or local paths enter the response. */
 export async function readFinanceAccountHistory(financeDirectory:string,imports:readonly {hash:string}[]):Promise<FinanceAccountHistory>{
-  if(!Array.isArray(imports)||imports.length>2400)throw new AccountCapturesError("Historique archivé trop volumineux. Aucun fichier modifié.");
+  if(!Array.isArray(imports)||imports.length>2400)throw new AccountCapturesError("The archive is too large. No files were changed.");
   const versions:FinanceHistoricalAccountVersion[]=[],seen=new Set<string>(),hashes=new Set<string>();let unavailableArchiveCount=0,totalBytes=0;
   for(const item of imports){
     if(!item||!captureHash(item.hash)){unavailableArchiveCount++;continue;}if(hashes.has(item.hash))continue;hashes.add(item.hash);

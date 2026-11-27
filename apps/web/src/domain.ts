@@ -244,8 +244,8 @@ export function assistantInsights(
     ? reconciled.filter(item => item.Currency === "CAD").reduce((sum, item) => sum + (item.PotentialRemaining ?? 0), 0)
     : claims.filter(item => item.Currency === "CAD").reduce((sum, item) => sum + (item.DetectedAmount ?? 0), 0);
   if (claims.length || reconciled.length) insights.push({
-    id: "claims", tone: "money", eyebrow: "Remboursements", title: `${reconciled.length || claims.length} dossier${(reconciled.length || claims.length) > 1 ? "s" : ""} à terminer`,
-    detail: claimAmount > 0 ? `${currency.format(claimAmount)} reste potentiellement à vérifier auprès des assureurs; ce n'est pas un montant garanti.` : "Vérifiez les montants et les preuves avant toute demande.",
+    id: "claims", tone: "money", eyebrow: "Reimbursements", title: `${reconciled.length || claims.length} claim${(reconciled.length || claims.length) > 1 ? "s" : ""} to finish`,
+    detail: claimAmount > 0 ? `${currency.format(claimAmount)} may be recoverable from your insurers. This amount is not guaranteed.` : "Check the amounts and evidence before submitting a claim.",
     action: "reimbursements"
   });
 

@@ -2,7 +2,7 @@
 export const SOURCE_EXPENSES_CAPABILITY = "finance-source-expenses-v1" as const;
 export const SOURCE_EXPENSES_LIMITS = { rows: 30000, accounts: 100, bytes: 16_000_000, historyBytes: 64_000_000, captures: 200, clockSkewMs: 300_000 } as const;
 export class SourceExpensesError extends Error {}
-const fail = (): never => { throw new SourceExpensesError("Dépenses source invalides. Les données conservées restent inchangées."); };
+const fail = (): never => { throw new SourceExpensesError("Invalid source spending data. Saved data is unchanged."); };
 export type SourceExpenseAccount = { sourceKey: string; name: string };
 export type SourceExpenseRow = { sourceKey: string; accountSourceKey: string; pendingSourceKey: string | null; date: string; description: string; outflowCents: number; currency: string; pending: boolean; category: { primary: string | null; detailed: string | null; confidence: string | null }; linkedTransfer: boolean | null };
 export type SourceExpensesSnapshot = { schemaVersion: 1; source: "finances-plugin"; collectedAt: string; evidenceSha256: string; accounts: SourceExpenseAccount[]; query: { from: string; through: string; accountSourceKeys: string[]; includeTransfers: true }; coverage: { complete: boolean; hasMore: boolean | null; sourceAsOf: string | null; warningCodes: string[] }; rows: SourceExpenseRow[] };

@@ -18,13 +18,13 @@ export function activeOffer(card: Card, at: number) {
 }
 
 export function projectDecision(card: Card, at: number) {
-  if (['sold', 'withdrawn', 'unavailable'].includes(card.status)) return 'Annonce à écarter pour le moment';
-  if (!activeOffer(card, at)) return 'Disponibilité à reconfirmer';
-  if (card.criteria.some(c => c.id !== 'budget' && c.pass === false)) return 'Écart avec le projet';
-  if (!currentFact(card.priceCad, at)) return 'Prix demandé à reconfirmer';
-  if (card.criteria.some(c => c.pass === false)) return 'Écart avec le projet';
-  if (card.criteria.some(c => c.pass === null)) return 'Critères à documenter';
-  return 'Visite à préparer';
+  if (['sold', 'withdrawn', 'unavailable'].includes(card.status)) return 'Set this listing aside';
+  if (!activeOffer(card, at)) return 'Recheck availability';
+  if (card.criteria.some(c => c.id !== 'budget' && c.pass === false)) return 'Does not match your project';
+  if (!currentFact(card.priceCad, at)) return 'Recheck asking price';
+  if (card.criteria.some(c => c.pass === false)) return 'Does not match your project';
+  if (card.criteria.some(c => c.pass === null)) return 'Criteria need evidence';
+  return 'Plan a viewing';
 }
 
 function key(value: string) { return value.trim().toLowerCase().replace(/\s+/g, ' '); }
@@ -82,24 +82,24 @@ export function evaluateSales(subject: PropertyCard, sales: Sale[], at: number, 
     const event = civilDate(s.eventDate), checked = civilDate(s.checkedDate);
     const amount = Number(s.amount);
     let reason = '';
-    if (s.kind !== 'sold') reason = 'Prix affiché uniquement';
-    else if (!addresses[i] || !links[i] || !/^\d+([.]\d{1,2})?$/.test(s.amount) || !(amount > 0 && Number.isSafeInteger(Math.round(amount * 100)))) reason = 'Identité, prix ou source à compléter';
-    else if (addresses[i] === key(subject.address) || links[i] === linkKey(subject.url)) reason = 'Bien étudié lui-même';
-    else if (addresses.indexOf(addresses[i]) !== addresses.lastIndexOf(addresses[i]) || links.indexOf(links[i]) !== links.lastIndexOf(links[i])) reason = 'Identité ou source répétée';
-    else if (!(event <= checked && checked <= today && today - event <= 180 * day)) reason = 'Dates absentes, incohérentes ou vente de plus de 180 jours';
-    else if (!sourceKey(areaSource) || !(Number(subjectArea) > 0 && Number.isFinite(Number(subjectArea))) || !(Number(s.area) > 0 && Number.isFinite(Number(s.area))) || Math.abs(Number(s.area) - Number(subjectArea)) > Number(subjectArea) * 0.10) reason = 'Surfaces habitables à documenter ou écart supérieur à 10 %';
-    else if (!s.comparable || s.rationale.trim().length < 8) reason = 'Comparabilité à documenter';
+    if (s.kind !== 'sold') reason = 'Asking price only';
+    else if (!addresses[i] || !links[i] || !/^\d+([.]\d{1,2})?$/.test(s.amount) || !(amount > 0 && Number.isSafeInteger(Math.round(amount * 100)))) reason = 'Missing identity, price or source';
+    else if (addresses[i] === key(subject.address) || links[i] === linkKey(subject.url)) reason = 'The subject property itself';
+    else if (addresses.indexOf(addresses[i]) !== addresses.lastIndexOf(addresses[i]) || links.indexOf(links[i]) !== links.lastIndexOf(links[i])) reason = 'Repeated identity or source';
+    else if (!(event <= checked && checked <= today && today - event <= 180 * day)) reason = 'Dates missing, inconsistent or more than 180 days since sale';
+    else if (!sourceKey(areaSource) || !(Number(subjectArea) > 0 && Number.isFinite(Number(subjectArea))) || !(Number(s.area) > 0 && Number.isFinite(Number(s.area))) || Math.abs(Number(s.area) - Number(subjectArea)) > Number(subjectArea) * 0.10) reason = 'Missing living area or difference greater than 10%';
+    else if (!s.comparable || s.rationale.trim().length < 8) reason = 'Comparability not established';
     return {reason, amount};
   });
   const accepted = rows.filter(r => !r.reason).map(r => r.amount);
   const low = Math.min(...accepted), high = Math.max(...accepted);
   const ready = activeOffer(subject, at) && currentFact(subject.priceCad, at);
   let verdict: string;
-  if (!ready) verdict = 'Actualiser le statut et le prix demandé avant la comparaison.';
-  else if (accepted.length < 3) verdict = 'Trois ventes distinctes et comparables sont nécessaires.';
-  else if (high / low > 1.2) verdict = 'Ventes trop dispersées pour situer le prix demandé.';
-  else if (subject.priceCad.value! < low) verdict = 'Prix demandé sous les ventes retenues';
-  else if (subject.priceCad.value! > high) verdict = 'Prix demandé au-dessus des ventes retenues';
-  else verdict = 'Prix demandé dans la fourchette des ventes retenues';
+  if (!ready) verdict = 'Refresh the listing status and asking price before comparing.';
+  else if (accepted.length < 3) verdict = 'At least three distinct comparable sales are required.';
+  else if (high / low > 1.2) verdict = 'Sale prices vary too widely to assess this asking price.';
+  else if (subject.priceCad.value! < low) verdict = 'Asking price below the selected sales';
+  else if (subject.priceCad.value! > high) verdict = 'Asking price above the selected sales';
+  else verdict = 'Asking price within the selected sales range';
   return {rows, count:accepted.length, verdict, range: ready && accepted.length >= 3 && high / low <= 1.2 ? {low,high} : null};
 }

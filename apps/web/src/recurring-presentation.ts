@@ -2,8 +2,8 @@ import type { SavingsContract, SavingsCategory } from "./savings";
 import type { ContractPayments } from "./savings-payments";
 
 export const recurringCategories: Record<SavingsCategory, string> = {
-  subscription: "Abonnements", telecom: "Téléphone et Internet", "credit-card": "Cartes et frais",
-  "car-insurance": "Assurance auto", "home-insurance": "Assurance habitation", mortgage: "Hypothèque", other: "Autres contrats",
+  subscription: "Subscriptions", telecom: "Phone and internet", "credit-card": "Cards and fees",
+  "car-insurance": "Auto insurance", "home-insurance": "Home insurance", mortgage: "Mortgage", other: "Other contracts",
 };
 
 /** Presentation of the existing reconciliation only; never infer a current payment. */

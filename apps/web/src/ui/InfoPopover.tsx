@@ -40,13 +40,13 @@ export function CompactDialog({ open, onClose, title, children, anchor, id }: {
             const r = e.currentTarget.getBoundingClientRect();
             if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) onClose();
         }}>
-        <header><h2 id={titleId}>{title}</h2><button type="button" className="icon-button" onClick={onClose} aria-label={"Fermer : " + title}><X size={18} aria-hidden="true" /></button></header>
+        <header><h2 id={titleId}>{title}</h2><button type="button" className="icon-button" onClick={onClose} aria-label={"Close: " + title}><X size={18} aria-hidden="true" /></button></header>
         <div className="compact-dialog-content">{children}</div>
     </dialog>;
 }
 
 export default function InfoPopover({ title, children }: { title: string; children: ReactNode }) {
     const [open, setOpen] = useState(false), anchor = useRef<HTMLButtonElement>(null), id = useId();
-    return <><button ref={anchor} type="button" className="icon-button info-trigger" aria-label={"Informations : " + title} aria-haspopup="dialog" aria-controls={id} aria-expanded={open} onClick={() => setOpen(true)}><Info size={18} aria-hidden="true" /></button>
+    return <><button ref={anchor} type="button" className="icon-button info-trigger" aria-label={"Information: " + title} aria-haspopup="dialog" aria-controls={id} aria-expanded={open} onClick={() => setOpen(true)}><Info size={18} aria-hidden="true" /></button>
         <CompactDialog id={id} open={open} onClose={() => setOpen(false)} title={title} anchor={anchor}>{children}</CompactDialog></>;
 }

@@ -12,7 +12,7 @@ export type SharedResearch = { jobs: SavingsJob[]; schedule: { enabled?: boolean
 export function fetchSharedResearch(config: WorkerConfig): Promise<SharedResearch> { return request(config, "/savings/research"); }
 export async function fetchNotifications(config: WorkerConfig): Promise<import("../../worker/src/notification-library").NotificationSnapshot> {
   const health = await testWorker(config);
-  if (!workerVersionAtLeast(health.version, "2.24.0")) throw new Error("Les notifications nécessitent le worker PC 2.24.0 ou ultérieur. Les données et catégories enregistrées restent disponibles.");
+  if (!workerVersionAtLeast(health.version, "2.24.0")) throw new Error("Notifications require PC service 2.24.0 or later. Saved data and categories remain available.");
   return request(config, "/notifications?actionAlerts=1");
 }
 export const updateNotifications = (config: WorkerConfig, body: object) => request<import("../../worker/src/notification-library").NotificationSnapshot>(config, "/notifications?actionAlerts=1", { method: "POST", body: JSON.stringify(body) });
@@ -21,7 +21,7 @@ export function fetchSharedSavingsDocument(config: WorkerConfig, id: string): Pr
 async function requireInsuranceSupport(config: WorkerConfig, contracts: SavingsContract[]) {
   if (!contracts.some(c => c.insuranceReference)) return;
   const health = await request<{ capabilities?: string[] }>(config, "/health");
-  if (!health.capabilities?.includes("insurance-reference-v1")) throw new Error("Mettez à jour le worker PC pour conserver le référentiel assurances. Aucun contrat n'a été modifié.");
+  if (!health.capabilities?.includes("insurance-reference-v1")) throw new Error("Update the PC service to keep insurance records. No contract has been changed.");
 }
 export async function importSharedSavings(config: WorkerConfig, contracts: SavingsContract[], documents: SharedDocument[]): Promise<SharedLibrary> {
   await requireInsuranceSupport(config, contracts);
@@ -137,7 +137,7 @@ async function request<T>(config: WorkerConfig, path: string, init: RequestInit 
     ...init,
     headers: requestHeaders
   }); } catch {
-    throw new Error("Cannot reach your FamilyHub PC. Check that the PC worker and HTTPS connection are running, then verify the endpoint in Plus → Réglages et outils → Local AI. Temporary tunnel addresses change after a restart. Saved results are still available; refresh before retrying an unconfirmed change.");
+    throw new Error("Cannot reach your FamilyHub PC. Check that the PC service and HTTPS connection are running, then verify the endpoint in More → Settings and tools → Local AI. Temporary tunnel addresses change after a restart. Saved results remain available. Refresh before retrying an unconfirmed change.");
   }
   if (!response.ok) {
     const body = await response.json().catch(() => ({})) as { error?: string };
@@ -151,10 +151,10 @@ export async function fetchFinanceRegisterBindings(config: WorkerConfig): Promis
   const health = await request<{ capabilities?: string[] }>(config, "/health");
   if (!health.capabilities?.includes("finance-register-bindings-v1")) return null;
   const result = await request<import("../../worker/src/finance-register-bindings").FinanceRegisterProof>(config, "/finances/register-bindings");
-  if (!result || result.capability !== "finance-register-bindings-v1" || typeof result.ledgerRevision !== "string" || !Number.isSafeInteger(result.unavailableArchiveCount) || result.unavailableArchiveCount < 0 || !result.bindings) throw new Error("Rapprochement non confirmé.");
+  if (!result || result.capability !== "finance-register-bindings-v1" || typeof result.ledgerRevision !== "string" || !Number.isSafeInteger(result.unavailableArchiveCount) || result.unavailableArchiveCount < 0 || !result.bindings) throw new Error("Match not confirmed.");
   for (const kind of ["accounts", "transactions"] as const) {
     const map = result.bindings[kind];
-    if (!map || typeof map !== "object" || Array.isArray(map) || Object.keys(map).length > 30000 || Object.entries(map).some(([key, value]) => !/^fsi_[a-f0-9]{64}$/.test(key) || typeof value !== "string" || !/^[a-zA-Z0-9:_-]{1,160}$/.test(value))) throw new Error("Identités de rapprochement invalides.");
+    if (!map || typeof map !== "object" || Array.isArray(map) || Object.keys(map).length > 30000 || Object.entries(map).some(([key, value]) => !/^fsi_[a-f0-9]{64}$/.test(key) || typeof value !== "string" || !/^[a-zA-Z0-9:_-]{1,160}$/.test(value))) throw new Error("Invalid match identifiers.");
   }
   return result;
 }
@@ -164,7 +164,7 @@ async function hasFinanceSourceInventory(config: WorkerConfig): Promise<boolean>
 }
 async function readFinanceSourceInventory(config: WorkerConfig): Promise<FinanceSourceInventoryState> {
   const body = await request<{ capability?: unknown; state?: unknown }>(config, "/finance/source-inventory");
-  if (!body || Object.keys(body).sort().join(",") !== "capability,state" || body.capability !== SOURCE_INVENTORY_CAPABILITY) throw new Error("Inventaire source non confirmé par le PC.");
+  if (!body || Object.keys(body).sort().join(",") !== "capability,state" || body.capability !== SOURCE_INVENTORY_CAPABILITY) throw new Error("Source inventory not confirmed by the PC.");
   return validateFinanceSourceInventoryState(body.state);
 }
 /** null means an older worker, not a known empty inventory. Never cache private evidence in the PWA. */
@@ -172,11 +172,11 @@ export async function fetchFinanceSourceInventory(config: WorkerConfig): Promise
   return await hasFinanceSourceInventory(config) ? readFinanceSourceInventory(config) : null;
 }
 export async function importFinanceSourceInventory(config: WorkerConfig, value: unknown, expectedRevision: string, apply = false): Promise<SourceInventoryImportResult> {
-  if (!await hasFinanceSourceInventory(config)) throw new Error("Mettez à jour le worker PC pour conserver l'inventaire source. Aucun import effectué.");
+  if (!await hasFinanceSourceInventory(config)) throw new Error("Update the PC service to save source inventory. Nothing was imported.");
   const snapshot = validateFinanceSourceInventory(value);
-  if (!(expectedRevision === "empty" || /^[a-f0-9]{64}$/.test(expectedRevision))) throw new Error("Révision de l'inventaire requise.");
+  if (!(expectedRevision === "empty" || /^[a-f0-9]{64}$/.test(expectedRevision))) throw new Error("Source inventory revision required.");
   const result = await request<SourceInventoryImportResult>(config, "/finance/source-inventory", { method: "POST", body: JSON.stringify({ capability: SOURCE_INVENTORY_CAPABILITY, snapshot, expectedRevision, apply }) });
-  const uncertain = () => new Error(apply ? "Enregistrement de l'inventaire non confirmé. Relisez le PC avant de réessayer; aucun import automatique." : "Aperçu de l'inventaire non confirmé. Aucun import effectué.");
+  const uncertain = () => new Error(apply ? "Saving the inventory was not confirmed. Reload the PC data before retrying. Nothing is imported automatically." : "Inventory preview not confirmed. Nothing was imported.");
   if (!result || Object.keys(result).sort().join(",") !== "alreadyImported,applied,capability,expectedRevision,proposedRevision,snapshot,state"
     || result.capability !== SOURCE_INVENTORY_CAPABILITY || result.applied !== apply || result.expectedRevision !== expectedRevision
     || typeof result.proposedRevision !== "string" || !/^[a-f0-9]{64}$/.test(result.proposedRevision)
@@ -201,7 +201,7 @@ async function hasSourceExpenses(config: WorkerConfig): Promise<boolean> {
 }
 async function readSourceExpenses(config: WorkerConfig): Promise<SourceExpensesState> {
   const body = await request<{ capability?: unknown; state?: unknown }>(config, "/finance/source-expenses");
-  if (!body || Object.keys(body).sort().join(",") !== "capability,state" || body.capability !== SOURCE_EXPENSES_CAPABILITY) throw new Error("Dépenses source non confirmées par le PC.");
+  if (!body || Object.keys(body).sort().join(",") !== "capability,state" || body.capability !== SOURCE_EXPENSES_CAPABILITY) throw new Error("Source spending not confirmed by the PC.");
   return validateSourceExpensesState(body.state);
 }
 /** null means an older worker, not a known empty inventory. Never cache private evidence in the PWA. */
@@ -209,11 +209,11 @@ export async function fetchSourceExpenses(config: WorkerConfig): Promise<SourceE
   return await hasSourceExpenses(config) ? readSourceExpenses(config) : null;
 }
 export async function importSourceExpenses(config: WorkerConfig, value: unknown, expectedRevision: string, apply = false): Promise<SourceExpensesImportResult> {
-  if (!await hasSourceExpenses(config)) throw new Error("Mettez à jour le worker PC pour conserver les dépenses source. Aucun import effectué.");
+  if (!await hasSourceExpenses(config)) throw new Error("Update the PC service to save source spending. Nothing was imported.");
   const snapshot = validateSourceExpenses(value);
-  if (!(expectedRevision === "empty" || /^[a-f0-9]{64}$/.test(expectedRevision))) throw new Error("Révision des dépenses source requise.");
+  if (!(expectedRevision === "empty" || /^[a-f0-9]{64}$/.test(expectedRevision))) throw new Error("Source spending revision required.");
   const result = await request<SourceExpensesImportResult>(config, "/finance/source-expenses", { method: "POST", body: JSON.stringify({ capability: SOURCE_EXPENSES_CAPABILITY, snapshot, expectedRevision, apply }) });
-  const uncertain = () => new Error(apply ? "Enregistrement des dépenses source non confirmé. Relisez le PC avant de réessayer; aucun import automatique." : "Aperçu des dépenses source non confirmé. Aucun import effectué.");
+  const uncertain = () => new Error(apply ? "Saving source spending was not confirmed. Reload the PC data before retrying. Nothing is imported automatically." : "Source spending preview not confirmed. Nothing was imported.");
   if (!result || Object.keys(result).sort().join(",") !== "alreadyImported,applied,capability,expectedRevision,proposedRevision,snapshot,state"
     || result.capability !== SOURCE_EXPENSES_CAPABILITY || result.applied !== apply || result.expectedRevision !== expectedRevision
     || typeof result.proposedRevision !== "string" || !/^[a-f0-9]{64}$/.test(result.proposedRevision)
@@ -236,8 +236,8 @@ export async function saveFinanceChange(config: WorkerConfig, body: object) {
   try { return await request<import("../../worker/src/finance-model").FinanceChangeResult>(config, "/finances/changes", { method: "POST", body: JSON.stringify(body) }); }
   catch (error) {
     const status = (error as Error & { status?: number }).status;
-    if (status === 404) throw new Error("La modification rapide nécessite le worker PC 2.25.0 ou ultérieur. Aucune décision n'a été modifiée.");
-    if (status === undefined) throw new Error("Enregistrement non confirmé : connexion au PC interrompue. Votre brouillon est conservé. Réessayez la même action; elle ne sera pas appliquée deux fois.");
+    if (status === 404) throw new Error("Quick edits require PC service 2.25.0 or later. No decision has been changed.");
+    if (status === undefined) throw new Error("Save not confirmed: connection to the PC was interrupted. Your draft is preserved. Retrying the same action will not apply it twice.");
     throw error;
   }
 }
@@ -246,14 +246,14 @@ export async function importFinances(config: WorkerConfig, bundle: unknown, expe
   const input = bundle as { balanceObservations?: unknown; importMode?: unknown };
   if (input?.balanceObservations !== undefined || input?.importMode !== undefined) {
     const health = await request<{ capabilities?: string[] }>(config, "/health");
-    if (!health.capabilities?.includes("finance-balance-observations-v1")) throw new Error("Mettez à jour le worker PC pour conserver les soldes reçus et leurs dates. Aucun import effectué.");
+    if (!health.capabilities?.includes("finance-balance-observations-v1")) throw new Error("Update the PC service to save received balances and their dates. Nothing was imported.");
   }
   const result = await request<{ state?: import("../../worker/src/finance-model").FinanceState; added:number; possibleDuplicates:number; balanceObservations?:number; capability?:string; accounts?:number; from?:string; to?:string; revision?:string; alreadyImported?:boolean }>(config,"/finances/import",{ method:"POST",body:JSON.stringify({bundle,expectedRevision,apply}) },60_000);
   if (Array.isArray(input?.balanceObservations)) {
     if (apply || result.alreadyImported) {
       const saved = result.state?.data?.balanceObservations;
-      if (!saved || input.balanceObservations.some(row => !saved.some(o => o.accountId === row.accountId && o.currency === row.currency && o.balanceCents === row.balanceCents && Date.parse(o.capturedAt) === Date.parse(row.capturedAt) && o.sourceAsOf === row.sourceAsOf && o.source.sha256 === row.source?.sha256))) throw new Error("Import des soldes non confirmé. Rechargez le PC avant de réessayer; aucun nouvel import automatique.");
-    } else if (result.capability !== "finance-balance-observations-v1" || result.balanceObservations !== input.balanceObservations.length) throw new Error("Le worker n’a pas confirmé l’aperçu des soldes. Aucun import effectué.");
+      if (!saved || input.balanceObservations.some(row => !saved.some(o => o.accountId === row.accountId && o.currency === row.currency && o.balanceCents === row.balanceCents && Date.parse(o.capturedAt) === Date.parse(row.capturedAt) && o.sourceAsOf === row.sourceAsOf && o.source.sha256 === row.source?.sha256))) throw new Error("Balance import unconfirmed. Reload data from your PC before retrying. Nothing else is imported automatically.");
+    } else if (result.capability !== "finance-balance-observations-v1" || result.balanceObservations !== input.balanceObservations.length) throw new Error("The PC service did not confirm the balance preview. Nothing was imported.");
   }
   return result;
 }
@@ -558,7 +558,7 @@ export async function fetchFinanceAccountCaptures(config: WorkerConfig): Promise
     const health = await request<{ capabilities?: string[] }>(config, "/health");
     if (!health.capabilities?.includes(capability)) return null;
     const result = await request<{ capability: string; state: unknown }>(config, "/finance/account-captures");
-    if (!result || result.capability !== capability || Object.keys(result).sort().join(",") !== "capability,state") throw new Error("Versions des comptes non confirmées.");
+    if (!result || result.capability !== capability || Object.keys(result).sort().join(",") !== "capability,state") throw new Error("Account versions unconfirmed.");
     return validateFinanceAccountCapturesState(result.state);
 }
 

@@ -40,7 +40,7 @@ function mergeObservations(previous: FinanceData | null, incoming: FinanceData) 
     const saved = [...(previous?.balanceObservations ?? [])];
     for (const row of incoming.balanceObservations ?? []) {
         const old = saved.find(o => o.accountId === row.accountId && Date.parse(o.capturedAt) === Date.parse(row.capturedAt));
-        if (old && (old.balanceCents !== row.balanceCents || old.currency !== row.currency || old.sourceAsOf !== row.sourceAsOf || old.source.sha256 !== row.source.sha256)) throw new FinanceConflict("Soldes contradictoires pour la même collecte.");
+        if (old && (old.balanceCents !== row.balanceCents || old.currency !== row.currency || old.sourceAsOf !== row.sourceAsOf || old.source.sha256 !== row.source.sha256)) throw new FinanceConflict("Conflicting balances for the same collection.");
         if (!old) saved.push(row);
     }
     if (saved.length > 50000) throw new Error("Historique des soldes trop volumineux.");
@@ -56,7 +56,7 @@ function mergeData(
         if (!previous) throw new Error("Importez le registre de comptes avant leurs observations.");
         for (const a of incoming.accounts) {
             const old = previous.accounts.find(p => p.id === a.id);
-            if (!old || old.identity !== a.identity || old.type !== a.type || old.currency !== a.currency || JSON.stringify(old) !== JSON.stringify(a)) throw new FinanceConflict("Le registre historique des comptes doit rester inchangé.");
+            if (!old || old.identity !== a.identity || old.type !== a.type || old.currency !== a.currency || JSON.stringify(old) !== JSON.stringify(a)) throw new FinanceConflict("The historical account register must remain unchanged.");
         }
         return { data: { ...previous, ...observations }, added: 0, possibleDuplicates: 0 };
     }
@@ -82,7 +82,7 @@ function mergeData(
             if (saved) {
                 if (signature(saved) !== signature(row))
                     throw new FinanceConflict(
-                        "Une source modifie une opération existante. Revue requise; aucune donnée remplacée.",
+                        "A source changes an existing transaction. Review is required; no data was replaced.",
                     );
                 saved.sources = [
                     ...new Map(
@@ -119,7 +119,7 @@ function mergeData(
         const key = `${row.accountId}:${row.fingerprint}:${row.occurrence}`;
         if (row.fingerprint && activityKeys.has(key))
             throw new FinanceConflict(
-                "Activité de placement possiblement dupliquée. Rapprochez les sources avant d'importer.",
+                "Possible duplicate investment activity. Reconcile the sources before importing.",
             );
         if (row.fingerprint) activityKeys.add(key);
     }
@@ -132,7 +132,7 @@ function mergeData(
                 old.identity !== a.identity)
         )
             throw new FinanceConflict(
-                "Identité/type/devise du compte modifiés. Import arrêté.",
+                "The account identity, type or currency changed. Import stopped.",
             );
     }
     // No replacement by an older collection; records outside the new window remain archived in the ledger.
@@ -160,7 +160,7 @@ function mergeData(
                 JSON.stringify({ ...h, source: null })
         )
             throw new FinanceConflict(
-                "Valeurs différentes pour un même instantané de positions. Revue requise.",
+                "Conflicting amounts for the same holdings snapshot. Review is required.",
             );
     }
     const feeReports = [
@@ -262,7 +262,7 @@ export class FinanceLibrary {
                 };
             if (value.expectedRevision !== current.revision)
                 throw new FinanceConflict(
-                    "Les finances ont changé. Actualisez avant de confirmer l’import.",
+                    "Finances have changed. Refresh before confirming the import.",
                 );
             await mkdir(join(this.directory, "sources"), { recursive: true });
             // Archive the exact complete source, including original dates, paths and extension fields; never publish it.
@@ -319,13 +319,13 @@ export class FinanceLibrary {
             const state = await this.read();
             if (state.revision !== value.expectedRevision)
                 throw new FinanceConflict(
-                    "Une autre modification a été enregistrée. Actualisez avant de réessayer.",
+                    "Another change was saved. Refresh before trying again.",
                 );
             if (
                 typeof value.id !== "string" ||
                 !state.data?.transactions.some((r) => r.id === value.id)
             )
-                throw new Error("Opération introuvable.");
+                throw new Error("Transaction not found.");
             const d = value.decision as FinanceDecision;
             if (
                 !d ||
@@ -335,14 +335,14 @@ export class FinanceLibrary {
                 typeof d.note !== "string" ||
                 d.note.length > 1000
             )
-                throw new Error("Décision invalide.");
+                throw new Error("Invalid decision.");
             const row = state.data.transactions.find((r) => r.id === value.id)!;
             if (
                 (d.nature === "refund" && row.outflowCents >= 0) ||
                 (d.nature === "expense" && row.outflowCents < 0)
             )
                 throw new Error(
-                    "Le sens débit/crédit de la source doit être conservé.",
+                    "The source debit or credit direction must be kept.",
                 );
             const at = new Date().toISOString(),
                 decision = {

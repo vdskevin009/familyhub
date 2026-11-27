@@ -48,7 +48,7 @@ test("invalid identities, unexpected amounts and corrupted stores fail without r
     await assert.rejects(lib.mutate(action(s, "resolve", extra), now)); assert.equal(await readFile(path, "utf8"), valid);
   }
   for (const invalid of ["{", JSON.stringify({ ...s, totals: null }), JSON.stringify({ ...s, decisions: { "claim:synthetic": { ...s.decisions["claim:synthetic"], state: "snoozed", snoozedUntil: "invalid" } } }), JSON.stringify({ ...s, totals: { ...s.totals, resolved: -1 } })]) {
-    await writeFile(path, invalid); await assert.rejects(lib.read(), /Aucun fichier remplacé/); await assert.rejects(lib.mutate(action(s, "resolve"), now)); assert.equal(await readFile(path, "utf8"), invalid);
+    await writeFile(path, invalid); await assert.rejects(lib.read(), /No file was replaced/); await assert.rejects(lib.mutate(action(s, "resolve"), now)); assert.equal(await readFile(path, "utf8"), invalid);
   }
 }));
 
@@ -75,5 +75,5 @@ test("insurance contexts are scoped to their exact hashed opportunity and persis
   s = await lib.mutate(action(s, "restore", { opportunityId, context }), now);
   assert.equal(s.decisions[opportunityId], undefined); assert.deepEqual(s.history.at(-1).context, context);
   const corrupted = JSON.stringify({ ...s, history: [{ ...s.history[0], context: { ...context, dueDate: "2026-02-30" } }] });
-  await writeFile(path, corrupted); await assert.rejects(lib.read(), /Aucun fichier remplacé/); assert.equal(await readFile(path, "utf8"), corrupted);
+  await writeFile(path, corrupted); await assert.rejects(lib.read(), /No file was replaced/); assert.equal(await readFile(path, "utf8"), corrupted);
 }));

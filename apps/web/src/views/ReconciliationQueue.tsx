@@ -248,7 +248,7 @@ export default function ReconciliationQueue({
         <ArrowLeft size={18} />
       </button>
       <div>
-        <strong id="reconcile-title">À réconcilier</strong>
+        <strong id="reconcile-title">To reconcile</strong>
         <span>Case {index + 1} of {remaining} · {remaining} remaining{sessionTotal > remaining ? ` of ${sessionTotal} started` : ""}</span>
       </div>
       <button type="button" className="icon-button" aria-label="Next unmatched reimbursement"

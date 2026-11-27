@@ -25,9 +25,9 @@ test("Product cards preserve recorded identity, dynamic unit price and safe sour
   const before = structuredClone(p), ranked = articleUnitComparison(p, p.items[0], storeGroups(p)).rows.flatMap(row => row.offers);
   const render = (n: number) => renderToStaticMarkup(createElement(ArticleOfferCard, { plan: p, item: p.items[0], p: p.prices[n], r: p.retailers[n], ranked: ranked.find(o => o.p.id === p.prices[n].id), included: false }));
   const html = render(0);
-  for (const text of ["Marque", "Earth&#x27;s Own", "Produit", "Original unsweetened", "Format", "2000 ml", "Prix du format", "4,00 CAD", "Prix pour 1 L", "2 CAD", "Le moins cher", "Source et conditions", "Observation non approuvée", "Localité à confirmer", "Taxes produits", "Abonnement", "noopener noreferrer"]) assert.ok(html.includes(text), text);
+  for (const text of ["Brand", "Earth&#x27;s Own", "Product", "Original unsweetened", "Format", "2000 ml", "Pack price", "4.00 CAD", "Price per litre", "2 CAD", "Lowest price", "Source and terms", "Observation not approved", "Location not confirmed", "Item taxes", "Membership", "noopener noreferrer"]) assert.ok(html.includes(text), text);
   assert.ok(!html.includes(" open=")); assert.ok(!html.includes("<button")); assert.ok(!html.includes("<input"));
-  assert.ok(render(1).includes("Non précisée")); assert.ok(render(1).includes("+50 %"));
+  assert.ok(render(1).includes("Not specified")); assert.ok(render(1).includes("+50%"));
   assert.deepEqual(p, before);
 });
 test("Product cards keep zero minima, historical and uncertain observations neutral", () => {
@@ -37,7 +37,7 @@ test("Product cards keep zero minima, historical and uncertain observations neut
     p.prices.push(price({ id: "other-price", retailerId: "other", price: 6, size: 2, unit: "l" }));
     const ranked = articleUnitComparison(p, p.items[0], storeGroups(p)).rows.flatMap(row => row.offers).find(o => o.p.id === "p");
     const html = renderToStaticMarkup(createElement(ArticleOfferCard, { plan: p, item: p.items[0], p: p.prices[0], r: p.retailers[0], ranked, included: false }));
-    assert.ok(!html.includes("Le moins cher")); assert.ok(html.includes("Non précisée"));
+    assert.ok(!html.includes("Lowest price")); assert.ok(html.includes("Not specified"));
     assert.ok(html.includes("grocery-unit-gap-neutral"));
     if (patch.matchNote) assert.ok(html.includes("Non calculable"));
   }
@@ -46,10 +46,10 @@ test("Product cards only warn when there is an observed uncertainty", () => {
   const p = plan(item(), retailer(), [price({ approved: true, localityConfirmed: true })]);
   const ranked = articleUnitComparison(p, p.items[0], storeGroups(p)).rows.flatMap(row => row.offers)[0];
   let html = renderToStaticMarkup(createElement(ArticleOfferCard, { plan: p, item: p.items[0], p: p.prices[0], r: p.retailers[0], ranked, included: true }));
-  assert.ok(!html.includes('class="grocery-offer-warning"')); assert.ok(html.includes("Seul prix comparable"));
+  assert.ok(!html.includes('class="grocery-offer-warning"')); assert.ok(html.includes("Only comparable price"));
   p.prices[0].available = "unknown";
   html = renderToStaticMarkup(createElement(ArticleOfferCard, { plan: p, item: p.items[0], p: p.prices[0], r: p.retailers[0], ranked, included: true }));
-  assert.ok(html.includes("Stock à confirmer"));
+  assert.ok(html.includes("Stock not confirmed"));
 });
 
 test("Courses presentation: rounded purchase and proportional need remain distinct, unapproved", () => {
@@ -96,19 +96,19 @@ test("Courses presentation: physical and label unit prices and literal brand", (
 });
 test("Courses presentation: four stores, missing dash, article-first and collapsed sources without mutation", () => {
   const p = plan(), before = structuredClone(p), html = renderToStaticMarkup(createElement(GroceryComparison, { plan: p, comparison: compareBaskets(p) }));
-  assert.equal(storeGroups(p).length, 4); for (const name of ["Fresh St.", "Walmart", "Costco", "Superstore", "Prix par article", "Seul montant", "Prix manquant", "Base commune"]) assert.ok(html.includes(name));
-  assert.ok(!html.includes("Panier complet estimé")); assert.ok(!html.includes(" open="));
-  assert.ok(html.includes("Détails de Synthetic muffins"));
+  assert.equal(storeGroups(p).length, 4); for (const name of ["Fresh St.", "Walmart", "Costco", "Superstore", "Price by item", "Only amount", "Price missing", "Common basis"]) assert.ok(html.includes(name));
+  assert.ok(!html.includes("Estimated complete basket")); assert.ok(!html.includes(" open="));
+  assert.ok(html.includes("Details for Synthetic muffins"));
   assert.ok(!html.includes("Synthetic exact muffins"));
-  assert.ok(!html.includes("Prix du format :"));
-  assert.ok(!html.includes("Observation non approuvée"));
+  assert.ok(!html.includes("Pack price:"));
+  assert.ok(!html.includes("Observation not approved"));
   assert.deepEqual(p, before);
 });
 test("Courses details: recorded product/search/source URLs are labelled without fabrication", () => {
-  for (const url of ["https://www.walmart.ca/en/ip/eggs/10052944", "https://www.realcanadiansuperstore.ca/eggs/p/20037681001_EA", "https://sameday.costco.ca/store/costco-canada/products/123456-eggs"]) assert.equal(grocerySourceLink(url)?.label, "Ouvrir le produit");
-  for (const url of ["https://www.walmart.ca/search?q=eggs", "https://freshstmarket.com/results?q=eggs", "https://sameday.costco.ca/s?k=eggs"]) assert.equal(grocerySourceLink(url)?.label, "Ouvrir la recherche");
-  assert.deepEqual(grocerySourceLink("https://example.com/catalogue"), { href: "https://example.com/catalogue", label: "Voir la source" });
-  assert.equal(grocerySourceLink("https://walmart.ca.example.com/en/ip/eggs/10052944")?.label, "Voir la source");
+  for (const url of ["https://www.walmart.ca/en/ip/eggs/10052944", "https://www.realcanadiansuperstore.ca/eggs/p/20037681001_EA", "https://sameday.costco.ca/store/costco-canada/products/123456-eggs"]) assert.equal(grocerySourceLink(url)?.label, "View product");
+  for (const url of ["https://www.walmart.ca/search?q=eggs", "https://freshstmarket.com/results?q=eggs", "https://sameday.costco.ca/s?k=eggs"]) assert.equal(grocerySourceLink(url)?.label, "View search results");
+  assert.deepEqual(grocerySourceLink("https://example.com/catalogue"), { href: "https://example.com/catalogue", label: "View source" });
+  assert.equal(grocerySourceLink("https://walmart.ca.example.com/en/ip/eggs/10052944")?.label, "View source");
   for (const url of ["", "broken", "javascript:alert(1)", "http://example.com", "https://user:password@example.com", "https://127.0.0.1/test", "https://10.0.0.1/test", "https://household.internal/test"]) assert.equal(grocerySourceLink(url), null);
 });
 test("Courses presentation: one chiffrable bucket cannot turn another unknown bucket into zero", () => {
@@ -122,8 +122,8 @@ test("Courses presentation: one chiffrable bucket cannot turn another unknown bu
 });
 test("Courses presentation: complete reviewed basket and conditional availability are distinct", () => {
   const p = plan(item(), retailer(), [price({ approved: true, localityConfirmed: true })]);
-  let html = renderToStaticMarkup(createElement(StoreCards, { plan: p, comparison: compareBaskets(p) })); assert.ok(html.includes("Panier complet estimé"));
-  p.prices[0].available = "unknown"; html = renderToStaticMarkup(createElement(StoreCards, { plan: p, comparison: compareBaskets(p) })); assert.ok(html.includes("Panier complet conditionnel")); assert.ok(!html.includes("Estimation la plus basse"));
+  let html = renderToStaticMarkup(createElement(StoreCards, { plan: p, comparison: compareBaskets(p) })); assert.ok(html.includes("Estimated complete basket"));
+  p.prices[0].available = "unknown"; html = renderToStaticMarkup(createElement(StoreCards, { plan: p, comparison: compareBaskets(p) })); assert.ok(html.includes("Conditional complete basket")); assert.ok(!html.includes("Lowest estimate"));
 });
 test("Courses presentation: compact basket rows expose partial coverage and mixed modes without calculation copy", () => {
   const p = plan();
@@ -132,8 +132,8 @@ test("Courses presentation: compact basket rows expose partial coverage and mixe
   p.prices.push(price({ id: "other-price", retailerId: "other", mode: "delivery", price: 1 }));
   const html = renderToStaticMarkup(createElement(GroceryComparison, { plan: p, comparison: compareBaskets(p) }));
   assert.equal((html.match(/class="grocery-price-row grocery-common-row"/g) || []).length, 4);
-  assert.ok(html.indexOf('aria-label="Détails du panier Superstore"') < html.indexOf('aria-label="Détails du panier Walmart"'));
-  for (const text of ["Partielle", "Hors frais", "Estimation proportionnelle à revoir", "Modes mixtes", "Livraison", "Retrait"]) assert.ok(html.includes(text));
+  assert.ok(html.indexOf('aria-label="Basket details for Superstore"') < html.indexOf('aria-label="Basket details for Walmart"'));
+  for (const text of ["Partial", "Excludes fees", "Review proportional estimate", "Mixed purchase methods", "Delivery", "Pickup"]) assert.ok(html.includes(text));
   assert.ok(!html.includes('grocery-common-card')); assert.ok(!html.includes('Écart ='));
 });
 
@@ -146,8 +146,8 @@ test("Comparison brands: matching article details keep multiple identities and h
  const p=plan(), before=structuredClone(p);
  const html=renderToStaticMarkup(createElement(ArticleReceiptProducts,{itemId:"i",products:receiptIdentities}));
  assert.ok(html.includes("ExampleBrand original muffins") && html.includes("SecondBrand blueberry muffins"));
- assert.ok(html.includes("Other synthetic receipt shop") && html.includes("2026-10-01") && html.includes("date inconnue"));
- assert.ok(html.includes("Achat historique") && html.includes("offre comparée restent à confirmer"));
+ assert.ok(html.includes("Other synthetic receipt shop") && html.includes("2026-10-01") && html.includes("date unknown"));
+ assert.ok(html.includes("Historical purchase") && html.includes("Confirm the compared offer’s brand and variant"));
  assert.ok(!html.includes("UnrelatedBrand"));
  assert.equal(renderToStaticMarkup(createElement(ArticleReceiptProducts,{itemId:"missing",products:receiptIdentities})),"");
  assert.deepEqual(p,before);
@@ -155,8 +155,8 @@ test("Comparison brands: matching article details keep multiple identities and h
 test("Comparison brands: store details show only active priced articles, including ones excluded from common totals, no offer brand claim or plan mutation", () => {
  const p=plan(), before=structuredClone(p), c=compareBaskets(p);
  const html=renderToStaticMarkup(createElement(StoreCards,{plan:p,comparison:c,products:receiptIdentities}));
- assert.ok(html.includes("Marques retrouvées sur ticket") && html.includes("ExampleBrand original muffins"));
- assert.ok(html.includes("autre magasin ou d’une autre localité") && html.includes("Other synthetic receipt shop"));
+ assert.ok(html.includes("Brands found on receipts") && html.includes("ExampleBrand original muffins"));
+ assert.ok(html.includes("different store or location") && html.includes("Other synthetic receipt shop"));
  assert.ok(!html.includes("UnrelatedBrand"));
  assert.equal(renderToStaticMarkup(createElement(StoreReceiptProducts,{plan:p,products:receiptIdentities,retailerIds:["different-store"]})),"");
  const inactive=structuredClone(p);inactive.items[0].active=false;

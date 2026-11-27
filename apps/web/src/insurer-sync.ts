@@ -6,13 +6,13 @@ const reviewRecords = (count: number) => `${count} insurer record${count === 1 ?
 export function invoiceCollectionNotice(snapshot: Pick<InvoiceSnapshot, "progress" | "error" | "lastSuccess" | "coverage" | "failure">): string | null {
   const count = snapshot.coverage?.heldMessages;
   const held = typeof count === "number" && Number.isSafeInteger(count) && count > 0 ? count : 0;
-  const heldNotice = held ? `Collecte partielle : ${held} message${held === 1 ? " Gmail reste" : "s Gmail restent"} à vérifier (pièce jointe non prise en charge). Vérifiez les documents originaux dans Gmail. Les dossiers enregistrés restent disponibles.` : null;
+  const heldNotice = held ? `Partial collection: ${held} Gmail message${held === 1 ? " needs" : "s need"} review because of unsupported attachments. Check the original documents in Gmail. Saved claims remain available.` : null;
   const authorizationFailures = Object.values(snapshot.progress ?? {}).filter(account =>
     /authorization expired or was rejected|invalid_grant|reconnect this account/i.test(account.error ?? ""));
   if (authorizationFailures.length) return `Gmail sign-in required on the PC for ${authorizationFailures.length} account${authorizationFailures.length === 1 ? "" : "s"}. Recent invoices have not been collected. Reconnect Gmail on the PC, then resume collection. Saved invoices and insurer payments remain available.${snapshot.lastSuccess ? ` Last complete invoice collection: ${snapshot.lastSuccess}.` : ""}${heldNotice ? ` ${heldNotice}` : ""}`;
   if (heldNotice) return snapshot.failure
-    ? `${heldNotice} La dernière collecte a aussi été interrompue. Consultez Sources.` : heldNotice;
-  if (snapshot.failure?.code === "unsupported_attachment") return "Collecte interrompue : une pièce jointe Gmail ne peut pas être lue par la source connectée. Vérifiez le document original dans Gmail. Les dossiers enregistrés restent disponibles.";
+    ? `${heldNotice} The latest collection was also interrupted. Check Sources.` : heldNotice;
+  if (snapshot.failure?.code === "unsupported_attachment") return "Collection interrupted: the connected source cannot read a Gmail attachment. Check the original document in Gmail. Saved claims remain available.";
   return snapshot.error || null;
 }
 
@@ -48,12 +48,12 @@ export function insurerSyncMessage(status: BlueCrossSyncStatus | null, result: B
           ? `Saved ${current.autoImported} new insurer records automatically in FamilyHub. Claims are refreshed.`
           : `Up to date: ${current.unchanged ?? 0} insurer records already saved.`;
     }
-    if (current.applied) return `Saved in FamilyHub: ${counts}. View DJ/BC and Claims → All or Closed.`;
+    if (current.applied) return `Saved in FamilyHub: ${counts}. View DJ/BC and Reimbursements → All or Closed.`;
     if (!current.complete || current.ambiguous || current.errors) return `Preview: ${counts}. Review incomplete or ambiguous records before applying.`;
     if (!current.new && !current.changed) return `Up to date: ${current.unchanged ?? 0} insurer records already saved.`;
     return `Preview: ${counts}. Apply to save these changes in FamilyHub.`;
   }
-  if (status?.state === "up-to-date") return `Up to date · ${status.found ?? 0} insurer records. View DJ/BC and Claims → All or Closed.`;
+  if (status?.state === "up-to-date") return `Up to date · ${status.found ?? 0} insurer records. View DJ/BC and Reimbursements → All or Closed.`;
   return status?.lastSuccess ? `Preview available · ${status.found ?? 0} insurer records.` : "No insurer history collected yet.";
 }
 
@@ -72,29 +72,29 @@ type InsurerCoverage = { summary: string; notice: string };
 
 /** Keep the compact caption and disclosed evidence on the same source-state rules. */
 function insurerCoverage(status: BlueCrossSyncStatus | null, now: number): InsurerCoverage | null {
-  if (!status) return { summary: "état indisponible", notice: "Collection status unavailable. Saved claims may be missing recent payments." };
-  if (status.state === "syncing") return { summary: status.retry?.state === "waiting" ? "nouvel essai prévu" : "lecture en cours", notice: insurerSyncMessage(status, null, true) };
+  if (!status) return { summary: "status unavailable", notice: "Collection status unavailable. Saved claims may be missing recent payments." };
+  if (status.state === "syncing") return { summary: status.retry?.state === "waiting" ? "retry scheduled" : "collection in progress", notice: insurerSyncMessage(status, null, true) };
   if (status.state === "login-required") {
     if (status.authReason === "layout-changed" || status.authReason === "login-incomplete" || !status.authReason)
-      return { summary: status.authReason === "login-incomplete" ? "connexion non confirmée" : "historique indisponible", notice: "Insurer history unavailable. Recent payments may be missing; review Sources on the PC." };
-    if (status.authReason === "profile-selection-required") return { summary: "profil à sélectionner sur le PC", notice: "Account profile selection required on the PC. Recent payments may be missing." };
-    if (status.authReason === "profile-busy") return { summary: "profil occupé sur le PC", notice: "The insurer profile is unavailable on the PC. Recent payments have not yet been verified; review Sources and check whether another collection or an interrupted lock is using the profile." };
-    if (status.authReason === "cooldown") return { summary: "connexion en pause", notice: "Automatic sign-in is paused during its cooldown. Recent payments may be missing; review Sources on the PC." };
-    const summary = status.authReason === "credentials-rejected" ? "connexion refusée"
-      : status.authReason === "human-required" ? "vérification requise sur le PC"
-      : status.authReason === "not-configured" ? "connexion non configurée"
-      : status.authReason === "credentials-unavailable" ? "accès enregistré indisponible" : null;
+      return { summary: status.authReason === "login-incomplete" ? "sign-in not confirmed" : "history unavailable", notice: "Insurer history unavailable. Recent payments may be missing; review Sources on the PC." };
+    if (status.authReason === "profile-selection-required") return { summary: "select a profile on the PC", notice: "Account profile selection required on the PC. Recent payments may be missing." };
+    if (status.authReason === "profile-busy") return { summary: "profile in use on the PC", notice: "The insurer profile is unavailable on the PC. Recent payments have not yet been verified; review Sources and check whether another collection or an interrupted lock is using the profile." };
+    if (status.authReason === "cooldown") return { summary: "sign-in paused", notice: "Automatic sign-in is paused during its cooldown. Recent payments may be missing; review Sources on the PC." };
+    const summary = status.authReason === "credentials-rejected" ? "sign-in rejected"
+      : status.authReason === "human-required" ? "verification required on the PC"
+      : status.authReason === "not-configured" ? "sign-in not configured"
+      : status.authReason === "credentials-unavailable" ? "saved access unavailable" : null;
     return summary ? { summary, notice: "Sign-in required. Recent payments may be missing; review Sources on the PC." }
-      : { summary: "historique indisponible", notice: "Insurer history unavailable. Recent payments may be missing; review Sources on the PC." };
+      : { summary: "history unavailable", notice: "Insurer history unavailable. Recent payments may be missing; review Sources on the PC." };
   }
   const completeWithReview = !!status.latestResult?.complete && !!status.latestResult.ambiguous && !status.latestResult.errors;
   if (status.state === "error" && !completeWithReview || status.latestResult && (!status.latestResult.complete || status.latestResult.errors))
-    return { summary: "collecte incomplète", notice: status.retry?.state === "exhausted" ? `Collection stopped after ${status.retry.maximum} attempts. Recent payments may be missing; review Sources and retry.` : "Collection incomplete. Recent payments may be missing; review Sources." };
-  if (!status.lastSuccess || !Number.isFinite(Date.parse(status.lastSuccess))) return { summary: "lecture complète non confirmée", notice: "No complete insurer collection recorded. Saved claims may be incomplete." };
-  if (now - Date.parse(status.lastSuccess) > 36 * 60 * 60_000) return { summary: "données anciennes", notice: "Insurer collection is out of date. Recent payments may be missing; update Sources." };
-  if (completeWithReview) return { summary: "rapprochements à vérifier", notice: `Collection complete; ${reviewRecords(status.latestResult!.ambiguous!)} before matching. Previously saved payments remain available.` };
+    return { summary: "incomplete collection", notice: status.retry?.state === "exhausted" ? `Collection stopped after ${status.retry.maximum} attempts. Recent payments may be missing; review Sources and retry.` : "Collection incomplete. Recent payments may be missing; review Sources." };
+  if (!status.lastSuccess || !Number.isFinite(Date.parse(status.lastSuccess))) return { summary: "complete collection not confirmed", notice: "No complete insurer collection recorded. Saved claims may be incomplete." };
+  if (now - Date.parse(status.lastSuccess) > 36 * 60 * 60_000) return { summary: "data out of date", notice: "Insurer collection is out of date. Recent payments may be missing; update Sources." };
+  if (completeWithReview) return { summary: "matches to review", notice: `Collection complete; ${reviewRecords(status.latestResult!.ambiguous!)} before matching. Previously saved payments remain available.` };
   if (status.latestResult && !status.latestResult.applied && ((status.latestResult.pendingNew ?? status.latestResult.new ?? 0) + (status.latestResult.pendingChanged ?? status.latestResult.changed ?? 0)))
-    return { summary: "résultats à examiner", notice: "Collected insurer records still need review and Apply. Previously saved payments remain available." };
+    return { summary: "results to review", notice: "Collected insurer records still need review and Apply. Previously saved payments remain available." };
   return null;
 }
 

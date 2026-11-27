@@ -98,13 +98,13 @@ test("structured policy expiry overrides the empty legacy renewal; awaiting quot
   input.contracts.data = { records: [{ contract: c, revision: "synthetic-revision" }] };
   const feed = await buildOpportunityFeed(input, now), card = feed.opportunities[0];
   assert.equal(card.dueDate, "2027-04-26"); assert.equal(card.target.recordId, c.id); assert.equal(card.priority, 86);
-  assert.equal(card.benefit.amount, null); assert.match(card.description, /1 devis en attente/);
+  assert.equal(card.benefit.amount, null); assert.match(card.description, /1 quote pending/);
   assert.deepEqual(card.context, { kind: "insurance-renewal", recordId: c.id, dueDate: "2027-04-26" });
   const policy = c.insuranceReference.records[0];
   policy.facts = [{ code: "coverage.subLimit", label: "Synthetic coverage conflict", value: null, unit: "CAD", certainty: "conflict", sourceIds: ["source"], notes: "Synthetic disagreement" }];
   const coverage = (await buildOpportunityFeed(input, now)).opportunities[0];
   assert.equal(coverage.dueDate, "2027-04-26"); assert.equal(coverage.freshness, "fresh"); assert.equal(coverage.priority, 86); assert.equal(coverage.benefit.amount, null);
-  assert.ok(coverage.evidence.some(e => e.includes("Garanties contradictoires")));
+  assert.ok(coverage.evidence.some(e => e.includes("Coverage details conflict")));
   policy.facts[0].code = "policy.effectiveTo";
   const dateConflict = (await buildOpportunityFeed(input, now)).opportunities[0];
   assert.equal(dateConflict.dueDate, null); assert.equal(dateConflict.freshness, "unknown");

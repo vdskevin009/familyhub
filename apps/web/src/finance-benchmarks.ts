@@ -13,7 +13,7 @@ export const benchmarkMeta = {
 const definitions = [
     [
         "groceries",
-        "Courses alimentaires",
+        "Groceries",
         "Food purchased from stores",
         8530,
         12954,
@@ -31,7 +31,7 @@ const definitions = [
     ],
     [
         "shelter",
-        "Logement au sens large",
+        "Housing",
         "Shelter",
         28827,
         33497,
@@ -40,7 +40,7 @@ const definitions = [
     ],
     [
         "utilities",
-        "Énergie et eau",
+        "Energy and water",
         "Water, fuel and electricity for principal accommodation",
         2444,
         3932,
@@ -58,7 +58,7 @@ const definitions = [
     ],
     [
         "childcare",
-        "Garde d’enfants",
+        "Child care",
         "Child care",
         440,
         1217,
@@ -67,17 +67,17 @@ const definitions = [
     ],
     [
         "transport",
-        "Transport",
+        "Transportation",
         "Transportation",
         12566,
         18277,
         "v54326034",
         "v54530308",
     ],
-    ["health", "Santé", "Health care", 3119, 3776, "v54326037", "v54530311"],
+    ["health", "Health", "Health care", 3119, 3776, "v54326037", "v54530311"],
     [
         "recreation",
-        "Loisirs",
+        "Recreation",
         "Recreation",
         5977,
         7562,
@@ -86,7 +86,7 @@ const definitions = [
     ],
     [
         "clothing",
-        "Vêtements",
+        "Clothing",
         "Clothing and accessories",
         2558,
         4239,
@@ -95,7 +95,7 @@ const definitions = [
     ],
     [
         "meal_kits",
-        "Boîtes repas",
+        "Meal kits",
         "Ready-to-cook meal delivery services",
         null,
         null,
@@ -106,9 +106,9 @@ const definitions = [
 export const benchmarkProfiles = [
     {
         id: "bc",
-        label: "Colombie-Britannique · Tous les ménages",
-        geography: "Colombie-Britannique",
-        population: "Tous les ménages",
+        label: "British Columbia · All households",
+        geography: "British Columbia",
+        population: "All households",
         table: "11-10-0222-01",
         url: "https://www150.statcan.gc.ca/t1/tbl1/en/tv.action?pid=1110022201",
         values: definitions.map((d) => ({
@@ -121,10 +121,10 @@ export const benchmarkProfiles = [
     },
     {
         id: "families",
-        label: "Canada · Couples avec enfants",
-        geography: "Canada (dix provinces)",
+        label: "Canada · Couples with children",
+        geography: "Canada (ten provinces)",
         population:
-            "Couples avec enfants de tout âge et de tout nombre, sans personne supplémentaire",
+            "Couples with children of any age, without additional household members",
         table: "11-10-0224-01",
         url: "https://www150.statcan.gc.ca/t1/tbl1/en/tv.action?pid=1110022401",
         values: definitions.map((d) => ({

@@ -13,9 +13,9 @@ const evaluate=(rs=rows,subject=property,t=at)=>evaluateSales(subject,rs,t,'1000
 
 test('dated concluded sales place the ask relative to the actual interval',()=>{
   const result=evaluate();assert.deepEqual(result.range,{low:500000,high:550000});
-  assert.match(result.verdict,/dans la fourchette/);
-  assert.match(evaluate(rows,{...property,priceCad:fact(450000)}).verdict,/sous les ventes/);
-  assert.match(evaluate(rows,{...property,priceCad:fact(560000)}).verdict,/au-dessus/);
+  assert.match(result.verdict,/within the selected sales range/);
+  assert.match(evaluate(rows,{...property,priceCad:fact(450000)}).verdict,/below the selected sales/);
+  assert.match(evaluate(rows,{...property,priceCad:fact(560000)}).verdict,/above the selected sales/);
   assert.equal(localDay(Date.parse('2026-11-27T02:00:00Z')),'2026-11-26');
 });
 test('listed, duplicate, subject, stale, future, noncomparable and dispersed references cannot establish a price',()=>{
@@ -32,7 +32,7 @@ test('48-hour ask window, 180-day sale window, 10% size and 20% spread have incl
   assert.equal(evaluate(changes.map(r=>({...r,eventDate:'2026-05-30'}))).range,null);
   for(const delta of [-48*3600000-1,1]){
     const s={...property,priceCad:fact(530000,at+delta)};
-    assert.match(projectDecision(s,at),/reconfirmer/);assert.equal(evaluate(rows,s).range,null);
+    assert.match(projectDecision(s,at),/Recheck/);assert.equal(evaluate(rows,s).range,null);
   }
   for(const status of ['sold','withdrawn','unknown'] as const) assert.equal(evaluate(rows,{...property,status}).range,null);
 });

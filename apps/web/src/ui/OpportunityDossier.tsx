@@ -7,45 +7,45 @@ import { ComparableSales } from './ComparableSales';
 import { ListingPhoto } from './ListingPhoto';
 import './opportunity-dossier.css';
 
-const money = (n:number) => new Intl.NumberFormat('fr-CA',{style:'currency',currency:'CAD',maximumFractionDigits:2}).format(n);
-const names:Record<string,string> = {budget:'Budget', bedrooms:'Chambres', neighbourhood:'Quartier', entrances:'Entrées séparées', suv:'SUV familial', used:'Occasion', area:'Grand Vancouver'};
+const money = (n:number) => new Intl.NumberFormat('en-CA',{style:'currency',currency:'CAD',maximumFractionDigits:2}).format(n);
+const names:Record<string,string> = {budget:'Budget', bedrooms:'Bedrooms', neighbourhood:'Neighbourhood', entrances:'Separate entrances', suv:'Family SUV', used:'Used', area:'Metro Vancouver'};
 type Props = {kind:'property';card:PropertyCard} | {kind:'vehicle';card:VehicleCard;pool:VehicleCard[]};
 
 function Citation({fact,label}:{fact:Evidence<unknown>;label:string}) {
-  if (!fact.checkedAt || !fact.sourceUrl) return <small>Source à obtenir</small>;
+  if (!fact.checkedAt || !fact.sourceUrl) return <small>Source needed</small>;
   return <a href={fact.sourceUrl} target="_blank" rel="noreferrer">{label} · <time dateTime={fact.checkedAt}>{localDay(Date.parse(fact.checkedAt))}</time></a>;
 }
 function PropertyAnalysis({card,at}:{card:PropertyCard;at:number}) {
   const fee = card.monthlyStrataFeeCad;
   return <>
-    <h4>Prix face aux ventes</h4>
-    <p>Les annonces enregistrées documentent des prix affichés. Pour situer le prix, examinez des ventes conclues.</p>
+    <h4>Asking price vs. closed sales</h4>
+    <p>Saved listings show asking prices. Use completed sales to assess the asking price.</p>
     <ComparableSales card={card} at={at}/>
-    <details><summary>Coût de détention et conditions</summary>
-      {fee?.value!=null?<p>Strata documentée à {money(fee.value)}/mois. Sur douze mois au même tarif, {money(fee.value*12)} pour ce poste seul. <Citation fact={fee} label="Source des frais"/></p>:<p>Frais de strata inconnus. Vérifier le régime de propriété et le montant propre au lot.</p>}
-      <p>Avant l’offre, examiner le Form B si applicable, les cotisations spéciales, le fonds de réserve, le rapport de dépréciation et l’assurance. Ajouter taxes, financement et travaux pour établir le coût de détention.</p>
-      <p>{card.airbnb.status==='prohibited'?'La source indique une restriction de location.':card.airbnb.status==='conditional'?'La location dépend de conditions à vérifier.':'Le droit de louer reste à établir.'} Avant de compter un loyer, vérifier le zonage, la légalité du logement et les règlements de strata. Rendement inconnu sans loyer, vacance et charges documentés.</p>
+    <details><summary>Ownership costs and conditions</summary>
+      {fee?.value!=null?<p>Documented strata fees: {money(fee.value)}/month. Over twelve months at that rate, {money(fee.value*12)} for this item alone. <Citation fact={fee} label="Fee source"/></p>:<p>Strata fees unknown. Confirm the tenure and fees for this lot.</p>}
+      <p>Before making an offer, check Form B if applicable, special levies, the contingency reserve, the depreciation report and insurance. Include taxes, financing and repairs in ownership costs.</p>
+      <p>{card.airbnb.status==='prohibited'?'The source notes a rental restriction.':card.airbnb.status==='conditional'?'Rental is subject to conditions that need checking.':'Permission to rent is not established.'} Before counting rental income, check zoning, suite legality and strata bylaws. Without documented rent, vacancy and expenses, the return is unknown.</p>
     </details>
-    <p><strong>Avant la visite.</strong> {card.separateEntrances.value===true?'Vérifier sur place les deux accès décrits et demander le plan autorisé.':'Obtenir un plan qui confirme les deux entrées et les pièces habitables.'}</p>
+    <p><strong>Before the viewing.</strong> {card.separateEntrances.value===true?'Check the two entrances in person and request the approved floor plan.':'Get a plan that confirms both entrances and habitable rooms.'}</p>
   </>;
 }
 function VehicleAnalysis({card,pool,at}:{card:VehicleCard;pool:VehicleCard[];at:number}) {
   const peers=vehicleAsks(card,pool,at);
   const identity=[card.year.value,card.make.value,card.model.value,card.trim.value].filter(v=>v!=null);
   return <>
-    <h4>Modèle et version</h4><p>{identity.join(' · ') || 'Modèle inconnu'}. {identity.length<4?'Identité technique incomplète.':'Version déclarée dans l’annonce.'} Fiabilité et coûts d’usage à documenter.</p>
-    <details><summary>Rappels et coût d’usage</summary>
-      <p>Vérifier les problèmes récurrents pour cette année et cette motorisation, puis le statut des réparations avec le NIV. Les rappels ouverts du véhicule restent inconnus.</p>
-      <p><a href="https://tc.canada.ca/en/road-transportation/defects-recalls-vehicles-tires-child-car-seats" target="_blank" rel="noreferrer">Recherche de rappels de Transports Canada</a></p>
-      <p>Confirmer moteur, transmission et carburant avant de comparer la consommation. Le coût annuel dépend aussi des kilomètres parcourus, du prix de l’énergie, de l’assurance et de l’entretien.</p>
+    <h4>Model and trim</h4><p>{identity.join(' · ') || 'Model unknown'}. {identity.length<4?'Technical details incomplete.':'Trim as stated in the listing.'} Reliability and running costs need evidence.</p>
+    <details><summary>Recalls and running costs</summary>
+      <p>Check recurring issues for this model year and engine, then use the VIN to verify repairs. Open recalls for this vehicle are unknown.</p>
+      <p><a href="https://tc.canada.ca/en/road-transportation/defects-recalls-vehicles-tires-child-car-seats" target="_blank" rel="noreferrer">Transport Canada recall search</a></p>
+      <p>Confirm engine, transmission and fuel before comparing consumption. Annual costs also depend on distance driven, energy prices, insurance and maintenance.</p>
     </details>
-    <h4>Cette offre</h4><p>{card.mileageKm.value==null?'Kilométrage inconnu':card.mileageKm.value.toLocaleString('fr-CA')+' km déclarés'}. Prix total avec frais à confirmer.</p>
-    <details><summary>Annonces locales de référence ({peers.length})</summary>
-      <p>Même marque, modèle, année, version et transmission intégrale ou non, dans le Grand Vancouver. Écart maximal de 10 000 km. Seuls les prix demandés et statuts observés depuis 48 h sont retenus.</p>
-      {peers.length?<ul>{peers.map(p=><li key={p.listingId}>{p.title} · {p.mileageKm.value?.toLocaleString('fr-CA')} km · {money(p.priceCad.value!)} avant taxes. <Citation fact={p.priceCad} label="Prix affiché"/></li>)}</ul>:<p>Aucune autre annonce enregistrée ne satisfait ces filtres.</p>}
-      <p>Une même voiture peut figurer sur plusieurs sites. Vérifier le NIV, l’état, l’équipement, l’historique et les frais avant de comparer. Prix conclus et valeur de marché inconnus.</p>
+    <h4>This listing</h4><p>{card.mileageKm.value==null?'Mileage unknown':card.mileageKm.value.toLocaleString('en-CA')+' km reported'}. Confirm the all-in price including fees.</p>
+    <details><summary>Local comparison listings ({peers.length})</summary>
+      <p>Same make, model, year, trim and all-wheel-drive configuration in Metro Vancouver. Maximum mileage difference of 10,000 km. Only asking prices and listing statuses observed within 48 hours are included.</p>
+      {peers.length?<ul>{peers.map(p=><li key={p.listingId}>{p.title} · {p.mileageKm.value?.toLocaleString('en-CA')} km · {money(p.priceCad.value!)} before tax. <Citation fact={p.priceCad} label="Asking price"/></li>)}</ul>:<p>No other saved listings match these filters.</p>}
+      <p>The same vehicle can appear on multiple sites. Check the VIN, condition, equipment, history and fees. Final sale prices and market value are unknown.</p>
     </details>
-    <p><strong>Avant l’essai.</strong> {card.accidentHistory.value?'Recouper l’historique déclaré avec le rapport du véhicule.':'Obtenir le rapport d’historique du véhicule.'} Demander le prix total écrit et une inspection indépendante avant engagement.</p>
+    <p><strong>Before the test drive.</strong> {card.accidentHistory.value?'Cross-check the stated history against the vehicle history report.':'Get the vehicle history report.'} Ask for a written all-in price and an independent inspection before committing.</p>
   </>;
 }
 export function OpportunityDossier(props:Props) {
@@ -57,15 +57,15 @@ export function OpportunityDossier(props:Props) {
     window.addEventListener('focus',refresh);
     return ()=>{clearInterval(timer);window.removeEventListener('focus',refresh);};
   },[]);
-  return <section className="opportunity-dossier" aria-label="Analyse de l’opportunité">
-    <p className="decision-date">Analyse du <time dateTime={new Date(at).toISOString()}>{localDay(at)}</time></p>
+  return <section className="opportunity-dossier" aria-label="Opportunity analysis">
+    <p className="decision-date">Analysis date: <time dateTime={new Date(at).toISOString()}>{localDay(at)}</time></p>
     <h3>{projectDecision(card,at)}</h3>
-    <p>Prix affiché{card.priceCad.value==null?' inconnu':' de '+money(card.priceCad.value)}{props.kind==='vehicle'?' avant taxes':''}. <Citation fact={card.priceCad} label="Prix observé"/></p>
+    <p>Asking price{card.priceCad.value==null?' unknown':' of '+money(card.priceCad.value)}{props.kind==='vehicle'?' before tax':''}. <Citation fact={card.priceCad} label="Observed price"/></p>
     <ListingPhoto key={card.primaryPhoto?.url} photo={card.primaryPhoto}
       label={props.kind === 'property' ? props.card.address : props.card.title}/>
-    <details><summary>Motifs du verdict et confiance</summary>
-      <ul>{card.criteria.map(c=><li key={c.id}><strong>{names[c.id]}</strong>{c.id==='bedrooms' && c.evidence.value!=null?' · '+String(c.evidence.value):''} · {c.id==='budget'&&!currentFact(card.priceCad,at)?'à reconfirmer':c.pass===null?'à documenter':c.pass?'point favorable':'écart avec le projet'}. <Citation fact={c.evidence} label="Preuve"/></li>)}</ul>
-      <p>Le verdict porte sur les critères documentés dans l’annonce. La confiance sur le prix de marché reste limitée. <Citation fact={card.statusEvidence} label="Statut observé"/></p>
+    <details><summary>Reasons and confidence</summary>
+      <ul>{card.criteria.map(c=><li key={c.id}><strong>{names[c.id]}</strong>{c.id==='bedrooms' && c.evidence.value!=null?' · '+String(c.evidence.value):''} · {c.id==='budget'&&!currentFact(card.priceCad,at)?'to reconfirm':c.pass===null?'needs evidence':c.pass?'strength':'does not match the project'}. <Citation fact={c.evidence} label="Evidence"/></li>)}</ul>
+      <p>The assessment covers only the criteria documented in the listing. Confidence in market pricing remains limited. <Citation fact={card.statusEvidence} label="Observed status"/></p>
     </details>
     {props.kind==='property'?<PropertyAnalysis card={props.card} at={at}/>:<VehicleAnalysis card={props.card} pool={props.pool} at={at}/>}
   </section>;

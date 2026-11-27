@@ -40,60 +40,63 @@ try{
   });
   const loaded=page.waitForResponse(response=>response.url()===endpoint+'/groceries'&&response.status()===200);
   await page.goto(base+'?view=groceries&tab=tickets');await (await loaded).finished();
-  const chart=page.getByRole('region',{name:'Dépenses mensuelles PC Express',exact:true});await chart.waitFor();
-  const method=chart.locator('details').filter({has:page.getByText('Couverture et méthode',{exact:true})});
+  const chart=page.getByRole('region',{name:baseline?'Dépenses mensuelles PC Express':'Monthly PC Express spending',exact:true});await chart.waitFor();
+  const method=chart.locator('details').filter({has:page.getByText(baseline?'Couverture et méthode':'Coverage and method',{exact:true})});
   await method.waitFor();assert.equal(await method.getAttribute('open'),null);
   const omitted=['conflictOnly','mixed','unknownOnly','oldConflict','ambiguous','foreignConflict'].includes(name);
   // Wait for the known source result to render, not the initial empty-cache frame.
-  if(omitted)await (baseline?chart.getByText(/Exclues des montants/):chart.getByText(/Historique : 1 cas/)).waitFor({state:baseline?'attached':'visible'});
-  if(['mixed','oldConflict','complete'].includes(name))await chart.getByText(/25,00/).first().waitFor();
-  if(name==='zero')await chart.getByText(/0,00/).first().waitFor();
+  const historyWarning=/History: 1 case excluded from totals/;
+  const paidAmount=baseline?/25,00/:/25\.00/;
+  const zeroAmount=baseline?/0,00/:/0\.00/;
+  if(omitted)await (baseline?chart.getByText(/Exclues des montants/):chart.getByText(historyWarning)).waitFor({state:baseline?'attached':'visible'});
+  if(['mixed','oldConflict','complete'].includes(name))await chart.getByText(paidAmount).first().waitFor();
+  if(name==='zero')await chart.getByText(zeroAmount).first().waitFor();
   if(baseline){
    assert.equal(await chart.locator('.grocery-warning').filter({hasText:/Exclues des montants/}).isVisible(),false);
    if(name==='conflictOnly')assert.match(await chart.innerText(),/Les achats importés apparaîtront ici/);
-   if(name==='mixed'||name==='oldConflict')assert.match(await chart.innerText(),/25,00/);
+   if(name==='mixed'||name==='oldConflict')assert.match(await chart.innerText(),paidAmount);
   }else{
-   const warning=chart.getByText('Historique : 1 cas écarté des montants',{exact:true});
+   const warning=chart.getByText('History: 1 case excluded from totals',{exact:true});
    assert.equal(await warning.isVisible(),omitted);
-   assert.equal(await chart.getByText(/Tous les achats PC Express sont inclus/).count(),0);
+   assert.equal(await chart.getByText(/All PC Express purchases are included/).count(),0);
    if(omitted){
     const details=warning.locator('..');assert.equal(await details.getAttribute('open'),null);
     await warning.focus();assert.equal(await warning.evaluate(el=>document.activeElement===el),true);
     assert.notEqual(await warning.evaluate(el=>getComputedStyle(el).outlineStyle),'none');
     assert.ok((await warning.boundingBox()).height>=44);
-    await page.keyboard.press('Enter');await details.getByText(/toutes les années et devises/).waitFor();
-    await details.getByText(/Archives et autres tickets/).waitFor();
+    await page.keyboard.press('Enter');await details.getByText(/all saved years and currencies/).waitFor();
+    await details.getByText(/Archive and other receipts/).waitFor();
     await page.keyboard.press('Enter');assert.equal(await details.getAttribute('open'),null);
    }
    if(['conflictOnly','unknownOnly','ambiguous'].includes(name)){
-    assert.match(await chart.innerText(),/Sources présentes, montants non établis/);
-    assert.equal(await chart.getByText(/Les achats importés apparaîtront ici/).count(),0);
+    assert.match(await chart.innerText(),/Sources are available, but their amounts could not be established/);
+    assert.equal(await chart.getByText(/Imported purchases will appear here/).count(),0);
    }
-   if(name==='empty')assert.match(await chart.innerText(),/Aucune source PC Express enregistrée/);
-   if(['mixed','oldConflict','complete'].includes(name))assert.match(await chart.innerText(),/25,00/);
-   if(name==='zero')assert.match(await chart.innerText(),/0,00/);
+   if(name==='empty')assert.match(await chart.innerText(),/No usable PC Express sources are saved yet/);
+   if(['mixed','oldConflict','complete'].includes(name))assert.match(await chart.innerText(),paidAmount);
+   if(name==='zero')assert.match(await chart.innerText(),zeroAmount);
   }
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),true);
   if(width<=390&&['conflictOnly','mixed','empty'].includes(name))await chart.screenshot({path:join(output,`${baseline?'before':'after'}-${name}-${width}.png`)});
   if(!baseline&&name==='conflictOnly'){
-   await page.locator('summary').filter({hasText:'Archives et autres tickets'}).click();
-   await page.getByRole('button',{name:/Plus d[’']infos pour l[’']achat/}).first().click();
+   await page.locator('summary').filter({hasText:'Archive and other receipts'}).click();
+   await page.getByRole('button',{name:/More details for purchase/}).first().click();
    const purchase=page.getByRole('dialog');await purchase.waitFor();
-   await purchase.getByText(/Provenance de l[’']achat et limites/).click();
-   await purchase.getByRole('button',{name:'Voir les sources et vérifier le ticket',exact:true}).click();
-   const editor=page.getByRole('dialog',{name:'Vérifier le ticket',exact:true});await editor.waitFor();
+   await purchase.getByText(/Purchase evidence and limitations/).click();
+   await purchase.getByRole('button',{name:'View sources and review receipt',exact:true}).click();
+   const editor=page.getByRole('dialog',{name:'Review receipt',exact:true});await editor.waitFor();
    await page.keyboard.press('Escape');await editor.waitFor({state:'hidden'});
-   await chart.getByText(/Historique : 1 cas/).waitFor();
+   await chart.getByText(historyWarning).waitFor();
   }
   if(!baseline&&name==='mixed'){
-   offline=true;await page.reload();await page.getByText(/Historique en cache/).waitFor();
-   await chart.getByText(/Données en cache/).waitFor();await chart.getByText(/Historique : 1 cas/).waitFor();
-   assert.match(await chart.innerText(),/25,00/);
+   offline=true;await page.reload();await page.getByText(/This device shows cached history/).waitFor();
+   await chart.getByText(/Cached data/).waitFor();await chart.getByText(historyWarning).waitFor();
+   assert.match(await chart.innerText(),paidAmount);
    offline=false;displayedRecords=fixtures.complete;
    const refreshed=page.waitForResponse(response=>response.url()===endpoint+'/groceries'&&response.status()===200);
-   await page.reload();await (await refreshed).finished();await chart.getByText(/Historique : 1 cas/).waitFor({state:'hidden'});
-   await chart.getByText(/25,00/).first().waitFor();
-   assert.equal(await chart.getByText(/Données en cache/).count(),0);
+   await page.reload();await (await refreshed).finished();await chart.getByText(historyWarning).waitFor({state:'hidden'});
+   await chart.getByText(paidAmount).first().waitFor();
+   assert.equal(await chart.getByText(/Cached data/).count(),0);
   }
   assert.deepEqual(errors,[]);assert.deepEqual(external,[]);
   results.push({width,case:name,omitted,requests,errors,external});await context.close();console.log(`PASS ${baseline?'baseline':'candidate'} ${width} ${name}`);

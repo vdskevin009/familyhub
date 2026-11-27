@@ -120,7 +120,7 @@ test("idempotent retries survive revision changes without returning an obsolete 
     const s = state(), request = input(s, { allSameName: true, expectedCount: 10 }), first = prepareFinanceChange(s, request);
     const retry = prepareFinanceChange(first.next, request);
     assert.equal(retry.next, null); assert.equal(retry.response.replayed, true); assert.deepEqual(retry.response.decisions, first.response.decisions);
-    assert.throws(() => prepareFinanceChange(first.next, { ...request, decision: { ...decision, category: "restaurants" } }), /identifiant/);
+    assert.throws(() => prepareFinanceChange(first.next, { ...request, decision: { ...decision, category: "restaurants" } }), /identifier/);
     const other = prepareFinanceChange(first.next, input(first.next, { id: "number" }));
     const late = prepareFinanceChange(other.next, request);
     assert.equal(late.next, null); assert.equal(late.response.refreshRequired, true); assert.deepEqual(late.response.history, []);
@@ -130,13 +130,13 @@ test("idempotent retries survive revision changes without returning an obsolete 
 test("new operation validation rejects incomplete, duplicate or orphan audit metadata", () => {
     const { next } = group(state());
     for (const corrupt of [s => s.operations[0].count++, s => s.decisionHistory.push(s.decisionHistory[0]), s => { s.operations = undefined; }, s => { s.decisionHistory[0].decision.nature = "invalid"; }, s => { s.operations[0].id = "-".repeat(36); }, s => { s.operations[0].undoOf = randomUUID(); }]) {
-        const copy = structuredClone(next); corrupt(copy); assert.throws(() => validateFinanceState(copy), /invalide/);
+        const copy = structuredClone(next); corrupt(copy); assert.throws(() => validateFinanceState(copy), /invalid/i);
     }
 });
 
 test("history capacity is checked before creating any partial group", () => {
     const s = state(); s.decisionHistory = Array.from({ length: 49995 }, () => ({ id: "c", previous: null, decision: s.decisions.c, at: "legacy" }));
-    assert.throws(() => group(s), /capacité/); assert.equal(s.revision, "initial"); assert.equal(s.operations, undefined);
+    assert.throws(() => group(s), /history is full/); assert.equal(s.revision, "initial"); assert.equal(s.operations, undefined);
 });
 
 test("serialized concurrent writers: one commit, one conflict; persisted retry/undo preserve original imports", async () => {

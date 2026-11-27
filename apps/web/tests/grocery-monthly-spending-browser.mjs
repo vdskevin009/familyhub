@@ -17,21 +17,21 @@ try{
  const endpoint=`http://127.0.0.1:${api.address().port}`,base=`http://127.0.0.1:${site.address().port}/familyhub/?view=groceries&tab=catalogue`;
  browser=await chromium.launch({headless:true,channel:process.env.FAMILYHUB_TEST_BROWSER_CHANNEL||(process.platform==="win32"?"msedge":undefined)});
  for(const width of [320,390,768,1280]){
- const context=await browser.newContext({viewport:{width,height:900},reducedMotion:"reduce",serviceWorkers:"block"});
+ const context=await browser.newContext({viewport:{width,height:900},reducedMotion:"reduce",locale:"fr-CA",serviceWorkers:"block"});
  await context.route("**/*",route=>{if(new URL(route.request().url()).hostname!=="127.0.0.1"){external.push(route.request().url());return route.abort();}return route.continue();});
  await context.addInitScript(({endpoint})=>localStorage.setItem("familyhub.worker.v1",JSON.stringify({Endpoint:endpoint,ApiKey:"synthetic"})),{endpoint});
  const page=await context.newPage();page.setDefaultTimeout(10000);page.on("pageerror",e=>errors.push(e.message));await page.goto(base);
- const chart=page.getByRole("region",{name:"Dépenses mensuelles PC Express",exact:true});await chart.getByText(/112,00/).first().waitFor();
- assert.equal(new URL(page.url()).searchParams.get("tab"),"tickets");assert.equal(await page.getByRole("button",{name:"Catalogue",exact:true}).count(),0);assert.equal(await page.getByRole("button",{name:"Moins cher ailleurs",exact:true}).count(),0);
- assert.equal(await page.getByRole("button",{name:"Achats",exact:true}).count(),1);
- await chart.getByText("Montants et commandes par mois · CAD",{exact:true}).click();await chart.getByText(/112,00.*estimés · 1 commande/).waitFor();await chart.getByText(/90,00.*payés · 1 reçu/).waitFor();
- await chart.getByText("Couverture et méthode",{exact:true}).click();await chart.getByText(/1 source\(s\) supplémentaire/).waitFor();await chart.getByText(/pas certifié exhaustif/).waitFor();
+ const chart=page.getByRole("region",{name:"Monthly PC Express spending",exact:true});await chart.getByText(/112\.00/).first().waitFor();
+ assert.equal(new URL(page.url()).searchParams.get("tab"),"tickets");assert.equal(await page.getByRole("button",{name:"Catalogue",exact:true}).count(),0);assert.equal(await page.getByRole("button",{name:"Cheaper elsewhere",exact:true}).count(),0);
+ assert.equal(await page.getByRole("button",{name:"Purchases",exact:true}).count(),1);
+ await chart.getByText("Monthly amounts and orders · CAD",{exact:true}).click();await chart.getByText(/112\.00.*estimated · 1 order/).waitFor();await chart.getByText(/90\.00.* paid · 1 receipt/).waitFor();
+ await chart.getByText("Coverage and method",{exact:true}).click();await chart.getByText(/1 additional source\(s\)/).waitFor();await chart.getByText(/has not been verified/).waitFor();
  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
  await page.evaluate(()=>document.activeElement?.blur());await page.screenshot({path:join(directory,`monthly-${width}.png`),fullPage:true});
- await chart.getByLabel("Année",{exact:true}).selectOption("2025");await chart.getByText(/20,00/).first().waitFor();await chart.getByLabel("Année",{exact:true}).selectOption("2026");
- const graph=chart.getByRole("region",{name:/Graphique mensuel/});await graph.focus();assert.equal(await graph.evaluate(el=>document.activeElement===el),true);
- fail=true;await page.reload();await page.getByText(/Historique en cache/).waitFor();await chart.getByText(/Données en cache/).waitFor();fail=false;
- for (const oldTab of ["target", "needs", "compare"]) { await page.goto(base.replace("tab=catalogue", "tab=" + oldTab)); await chart.getByText(/112,00/).first().waitFor(); assert.equal(new URL(page.url()).searchParams.get("tab"), "tickets"); assert.equal(await page.getByRole("button", { name: "Catalogue", exact: true }).count(), 0); }
+ await chart.getByLabel("Year",{exact:true}).selectOption("2025");await chart.getByText(/20\.00/).first().waitFor();await chart.getByLabel("Year",{exact:true}).selectOption("2026");
+ const graph=chart.getByRole("region",{name:/Monthly chart/});await graph.focus();assert.equal(await graph.evaluate(el=>document.activeElement===el),true);
+ fail=true;await page.reload();await page.getByText(/This device shows cached history/).waitFor();await chart.getByText(/Cached data/).waitFor();fail=false;
+ for (const oldTab of ["target", "needs", "compare"]) { await page.goto(base.replace("tab=catalogue", "tab=" + oldTab)); await chart.getByText(/112\.00/).first().waitFor(); assert.equal(new URL(page.url()).searchParams.get("tab"), "tickets"); assert.equal(await page.getByRole("button", { name: "Catalogue", exact: true }).count(), 0); }
  await context.close();console.log(`PASS monthly chart, dedup, paid/estimate separation, coverage, year control, removed tabs, cache and no overflow at ${width}px`);
  }
  assert.equal(writes,0);assert.deepEqual(errors,[]);assert.deepEqual(external,[]);

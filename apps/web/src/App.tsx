@@ -35,21 +35,21 @@ function runningStandalone(): boolean {
 }
 
 const nav: Array<{ id: AppView; label: string; shortLabel?: string; icon: typeof Home }> = [
-  { id: "today", label: "Aujourd’hui", icon: Home },
-  { id: "reimbursements", label: "Remboursements", shortLabel: "Rembours.", icon: HeartHandshake },
+  { id: "today", label: "Today", icon: Home },
+  { id: "reimbursements", label: "Reimbursements", shortLabel: "Claims", icon: HeartHandshake },
   { id: "finances", label: "Finances", icon: CircleDollarSign },
-  { id: "projects", label: "Projets", icon: Home },
-  { id: "other", label: "Plus", icon: MoreHorizontal }
+  { id: "projects", label: "Projects", icon: Home },
+  { id: "other", label: "More", icon: MoreHorizontal }
 ];
 const otherViews: Array<{ id: AppView; label: string; description: string; icon: typeof Home }> = [
-  { id: "savings", label: "Dépenses récurrentes", description: "Services, contrats et abonnements", icon: TrendingDown },
-  { id: "mortgage", label: "Hypothèque", description: "Dossier, échéances et taux de référence", icon: Home },
-  { id: "documents", label: "Documents", description: "Factures et décomptes des assureurs", icon: FileText },
-  { id: "notifications", label: "Notifications", description: "Alertes, historique et préférences", icon: Bell },
-  { id: "inbox", label: "Courrier important", description: "Messages et pièces à examiner", icon: Mail },
-  { id: "plan", label: "Planifier", description: "Repas, liste de courses et tâches", icon: CalendarDays },
-  { id: "money", label: "Money · outils locaux", description: "Vos imports, budgets et simulations conservés", icon: CircleDollarSign },
-  { id: "more", label: "Réglages et outils", description: "Connexion au PC, sauvegardes et recherches", icon: Settings2 }
+  { id: "savings", label: "Recurring expenses", description: "Services, contracts and subscriptions", icon: TrendingDown },
+  { id: "mortgage", label: "Mortgage", description: "Your mortgage, deadlines and reference rates", icon: Home },
+  { id: "documents", label: "Documents", description: "Invoices and insurer statements", icon: FileText },
+  { id: "notifications", label: "Notifications", description: "Alerts, history and preferences", icon: Bell },
+  { id: "inbox", label: "Important mail", description: "Messages and attachments to review", icon: Mail },
+  { id: "plan", label: "Planner", description: "Meals, shopping list and tasks", icon: CalendarDays },
+  { id: "money", label: "Money · local tools", description: "Saved imports, budgets and simulations", icon: CircleDollarSign },
+  { id: "more", label: "Settings and tools", description: "PC connection, backups and research", icon: Settings2 }
 ];
 
 export default function App() {
@@ -63,10 +63,10 @@ export default function App() {
   const scrollPositions = useRef<Partial<Record<AppView, number>>>({});
   const viewRef = useRef(view); viewRef.current = view;
   const mainRef = useRef<HTMLElement>(null);
-  const documentViews = [{ id: "invoices", label: "Factures" }, { id: "desjardins", label: "Desjardins" }, { id: "blue-cross", label: "Blue Cross" }] as const;
+  const documentViews = [{ id: "invoices", label: "Invoices" }, { id: "desjardins", label: "Desjardins" }, { id: "blue-cross", label: "Blue Cross" }] as const;
   const documentKind = view === "documents" || view === "invoices" ? "invoices" : view === "desjardins" ? "desjardins" : view === "blue-cross" ? "blue-cross" : null;
   const navigationActive = (id: AppView) => primaryDestination(view) === id;
-  const pageName = view === "vehicle" ? "Voiture" : view === "property" ? "Nouveau bien" : view === "contributions" ? "Finances — Contributions" : nav.find(item => item.id === view)?.label || documentViews.find(item => item.id === view)?.label || otherViews.find(item => item.id === view)?.label || "FamilyHub";
+  const pageName = view === "vehicle" ? "Vehicles" : view === "property" ? "Property search" : view === "contributions" ? "Finances — Contributions" : nav.find(item => item.id === view)?.label || documentViews.find(item => item.id === view)?.label || otherViews.find(item => item.id === view)?.label || "FamilyHub";
   useEffect(() => {
     document.title = `${pageName} · FamilyHub`;
     const frame = requestAnimationFrame(() => window.scrollTo({ top: scrollPositions.current[view] || 0, behavior: "instant" }));
@@ -124,27 +124,27 @@ export default function App() {
   };
 
   return <div className="app-shell proactive-shell">
-    <a className="skip-link" href="#main-content">Aller au contenu</a>
+    <a className="skip-link" href="#main-content">Skip to content</a>
     <aside className="app-rail">
-      <button type="button" className="rail-brand" onClick={() => navigate("today")} aria-label="FamilyHub, accueil"><span className="brand-mark"><img src={`${import.meta.env.BASE_URL}icon.svg`} alt="" /></span><span>FamilyHub<small>Le prochain geste utile</small></span></button>
-      <nav aria-label="Navigation principale">{nav.map(item => {
+      <button type="button" className="rail-brand" onClick={() => navigate("today")} aria-label="FamilyHub home"><span className="brand-mark"><img src={`${import.meta.env.BASE_URL}icon.svg`} alt="" /></span><span>FamilyHub<small>Your next useful action</small></span></button>
+      <nav aria-label="Main navigation">{nav.map(item => {
         const Icon = item.icon;
         return <button type="button" key={item.id} className={navigationActive(item.id) ? "nav-item active" : "nav-item"} onClick={() => navigate(item.id)} aria-current={navigationActive(item.id) ? "page" : undefined}><Icon size={21} strokeWidth={2} aria-hidden="true" /><span>{item.label}</span></button>;
       })}</nav>
-      {!installed && installPrompt && <button type="button" className="header-install-button" onClick={() => void installApp()}><Download size={15} aria-hidden="true" />Installer l’app</button>}
-      <button type="button" className="rail-settings" onClick={() => navigate("more")}><Settings2 size={18} aria-hidden="true" />Réglages et outils</button>
-      <div className="rail-footnote">Vos données privées<br />sur votre PC associé</div>
+      {!installed && installPrompt && <button type="button" className="header-install-button" onClick={() => void installApp()}><Download size={15} aria-hidden="true" />Install app</button>}
+      <button type="button" className="rail-settings" onClick={() => navigate("more")}><Settings2 size={18} aria-hidden="true" />Settings and tools</button>
+      <div className="rail-footnote">Your private data<br />on your paired PC</div>
     </aside>
     <div className="app-stage">
-      <div className="shell-tools"><button type="button" className="icon-button" title="Notifications" aria-label="Ouvrir les notifications" onClick={() => navigate("notifications")}><Bell size={19} aria-hidden="true" /></button></div>
+      <div className="shell-tools"><button type="button" className="icon-button" title="Notifications" aria-label="Open notifications" onClick={() => navigate("notifications")}><Bell size={19} aria-hidden="true" /></button></div>
       <main className="app-main" id="main-content" tabIndex={-1} ref={mainRef}>
         <SectionBoundary key={view} label={pageName} onHome={() => navigate("today")}>
-        <Suspense fallback={<div role="status" className="notice">Chargement de la section…</div>}>
+        <Suspense fallback={<div role="status" className="notice">Loading section…</div>}>
         {view === "today" && <TodayView hub={state} onNavigate={navigate} onOpenTarget={openTarget} commandOpen={commandOpen} onCommandOpenChange={setCommandOpen} />}
         {view === "inbox" && <InboxView hub={state} />}
         {view === "notifications" && <NotificationsView hub={state} onNavigate={navigate} />}
         {view === "reimbursements" && <ReimbursementsView key={routeKey} hub={state} />}
-        {documentKind && <div className="view-stack"><nav className="segment-tabs document-tabs" aria-label="Sources documentaires">{documentViews.map(item => <button type="button" key={item.id} className={documentKind === item.id ? "active" : ""} aria-current={documentKind === item.id ? "page" : undefined} onClick={() => navigate(item.id)}>{item.label}</button>)}</nav><DocumentLibraryView key={documentKind} hub={state} kind={documentKind} /></div>}
+        {documentKind && <div className="view-stack"><nav className="segment-tabs document-tabs" aria-label="Document sources">{documentViews.map(item => <button type="button" key={item.id} className={documentKind === item.id ? "active" : ""} aria-current={documentKind === item.id ? "page" : undefined} onClick={() => navigate(item.id)}>{item.label}</button>)}</nav><DocumentLibraryView key={documentKind} hub={state} kind={documentKind} /></div>}
         {view === "savings" && <SavingsView key={routeKey} hub={state} onNavigate={navigate} />}
         {view === "projects" && <ProjectsView onNavigate={navigate} />}
         {view === "vehicle" && <VehicleProjectView key={`${projectContextKey}:${routeKey}`} initialListingId={new URLSearchParams(routeKey).get("record") ?? undefined} config={state.worker} onBack={() => navigate("projects")} />}
@@ -152,7 +152,7 @@ export default function App() {
         {view === "mortgage" && <MortgageView worker={state.worker} />}
         {(view === "finances" || view === "contributions") && <FinancesView key={routeKey} hub={state} onNavigate={navigate} initialTab={view === "contributions" ? "contributions" : undefined} />}
         {view === "groceries" && <CoursesView key={routeKey} config={state.worker} plannerItems={state.planner.GroceryItems} />}
-        {view === "other" && <section className="view-stack more-hub"><PageHeader title="Plus" subtitle="Tous vos outils, toujours accessibles">{!installed && installPrompt && <button type="button" className="button secondary" onClick={() => void installApp()}><Download size={15} aria-hidden="true" />Installer</button>}</PageHeader><div className="other-grid">{otherViews.map(item => { const Icon = item.icon; return <button type="button" key={item.id} className="other-link" onClick={() => navigate(item.id)}><span className="other-icon"><Icon size={22} aria-hidden="true" /></span><span><strong>{item.label}</strong><small>{item.description}</small></span><ChevronRight size={18} aria-hidden="true" /></button>; })}</div></section>}
+        {view === "other" && <section className="view-stack more-hub"><PageHeader title="More" subtitle="All your tools in one place">{!installed && installPrompt && <button type="button" className="button secondary" onClick={() => void installApp()}><Download size={15} aria-hidden="true" />Install</button>}</PageHeader><div className="other-grid">{otherViews.map(item => { const Icon = item.icon; return <button type="button" key={item.id} className="other-link" onClick={() => navigate(item.id)}><span className="other-icon"><Icon size={22} aria-hidden="true" /></span><span><strong>{item.label}</strong><small>{item.description}</small></span><ChevronRight size={18} aria-hidden="true" /></button>; })}</div></section>}
         {view === "plan" && <PlanView hub={state} />}
         {view === "money" && <MoneyView hub={state} />}
         {view === "more" && <MoreView hub={state} installAvailable={Boolean(installPrompt)} installed={installed} onInstall={() => void installApp()} />}
@@ -160,7 +160,7 @@ export default function App() {
         </SectionBoundary>
       </main>
     </div>
-    <nav className="bottom-nav" aria-label="Navigation principale mobile">{nav.map(item => {
+    <nav className="bottom-nav" aria-label="Mobile navigation">{nav.map(item => {
       const Icon = item.icon;
       return <button type="button" key={item.id} className={navigationActive(item.id) ? "active" : ""} onClick={() => navigate(item.id)} aria-label={item.label} aria-current={navigationActive(item.id) ? "page" : undefined}><Icon size={21} strokeWidth={2} aria-hidden="true" /><span>{item.shortLabel ?? item.label}</span></button>;
     })}</nav>

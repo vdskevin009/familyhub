@@ -23,7 +23,7 @@ test("a preparable reimbursement leads passive quote waiting without inventing a
   const { input } = fixture(), feed = await buildOpportunityFeed(input, now);
   assert.equal(feed.opportunities[0].domain, "claims");
   const waiting = feed.opportunities.find(o => o.domain === "insurance")!;
-  assert.equal(waiting.status, "waiting"); assert.equal(waiting.actionLabel, "Voir le suivi");
+  assert.equal(waiting.status, "waiting"); assert.equal(waiting.actionLabel, "View follow-up");
   assert.equal(waiting.benefit.amount, null); assert.equal(waiting.target.recordId, "synthetic-policy");
   assert.equal(feed.recoverable.amount, 60);
 });
@@ -63,7 +63,7 @@ test("received quote becomes a comparison action and material evidence reopens t
   const { input, contract } = fixture(), first = (await buildOpportunityFeed(input, now)).opportunities.find(o => o.domain === "insurance")!;
   contract.insuranceReference!.records.push({ ...contract.insuranceReference!.records[1], id: "received", kind: "quote", status: "received", receivedOn: "2027-03-01", validUntil: "2027-03-31", quotedAnnualPremium: 700 });
   const next = (await buildOpportunityFeed(input, now)).opportunities.find(o => o.domain === "insurance")!;
-  assert.equal(next.status, "needs-information"); assert.equal(next.actionLabel, "Comparer les garanties");
+  assert.equal(next.status, "needs-information"); assert.equal(next.actionLabel, "Compare coverage");
   assert.equal(next.benefit.amount, null); assert.equal(next.id, first.id); assert.notEqual(next.evidenceVersion, first.evidenceVersion);
 });
 
@@ -85,7 +85,7 @@ test("missing original PDF, primary response, supported service or insurer order
   ]) {
     const f = fixture(); modify(f);
     const card = (await buildOpportunityFeed(f.input, now)).opportunities.find(o => o.domain === "claims")!;
-    assert.equal(card.status, "needs-information"); assert.equal(card.title, "Clarifier ce remboursement");
+    assert.equal(card.status, "needs-information"); assert.equal(card.title, "Review this reimbursement");
   }
 });
 
