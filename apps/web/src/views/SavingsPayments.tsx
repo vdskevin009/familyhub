@@ -67,7 +67,7 @@ export function PaymentObservations({ result, contracts, visibleContracts, onCat
     if (!reviews.length) return null;
     return <section className="surface view-stack savings-observations" aria-label="Observations sur les paiements">
         <div className="compact-heading"><h2>Paiements à vérifier</h2><InfoPopover title="Paiements à vérifier"><p>Un paiement rapproché peut demander une vérification du contrat. Vérifiez le service, l’activation, les dates d’effet et les éventuels suppléments avant d’estimer une économie.</p></InfoPopover></div>
-        <details className="payment-reviews"><summary>{reviews.length} paiement(s) à vérifier</summary><div className="view-stack">
+        <details className="payment-reviews"><summary>{reviews.length} paiement(s) à vérifier{reviews.every(r => !r.matchedContractId) && " · exclus des totaux rapprochés"}</summary><div className="view-stack">
             {reviews.map(({ row, contractIds, reason, matchedContractId }) => <div key={row.id}>
                 <strong>{row.date} · {money(row.outflowCents, row.currency)}</strong>
                 <p>{row.description}</p>
