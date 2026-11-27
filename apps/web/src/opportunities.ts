@@ -12,7 +12,14 @@ import type { Invoice } from "../../worker/src/invoice-model";
 import type { ReconciliationCase as WorkerReconciliationCase } from "../../worker/src/reconciliation";
 
 export type SourceId = "claims" | "contracts" | "research" | "finances" | "groceries" | "purchases" | "mortgage";
-export type SourceHealth = { id: SourceId; label: string; status: "loading" | "ready" | "error" | "unpaired"; checkedAt: string | null; sourceDate: string | null; error: string | null };
+export type SourceHealth = { id: SourceId; label: string; status: "loading" | "ready" | "error" | "unpaired"; checkedAt: string | null; sourceDate: string | null; error: string | null; coverage?: ClaimCoverage };
+/** Bounded projection only: never forward account progress or raw source errors to the assistant. */
+export type ClaimCoverage = { complete: boolean | null; heldMessages: number | null };
+export function claimCoverage(snapshot: Pick<InvoiceSnapshot, "coverage">): ClaimCoverage {
+  const raw = snapshot.coverage;
+  const heldMessages = typeof raw?.heldMessages === "number" && Number.isSafeInteger(raw.heldMessages) && raw.heldMessages >= 0 ? raw.heldMessages : null;
+  return { complete: raw?.complete === false || (heldMessages ?? 0) > 0 ? false : raw?.complete === true ? true : null, heldMessages };
+}
 export type SourceResult<T> = SourceHealth & { data: T | null };
 export type OpportunityInputs = {
   claims: SourceResult<InvoiceSnapshot>; contracts: SourceResult<SharedLibrary>; research: SourceResult<SharedResearch>;
@@ -113,7 +120,7 @@ export async function buildOpportunityFeed(input: OpportunityInputs, now = new D
   const base = (domain: Opportunity["domain"], source: SourceHealth, days = 30) => ({ domain, sourceDate: source.sourceDate, freshness: freshness(source.sourceDate, now, days), dueDate: null, effort: "low" as const, status: "needs-information" as const, confidence: "conditional" as const });
   if (available(input.claims)) {
     const cases = claimsCases(input.claims.data), summary = reimbursementWorkflowSummary(cases, "all"), fresh = input.claims.data.setupRequired || input.claims.data.error ? "unknown" : freshness(input.claims.sourceDate, now, 7);
-    recoverable = { amount: fresh === "fresh" && (summary.knownAmounts > 0 || summary.open === 0) ? summary.potentiallyRecoverable : null, currency: "CAD", known: summary.knownAmounts, unknown: summary.unknownAmounts };
+    recoverable = { amount: claimCoverage(input.claims.data).complete !== false && fresh === "fresh" && (summary.knownAmounts > 0 || summary.open === 0) ? summary.potentiallyRecoverable : null, currency: "CAD", known: summary.knownAmounts, unknown: summary.unknownAmounts };
     for (const item of cases.filter(c => reimbursementWorkflowStatus(c) === "open")) {
       const own = reimbursementWorkflowSummary([item], "all");
       const amount = fresh === "fresh" && own.knownAmounts > 0 ? own.potentiallyRecoverable : null;

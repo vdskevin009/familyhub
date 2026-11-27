@@ -6,7 +6,7 @@ import { fetchMortgage } from "./mortgage-api";
 import { groceryRequest, loadGroceries } from "./grocery-api";
 import type { GroceryPlan } from "../../worker/src/grocery-planning";
 import type { OpportunityActionsSnapshot } from "../../worker/src/opportunity-actions";
-import { applyOpportunityDecisions, buildOpportunityFeed, dateOnly, sourceLabels, type Opportunity, type OpportunityInputs, type SourceHealth, type SourceId } from "./opportunities";
+import { applyOpportunityDecisions, buildOpportunityFeed, claimCoverage, dateOnly, sourceLabels, type Opportunity, type OpportunityInputs, type SourceHealth, type SourceId } from "./opportunities";
 
 const sourceIds = Object.keys(sourceLabels) as SourceId[];
 export function emptyOpportunityInputs(status: SourceHealth["status"] = "loading"): OpportunityInputs {
@@ -33,7 +33,7 @@ export async function collectOpportunitySources(loaders: OpportunityLoaders, pub
       const data = await Promise.race([loaders[id](), new Promise<never>((_, reject) => { timeout = setTimeout(() => reject(new Error("timeout")), 35_000); })]);
       if (!data || typeof data !== "object") throw new Error("invalid-source");
       const sourceDate = observationDate(id, data);
-      publish({ id, label: sourceLabels[id], status: "ready", data, checkedAt: now(), sourceDate, error: null });
+      publish({ id, label: sourceLabels[id], status: "ready", data, checkedAt: now(), sourceDate, error: null, ...(id === "claims" ? { coverage: claimCoverage(data as NonNullable<OpportunityInputs["claims"]["data"]>) } : {}) });
     } catch {
       // Remote errors may include private URLs or internal details. Keep the card message generic.
       publish({ id, label: sourceLabels[id], status: "error", data: null, checkedAt: now(), sourceDate: null, error: "Source indisponible. Vérifiez le PC puis actualisez." });
