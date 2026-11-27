@@ -7,6 +7,7 @@ import { chromium } from 'playwright';
 
 const root=resolve('apps/web/dist');
 const out='output/playwright/opportunity-dossier';
+const checkRender = process.argv.includes('--check-render');
 const server=createServer(async(req,res)=>{
   const path=new URL(req.url,'http://localhost').pathname.replace(/^\/familyhub\//,'');
   const file=resolve(root,path || 'index.html');
@@ -25,7 +26,7 @@ function listing(kind,i) {
   return kind==='property'?{...common,address:'Bien fictif '+i,bedrooms:fact(3),lowerLonsdale:fact(true),separateEntrances:fact(true),priceCad:fact(530000),monthlyStrataFeeCad:fact(350),airbnb:{status:'unknown',evidence:[]}}
     :{...common,title:'Auto fictive '+i,make:fact('Marque témoin'),model:fact('Modèle témoin'),trim:fact('Essai'),year:fact(2022),mileageKm:fact(60000+i*1000),location:fact('Grand Vancouver'),awd:fact(false),used:fact(true),familySuv:fact(true),greaterVancouver:fact(true),accidentHistory:fact(null),priceBasis:'before-tax',priceCad:fact(24000-i*1000)};
 }
-const browser=await chromium.launch({headless:true});
+const browser=await chromium.launch({headless:true, ...(process.platform === 'win32' ? {channel:'chrome'} : {})});
 try {
   await mkdir(out,{recursive:true});
   for(const width of [320,390,1440]) for(const kind of ['property','vehicle']) {
@@ -54,6 +55,15 @@ try {
     await cards.nth(1).scrollIntoViewIfNeeded();await cards.nth(1).getByText('Photo de l’annonce indisponible').waitFor();
     assert.ok(await cards.nth(2).getByText('Photo non disponible').isVisible());
     const opener=cards.first().locator('h2 button');
+    if (checkRender) {
+      const card = cards.first();
+      await card.screenshot({path:out+'/'+kind+'-'+width+'-card.png'});
+      const bounds = await card.boundingBox();
+      const title = await opener.boundingBox();
+      assert.ok(bounds && title && bounds.x >= -1 && bounds.x + bounds.width <= width + 1 &&
+        title.width > 0 && title.height > 0 && title.x >= bounds.x - 1 &&
+        title.x + title.width <= bounds.x + bounds.width + 1, kind+' '+width+'px: card and title fit the viewport');
+    }
     await opener.focus();await page.keyboard.press('Enter');
     const dialog=page.getByRole('dialog'), analysis=dialog.getByRole('region',{name:'Analyse de l’opportunité'});
     await analysis.getByRole('heading',{name:'Visite à préparer'}).waitFor();
@@ -67,6 +77,20 @@ try {
     assert.ok((await motifs.boundingBox()).height>=44);await page.keyboard.press('Enter');
     assert.ok(await dialog.evaluate(el=>el.scrollWidth<=el.clientWidth+1));
     await dialog.screenshot({path:out+'/'+kind+'-'+width+'.png'});
+    if (checkRender) {
+      const image = await photo.boundingBox();
+      const credit = await analysis.getByRole('link',{name:'Photo fictive'}).boundingBox();
+      assert.ok(image && image.width > 0 && image.height > 0 &&
+        await photo.evaluate(el => getComputedStyle(el).objectFit === 'contain'),
+        kind+' '+width+'px: open dossier must show the whole photo');
+      assert.ok(credit && credit.height >= 24 && credit.x >= image.x - 1 &&
+        credit.x + credit.width <= image.x + image.width + 1,
+        kind+' '+width+'px: photo credit must be reachable and fit within the photo');
+      assert.ok(await motifs.evaluate(el => el === document.activeElement && el.matches(':focus-visible') &&
+        getComputedStyle(el).outlineStyle !== 'none' && parseFloat(getComputedStyle(el).outlineWidth) >= 2),
+        kind+' '+width+'px: disclosure must retain a visible keyboard focus');
+      console.log('PASS card render '+kind+' '+width+'px: card, photo, attribution and keyboard focus');
+    }
     if(kind==='property'){
       await analysis.getByText('Coût de détention et conditions',{exact:true}).click();
       await analysis.getByText(/Sur douze mois au même tarif/).waitFor();

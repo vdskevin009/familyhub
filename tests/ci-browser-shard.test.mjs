@@ -1,8 +1,63 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { browserCommands, browserSuites, shardCommands } from '../scripts/ci-browser-shard.mjs';
+import { browserCommands, browserSuites, cardRenderPlan, shardCommands } from '../scripts/ci-browser-shard.mjs';
+import { execFileSync, spawnSync } from 'node:child_process';
+import { mkdir, mkdtemp, rename, rm, writeFile } from 'node:fs/promises';
+import { join, resolve } from 'node:path';
 const scripts = JSON.parse(readFileSync('package.json', 'utf8')).scripts;
+test('card render uses the tested Git diff once across shards, including renames and an unavailable base', async () => {
+  const root = 'output/playwright';
+  await mkdir(root, {recursive:true});
+  const cwd = await mkdtemp(join(root, 'render-contract-'));
+  const git = (...args) => execFileSync('git', args, {cwd, encoding:'utf8', windowsHide:true}).trim();
+  const commit = () => {
+    git('add', '.');
+    git('-c','user.name=Fixture','-c','user.email=fixture@example.invalid','-c','commit.gpgsign=false','commit','-qm','fixture');
+    return git('rev-parse','HEAD');
+  };
+  const command = 'node apps/web/tests/opportunity-dossier-browser.mjs';
+  const views = join(cwd, 'apps/web/src/views');
+  const env = {GITHUB_EVENT_NAME:'pull_request'};
+  const plan = () => cardRenderPlan(command, env, cwd);
+  const commands = browserCommands(scripts);
+  const runShard = () => spawnSync(process.execPath, [resolve('scripts/ci-browser-shard.mjs'),
+    String(commands.indexOf(command)+1), String(commands.length)], {cwd,env:{...process.env,...env},encoding:'utf8',windowsHide:true});
+  try {
+    git('init','--quiet');
+    await writeFile(join(cwd,'package.json'),JSON.stringify({scripts}));
+    await mkdir(join(cwd,'apps/web/tests'),{recursive:true});
+    await writeFile(join(cwd,command.slice(5)),
+      "if (process.argv.includes('--check-render')) { console.log('render-fixture'); process.exit(7); }");
+    await writeFile(join(cwd,'README.md'),'fixture');
+    env.CARD_RENDER_BASE = commit();
+    await writeFile(join(cwd,'unrelated.txt'),'no render change');
+    commit();
+    assert.equal(plan().check,false);
+    const skipped = runShard();
+    assert.equal(skipped.status,0,skipped.stderr);
+    assert.doesNotMatch(skipped.stdout,/render-fixture/);
+    await mkdir(views,{recursive:true});
+    await writeFile(join(views,'VehicleProjectView.tsx'),'vehicle');
+    await writeFile(join(views,'PropertyProjectView.tsx'),'property');
+    const changed = commit();
+    const runs = [1,2,3,4].flatMap(n => shardCommands(browserCommands(scripts),n,4))
+      .filter(cmd => cardRenderPlan(cmd,env,cwd)?.check);
+    assert.deepEqual(runs,[command]);
+    const failed = runShard();
+    assert.equal(failed.status,7,failed.stderr);
+    assert.equal(failed.stdout.split('render-fixture').length-1,1);
+    assert.equal(cardRenderPlan(command,{...env,GITHUB_EVENT_NAME:'push'},cwd),null);
+    env.CARD_RENDER_BASE = changed;
+    await rename(join(views,'PropertyProjectView.tsx'),join(cwd,'moved.txt'));
+    commit();
+    assert.equal(plan().reason,'card paths changed');
+    for (const base of ['', 'a'.repeat(40)]) {
+      env.CARD_RENDER_BASE = base;
+      assert.deepEqual(plan(),{check:true,reason:'comparison unavailable; checking render'});
+    }
+  } finally { await rm(cwd,{recursive:true,force:true}); }
+});
 test('four shards cover every existing browser command exactly once', () => {
   const commands = browserCommands(scripts);
   const all = [1,2,3,4].flatMap(n => shardCommands(commands,n,4));
