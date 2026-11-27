@@ -4,6 +4,8 @@ FH-SAV-008, candidat du 27 novembre 2026, suivi #163. Un débit rapproché de so
 
 **FH-PROPERTY-001 / FH-VEHICLE-001 — Testing, 27 novembre 2026.** Analyse par annonce et vérifications concrètes depuis Projets. La date d’analyse reste distincte de la date du prix. Les ventes documentées et comparables permettent uniquement une position descriptive sous conditions explicites. Les prix affichés, frais, hypothèses de location et fiabilité sont qualifiés séparément. Photo principale attribuée selon le contrat existant. Voir [fiches de décision](docs/OPPORTUNITY-DOSSIERS.md). Suivi #305.
 
+**FH-NOTIF-001/002 — Testing.** Avis optionnels pour dossiers de remboursement ouverts depuis 14 jours, nouveaux biens correspondant au projet et nouvelles autos à examiner selon des références de prix datées. Le diagnostic compare l’abonnement local à l’inscription du PC. [Règles de sélection et acceptation](docs/ACTIONABLE-PUSH.md). Intégration isolée de #319, suivi #170; aucune règle de variation des annonces suivies.
+
 
 ## Partial mail sources and recovery - issue #309
 

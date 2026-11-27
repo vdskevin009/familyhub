@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Bell, CalendarClock, CheckCircle2, CircleDollarSign, Clock3, FileSearch, HeartHandshake, Home, Landmark, RefreshCw, Settings2, ShoppingBasket, TrendingUp } from "lucide-react";
+import { Bell, CalendarClock, CheckCircle2, CircleDollarSign, Clock3, FileSearch, HeartHandshake, Home, Landmark, RefreshCw, Settings2, ShoppingBasket, Tag, TrendingUp } from "lucide-react";
 import type { HubState } from "../state";
 import type { AppView } from "../types";
 import { notificationActionState, notificationNeedsAttention, notificationSnoozeCrossesExpiry } from "../../../worker/src/notification-model";
@@ -7,11 +7,12 @@ import type { NotificationSnapshot } from "../../../worker/src/notification-libr
 import { notificationLabels, notificationTargetHref, pushSupported, applicationServerKey } from "../notifications";
 import { fetchNotifications, updateNotifications } from "../worker";
 import { PageHeader, Notice, Sheet } from "../ui/primitives";
+import {DeviceDeliveryCheck} from "../ui/DeviceDeliveryCheck";
 import "../notifications.css";
 
-const categoryIcons = { collection: RefreshCw, reimbursement: HeartHandshake, unmatched: FileSearch, price: TrendingUp, deadline: CalendarClock, weekly: CircleDollarSign, mortgage: Home, policy: Landmark, grocery: ShoppingBasket, "claim-deadline": CalendarClock };
-const categoryLabels = { collection: "Collecte", reimbursement: "Remboursement", unmatched: "Rapprochement", price: "Prélèvement", deadline: "Échéance", weekly: "Bilan", mortgage: "Hypothèque", policy: "Taux directeur", grocery: "Courses", "claim-deadline": "Réclamation" };
-const categoryQualifications = { collection: "État de collecte à vérifier. Derniers résultats conservés.", reimbursement: "Relevé d’assurance · dépôt bancaire non confirmé.", unmatched: "Rapprochement non confirmé.", price: "Une hausse de paiement ne prouve pas une hausse de tarif.", deadline: "Date enregistrée · conditions à vérifier.", weekly: "Couverture limitée aux imports. Total du foyer non établi.", mortgage: "Piste à vérifier · aucun gain acquis.", policy: "Taux directeur · impact personnel à vérifier.", grocery: "Écart produits, hors frais, taxes et déplacement. Gain net non établi." };
+const categoryIcons = { "open-claim":HeartHandshake,"new-property":Home,"new-vehicle":Tag, collection: RefreshCw, reimbursement: HeartHandshake, unmatched: FileSearch, price: TrendingUp, deadline: CalendarClock, weekly: CircleDollarSign, mortgage: Home, policy: Landmark, grocery: ShoppingBasket, "claim-deadline": CalendarClock };
+const categoryLabels = { "open-claim":"Dossier ouvert","new-property":"Immobilier","new-vehicle":"Auto", collection: "Collecte", reimbursement: "Remboursement", unmatched: "Rapprochement", price: "Prélèvement", deadline: "Échéance", weekly: "Bilan", mortgage: "Hypothèque", policy: "Taux directeur", grocery: "Courses", "claim-deadline": "Réclamation" };
+const categoryQualifications = { "open-claim":"Vérifier la transmission et le dernier relevé.","new-property":"Adéquation selon les faits de l’annonce.","new-vehicle":"Prix affichés comparables, état du véhicule à vérifier.", collection: "État de collecte à vérifier. Derniers résultats conservés.", reimbursement: "Relevé d’assurance · dépôt bancaire non confirmé.", unmatched: "Rapprochement non confirmé.", price: "Une hausse de paiement ne prouve pas une hausse de tarif.", deadline: "Date enregistrée · conditions à vérifier.", weekly: "Couverture limitée aux imports. Total du foyer non établi.", mortgage: "Piste à vérifier · aucun gain acquis.", policy: "Taux directeur · impact personnel à vérifier.", grocery: "Écart produits, hors frais, taxes et déplacement. Gain net non établi." };
 
 export default function NotificationsView({ hub, onNavigate }: { hub: HubState; onNavigate: (view: AppView) => void }) {
   const [state, setState] = useState<NotificationSnapshot | null>(null), [error, setError] = useState(""), [message, setMessage] = useState("");
@@ -136,6 +137,7 @@ export default function NotificationsView({ hub, onNavigate }: { hub: HubState; 
       <h3>Ce téléphone ou navigateur</h3>
       {!pushSupported() ? <Notice>Web Push n’est pas disponible ici. Sur iPhone/iPad compatible, ajoutez FamilyHub à l’écran d’accueil puis ouvrez l’application installée.</Notice> : <>
         <p>Autorisation : {permission === "granted" ? "accordée" : permission === "denied" ? "bloquée dans les réglages du navigateur" : "à demander"}. Le PC doit rester en ligne pour envoyer les nouvelles alertes.</p>
+        <DeviceDeliveryCheck snapshot={state} permission={permission} version={currentEndpoint}/>
         <label>Nom de l’appareil<input maxLength={60} value={label} onChange={e => setLabel(e.target.value)} /></label>
         {!state ? <Notice>Configuration Push non vérifiable : reconnectez le PC puis actualisez. Aucun appareil ni réglage n’est présumé absent.</Notice> : !state.pushConfigured && <Notice>{state.pushSetupError || "Web Push n'est pas encore configuré sur le PC. Une identité d'envoi protégée doit être approuvée et installée; l'historique fonctionne déjà."}</Notice>}
         <button className="button" disabled={busy || !state?.pushConfigured || !label.trim() || permission === "denied"} onClick={() => void enroll()}>Activer sur cet appareil</button>
