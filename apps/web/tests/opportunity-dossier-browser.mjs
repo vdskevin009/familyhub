@@ -40,7 +40,7 @@ try {
       if(url.origin===new URL(base).origin) return route.continue();
       if(url.origin==='https://media.invalid'){
         if(url.pathname==='/1') return route.fulfill({status:404,body:''});
-        await imageAllowed;return route.fulfill({contentType:'image/svg+xml',body:'<svg xmlns="http://www.w3.org/2000/svg" width="280" height="120"><rect width="280" height="120" fill="#dce7ec"/><text x="24" y="66">Image de test</text></svg>'});
+        await imageAllowed;return route.fulfill({contentType:'image/svg+xml',body:'<svg xmlns="http://www.w3.org/2000/svg" width="280" height="120"><rect width="280" height="120" fill="#dce7ec"/><text x="140" y="64" text-anchor="middle">Image de test</text></svg>'});
       }
       if(url.origin==='https://fixture.invalid' && req.method()==='GET') return route.fulfill({json:url.pathname==='/'+kind+'-project'?{cards:[0,1,2].map(i=>listing(kind,i)),followingRevision:0}:{items:[],records:[],jobs:[],state:'idle'}});
       unexpected.push(req.method()+' '+url.origin);return route.abort();
@@ -57,6 +57,11 @@ try {
     await opener.focus();await page.keyboard.press('Enter');
     const dialog=page.getByRole('dialog'), analysis=dialog.getByRole('region',{name:'Analyse de l’opportunité'});
     await analysis.getByRole('heading',{name:'Visite à préparer'}).waitFor();
+    const photo=analysis.getByRole('img',{name:/Photo de l’annonce/});
+    await photo.waitFor();
+    await analysis.getByText('Chargement de la photo.').waitFor({state:'hidden'});
+    assert.ok(await photo.evaluate(el=>el.complete && el.naturalWidth>0 && el.referrerPolicy==='no-referrer'));
+    assert.equal(await analysis.getByRole('link',{name:'Photo fictive'}).getAttribute('href'),'https://listing.invalid/'+kind+'-0');
     const motifs=analysis.getByText('Motifs du verdict et confiance',{exact:true});
     await motifs.focus();await page.keyboard.press('Enter');await analysis.getByRole('link',{name:/Statut observé/}).waitFor();
     assert.ok((await motifs.boundingBox()).height>=44);await page.keyboard.press('Enter');
@@ -91,6 +96,12 @@ try {
     await page.keyboard.press('Escape');await dialog.waitFor({state:'hidden'});
     await opener.click();await analysis.waitFor();assert.equal(await analysis.locator('fieldset').count(),0);
     await page.keyboard.press('Escape');
+    for (const [index,label] of [[1,'Photo de l’annonce indisponible'],[2,'Photo non disponible']]) {
+      await cards.nth(index).locator('h2 button').click();
+      await analysis.getByText(label,{exact:true}).waitFor();
+      assert.equal(await analysis.getByRole('img').count(),0);
+      await page.keyboard.press('Escape');await dialog.waitFor({state:'hidden'});
+    }
     assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
     assert.deepEqual(errors,[]);assert.deepEqual(unexpected,[]);
     console.log('PASS projects → '+kind+' '+width+'px, photo states, evidence, keyboard, recovery');await ctx.close();

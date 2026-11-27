@@ -4,6 +4,7 @@ import type { VehicleCard } from '../vehicle-api';
 import type { Evidence } from '../../../worker/src/property-model';
 import { currentFact, localDay, projectDecision, vehicleAsks } from '../opportunity-analysis';
 import { ComparableSales } from './ComparableSales';
+import { ListingPhoto } from './ListingPhoto';
 import './opportunity-dossier.css';
 
 const money = (n:number) => new Intl.NumberFormat('fr-CA',{style:'currency',currency:'CAD',maximumFractionDigits:2}).format(n);
@@ -60,6 +61,8 @@ export function OpportunityDossier(props:Props) {
     <p className="decision-date">Analyse du <time dateTime={new Date(at).toISOString()}>{localDay(at)}</time></p>
     <h3>{projectDecision(card,at)}</h3>
     <p>Prix affiché{card.priceCad.value==null?' inconnu':' de '+money(card.priceCad.value)}{props.kind==='vehicle'?' avant taxes':''}. <Citation fact={card.priceCad} label="Prix observé"/></p>
+    <ListingPhoto key={card.primaryPhoto?.url} photo={card.primaryPhoto}
+      label={props.kind === 'property' ? props.card.address : props.card.title}/>
     <details><summary>Motifs du verdict et confiance</summary>
       <ul>{card.criteria.map(c=><li key={c.id}><strong>{names[c.id]}</strong>{c.id==='bedrooms' && c.evidence.value!=null?' · '+String(c.evidence.value):''} · {c.id==='budget'&&!currentFact(card.priceCad,at)?'à reconfirmer':c.pass===null?'à documenter':c.pass?'point favorable':'écart avec le projet'}. <Citation fact={c.evidence} label="Preuve"/></li>)}</ul>
       <p>Le verdict porte sur les critères documentés dans l’annonce. La confiance sur le prix de marché reste limitée. <Citation fact={card.statusEvidence} label="Statut observé"/></p>

@@ -13,3 +13,7 @@
 .decision-sales button {display:block;margin:.65rem 0;padding:.45rem .7rem;}
 
 .listing-photo-loading {position:absolute;inset:0;display:grid;place-items:center;background:#edf2f8;color:#314967;}
+.opportunity-dossier .property-photo { margin: .65rem 0; background: #edf2f8; border-radius: .6rem; }
+.opportunity-dossier .property-photo img { object-fit: contain; border-radius: inherit; }
+.opportunity-dossier .property-photo figcaption a { display: inline-flex; align-items: center; min-height: 24px; padding-inline: .25rem; font-size: .75rem; }
+.opportunity-dossier .property-photo-empty { margin: .5rem 0; }
