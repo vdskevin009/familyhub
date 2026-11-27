@@ -1,0 +1,38 @@
+Γ£ö client recomputes criteria, keeps unknown accident and AWD facts (11.3784ms)
+Γ£ö client refuses duplicate listings and invalid revisions (6.7686ms)
+Γ£ö client never converts missing price to zero (1.6024ms)
+Γ£ö all four criteria evidenced; opportunity never fabricated (12.8757ms)
+Γ£ö unknown entrance is not a match or failure (0.9062ms)
+Γ£ö hard mismatch remains visible; stale listing is not available (0.793ms)
+Γ£ö unproven facts, credential links and blanket Airbnb permission rejected (2.5621ms)
+Γ£ö extra fields stripped and source dates cannot be later than observation (0.7101ms)
+Γ£ö immutable idempotent history, conflicts, latest per listing and restart (216.1611ms)
+Γ£ö corrupt history fails closed (7.4947ms)
+Γ£ö photo absent is explicit, supplied photo requires safe attributed source (1.0164ms)
+Γ£ö following survives sold/unknown transitions and restarts; vanished listing not erased (88.0617ms)
+Γ£ö following optimistic concurrency and request replay prevent lost manual choices (46.6141ms)
+Γ£ö sold cannot be inferred from missing status evidence (0.5042ms)
+Γ£ö late older observations do not reset current listing or follow state (21.95ms)
+Γ£ö comparison separates budget room, listing price reduction, fees and realized savings (40.9094ms)
+Γ£ö all four criteria evidenced; opportunity never fabricated (5.2916ms)
+Γ£ö unknown geography is not a match or failure (0.7187ms)
+Γ£ö hard mismatch remains visible; stale listing is not available (0.6799ms)
+Γ£ö unproven facts, credential links and monthly payment as asking price rejected (1.2033ms)
+Γ£ö extra fields stripped and source dates cannot be later than observation (0.8637ms)
+Γ£ö immutable idempotent history, conflicts, latest per listing and restart (171.6546ms)
+Γ£ö corrupt history fails closed (17.5693ms)
+Γ£ö photo absent is explicit, supplied photo requires safe attributed source (2.4299ms)
+Γ£ö following survives sold/unknown transitions and restarts; vanished listing not erased (112.3525ms)
+Γ£ö following optimistic concurrency and request replay prevent lost manual choices (53.5563ms)
+Γ£ö sold cannot be inferred from missing status evidence (0.4548ms)
+Γ£ö late older observations do not reset current listing or follow state (26.8682ms)
+Γ£ö comparison separates budget room, listing price reduction, fees and realized savings (38.0401ms)
+Γ£ö fresh collection does not make stale status evidence current (0.4368ms)
+Γä╣ tests 30
+Γä╣ suites 0
+Γä╣ pass 30
+Γä╣ fail 0
+Γä╣ cancelled 0
+Γä╣ skipped 0
+Γä╣ todo 0
+Γä╣ duration_ms 1486.6599

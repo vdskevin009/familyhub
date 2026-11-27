@@ -1,0 +1,155 @@
+{
+  "cycle": "2026-11-26",
+  "baseCommit": "c72eb6933ecf968a7c58dd97bd31f636dcb1e9d9",
+  "environment": "kevinpc isolated worktree; synthetic stores and intercepted localhost browser only",
+  "hashMeaning": "canonical staged Git blob bytes; this manifest excludes itself",
+  "visualKind": "implementation screenshots; not physical-phone acceptance",
+  "localHttpLimitation": "one initial isolated property HTTP readiness test failed; temporary child stopped; installed worker untouched; separate CI required",
+  "artifacts": [
+    {
+      "path": "REQUIREMENTS.md",
+      "bytes": 243129,
+      "sha256": "c9c3f22665639081d15d1ce405cee84973248bacfda8dfdc18b85cd65a3bc9da"
+    },
+    {
+      "path": "apps/web/src/views/GroceryMonthlySpending.tsx",
+      "bytes": 7033,
+      "sha256": "f265396b3cd28de76d31c849cdb12c1b1b0e5a67a04c96a8bebed3d72ebd589a"
+    },
+    {
+      "path": "apps/web/tests/grocery-monthly-coverage-browser.mjs",
+      "bytes": 8252,
+      "sha256": "8c9140edaebe7959dbec072671b9fdd7a362c84756d355a052a56526b91bd22e"
+    },
+    {
+      "path": "docs/COMMITTEE-2026-11-26.md",
+      "bytes": 11134,
+      "sha256": "9339de5330f94bb0cf18a5226ad01a0e32f2e9557dd7ee34b04c65bfe6a8c780"
+    },
+    {
+      "path": "docs/requirements/FH-GROCERY-015.md",
+      "bytes": 2994,
+      "sha256": "88c817501850218348ca2759a0ab8316564469fe2a629f03d8d53313be3eca04"
+    },
+    {
+      "path": "docs/reviews/committee-20261126/README.md",
+      "bytes": 4329,
+      "sha256": "290eef2935c9b9ede37f111ff4953afac506d654a8519ff11daf4c36cfd10c5b"
+    },
+    {
+      "path": "docs/reviews/committee-20261126/acceptance.json",
+      "bytes": 12791,
+      "sha256": "25b60c4374d39d574f23fd653904d43aa1cc880850c99306e4cb062b90008a09"
+    },
+    {
+      "path": "docs/reviews/committee-20261126/after-conflictOnly-320.png",
+      "bytes": 16657,
+      "sha256": "2d389096069377e072a8963c4dd864ee6a840c1076f69918ee25334ee54085a8"
+    },
+    {
+      "path": "docs/reviews/committee-20261126/after-conflictOnly-390.png",
+      "bytes": 16395,
+      "sha256": "a475ff59049ac95199f5aae3b9ffec8179253285072fcfa4ab06fb29fff6b317"
+    },
+    {
+      "path": "docs/reviews/committee-20261126/after-empty-320.png",
+      "bytes": 14040,
+      "sha256": "269036485f35b9caa1d54fb940ecb7c106770a668348d2657870f46b595f8b8e"
+    },
+    {
+      "path": "docs/reviews/committee-20261126/after-mixed-390.png",
+      "bytes": 29013,
+      "sha256": "d35b293254c4480c1545fcb09c8583f1f345f5fc69f369a8b604fcc9103c7c0e"
+    },
+    {
+      "path": "docs/reviews/committee-20261126/baseline.json",
+      "bytes": 4852,
+      "sha256": "57f436c71e32e8f54d5d85a6cc04525b12bcfc920d866e8dab96eefff59e640f"
+    },
+    {
+      "path": "docs/reviews/committee-20261126/before-conflictOnly-320.png",
+      "bytes": 14116,
+      "sha256": "2a973e9b965a8bbe1a86c3fc9ee62445bf1bed5f40045f7dbb0199e8c432eb06"
+    },
+    {
+      "path": "docs/reviews/committee-20261126/before-conflictOnly-390.png",
+      "bytes": 13738,
+      "sha256": "15d26603ed3c655c19d1faf0a38a9fe8927de563fb0dd2be08885419bd2f4fc9"
+    },
+    {
+      "path": "docs/reviews/committee-20261126/before-mixed-390.png",
+      "bytes": 24045,
+      "sha256": "7963b31d0ae49e35fb429cbf408293ffa65f4c90508fd6c5438ce23b5176533f"
+    },
+    {
+      "path": "docs/reviews/committee-20261126/final-build.log",
+      "bytes": 4469,
+      "sha256": "8f1c0529c6ffd1d52ec34fa0f5751c346bc64c7f8290c721f402667fa2f76ed1"
+    },
+    {
+      "path": "docs/reviews/committee-20261126/groceries-browser.log",
+      "bytes": 3797,
+      "sha256": "1302575dabb23ff44e3f1cbfe5ceb38da9c0335340e72de17e319839127a0e26"
+    },
+    {
+      "path": "docs/reviews/committee-20261126/monthly-tests.log",
+      "bytes": 786,
+      "sha256": "2501fdbb355afd222c03addf4f8f8a9a88534a2625730a730bd11dce1119c256"
+    },
+    {
+      "path": "docs/reviews/committee-20261126/order-evidence-audit.log",
+      "bytes": 74,
+      "sha256": "f4f87618eebb6ef022b8bc810317fac63466e2f5b4116aaeb9b6e3e5d679c97e"
+    },
+    {
+      "path": "docs/reviews/committee-20261126/order-evidence-audit.mjs",
+      "bytes": 5500,
+      "sha256": "ac813eab1067e74f426d1dc4ba87edd9a0cc37ad096056bfe5f60c2104b173d0"
+    },
+    {
+      "path": "docs/reviews/committee-20261126/order-evidence-results.json",
+      "bytes": 590,
+      "sha256": "e45605d509fcd1a6ad0c82cddd6f6c11b21b53123af7c861e16ab06d3aa90403"
+    },
+    {
+      "path": "docs/reviews/committee-20261126/proactive-browser.log",
+      "bytes": 2787,
+      "sha256": "4b4b44a9a446f47a6980b795df5b69a8ab97c7ae42a8be6c31be80ca98653d74"
+    },
+    {
+      "path": "docs/reviews/committee-20261126/project-models.log",
+      "bytes": 2642,
+      "sha256": "8ce9cdeedea1aa4ee058d9727b2d09dfdc8d23407d5e979d7cc0a2471d4d2748"
+    },
+    {
+      "path": "docs/reviews/committee-20261126/pwa.log",
+      "bytes": 18226,
+      "sha256": "8c7d5aa006298e6cfc5630eff73f8f8960af28f1ea2f87195bbfd8f434f782a2"
+    },
+    {
+      "path": "docs/reviews/committee-20261126/shards.log",
+      "bytes": 613,
+      "sha256": "af0bf42e2e8b6875c8527d9ee431a9fe78da709b3b431db0eaa4e263d6168672"
+    },
+    {
+      "path": "docs/reviews/committee-20261126/source-store-tests.log",
+      "bytes": 2627,
+      "sha256": "f4c75df9f36bf0ae52dedb73760ec468b3b28d41b316b7ebee2f7ca9a82458c7"
+    },
+    {
+      "path": "docs/reviews/committee-20261126/typecheck.log",
+      "bytes": 329,
+      "sha256": "429f83f96e998b63697fd71763e6dbf0f14b418cb74b847465efce06368b3f1a"
+    },
+    {
+      "path": "package.json",
+      "bytes": 9830,
+      "sha256": "a794c6e1ca957a658247043377145bb005680aa6556a7d91bf55e2f4a5403aff"
+    },
+    {
+      "path": "tests/fixtures/grocery-monthly-coverage.json",
+      "bytes": 12286,
+      "sha256": "462f52f4fd963f5f5a9867befa63f2bf0389df07971501ad423d4147c6ce363d"
+    }
+  ]
+}
