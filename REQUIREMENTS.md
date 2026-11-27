@@ -1,5 +1,7 @@
 # FamilyHub - Canonical Requirements
 
+FH-SAV-008, candidat du 27 novembre 2026, suivi #163. Un débit rapproché de son abonnement autonome doit conserver la vérification d’un service inclus dans un autre forfait enregistré. Le montant reste affecté une fois au contrat, la vérification indique son état de rapprochement et donne accès aux contrats et à la source. Une activation, une période ou un supplément peut expliquer le débit. Voir [preuve et limites](docs/reviews/committee-20261127/report.md). Statut Testing en branche.
+
 **FH-PROPERTY-001 / FH-VEHICLE-001 — Testing, 27 novembre 2026.** Analyse par annonce et vérifications concrètes depuis Projets. La date d’analyse reste distincte de la date du prix. Les ventes documentées et comparables permettent uniquement une position descriptive sous conditions explicites. Les prix affichés, frais, hypothèses de location et fiabilité sont qualifiés séparément. Photo principale attribuée selon le contrat existant. Voir [fiches de décision](docs/OPPORTUNITY-DOSSIERS.md). Suivi #305.
 
 

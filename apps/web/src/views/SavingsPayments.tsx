@@ -58,13 +58,26 @@ export default function SavingsPayments({ result, contracts, range, onMonth, loa
     </section>;
 }
 
-export function PaymentObservations({ result, contracts, onCategorize }: { result: ReturnType<typeof reconcilePayments>; contracts: SavingsContract[]; onCategorize: () => void }) {
-    const ids = new Set(contracts.map(c => c.id));
+export function PaymentObservations({ result, contracts, visibleContracts, onCategorize, onOpenContract }: {
+    result: ReturnType<typeof reconcilePayments>; contracts: SavingsContract[]; visibleContracts: SavingsContract[];
+    onCategorize: () => void; onOpenContract: (contract: SavingsContract) => void;
+}) {
+    const ids = new Set(visibleContracts.map(c => c.id));
     const reviews = result.reviews.filter(r => r.contractIds.some(id => ids.has(id))).sort((a, b) => b.row.date.localeCompare(a.row.date));
     if (!reviews.length) return null;
     return <section className="surface view-stack savings-observations" aria-label="Observations sur les paiements">
-        <div className="compact-heading"><h2>Paiements à vérifier</h2><InfoPopover title="Paiements à vérifier"><p>{reviews.length} opération(s) demandent une vérification avant rapprochement. Les services inclus, libellés ambigus et devises différentes ne permettent pas de conclure à une économie.</p></InfoPopover></div>
-        {reviews.length > 0 && <details className="payment-reviews"><summary>{reviews.length} paiement(s) à vérifier · exclus des totaux rapprochés</summary><div className="view-stack">{reviews.map(({ row, contractIds, reason }) => <div key={row.id}><strong>{row.date} · {money(row.outflowCents, row.currency)}</strong><p>{row.description}</p><p>{reason}</p><small>Contrat(s) concerné(s) : {contracts.filter(c => contractIds.includes(c.id)).map(c => c.name).join(", ")}</small><PaymentSource row={row} /></div>)}</div></details>}
-        <button className="button secondary" onClick={onCategorize}>Catégoriser dans Finances</button>
+        <div className="compact-heading"><h2>Paiements à vérifier</h2><InfoPopover title="Paiements à vérifier"><p>Un paiement rapproché peut demander une vérification du contrat. Vérifiez le service, l’activation, les dates d’effet et les éventuels suppléments avant d’estimer une économie.</p></InfoPopover></div>
+        <details className="payment-reviews"><summary>{reviews.length} paiement(s) à vérifier{reviews.every(r => !r.matchedContractId) && " · exclus des totaux rapprochés"}</summary><div className="view-stack">
+            {reviews.map(({ row, contractIds, reason, matchedContractId }) => <div key={row.id}>
+                <strong>{row.date} · {money(row.outflowCents, row.currency)}</strong>
+                <p>{row.description}</p>
+                <p>{matchedContractId ? "Paiement rapproché de son abonnement. Le montant reste affecté à ce contrat." : "Montant non affecté, exclu des totaux rapprochés."}</p>
+                <p>{reason}</p>
+                {contracts.filter(c => contractIds.includes(c.id)).map(c =>
+                    <button type="button" className="button secondary" key={c.id} onClick={() => onOpenContract(c)}>Voir le contrat {c.name}</button>)}
+                <PaymentSource row={row} />
+            </div>)}
+        </div></details>
+        {reviews.some(r => !r.matchedContractId) && <button className="button secondary" onClick={onCategorize}>Catégoriser dans Finances</button>}
     </section>;
 }
