@@ -1,5 +1,8 @@
 # FamilyHub - Canonical Requirements
 
+**FH-NOTIF-001/002 — Testing.** Avis optionnels pour dossiers de remboursement ouverts depuis 14 jours, nouveaux biens correspondant au projet et nouvelles autos à examiner selon des références de prix datées. Le diagnostic compare l’abonnement local à l’inscription du PC. [Règles de sélection et acceptation](docs/ACTIONABLE-PUSH.md). Préparation isolée dépendante de #315, suivi #170 et #314.
+
+
 ## FH-NOTIF-008 — Followed project prices (issue #314)
 
 **Testing — isolated candidate only.** Reuse the current notification history for dated price changes on explicitly and continuously followed Auto/Property listings. First valid read in each following period is a silent baseline. Compare known prices with stable listing/source identity and CAD price basis; reject unknown, contradictory, future or stale facts, and check the status fact's own date. Late observations and unchanged rechecks must not rearm an event or refresh its original validity. Persist only the notification projection/cursor, never rewrite project observations or owner following decisions. Conservative permanent identity per listing/source/new price prevents a second event at the same price, including after a return; this deliberately sacrifices repeated-price alerts. Existing read/resolved choices remain authoritative.

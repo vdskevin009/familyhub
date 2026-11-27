@@ -10,10 +10,11 @@ import type { GroceryLibrary } from "./grocery-model.js";
 import type { GroceryPlan } from "./grocery-planning.js";
 import { householdCandidates, type ClaimDeadline } from "./household-alerts.js";
 
-export const notificationKinds = ["collection", "reimbursement", "unmatched", "price", "deadline", "weekly", "mortgage", "policy", "grocery", "claim-deadline", "project-price"] as const;
+import { actionCategories, isActionCategory } from "./actionable-projects.js";
+export const notificationKinds = ["collection", "reimbursement", "unmatched", "price", "deadline", "weekly", "mortgage", "policy", "grocery", "claim-deadline", "project-price", ...actionCategories] as const;
 export type NotificationKind = typeof notificationKinds[number];
 export type NotificationTarget = { view: "reimbursements" | "savings" | "finances" | "mortgage" | "groceries" | "vehicle" | "property"; recordId?: string; queue?: "unmatched"; tab?: "investments" | "tickets"; accountId?: string; from?: string; to?: string; currency?: string; sources?: boolean };
-export type Candidate = { baselineGroup?: "insurance-policy"; groupKey?: string; evidenceKey?: string; actionable?: boolean; pushEligible?: boolean; expiresAt?: string; priority?: number; key: string; source: "invoices" | "collections" | "contracts" | "finance" | "mortgage" | "policy" | "groceries" | "claim-deadlines" | "vehicles" | "properties"; kind: NotificationKind; title: string; detail: string; target: NotificationTarget; sourceDate?: string; links?: { label: string; url: string }[] };
+export type Candidate = { baselineGroup?: "insurance-policy"; groupKey?: string; evidenceKey?: string; actionable?: boolean; pushEligible?: boolean; expiresAt?: string; priority?: number; key: string; source: "invoices" | "collections" | "contracts" | "finance" | "mortgage" | "policy" | "groceries" | "claim-deadlines" | "vehicles" | "properties" | typeof actionCategories[number]; kind: NotificationKind; title: string; detail: string; target: NotificationTarget; sourceDate?: string; links?: { label: string; url: string }[] };
 export type NotificationDecision = { evidenceVersion: string; state: "snoozed" | "resolved" | "dismissed"; at: string; snoozedUntil?: string };
 export type NotificationEvent = Omit<Candidate, "key" | "source" | "baselineGroup" | "groupKey" | "evidenceKey" | "pushEligible"> & { id: string; groupId?: string; evidenceVersion?: string; createdAt: string; baseline: boolean; readAt?: string; active: boolean; decision?: NotificationDecision; pushState?: "pending" | "handled" | "expired" };
 export const notificationDeliveryPolicy = { timeZone: "America/Vancouver", fromHour: 8, untilHour: 21, maximumPerDay: 1, actionOnly: true } as const;
@@ -30,7 +31,7 @@ export function notificationSnoozeCrossesExpiry(event: NotificationEvent, delayM
 export type CollectionEvidence = { id: string; label: string; state: string; lastAttempt?: string; lastSuccess?: string; authReason?: string; error?: string };
 export type NotificationEvidence = { projects?: { vehicle?: ProjectPriceEvidence; property?: ProjectPriceEvidence }; invoices?: Awaited<ReturnType<typeof invoiceSnapshot>>; collections?: CollectionEvidence[]; contracts?: SavingsContract[]; finance?: FinanceState; mortgage?: MortgageDailyReport[]; policy?: PolicyRateRead; mortgageState?: MortgageState; groceries?: { library: GroceryLibrary; plan: GroceryPlan }; claimDeadlines?: ClaimDeadline[] };
 export type NotificationPreferences = Record<NotificationKind, boolean>;
-export const defaultNotificationPreferences = (): NotificationPreferences => Object.fromEntries(notificationKinds.map(k => [k, k !== "project-price"])) as NotificationPreferences;
+export const defaultNotificationPreferences = (): NotificationPreferences => Object.fromEntries(notificationKinds.map(k => [k, k !== "project-price" && !isActionCategory(k)])) as NotificationPreferences;
 const day = 86_400_000;
 export function localDate(now: Date): string { return new Intl.DateTimeFormat("en-CA", { timeZone: "America/Vancouver", year: "numeric", month: "2-digit", day: "2-digit" }).format(now); }
 const validDate = (s: string) => /^\d{4}-\d{2}-\d{2}$/.test(s) && Number.isFinite(Date.parse(s + "T12:00:00Z")) && new Date(s + "T12:00:00Z").toISOString().slice(0, 10) === s;
