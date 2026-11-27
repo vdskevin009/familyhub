@@ -2,6 +2,8 @@
 
 Status: Testing. Source implementation and synthetic validation are separate from deployment and complete Gmail history acceptance. Tracks #155.
 
+Draft follow-up, 2026-11-26: excluded-source cases are visible before the amounts, including when every usable amount is withheld. The disclosure qualifies its count as global across recorded years/currencies; it never presents the count as distinct orders or a monthly omission. Empty-source and unusable-source states differ. Existing archive/purchase/source review stays available; no calculations or collection behavior change. See [evidence and acceptance](../COMMITTEE-2026-11-26.md). No deployment in this committee cycle.
+
 Courses now opens only Achats. Catalogue and Moins cher navigation are removed; old tab bookmarks converge on Achats. Existing shared planning data, source records, review controls, and per-purchase comparisons remain unchanged.
 
 The monthly chart aggregates all available saved PC Express records, including archives. Reviewed final receipts contribute to verified paid amounts. Confirmation totals form a separate estimated series, never added to the paid series or called bank spending. Receipt/confirmation source date assigns the month, rather than ingestion or delivery date. Currency/year selectors never mix units; no-data months mean unknown, not zero spend.

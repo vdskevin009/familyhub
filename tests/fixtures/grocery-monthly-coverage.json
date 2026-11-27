@@ -1,0 +1,444 @@
+{
+  "synthetic": true,
+  "conflictOnly": [
+    {
+      "id": "d4d05781-46ee-4ac9-8bc0-2c92e3556722",
+      "revision": "662fbc7e-5877-4d3f-a5f4-d7ce72e05ba8",
+      "status": "saved",
+      "createdAt": "2026-11-26T16:02:19.200Z",
+      "sources": [
+        {
+          "hash": "c6c0239499dca23d9cca5cf90d14a1473161f730ea30733344edb754276eb62c",
+          "name": "Synthetic order evidence.txt",
+          "type": "text/plain",
+          "size": 35
+        }
+      ],
+      "receipt": {
+        "sourceType": "confirmation",
+        "store": "PC Express",
+        "date": "2026-11-20",
+        "currency": "CAD",
+        "reference": "900000000000027",
+        "total": 60,
+        "delivery": null,
+        "service": null,
+        "tip": null,
+        "tax": null,
+        "discount": null,
+        "items": [
+          {
+            "name": "Fictitious item",
+            "product": "Fictitious item",
+            "amount": null,
+            "quantity": 1,
+            "size": null,
+            "unit": null,
+            "evidence": "Synthetic source only",
+            "uncertain": true
+          }
+        ],
+        "warnings": []
+      },
+      "extraction": "pending",
+      "reviewedAt": "2026-11-26T16:02:19.205Z",
+      "duplicateOf": null
+    },
+    {
+      "id": "3350813c-6e40-4dfc-8b4e-071459a2b370",
+      "revision": "239fc5ea-e0df-453a-bdf8-ff7fe1fa1258",
+      "status": "saved",
+      "createdAt": "2026-11-26T16:02:19.210Z",
+      "sources": [
+        {
+          "hash": "2c9367515c3a437ee7e3799d53789ddd3dbc279aa6431171ed913d98a1b53e5c",
+          "name": "Synthetic order evidence.txt",
+          "type": "text/plain",
+          "size": 43
+        }
+      ],
+      "receipt": {
+        "sourceType": "confirmation",
+        "store": "PC Express",
+        "date": "2026-11-20",
+        "currency": "CAD",
+        "reference": "900000000000027",
+        "total": 80,
+        "delivery": null,
+        "service": null,
+        "tip": null,
+        "tax": null,
+        "discount": null,
+        "items": [
+          {
+            "name": "Fictitious item",
+            "product": "Fictitious item",
+            "amount": null,
+            "quantity": 1,
+            "size": null,
+            "unit": null,
+            "evidence": "Synthetic source only",
+            "uncertain": true
+          }
+        ],
+        "warnings": []
+      },
+      "extraction": "pending",
+      "reviewedAt": "2026-11-26T16:02:19.216Z",
+      "duplicateOf": null
+    }
+  ],
+  "mixed": [
+    {
+      "id": "d4d05781-46ee-4ac9-8bc0-2c92e3556722",
+      "revision": "662fbc7e-5877-4d3f-a5f4-d7ce72e05ba8",
+      "status": "saved",
+      "createdAt": "2026-11-26T16:02:19.200Z",
+      "sources": [
+        {
+          "hash": "c6c0239499dca23d9cca5cf90d14a1473161f730ea30733344edb754276eb62c",
+          "name": "Synthetic order evidence.txt",
+          "type": "text/plain",
+          "size": 35
+        }
+      ],
+      "receipt": {
+        "sourceType": "confirmation",
+        "store": "PC Express",
+        "date": "2026-11-20",
+        "currency": "CAD",
+        "reference": "900000000000027",
+        "total": 60,
+        "delivery": null,
+        "service": null,
+        "tip": null,
+        "tax": null,
+        "discount": null,
+        "items": [
+          {
+            "name": "Fictitious item",
+            "product": "Fictitious item",
+            "amount": null,
+            "quantity": 1,
+            "size": null,
+            "unit": null,
+            "evidence": "Synthetic source only",
+            "uncertain": true
+          }
+        ],
+        "warnings": []
+      },
+      "extraction": "pending",
+      "reviewedAt": "2026-11-26T16:02:19.205Z",
+      "duplicateOf": null
+    },
+    {
+      "id": "3350813c-6e40-4dfc-8b4e-071459a2b370",
+      "revision": "239fc5ea-e0df-453a-bdf8-ff7fe1fa1258",
+      "status": "saved",
+      "createdAt": "2026-11-26T16:02:19.210Z",
+      "sources": [
+        {
+          "hash": "2c9367515c3a437ee7e3799d53789ddd3dbc279aa6431171ed913d98a1b53e5c",
+          "name": "Synthetic order evidence.txt",
+          "type": "text/plain",
+          "size": 43
+        }
+      ],
+      "receipt": {
+        "sourceType": "confirmation",
+        "store": "PC Express",
+        "date": "2026-11-20",
+        "currency": "CAD",
+        "reference": "900000000000027",
+        "total": 80,
+        "delivery": null,
+        "service": null,
+        "tip": null,
+        "tax": null,
+        "discount": null,
+        "items": [
+          {
+            "name": "Fictitious item",
+            "product": "Fictitious item",
+            "amount": null,
+            "quantity": 1,
+            "size": null,
+            "unit": null,
+            "evidence": "Synthetic source only",
+            "uncertain": true
+          }
+        ],
+        "warnings": []
+      },
+      "extraction": "pending",
+      "reviewedAt": "2026-11-26T16:02:19.216Z",
+      "duplicateOf": null
+    },
+    {
+      "id": "9ecc31e4-62fb-4e2e-bbe7-6e5cf35cca3d",
+      "revision": "0a152c76-b276-48f5-96c2-cf093a728efa",
+      "status": "saved",
+      "createdAt": "2026-11-26T16:02:19.222Z",
+      "sources": [
+        {
+          "hash": "84c44706028eddc6e4788c9b9ef8e79e062a66503255ec711591d02f68a922ca",
+          "name": "Synthetic order evidence.txt",
+          "type": "text/plain",
+          "size": 53
+        }
+      ],
+      "receipt": {
+        "sourceType": "final-receipt",
+        "store": "PC Express",
+        "date": "2026-11-20",
+        "currency": "CAD",
+        "reference": "900000000000028",
+        "total": 25,
+        "delivery": null,
+        "service": null,
+        "tip": null,
+        "tax": null,
+        "discount": null,
+        "items": [
+          {
+            "name": "Fictitious item",
+            "product": "Fictitious item",
+            "amount": 25,
+            "quantity": 1,
+            "size": null,
+            "unit": null,
+            "evidence": "Synthetic source only",
+            "uncertain": true
+          }
+        ],
+        "warnings": []
+      },
+      "extraction": "pending",
+      "reviewedAt": "2026-11-26T16:02:19.227Z",
+      "duplicateOf": null
+    }
+  ],
+  "unknownOnly": [
+    {
+      "id": "d4d05781-46ee-4ac9-8bc0-2c92e3556722",
+      "revision": "662fbc7e-5877-4d3f-a5f4-d7ce72e05ba8",
+      "status": "saved",
+      "createdAt": "2026-11-26T16:02:19.200Z",
+      "sources": [
+        {
+          "hash": "c6c0239499dca23d9cca5cf90d14a1473161f730ea30733344edb754276eb62c",
+          "name": "Synthetic order evidence.txt",
+          "type": "text/plain",
+          "size": 35
+        }
+      ],
+      "receipt": {
+        "sourceType": "confirmation",
+        "store": "PC Express",
+        "date": null,
+        "currency": "CAD",
+        "reference": "900000000000027",
+        "total": null,
+        "delivery": null,
+        "service": null,
+        "tip": null,
+        "tax": null,
+        "discount": null,
+        "items": [
+          {
+            "name": "Fictitious item",
+            "product": "Fictitious item",
+            "amount": null,
+            "quantity": 1,
+            "size": null,
+            "unit": null,
+            "evidence": "Synthetic source only",
+            "uncertain": true
+          }
+        ],
+        "warnings": []
+      },
+      "extraction": "pending",
+      "reviewedAt": "2026-11-26T16:02:19.205Z",
+      "duplicateOf": null
+    }
+  ],
+  "complete": [
+    {
+      "id": "9ecc31e4-62fb-4e2e-bbe7-6e5cf35cca3d",
+      "revision": "0a152c76-b276-48f5-96c2-cf093a728efa",
+      "status": "saved",
+      "createdAt": "2026-11-26T16:02:19.222Z",
+      "sources": [
+        {
+          "hash": "84c44706028eddc6e4788c9b9ef8e79e062a66503255ec711591d02f68a922ca",
+          "name": "Synthetic order evidence.txt",
+          "type": "text/plain",
+          "size": 53
+        }
+      ],
+      "receipt": {
+        "sourceType": "final-receipt",
+        "store": "PC Express",
+        "date": "2026-11-20",
+        "currency": "CAD",
+        "reference": "900000000000028",
+        "total": 25,
+        "delivery": null,
+        "service": null,
+        "tip": null,
+        "tax": null,
+        "discount": null,
+        "items": [
+          {
+            "name": "Fictitious item",
+            "product": "Fictitious item",
+            "amount": 25,
+            "quantity": 1,
+            "size": null,
+            "unit": null,
+            "evidence": "Synthetic source only",
+            "uncertain": true
+          }
+        ],
+        "warnings": []
+      },
+      "extraction": "pending",
+      "reviewedAt": "2026-11-26T16:02:19.227Z",
+      "duplicateOf": null
+    }
+  ],
+  "oldConflict": [
+    {
+      "id": "d4d05781-46ee-4ac9-8bc0-2c92e3556722",
+      "revision": "662fbc7e-5877-4d3f-a5f4-d7ce72e05ba8",
+      "status": "saved",
+      "createdAt": "2026-11-26T16:02:19.200Z",
+      "sources": [
+        {
+          "hash": "c6c0239499dca23d9cca5cf90d14a1473161f730ea30733344edb754276eb62c",
+          "name": "Synthetic order evidence.txt",
+          "type": "text/plain",
+          "size": 35
+        }
+      ],
+      "receipt": {
+        "sourceType": "confirmation",
+        "store": "PC Express",
+        "date": "2025-11-20",
+        "currency": "CAD",
+        "reference": "900000000000027",
+        "total": 60,
+        "delivery": null,
+        "service": null,
+        "tip": null,
+        "tax": null,
+        "discount": null,
+        "items": [
+          {
+            "name": "Fictitious item",
+            "product": "Fictitious item",
+            "amount": null,
+            "quantity": 1,
+            "size": null,
+            "unit": null,
+            "evidence": "Synthetic source only",
+            "uncertain": true
+          }
+        ],
+        "warnings": []
+      },
+      "extraction": "pending",
+      "reviewedAt": "2026-11-26T16:02:19.205Z",
+      "duplicateOf": null
+    },
+    {
+      "id": "3350813c-6e40-4dfc-8b4e-071459a2b370",
+      "revision": "239fc5ea-e0df-453a-bdf8-ff7fe1fa1258",
+      "status": "saved",
+      "createdAt": "2026-11-26T16:02:19.210Z",
+      "sources": [
+        {
+          "hash": "2c9367515c3a437ee7e3799d53789ddd3dbc279aa6431171ed913d98a1b53e5c",
+          "name": "Synthetic order evidence.txt",
+          "type": "text/plain",
+          "size": 43
+        }
+      ],
+      "receipt": {
+        "sourceType": "confirmation",
+        "store": "PC Express",
+        "date": "2025-11-20",
+        "currency": "CAD",
+        "reference": "900000000000027",
+        "total": 80,
+        "delivery": null,
+        "service": null,
+        "tip": null,
+        "tax": null,
+        "discount": null,
+        "items": [
+          {
+            "name": "Fictitious item",
+            "product": "Fictitious item",
+            "amount": null,
+            "quantity": 1,
+            "size": null,
+            "unit": null,
+            "evidence": "Synthetic source only",
+            "uncertain": true
+          }
+        ],
+        "warnings": []
+      },
+      "extraction": "pending",
+      "reviewedAt": "2026-11-26T16:02:19.216Z",
+      "duplicateOf": null
+    },
+    {
+      "id": "9ecc31e4-62fb-4e2e-bbe7-6e5cf35cca3d",
+      "revision": "0a152c76-b276-48f5-96c2-cf093a728efa",
+      "status": "saved",
+      "createdAt": "2026-11-26T16:02:19.222Z",
+      "sources": [
+        {
+          "hash": "84c44706028eddc6e4788c9b9ef8e79e062a66503255ec711591d02f68a922ca",
+          "name": "Synthetic order evidence.txt",
+          "type": "text/plain",
+          "size": 53
+        }
+      ],
+      "receipt": {
+        "sourceType": "final-receipt",
+        "store": "PC Express",
+        "date": "2026-11-20",
+        "currency": "CAD",
+        "reference": "900000000000028",
+        "total": 25,
+        "delivery": null,
+        "service": null,
+        "tip": null,
+        "tax": null,
+        "discount": null,
+        "items": [
+          {
+            "name": "Fictitious item",
+            "product": "Fictitious item",
+            "amount": 25,
+            "quantity": 1,
+            "size": null,
+            "unit": null,
+            "evidence": "Synthetic source only",
+            "uncertain": true
+          }
+        ],
+        "warnings": []
+      },
+      "extraction": "pending",
+      "reviewedAt": "2026-11-26T16:02:19.227Z",
+      "duplicateOf": null
+    }
+  ],
+  "empty": []
+}

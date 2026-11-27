@@ -9,6 +9,7 @@ import { tmpdir } from "node:os";
 import { once } from "node:events";
 import { NotificationLibrary } from "../../worker/dist/notification-library.js";
 import { SavingsLibrary } from "../../worker/dist/savings-library.js";
+import { projectEvidence, projectNow, projectSnapshot } from "../../../tests/actionable-notification-fixture.mjs";
 import { now, pushFixture, invoiceEvidence, financeEvidence, contractEvidence } from "../../../tests/notification-fixture.mjs";
 const root = resolve("apps/web/dist"), server = createServer(async (req, res) => {
   const pathname = new URL(req.url, "http://localhost").pathname, path = resolve(root, "." + pathname.replace(/^\/familyhub/, ""));
@@ -34,6 +35,8 @@ try {
     finance.data.transactions.push({ ...finance.data.transactions[0], id: "usd-expense", accountId: "usd-account", currency: "USD" });
     await savings.import({ contracts: [contract], documents: [] });
     await lib.scan({ invoices: source, finance, contracts: [contract], collections: [{ id: "test", label: "Synthetic collector", state: "error" }], policy: { schema: 1, status: "ready", checkedAt: now.toISOString(), announcement: { date: "2026-10-12", effectiveDate: "2026-10-13", rate: 2.75, previousRate: 3, change: -.25, sourceUrl: "https://www.bankofcanada.ca/core-functions/monetary-policy/key-interest-rate/" } }, claimDeadlines: [] }, [], now);
+    const propertyProof = projectEvidence("property", 1250000);
+    const property = projectSnapshot("property", propertyProof);
     const context = await browser.newContext({ viewport: { width, height: 900 }, permissions: ["notifications"] });
     await context.addInitScript(({ push }) => {
       localStorage.setItem("familyhub.worker.v1", JSON.stringify({ Endpoint: "https://synthetic-worker.invalid", ApiKey: "synthetic-key" }));
@@ -56,6 +59,7 @@ try {
         if (req.method() === "OPTIONS") return reply({});
         if (url.pathname === "/health") return reply({ status: "ok", version });
         if (url.pathname === "/notifications") { if (req.method() === "GET") { const saved = await lib.read(); return reply({ ...saved, ...(emptyHistory ? { events: [] } : {}), ...(!configured ? { pushConfigured: false, publicKey: null } : {}) }); } posts++; if (rejectNext) { rejectNext = false; return reply({ error: "Les notifications ont changé. Actualisez avant de réessayer." }, 409); } return reply(await lib.mutate(req.postDataJSON())); }
+        if (url.pathname === "/property-project") return reply(property);
         if (url.pathname === "/finances") return reply(finance);
         if (url.pathname === "/savings/contracts") return reply(await savings.list());
         if (url.pathname === `/savings/contracts/${contract.id}`) return reply(await savings.update(contract.id, req.postDataJSON()));
@@ -129,11 +133,25 @@ try {
     await settings.getByLabel("Renouvellements et échéances GIC", { exact: true }).click(); await page.waitForFunction(() => !document.querySelector('fieldset')?.disabled);
     await page.keyboard.press("Escape"); assert.equal(await page.getByRole("button", { name: "Préférences", exact: true }).evaluate(e => e === document.activeElement), true); await page.reload(); await page.getByRole("button", { name: "Historique", exact: true }).click(); await page.locator(".notification-card").first().waitFor(); await page.getByRole("button", { name: "Préférences", exact: true }).click(); assert.equal(await settings.getByLabel("Renouvellements et échéances GIC", { exact: true }).isChecked(), false);
     await settings.getByLabel(/Nom de l.appareil/).fill("Téléphone synthétique"); await settings.getByRole("button", { name: "Activer sur cet appareil", exact: true }).click(); await settings.getByRole("heading", { name: "Téléphone synthétique", exact: true }).waitFor();
+    await settings.getByText(/Cet abonnement correspond à une inscription active/).waitFor();
     const calls = await page.evaluate(() => window.__notificationCalls); assert.deepEqual(calls, [{ action: "permission", active: true }, { action: "subscribe", visible: true }]); assert.equal(sent.length, 0, "enrollment must not replay historical alerts");
     await settings.getByRole("button", { name: "Envoyer un test", exact: true }).click(); await settings.getByText(/Dernier envoi accepté/).waitFor(); assert.equal(sent.length, 1); assert.equal((await lib.read()).devices[0].lastDelivery.confirmedAt, undefined);
     await settings.getByRole("button", { name: /J.ai reçu la notification/ }).click(); await settings.getByText(/Réception confirmée par vous\.$/).waitFor(); assert.ok((await lib.read()).devices[0].lastDelivery.confirmedAt);
     await noOverflow(); await page.screenshot({ path: join(output, `preferences-${width}.png`), fullPage: true });
-    await settings.getByRole("button", { name: "Désactiver dans ce navigateur", exact: true }).click(); await settings.getByRole("button", { name: "Retirer cet appareil", exact: true }).click(); await settings.getByText("Aucun appareil inscrit.", { exact: true }).waitFor();
+    await settings.getByRole("button", { name: "Retirer cet appareil", exact: true }).click();
+    await settings.getByText("Aucun appareil inscrit.", { exact: true }).waitFor();
+    await settings.getByText(/aucune inscription active correspondante sur le PC/).waitFor();
+    if(width===390)await settings.getByRole("status").filter({hasText:"aucune inscription active correspondante"}).screenshot({path:join(output,"missing-registration-390.png")});
+    const propertyPref=settings.getByLabel("Nouveaux biens correspondant aux quatre critères");
+    assert.equal(await propertyPref.isChecked(),false);
+    const prefSaved=page.waitForResponse(r=>new URL(r.url()).pathname==="/notifications" && r.request().method()==="POST" && r.status()===200);
+    await propertyPref.click();
+    await (await prefSaved).finished();
+    await settings.getByRole("checkbox",{name:"Nouveaux biens correspondant aux quatre critères",checked:true}).waitFor();
+    assert.equal((await lib.read()).preferences["new-property"],true);
+    assert.equal(sent.length,1,"Checking a missing registration or opting in must not send or re-enrol");
+    await settings.getByRole("button", { name: "Désactiver dans ce navigateur", exact: true }).click();
+    await settings.getByText(/aucun abonnement Push local/).waitFor();
     rejectNext = true; await settings.getByLabel("Renouvellements et échéances GIC", { exact: true }).click(); await settings.getByText(/Actualisez avant de réessayer/).waitFor(); assert.equal((await lib.read()).preferences.deadline, false);
     await page.keyboard.press("Escape"); await page.getByRole("button", { name: "Actualiser", exact: true }).click(); await page.getByRole("button", { name: "Préférences", exact: true }).click(); await settings.getByLabel("Renouvellements et échéances GIC", { exact: true }).click(); await page.waitForFunction(() => !document.querySelector('fieldset')?.disabled); assert.equal((await lib.read()).preferences.deadline, true);
     await page.keyboard.press("Escape"); const notice = (await lib.read()).events.find(e => e.kind === "deadline"); await open(`view=notifications&notice=${notice.id}`); await page.waitForFunction(id => document.activeElement?.id === `notice-${id}`, notice.id); await page.locator(`#notice-${notice.id}`).getByRole("link", { name: "Ouvrir le dossier" }).click();
@@ -148,6 +166,19 @@ try {
     assert.equal(await page.locator(".expense-card").count(), 1);
     assert.equal(await page.evaluate(() => sessionStorage.getItem("familyhub.ui.claims.query")), JSON.stringify("Saved unrelated query"));
     await open("view=reimbursements&record=unmatched-synthetic&queue=unmatched"); await page.getByText("Synthetic unmatched", { exact: true }).first().waitFor(); await noOverflow();
+    await lib.scan({ projects: { property: propertyProof } }, [], projectNow);
+    const propertyItem = (await lib.read()).events.find(e => e.kind === "new-property");
+    assert.ok(propertyItem, "Opted-in qualifying property reaches the in-app notice");
+    assert.equal(sent.length, 1, "The earlier simulated manual test was the only delivery; no enrolled device remains");
+    await open(`view=notifications&notice=${propertyItem.id}`);
+    await page.locator(`#notice-${propertyItem.id}`).getByRole("link", { name: "Ouvrir le dossier" }).click();
+    const propertyDialog = page.getByRole("dialog", { name: "100, rue Fictive" });
+    await propertyDialog.waitFor();
+    await noOverflow();
+    await page.screenshot({ path: join(output, `actionable-property-${width}.png`), fullPage: true });
+    await page.goto(base + "?view=property&record=synthetic-missing");
+    await page.getByText("Cette annonce n’est plus dans la sélection.", { exact: true }).waitFor();
+    assert.equal(await page.locator("dialog[open]").count(), 0);
     await open(); await page.locator(".notification-card").first().waitFor(); await noOverflow(); await page.screenshot({ path: join(output, `history-${width}.png`), fullPage: true });
     offline = true; await page.getByRole("button", { name: "Actualiser", exact: true }).click(); await page.getByText(/Cannot reach your FamilyHub PC/).waitFor(); assert.ok(await page.locator(".notification-card").count() > 0); offline = false;
     version = "2.23.3"; await page.reload(); await page.getByText(/notifications nécessitent le worker PC 2.24.0/).waitFor(); version = "2.24.0";

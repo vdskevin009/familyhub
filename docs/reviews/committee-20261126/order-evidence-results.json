@@ -1,0 +1,15 @@
+{
+  "synthetic": true,
+  "source": "c72eb6933ecf968a7c58dd97bd31f636dcb1e9d9",
+  "workerStarted": false,
+  "privateDataUsed": false,
+  "results": [
+    "delivery persists as estimate, restart/readback does not promote payment",
+    "repeated/reordered pair is byte-identical",
+    "three-message shipment set rejected without write",
+    "later distinct delivery does not replace saved source",
+    "divergent estimate leaves saved bytes intact",
+    "contradictory saved estimates remain present but outside amounts",
+    "independent final receipt survives unrelated excluded group"
+  ]
+}

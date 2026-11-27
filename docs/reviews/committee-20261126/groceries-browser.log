@@ -1,0 +1,56 @@
+npm notice run familyhub@2.0.0 test:groceries:browser
+npm notice run node apps/web/tests/groceries-browser.mjs && node apps/web/tests/grocery-monthly-spending-browser.mjs && node apps/web/tests/grocery-purchases-browser.mjs && node apps/web/tests/grocery-purchase-evidence-browser.mjs && node apps/web/tests/grocery-purchase-resolution-browser.mjs && node apps/web/tests/grocery-purchase-scenarios-browser.mjs && node apps/web/tests/grocery-monthly-coverage-browser.mjs
+PASS: mobile photo batch, exact duplicate grouping/replay, unpaired-photo retention after pairing, upload recovery, extraction failure/retry, source review, correction/close/reload, save failure/retry, unit prices/fees, second-device persistence, offline history and 320/390/768/1280 layouts; zero browser errors.
+PASS monthly chart, dedup, paid/estimate separation, coverage, year control, removed tabs, cache and no overflow at 320px
+PASS monthly chart, dedup, paid/estimate separation, coverage, year control, removed tabs, cache and no overflow at 390px
+PASS monthly chart, dedup, paid/estimate separation, coverage, year control, removed tabs, cache and no overflow at 768px
+PASS monthly chart, dedup, paid/estimate separation, coverage, year control, removed tabs, cache and no overflow at 1280px
+PASS Achats cards, 15-egg pack, 12/15 calculation, payment status, missing coverage, keyboard/reopen/import/cache and no overflow at 320px
+PASS Achats cards, 15-egg pack, 12/15 calculation, payment status, missing coverage, keyboard/reopen/import/cache and no overflow at 390px
+PASS Achats cards, 15-egg pack, 12/15 calculation, payment status, missing coverage, keyboard/reopen/import/cache and no overflow at 768px
+PASS Achats cards, 15-egg pack, 12/15 calculation, payment status, missing coverage, keyboard/reopen/import/cache and no overflow at 1280px
+PASS synthetic explicit equivalence, partial source estimate, unchanged raw/cart, cache and mobile layout at 320
+PASS synthetic explicit equivalence, partial source estimate, unchanged raw/cart, cache and mobile layout at 390
+PASS synthetic explicit equivalence, partial source estimate, unchanged raw/cart, cache and mobile layout at 1280
+PASS actionable 0/5, candidate/cancel/confirm/undo/conflict, unchanged raw data and layout at 320
+PASS actionable 0/5, candidate/cancel/confirm/undo/conflict, unchanged raw data and layout at 390
+PASS actionable 0/5, candidate/cancel/confirm/undo/conflict, unchanged raw data and layout at 1280
+PASS verified/estimated/missing, historical, formula/pack, source, cache/empty and layout 320
+PASS verified/estimated/missing, historical, formula/pack, source, cache/empty and layout 390
+PASS verified/estimated/missing, historical, formula/pack, source, cache/empty and layout 1280
+PASS candidate 320 conflictOnly
+PASS candidate 320 mixed
+PASS candidate 320 unknownOnly
+PASS candidate 320 oldConflict
+PASS candidate 320 empty
+PASS candidate 320 complete
+PASS candidate 320 zero
+PASS candidate 320 ambiguous
+PASS candidate 320 foreignConflict
+PASS candidate 390 conflictOnly
+PASS candidate 390 mixed
+PASS candidate 390 unknownOnly
+PASS candidate 390 oldConflict
+PASS candidate 390 empty
+PASS candidate 390 complete
+PASS candidate 390 zero
+PASS candidate 390 ambiguous
+PASS candidate 390 foreignConflict
+PASS candidate 768 conflictOnly
+PASS candidate 768 mixed
+PASS candidate 768 unknownOnly
+PASS candidate 768 oldConflict
+PASS candidate 768 empty
+PASS candidate 768 complete
+PASS candidate 768 zero
+PASS candidate 768 ambiguous
+PASS candidate 768 foreignConflict
+PASS candidate 1440 conflictOnly
+PASS candidate 1440 mixed
+PASS candidate 1440 unknownOnly
+PASS candidate 1440 oldConflict
+PASS candidate 1440 empty
+PASS candidate 1440 complete
+PASS candidate 1440 zero
+PASS candidate 1440 ambiguous
+PASS candidate 1440 foreignConflict
