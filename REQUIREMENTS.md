@@ -1,5 +1,8 @@
 # FamilyHub - Canonical Requirements
 
+**FH-PROPERTY-001 / FH-VEHICLE-001 — Testing, 27 novembre 2026.** Analyse par annonce et vérifications concrètes depuis Projets. La date d’analyse reste distincte de la date du prix. Les ventes documentées et comparables permettent uniquement une position descriptive sous conditions explicites. Les prix affichés, frais, hypothèses de location et fiabilité sont qualifiés séparément. Photo principale attribuée selon le contrat existant. Voir [fiches de décision](docs/OPPORTUNITY-DOSSIERS.md). Suivi #305.
+
+
 ## Partial mail sources and recovery - issue #309
 
 **FH-MAIL-009 — Testing.** One original attachment explicitly unsupported by the configured Gmail connector must not indefinitely prevent other valid invoice mail from being processed. The invoice path may retain a strictly validated whole message as a durable held source, including exact source identity, attachment metadata and original processing purposes. Missing, malformed, oversized, conflicting or otherwise untrusted evidence still fails closed; an unsupported attachment tool must never be called and direct Gmail must never be used as an implicit fallback. Grocery and other whole-batch consumers retain their existing strict contracts.
