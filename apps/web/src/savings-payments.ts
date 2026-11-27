@@ -1,7 +1,7 @@
 import { classifiedRows, fullObservedMonth, monthRange, type FinanceState } from "../../worker/src/finance-model";
 import { contractMonthly, contractTaxes, type SavingsContract } from "./savings";
 export type PaidRow = ReturnType<typeof classifiedRows>[number];
-export type PaymentReview = { row: PaidRow; contractIds: string[]; reason: string };
+export type PaymentReview = { row: PaidRow; contractIds: string[]; reason: string; matchedContractId?: string };
 export type ContractPayments = { contractId: string; rows: PaidRow[]; history: PaidRow[]; cents: number | null; latest: PaidRow | null; repeated: boolean; invoiceMatch: PaidRow | null; referenceMonthly: number | null };
 const compact = (value: string) => value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().replace(/[^A-Z0-9]/g, "");
 /** Strong provider labels propose a grouping, never a policy identity or tax split. */
@@ -30,7 +30,15 @@ export function reconcilePayments(contracts: SavingsContract[], state: FinanceSt
         if (["transfer", "repayment", "investment", "income", "duplicate"].includes(row.nature)) continue;
         const matches = contracts.filter(c => providerMatches(c, row.description));
         const compatible = matches.filter(c => (c.billing?.currency ?? "CAD") === row.currency);
-        if (matches.length === 1 && compatible.length === 1 && ["expense", "refund"].includes(row.nature) && (!row.duplicateCandidate || row.reviewed)) grouped.get(matches[0].id)!.push(row);
+        if (matches.length === 1 && compatible.length === 1 && ["expense", "refund"].includes(row.nature) && (!row.duplicateCandidate || row.reviewed)) {
+            const matched = matches[0];
+            grouped.get(matched.id)!.push(row);
+            const included = contracts.filter(c => c.id !== matched.id && includedReason(c, row.description));
+            if (row.nature === "expense" && row.outflowCents > 0 && included.length) {
+                reviews.push({ row, matchedContractId: matched.id, contractIds: [matched.id, ...included.map(c => c.id)],
+                    reason: includedReason(included[0], row.description)! });
+            }
+        }
         else if (matches.length) reviews.push({ row, contractIds: matches.map(c => c.id), reason: matches.length > 1 ? "Plusieurs contrats possibles pour ce fournisseur; montant non affecté." : !compatible.length ? "La devise du paiement diffère du contrat; aucune conversion." : "Nature ou doublon possible à confirmer dans Finances; montant non affecté." });
         else {
             const included = contracts.map(c => ({ c, reason: includedReason(c, row.description) })).filter(item => item.reason);
