@@ -86,7 +86,7 @@ try {
     await open(); await page.locator(".notification-card").first().waitFor(); assert.equal((await page.evaluate(() => window.__notificationCalls)).length, 0);
     assert.equal(await page.locator(".notification-manage[open]").count(), 0, "Reminder controls start collapsed, without changing decisions");
     assert.equal(await page.locator(".notification-evidence[open]").count(), 0, "Source context is available through explicit disclosure");
-    await page.getByText("1 avis automatique maximum par jour", { exact: true }).waitFor();
+    await page.getByText("1 envoi Push maximum par jour", { exact: true }).waitFor();
     await noOverflow(); await page.screenshot({ path: join(output, `overview-${width}.png`), fullPage: true });
     const policyCard = page.locator(".notification-card").filter({ hasText: "La Banque du Canada a modifié son taux directeur" });
     await policyCard.getByText("Taux directeur · impact personnel à vérifier.", { exact: true }).waitFor();

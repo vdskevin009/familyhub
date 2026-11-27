@@ -1,0 +1,29 @@
+Γ£ö first successful read of a followed period is silent, even with historical price changes (9.0761ms)
+Γ£ö known newer price after explicit follow produces a dated private in-app notice (30.2429ms)
+Γ£ö property uses its exact identity and independent source category (2.2459ms)
+Γ£ö not-followed listings never alert, and a future follow cannot authorize a current notice (2.522ms)
+Γ£ö repeated true keeps the first follow baseline; unfollow/refollow starts a silent new period (2.3178ms)
+Γ£ö an unknown price resets the baseline, and the next known price is not a fabricated change (3.1252ms)
+Γ£ö old price, future observation, inactive status, and old status suspend without resolving facts (3.6951ms)
+Γ£ö an old baseline does not support a new price-change claim (0.6526ms)
+Γ£ö price source, listing URL, or vehicle identity change creates a new silent baseline (2.86ms)
+Γ£ö missing vehicle model identity never supports a price notice (2.4637ms)
+Γ£ö changed property address does not inherit an old listing-price comparison (1.2457ms)
+Γ£ö late intermediate B11 cannot duplicate B12; recheck B13 does not renew evidence or expiration (3.9528ms)
+Γ£ö a delayed newly ingested old fact cannot lower the durable frontier (1.6446ms)
+Γ£ö returning to the same price preserves key and evidenceKey for persistent library deduplication (4.447ms)
+Γ£ö equal price fact dates with incompatible values refuse arbitrary observation ordering (0.9663ms)
+Γ£ö equal observation dates with incompatible statuses cannot acquire a lexical ID order (0.6496ms)
+Γ£ö expired notice is not renewed by current equal-price evidence (1.8229ms)
+Γ£ö serialized restart preserves notice identity and source dates, without mutating input state (2.5815ms)
+Γ£ö unavailable domain preserves its cursor and is not reported ready (2.266ms)
+Γ£ö malformed durable evidence and observation conflicts fail closed (2.1625ms)
+Γ£ö unrepresentable prices abstain, while actual cents remain visible (4.5835ms)
+Γä╣ tests 21
+Γä╣ suites 0
+Γä╣ pass 21
+Γä╣ fail 0
+Γä╣ cancelled 0
+Γä╣ skipped 0
+Γä╣ todo 0
+Γä╣ duration_ms 511.4297

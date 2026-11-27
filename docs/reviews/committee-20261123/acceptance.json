@@ -1,0 +1,44 @@
+{
+  "baseline": false,
+  "browserVersion": "159.0.8154.6",
+  "fixtureClock": "2026-11-23T16:00:00.000Z",
+  "results": [
+    {
+      "width": 320,
+      "events": 2,
+      "exactDestinations": true,
+      "escapeFocusRestored": true,
+      "readPersists": true,
+      "missingEmptyErrorRecovery": true
+    },
+    {
+      "width": 390,
+      "events": 2,
+      "exactDestinations": true,
+      "escapeFocusRestored": true,
+      "readPersists": true,
+      "missingEmptyErrorRecovery": true
+    },
+    {
+      "width": 768,
+      "events": 2,
+      "exactDestinations": true,
+      "escapeFocusRestored": true,
+      "readPersists": true,
+      "missingEmptyErrorRecovery": true
+    },
+    {
+      "width": 1440,
+      "events": 2,
+      "exactDestinations": true,
+      "escapeFocusRestored": true,
+      "readPersists": true,
+      "missingEmptyErrorRecovery": true
+    }
+  ],
+  "errors": [],
+  "external": [],
+  "realPushes": 0,
+  "sourceWrites": 0,
+  "notificationFixtureWrites": 4
+}

@@ -1,0 +1,15 @@
+{
+  "baseline": true,
+  "results": [
+    {
+      "width": 390,
+      "existingNotificationEvents": 0,
+      "changesRemainInProjectHistory": true
+    }
+  ],
+  "errors": [],
+  "external": [],
+  "realPushes": 0,
+  "sourceWrites": 0,
+  "notificationFixtureWrites": 0
+}
