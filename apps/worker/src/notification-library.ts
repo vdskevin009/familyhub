@@ -1,3 +1,4 @@
+import { actionCategories, isActionCategory, newProjectActions, openClaimActions } from "./actionable-projects.js";
 import { projectPriceNotices, validateProjectPriceState, type ProjectPriceState } from "./project-price-notices.js";
 import { readFile } from "node:fs/promises";
 import { createHash, randomUUID } from "node:crypto";
@@ -13,14 +14,15 @@ type StoredEvent = NotificationEvent & { pendingDeviceIds?: string[] };
 type Stored = { projectPrices?: ProjectPriceState; monitoring?: Monitoring[]; insuranceDatesInitialized?: boolean; decisions?: Record<string, NotificationDecision>; lastAutomaticPushAt?: string; schema: 1; revision: string; initialized: Candidate["source"][]; seen: string[]; events: StoredEvent[]; preferences: NotificationPreferences; devices: Device[]; scannedAt?: string; sourceErrors: string[] };
 export type NotificationSnapshot = Omit<Stored, "schema" | "seen" | "initialized" | "devices" | "events" | "projectPrices"> & { events: NotificationEvent[]; devices: Omit<Device, "subscription" | "publicKey">[]; pushConfigured: boolean; publicKey: string | null; pushSetupError?: string; lifecycleSupported: true; projectPricesSupported?: true; deliveryPolicy: typeof notificationDeliveryPolicy };
 /** Response-only capability projection; old clients cannot render the additive project kind. */
-export function notificationClientSnapshot(snapshot: NotificationSnapshot, projectPrices: boolean): NotificationSnapshot {
+export function notificationClientSnapshot(snapshot: NotificationSnapshot, projectPrices: boolean, actionAlerts=false): NotificationSnapshot {
+  if (!actionAlerts && snapshot.events.some(e=>isActionCategory(e.kind))) snapshot={...snapshot, events:snapshot.events.filter(e=>!isActionCategory(e.kind))};
   return projectPrices ? snapshot : { ...snapshot, events: snapshot.events.filter(event => event.kind !== "project-price") };
 }
 export class NotificationConflict extends Error {}
 const hash = (s: string) => createHash("sha256").update(s).digest("hex");
 const empty = (): Stored => ({ schema: 1, revision: "empty", initialized: [], seen: [], events: [], preferences: defaultNotificationPreferences(), devices: [], sourceErrors: [] });
 const idPattern = /^[a-f0-9]{64}$/;
-const sources = ["invoices", "collections", "contracts", "finance", "mortgage", "policy", "groceries", "claim-deadlines", "vehicles", "properties"];
+const sources = ["invoices", "collections", "contracts", "finance", "mortgage", "policy", "groceries", "claim-deadlines", "vehicles", "properties", ...actionCategories];
 const text = (v: unknown, max: number) => typeof v === "string" && v.length <= max;
 const timestamp = (v: unknown) => typeof v === "string" && v.length <= 40 && Number.isFinite(Date.parse(v));
 export class NotificationLibrary {
@@ -37,6 +39,7 @@ export class NotificationLibrary {
       if (data?.schema === 1 && data.preferences && data.preferences.mortgage === undefined) data.preferences.mortgage = true; // Additive category; existing choices preserved, first evidence remains silent.
       for (const kind of ["policy", "grocery", "claim-deadline"] as const) if (data?.schema === 1 && data.preferences && data.preferences[kind] === undefined) data.preferences[kind] = true;
       if (data?.schema === 1 && data.preferences && data.preferences["project-price"] === undefined) data.preferences["project-price"] = false;
+      for (const kind of actionCategories) if(data?.schema===1 && data.preferences && data.preferences[kind]===undefined)data.preferences[kind]=false;
       if (data?.projectPrices !== undefined) data.projectPrices = validateProjectPriceState(data.projectPrices);
       if (!data || data.schema !== 1 || !text(data.revision, 100) || !Array.isArray(data.initialized) || data.initialized.some(s => !sources.includes(s)) || !Array.isArray(data.seen) || data.seen.some(id => typeof id !== "string" || !idPattern.test(id)) || !Array.isArray(data.events) || data.events.length > 500 || !data.preferences || notificationKinds.some(k => typeof data.preferences[k] !== "boolean") || Object.keys(data.preferences).some(k => !notificationKinds.includes(k as typeof notificationKinds[number])) || !Array.isArray(data.devices) || data.devices.length > 20 || !Array.isArray(data.sourceErrors) || data.sourceErrors.some(s => !text(s, 100)) || data.scannedAt !== undefined && !timestamp(data.scannedAt)) throw new Error();
       if (new Set(data.events.map(e => e.id)).size !== data.events.length || new Set(data.devices.map(d => d.id)).size !== data.devices.length) throw new Error();
@@ -87,8 +90,15 @@ export class NotificationLibrary {
           const projects = projectPriceNotices({ [domain]: evidence.projects?.[domain] }, state.projectPrices ?? {}, now);
           candidates.push(...projects.candidates); ready.push(...projects.ready);
           state.projectPrices = projects.state;
+          const evidenceSet=evidence.projects?.[domain];
+          if(evidenceSet) {
+            candidates.push(...newProjectActions(domain,evidenceSet,now));
+            ready.push(domain==="property"?"new-property":"new-vehicle");
+          }
         } catch { errors.push(domain === "vehicle" ? "projet auto" : "projet immobilier"); }
       }
+      const aged=openClaimActions(evidence.invoices,now);
+      if(aged){ready.push("open-claim");candidates.push(...aged);}
       state.monitoring = monitoring;
       state.decisions ??= {};
       const seen = new Set(state.seen), initial = new Set(state.initialized), current = new Map(candidates.map(c => [hash(c.key), c]));
@@ -120,7 +130,7 @@ export class NotificationLibrary {
         // Collection reads can succeed independently. A different collector's status,
         // or this collector still running, cannot establish recovery of its old alert.
         } else if ((event.kind !== "collection" || evidence.collections?.some(c => ["idle", "up-to-date", "error", "login-required"].includes(c.state) && event.groupId === hash(`collection:${c.id}`)))
-          && ready.includes(event.kind === "project-price" ? event.target.view === "vehicle" ? "vehicles" : "properties" : event.kind === "policy" ? "policy" : event.kind === "grocery" ? "groceries" : event.kind === "claim-deadline" ? "claim-deadlines" : event.kind === "collection" ? "collections" : ["reimbursement", "unmatched"].includes(event.kind) ? "invoices" : event.target.view === "mortgage" ? "mortgage" : event.target.view === "savings" ? "contracts" : "finance")) {
+          && ready.includes(actionCategories.find(k=>k===event.kind) ?? (event.kind === "project-price" ? event.target.view === "vehicle" ? "vehicles" : "properties" : event.kind === "policy" ? "policy" : event.kind === "grocery" ? "groceries" : event.kind === "claim-deadline" ? "claim-deadlines" : event.kind === "collection" ? "collections" : ["reimbursement", "unmatched"].includes(event.kind) ? "invoices" : event.target.view === "mortgage" ? "mortgage" : event.target.view === "savings" ? "contracts" : "finance"))) {
           event.active = false;
           if (event.pushState === "pending") event.pushState = "expired";
         }
@@ -129,6 +139,8 @@ export class NotificationLibrary {
         const id = hash(c.key);
         if (seen.has(id)) continue;
         seen.add(id);
+        // Remember disabled discoveries silently so a later opt-in cannot replay a backlog.
+        if (isActionCategory(c.kind) && !state.preferences[c.kind]) continue;
         const { key: _key, source, groupKey, evidenceKey, baselineGroup, pushEligible: _pushEligible, ...content } = c;
         const baseline = !initial.has(source) || baselineGroup === "insurance-policy" && !state.insuranceDatesInitialized, groupId = hash(groupKey ?? c.key), evidenceVersion = hash(evidenceKey ?? c.key);
         state.events.push({ ...content, id, groupId, evidenceVersion,
@@ -207,7 +219,7 @@ export class NotificationLibrary {
         const submitted = body.preferences as NotificationPreferences;
         const value = submitted && { ...submitted };
         // An already-open older PWA may omit only the new categories; preserve their saved choices.
-        for (const kind of ["policy", "grocery", "claim-deadline", "project-price"] as const) if (value && value[kind] === undefined) value[kind] = state.preferences[kind];
+        for (const kind of ["policy", "grocery", "claim-deadline", "project-price", ...actionCategories] as const) if (value && value[kind] === undefined) value[kind] = state.preferences[kind];
         if (!value || notificationKinds.some(k => typeof value[k] !== "boolean") || Object.keys(value).some(k => !notificationKinds.includes(k as typeof notificationKinds[number]))) throw new Error("Préférences invalides.");
         if (value["project-price"] !== false) throw new Error("Les avis de projets restent dans l’application, sans Push.");
         state.preferences = { ...value };

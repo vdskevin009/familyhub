@@ -384,8 +384,8 @@ const server = createServer(async (request, response) => {
       if (request.method === "POST") { json(response, 200, await opportunityActions.mutate(await readJson(request, 4_000)), origin); return; }
     }
     if (parts[0] === "notifications" && parts.length === 1) {
-      if (request.method === "GET") { json(response, 200, notificationClientSnapshot(await notifications.read(), new URL(request.url || "/", "http://familyhub.local").searchParams.get("projectPrices") === "1"), origin); return; }
-      if (request.method === "POST") { json(response, 200, notificationClientSnapshot(await notifications.mutate(await readJson(request, 12_000)), new URL(request.url || "/", "http://familyhub.local").searchParams.get("projectPrices") === "1"), origin); return; }
+      if (request.method === "GET") { json(response, 200, notificationClientSnapshot(await notifications.read(), new URL(request.url || "/", "http://familyhub.local").searchParams.get("projectPrices") === "1", new URL(request.url || "/", "http://familyhub.local").searchParams.get("actionAlerts") === "1"), origin); return; }
+      if (request.method === "POST") { json(response, 200, notificationClientSnapshot(await notifications.mutate(await readJson(request, 12_000)), new URL(request.url || "/", "http://familyhub.local").searchParams.get("projectPrices") === "1", new URL(request.url || "/", "http://familyhub.local").searchParams.get("actionAlerts") === "1"), origin); return; }
     }
     if (parts[0] === "groceries") {
       if (parts.length === 2 && parts[1] === "purchase-resolution") {
