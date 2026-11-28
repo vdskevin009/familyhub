@@ -15,6 +15,7 @@ type Props = {
   onCommandOpenChange: (open: boolean) => void;
 };
 const money = new Intl.NumberFormat("en-CA", { style: "currency", currency: "CAD", maximumFractionDigits: 2 });
+const dayHeading = new Intl.DateTimeFormat("en-CA", { weekday: "long", month: "long", day: "numeric" });
 const domainLabels: Record<Opportunity["domain"], string> = { claims: "Reimbursement", insurance: "Insurance", subscriptions: "Subscription", finances: "Finances", groceries: "Groceries", mortgage: "Mortgage", system: "Service" };
 const domainIcons = { claims: HeartHandshake, insurance: ShieldCheck, subscriptions: TrendingDown, finances: CircleDollarSign, groceries: ShoppingBasket, mortgage: Home, system: Settings2 };
 const periods = { once: "one-time", month: "/ month", year: "/ year", "first-year": "over 12 months" };
@@ -110,26 +111,31 @@ export default function TodayView({ hub, onNavigate, onOpenTarget, commandOpen, 
     </article>;
   }
 
-  const benefitSummary = <section className="today-benefits" aria-label="Distinct amounts, without double counting">
+  const benefitSummary = <section className="today-money">
+      <h3>Money snapshot</h3>
+      <div className="today-benefits" role="group" aria-label="Distinct amounts, without double counting">
         <button type="button" className="benefit-tile recovery-tile" onClick={() => setSummaryOpen(true)} aria-haspopup="dialog"><HeartHandshake size={20} aria-hidden="true" /><span>Potential recovery</span><strong>{feed.sources.find(source => source.id === "claims")?.status === "loading" ? "…" : feed.recoverable.amount === null ? "Needs review" : money.format(feed.recoverable.amount)}</strong><small>{claimsPartial ? "Partial coverage" : "Potential · one-time"}</small></button>
         <button type="button" className="benefit-tile" onClick={() => setSummaryOpen(true)} aria-haspopup="dialog"><TrendingDown size={20} aria-hidden="true" /><span>Potential savings</span><strong>{feed.loading ? "…" : numericPotential.length ? numericPotential.length + (numericPotential.length === 1 ? " item" : " items") : "No estimate"}</strong><small>Based on available evidence</small></button>
         <button type="button" className="benefit-tile" onClick={() => setSummaryOpen(true)} aria-haspopup="dialog"><FileCheck2 size={20} aria-hidden="true" /><span>Realized savings</span><strong>Not measured</strong><small>Evidence required</small></button>
-      </section>;
+      </div>
+    </section>;
 
   return <div className="view-stack today-view">
-    <PageHeader title="Today" subtitle="Your priorities, based on available evidence" />
-    <button type="button" className={`today-source-status${sourceErrors.length || partialSources.length || !online ? " caution" : ""}`} onClick={() => setSourceOpen(true)} aria-haspopup="dialog">
-      {!online ? <WifiOff size={17} aria-hidden="true" /> : <span className="source-indicators" aria-hidden="true">{feed.sources.map(source => <span key={source.id} className={`source-dot ${source.status}`} />)}</span>}<span>{sourceLabel}</span><ChevronRight size={16} aria-hidden="true" />
-    </button>
+    <div className="today-intro">
+      <PageHeader title="Today" subtitle={dayHeading.format(new Date())} />
+      <button type="button" className={`today-source-status${sourceErrors.length || partialSources.length || !online ? " caution" : ""}`} onClick={() => setSourceOpen(true)} aria-haspopup="dialog">
+        {!online ? <WifiOff size={17} aria-hidden="true" /> : <span className="source-indicators" aria-hidden="true">{feed.sources.map(source => <span key={source.id} className={`source-dot ${source.status}`} />)}</span>}<span>{sourceLabel}</span><ChevronRight size={16} aria-hidden="true" />
+      </button>
+    </div>
     {!online && <div className="today-state" role="status"><WifiOff size={20} aria-hidden="true" /><div><strong>Connection interrupted</strong><p>Amounts reflect the last successful read in this session. Reconnect and refresh before relying on them.</p></div></div>}
     {!feed.configured && !feed.loading && <div className="today-empty"><span className="today-empty-icon"><Home size={25} aria-hidden="true" /></span><h2>Find your priorities</h2><p>Connect your PC to see your records and next actions.</p><button type="button" className="button" onClick={() => onNavigate("more")}>Open settings<ArrowRight size={17} aria-hidden="true" /></button></div>}
     {feed.configured && <>
 
       <section className="today-priorities" aria-labelledby="today-priorities-title" aria-busy={feed.loading}>
         <div className="today-section-heading"><div><h2 id="today-priorities-title">Your next actions{!feed.loading && <span className="today-action-count">{actions.length}</span>}</h2>{feed.loading && <p>Reading records from your PC</p>}</div><button type="button" className="icon-button" onClick={feed.refresh} disabled={feed.loading || !online} aria-label="Refresh priorities" title="Refresh"><RefreshCw size={19} aria-hidden="true" /></button></div>
-        {visible.length ? <><div className="opportunity-list">{opportunityCard(visible[0], 0)}</div>{benefitSummary}{visible.length > 1 && <div className="opportunity-list">{visible.slice(1).map(item => opportunityCard(item))}</div>}</> : feed.loading ? <SkeletonList label="Reading sources for your priorities" /> : <div className="today-empty"><CheckCircle2 size={25} aria-hidden="true" /><h3>{managed.length ? "Your opportunities are set aside" : sourceErrors.length ? "Priorities are incomplete" : "No actionable items found"}</h3><p>{sourceErrors.length ? "Some sources did not respond. Check their status before assuming everything is up to date." : managed.length ? "Find your snoozed, hidden or handled items below." : "This result covers only the sources checked. No savings are assumed."}</p><button type="button" className="button secondary" onClick={() => setSourceOpen(true)}>View sources</button></div>}
-        {!visible.length && benefitSummary}
+        {visible.length ? <><div className="opportunity-list">{opportunityCard(visible[0], 0)}</div>{visible.length > 1 && <div className="opportunity-list today-action-list">{visible.slice(1).map(item => opportunityCard(item))}</div>}</> : feed.loading ? <SkeletonList label="Reading sources for your priorities" /> : <div className="today-empty"><CheckCircle2 size={25} aria-hidden="true" /><h3>{managed.length ? "Your opportunities are set aside" : sourceErrors.length ? "Priorities are incomplete" : "No actionable items found"}</h3><p>{sourceErrors.length ? "Some sources did not respond. Check their status before assuming everything is up to date." : managed.length ? "Find your snoozed, hidden or handled items below." : "This result covers only the sources checked. No savings are assumed."}</p><button type="button" className="button secondary" onClick={() => setSourceOpen(true)}>View sources</button></div>}
         {actions.length > 3 && <button type="button" className="today-more-button" onClick={() => setShowAll(!showAll)} aria-expanded={showAll}>{showAll ? "Back to top 3" : "View all " + actions.length + " actions"}<ChevronDown size={17} aria-hidden="true" /></button>}
+        {benefitSummary}
       </section>
       {followUps.length > 0 && <section className="today-follow-ups" aria-labelledby="today-follow-ups-title"><div className="today-section-heading"><div><h2 id="today-follow-ups-title">In progress</h2><p>Waiting for a response. No further contact has been made.</p></div></div>{followUps.map(item => <article className="today-follow-up" key={item.id}><div><span className="opportunity-status">Pending</span><h3>{item.description}</h3><p>{item.dueDate ? "Deadline: " + dateLabel(item.dueDate) : "Deadline unknown"}</p></div><button type="button" className="opportunity-details" onClick={() => setSelectedId(item.id)} aria-label={`Sources and options: ${item.title}`} aria-haspopup="dialog">View follow-up<ChevronRight size={18} aria-hidden="true" /></button></article>)}</section>}
       {managed.length > 0 && <section className="today-managed"><button type="button" className="today-disclosure" onClick={() => setShowManaged(!showManaged)} aria-expanded={showManaged}><span>Managed items <small>{managed.length}</small></span><ChevronDown size={18} aria-hidden="true" /></button>{showManaged && <div className="opportunity-list">{managed.map(item => opportunityCard(item))}</div>}</section>}

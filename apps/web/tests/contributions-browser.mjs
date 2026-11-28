@@ -56,6 +56,8 @@ try {
     });
     const rrsp = page.locator(".contribution-card").first(), resp = page.locator(".contribution-card").last();
     const rings = page.locator("[data-contribution-ring]");
+    const neutralRings = page.locator("[data-contribution-unconfirmed]");
+    const identifiedRings = page.locator("[data-contribution-identified]");
     const refresh = page.getByRole("button", { name: "Refresh contributions", exact: true });
     const show = page.getByRole("button", { name: "View RRSP contributions", exact: true });
     const progress = rrsp.getByRole("progressbar");
@@ -79,6 +81,8 @@ try {
       await page.evaluate(() => { document.documentElement.dataset.theme = "dark"; });
     }
     assert.equal(await rings.count(), 2);
+    assert.equal(await neutralRings.count(), 0);
+    assert.equal(await identifiedRings.count(), 0);
     assert.equal(await progress.getAttribute("value"), "37.5");
     assert.equal(await progress.getAttribute("aria-label"), "RRSP: progress toward your personal goal");
     assert.match(await progress.getAttribute("aria-valuetext"), /^37\.5% of goal\./);
@@ -159,26 +163,63 @@ try {
           assert.equal(await progress.getAttribute("value"), "100", "The ring saturates, while the text still reports 125%");
           assert.match(await words(rrsp), /Goal exceeded/);
         }
-        if (state === "verified-zero") assert.match(await words(rrsp), /\$0\.00/);
+        if (state === "verified-zero") {
+          assert.match(await words(rrsp), /\$0\.00/);
+          assert.equal(await progress.getAttribute("value"), "0");
+          assert.equal(await neutralRings.count(), 0, "Verified zero has the regular solid ring and numeric semantics");
+          assert.equal(await rrsp.locator(".contribution-ring-track").evaluate(el => getComputedStyle(el).strokeDasharray), "none");
+        }
       }
     }
-    for (const [state, count, title] of [
-      ["partial", 0, "Partial data"], ["legacy-authority", 0, "Partial data"],
-      ["unconfirmed", 0, "Allocation needs confirmation"], ["missing-evidence", 0, "Partial data"], ["future-evidence", 0, "Partial data"],
-      ["source-unavailable", 1, "Financial source unavailable"], ["no-goal", 0, "Private goal not configured"],
-      ["malformed", 0, "Data unavailable"], ["offline", 0, "Data unavailable"],
+    const basedOn = "Based on identified contributions.";
+    for (const [state, count, title, neutralCount, identifiedCount] of [
+      ["partial", 0, basedOn, 0, 2], ["legacy-authority", 0, basedOn, 0, 1],
+      ["legacy-both", 0, basedOn, 0, 2], ["legacy-unknown-beneficiary", 0, basedOn, 1, 1],
+      ["unconfirmed", 0, "Allocation needs confirmation", 2, 0], ["missing-evidence", 0, basedOn, 0, 2], ["future-evidence", 0, "Partial data", 2, 0],
+      ["legacy-zero", 0, "Partial data", 1, 0], ["unverified-destination", 0, "Partial data", 1, 0],
+      ["unverified-debit", 0, "Partial data", 1, 0], ["unknown-warning", 0, "Partial data", 1, 0],
+      ["source-unavailable", 1, "Financial source unavailable", 0, 0], ["no-goal", 0, "Private goal not configured", 0, 0],
+      ["malformed", 0, "Data unavailable", 0, 0], ["offline", 0, "Data unavailable", 0, 0],
     ]) {
       await reload(state);
       await rrsp.getByText(title, { exact: state !== "unconfirmed" && title !== "Partial data" }).first().waitFor();
       assert.equal(await rings.count(), count, state);
+      assert.equal(await neutralRings.count(), neutralCount, state + ": only configured plans whose identified ratio is not safe get a dashed state");
+      assert.equal(await identifiedRings.count(), identifiedCount, state + ": report only meaningful attributed observations");
       assert.equal(await progress.count(), 0, state + " must not masquerade as zero");
+      assert.equal(await rrsp.locator("[data-ring-fill]").count(), 0, state + ": no verified coloured progress implied");
       assert.doesNotMatch(await words(rrsp), /Goal reached|Goal exceeded|Amount remaining/, state);
+      if (identifiedCount) {
+        const ring = rrsp.locator("[data-contribution-identified]");
+        assert.equal(await ring.locator(".contribution-ring-number").evaluate(e => e.firstChild.textContent), "37.5%");
+        assert.match(await words(ring), /Not confirmed/);
+        assert.equal(await ring.evaluate(el => el.getAnimations({ subtree: true }).length), 0);
+        assert.doesNotMatch(await words(rrsp), /\$123\.45|\$400\.00/, "Inferred and projected amounts are not part of the identified total");
+      }
+      if (state === "legacy-both") assert.equal(await resp.locator(".contribution-ring-number").evaluate(e => e.firstChild.textContent), "40%");
+      if (state === "legacy-unknown-beneficiary") {
+        assert.match(await words(resp), /Beneficiary needs confirmation/);
+        assert.equal(await resp.locator("[data-contribution-identified]").count(), 0);
+        assert.doesNotMatch(await words(resp), /\b40\s*%/, "Do not assign the old observed ratio to an unconfirmed beneficiary");
+      }
+      if (state === "legacy-zero") assert.doesNotMatch(await words(rrsp), /\b0\s*%|\$0\.00/, "Partial zero is not a real zero");
       if (state === "legacy-authority" && width === 390 && motion === "no-preference") {
         await page.screenshot({ path: resolve(output, "current-worker-partial-390.png") });
         await show.click(); await dialog.waitFor();
         assert.match(await words(dialog), /The amount remaining cannot be confirmed/);
         assert.doesNotMatch(await words(dialog), /\$2,100\.00 after forecast weekly contributions/);
         await page.keyboard.press("Escape"); await dialog.waitFor({ state: "hidden" });
+      }
+    }
+    if (width === 390) {
+      for (const [state, label] of [["legacy-authority", "37.5%"], ["legacy-progress-change", "40%"], ["legacy-over-goal", "125%"]]) {
+        await reload(state);
+        const ring = rrsp.locator("[data-contribution-identified]");
+        await ring.waitFor();
+        await page.waitForFunction(value => document.querySelector("[data-contribution-identified] .contribution-ring-number")?.firstChild?.textContent === value, label);
+        assert.equal(await ring.evaluate(el => el.getAnimations({ subtree: true }).length), 0);
+        assert.equal(await progress.count(), 0);
+        assert.doesNotMatch(await words(rrsp), /Amount remaining|Goal reached|Goal exceeded/);
       }
     }
     await reload("ready");
