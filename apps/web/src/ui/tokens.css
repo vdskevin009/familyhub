@@ -47,6 +47,11 @@
   --space-5: 20px;
   --space-6: 24px;
   --control: 48px;
+  --motion-ease: cubic-bezier(.22, 1, .36, 1);
+  --motion-press: 120ms;
+  --motion-settle: 220ms;
+  --motion-sheet: 235ms;
+  --motion-data: 260ms;
   --rail-width: 208px;
   --header-height: 60px;
 }

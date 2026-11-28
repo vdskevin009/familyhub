@@ -1,6 +1,7 @@
 .contributions-view { width: 100%; max-width: 960px; margin-inline: auto; }
 .contributions-view > :is(.page-heading, .compact-heading) { flex-wrap: wrap; }
 .contributions-view > .compact-heading h2 { flex-shrink: 0; }
+.contributions-view > .compact-heading { padding-block: 2px; }
 .contributions-view button[aria-disabled="true"] { opacity: .65; cursor: default; }
 .contribution-cards { display: grid; gap: 16px; }
 .contribution-card {
@@ -15,14 +16,14 @@
 .contribution-card header { display: flex; justify-content: space-between; align-items: start; flex-wrap: wrap; gap: 6px 12px; }
 .contribution-card h2 { margin: 0; font-size: 1.35rem; letter-spacing: -.025em; }
 .contribution-card header p { margin: 3px 0 0; font-size: .82rem; }
-.contribution-figure { display: grid; align-items: center; gap: 12px; margin-top: 14px; }
+.contribution-figure { display: grid; align-items: center; gap: 12px; margin-top: 12px; }
 .contribution-figure.has-ring { grid-template-columns: minmax(0, 1fr) clamp(90px, 30vw, 124px); }
 .contribution-summary { margin: 0; display: grid; gap: 7px; font-variant-numeric: tabular-nums; }
 .contribution-summary > div { display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 1px 8px; }
 .contribution-summary dt { font-size: .78rem; color: var(--muted); }
 .contribution-summary dd { margin: 0; font-size: .84rem; font-weight: 700; }
 .contribution-summary > .contribution-identified { display: grid; gap: 2px; padding-bottom: 5px; }
-.contribution-identified dd { font-size: clamp(1.12rem, 5.1vw, 1.55rem); line-height: 1.18; letter-spacing: -.035em; }
+.contribution-identified dd { font-size: clamp(1.14rem, 5.4vw, 1.65rem); line-height: 1.13; letter-spacing: -.032em; }
 .contribution-ring { position: relative; --ring-ink: var(--finance-chart, var(--green)); }
 .contribution-ring-art { width: 100%; aspect-ratio: 1; display: grid; place-items: center; }
 .contribution-ring svg, .contribution-ring-centre { grid-area: 1 / 1; width: 100%; }
@@ -74,7 +75,7 @@
 
 @media (min-width: 760px) { .contribution-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; } }
 @media (prefers-reduced-motion: no-preference) {
-  .contribution-ring-fill.is-updating { animation: contribution-ring-change 320ms ease-out; }
+  .contribution-ring-fill.is-updating { animation: contribution-ring-change var(--motion-data) var(--motion-ease); }
   @keyframes contribution-ring-change { from { stroke-dashoffset: var(--ring-start); } to { stroke-dashoffset: var(--ring-end); } }
 }
 @media (forced-colors: active) {
