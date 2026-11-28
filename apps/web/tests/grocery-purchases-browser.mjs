@@ -8,6 +8,23 @@ import { once } from "node:events";
 import { emptyPlan, emptyEvidence } from "../../worker/dist/grocery-planning.js";
 import { emptyMortgage } from "../../worker/dist/mortgage-model.js";
 import { emptyReceipt, blankItem } from "../../worker/dist/grocery-model.js";
+// Rendering may finish before a queued IndexedDB write commits. Prove the fixture
+// version is durable before reloading or introducing the synthetic PC outage.
+async function waitForCachedReferenceSize(page, endpoint, size) {
+  await page.waitForFunction(({ key, size }) => new Promise(resolve => {
+    const open = indexedDB.open("familyhub.groceries.v1");
+    open.onupgradeneeded = () => open.transaction.abort(); // A test read must not create or migrate the cache.
+    open.onerror = () => resolve(false);
+    open.onsuccess = () => {
+      const db = open.result;
+      if (!db.objectStoreNames.contains("cache")) { db.close(); resolve(false); return; }
+      const tx = db.transaction("cache", "readonly");
+      const reference = tx.objectStore("cache").get(key);
+      tx.oncomplete = () => { db.close(); resolve(reference.result?.prices?.find(price => price.id === "price")?.size === size); };
+      tx.onabort = tx.onerror = () => { db.close(); resolve(false); };
+    };
+  }), { key: endpoint + ":purchase-comparison", size });
+}
 const today = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Vancouver", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
 const plan = { ...emptyPlan(), items: [{ id: "eggs", name: "Œufs démo", quantity: 1, size: 12, unit: "each", preference: "", substitutions: true, active: true, origin: "synthetic", countUnit: "œufs" }], retailers: [{ id: "store", name: "Costco", membershipStatus: "existing", mode: "store", locality: "Magasin démo", areaConfirmed: true, otherFeesReviewed: false, delivery: null, service: null, servicePercent: null, feesTaxPercent: null, minimum: null, freeDeliveryAbove: null, evidence: emptyEvidence() }], prices: [{ id: "price", itemId: "eggs", retailerId: "store", product: "Œufs comparables démo", substitution: true, approved: true, price: 6, size: 15, unit: "each", weighed: false, taxPercent: null, currency: "CAD", available: "yes", kind: "public", mode: "store", locality: "Magasin démo", localityConfirmed: true, matchNote: "Même qualité et type revus pour la démo", evidence: { title: "Source synthétique", url: "https://example.com/eggs", date: today, until: today } }] };
 const record = { id: "demo", revision: "1", status: "saved", reviewedAt: today, extraction: "complete", createdAt: today, duplicateOf: null, sources: [], receipt: { ...emptyReceipt(), sourceType: "final-receipt", store: "PC Express démo", currency: "CAD", date: today, total: 5, items: [{ ...blankItem(), name: "Œufs démo", product: "Œufs du reçu démo", quantity: 1, size: 12, unit: "each", amount: 5, uncertain: false, evidence: "SOURCE 1 : Article rapproché : eggs. 12 œufs 5.00" }] } };
@@ -45,8 +62,14 @@ try {
     await nav.getByRole("button", {name:"More",exact:true}).click(); await page.locator(".other-link").filter({hasText:"Mortgage"}).click(); await page.getByRole("region",{name:"Mortgage Assistant",exact:true}).getByRole("heading",{name:"Mortgage",exact:true}).waitFor(); await page.getByRole("tab",{name:"Offers and contacts",exact:true}).click(); await page.locator(".mortgage-compact").getByText(/No history saved/).waitFor();
     await nav.getByRole("button", {name:"Projects",exact:true}).click(); await page.locator(".project-tiles").getByRole("button", {name:"Groceries",exact:true}).click(); await page.getByRole("button",{name:"Purchases",exact:true}).click(); await open.waitFor();
     // Equal formats have no calculation badge. Repeat visits never mutate the shared plan.
-    plan.prices[0].size = 12; await page.reload(); await page.getByRole("button", { name: "Purchases", exact: true }).click(); await open.click(); await dialog.waitFor(); assert.equal(await dialog.getByText("Calculated", { exact: true }).count(), 0);
-    plan.prices[0].size = 15; await page.reload(); await page.getByRole("button", { name: "Purchases", exact: true }).click(); await page.locator(".grocery-purchase-card").first().getByText(/4\.80 CAD/).waitFor();
+    plan.prices[0].size = 12; await page.reload(); await page.getByRole("button", { name: "Purchases", exact: true }).click();
+    await waitForCachedReferenceSize(page, endpoint, 12);
+    await open.click(); await dialog.waitFor();
+    await dialog.locator(".grocery-purchase-match").getByText("6.00 CAD", { exact: true }).waitFor();
+    assert.equal(await dialog.getByText("Calculated", { exact: true }).count(), 0);
+    plan.prices[0].size = 15; await page.reload(); await page.getByRole("button", { name: "Purchases", exact: true }).click();
+    await page.locator(".grocery-purchase-card").first().getByText(/4\.80 CAD/).waitFor();
+    await waitForCachedReferenceSize(page, endpoint, 15);
     fail = true; await page.reload(); await page.getByRole("button", { name: "Purchases", exact: true }).click(); await page.getByText(/This device shows cached history/).waitFor(); await open.click(); await dialog.waitFor(); await dialog.getByText("Calculated", { exact: true }).waitFor(); fail = false;
     await context.close(); console.log(`PASS Achats cards, 15-egg pack, 12/15 calculation, payment status, missing coverage, keyboard/reopen/import/cache and no overflow at ${width}px`);
   }

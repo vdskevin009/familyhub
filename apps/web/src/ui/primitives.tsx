@@ -1,6 +1,13 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { AlertCircle, AlertTriangle, CheckCircle2, Info, Search, SlidersHorizontal, X } from "lucide-react";
 
+let pointerActivation = -Infinity;
+
+/** Real pointer clicks, not the focus ring, identify the input that opened a sheet. */
+export function noteSheetActivation(event?: MouseEvent) {
+  pointerActivation = event?.isTrusted && event.detail > 0 ? performance.now() : -Infinity;
+}
+
 /** Native modal semantics supply focus containment, Escape and focus restoration. */
 export function Sheet({ open, onClose, title, description, children, footer, wide = false, className = "", resetScrollOnOpen = false }: {
   open: boolean; onClose: () => void; title: string; description?: string;
@@ -14,6 +21,8 @@ export function Sheet({ open, onClose, title, description, children, footer, wid
     if (!dialog) return;
     if (!open) { if (dialog.open) dialog.close(); return; }
     const previousOverflow = document.body.style.overflow;
+    // This keeps keyboard/programmatic openings still, including after a pointer previously left focus behind.
+    dialog.dataset.enter = performance.now() - pointerActivation < 350 ? "pointer" : "instant";
     dialog.showModal();
     if (resetScrollOnOpen) dialog.querySelector(".sheet-content")?.scrollTo(0, 0);
     document.body.style.overflow = "hidden";

@@ -1,8 +1,9 @@
 /* Opportunity home and navigation. Existing domain screens retain their own styles. */
-.proactive-shell .today-view { max-width: 1100px; margin-inline: auto; gap: 20px; }
+.proactive-shell .today-view { max-width: 920px; margin-inline: auto; gap: 20px; }
+.proactive-shell .today-intro { display: flex; align-items: end; justify-content: space-between; gap: 6px 16px; padding-inline-end: 58px; }
 .proactive-shell .today-view .page-heading { margin-bottom: 0; }
-.proactive-shell .today-view h1 { font-size: clamp(23px, 3.4vw, 30px); letter-spacing: -.035em; }
-.proactive-shell .today-view .page-subtitle { margin-top: 5px; font-size: 14px; }
+.proactive-shell .today-view h1 { font-size: clamp(26px, 6.8vw, 30px); letter-spacing: -.045em; font-weight: 740; }
+.proactive-shell .today-view .page-subtitle { margin-top: 3px; font-size: 13px; }
 .proactive-shell .shell-tools .icon-button { width: 48px; height: 48px; min-height: 48px; box-shadow: none; }
 .proactive-shell .rail-settings, .proactive-shell .header-install-button { min-height: 48px; }
 .proactive-shell .rail-brand { text-align: left; }
@@ -10,17 +11,18 @@
 .proactive-shell .today-view .icon-button, .proactive-shell .today-sheet .icon-button { min-width: 48px; width: 48px; height: 48px; }
 .proactive-shell .today-view .app-notice { align-items: center; }
 .proactive-shell .today-view .app-notice .icon-button, .proactive-shell .today-sheet .app-notice .icon-button { margin: -6px; }
-.proactive-shell .today-source-status { display: flex; flex-wrap: wrap; align-items: center; gap: 9px; align-self: flex-start; padding: 6px 10px; margin: -6px 0; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--muted); font-size: 12px; text-align: left; }
+.proactive-shell .today-source-status { display: flex; flex-wrap: wrap; align-items: center; justify-self: start; gap: 8px; padding: 6px 10px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--surface); color: var(--muted); font-size: 12px; text-align: left; }
 .proactive-shell .today-source-status:hover { background: var(--soft); }
-.proactive-shell .today-source-status.caution { color: var(--warning); }
+.proactive-shell .today-source-status.caution { color: var(--warning); background: var(--warning-soft); }
 .proactive-shell .source-indicators { display: inline-flex; gap: 3px; }
 .proactive-shell .source-dot { width: 5px; height: 13px; flex: 0 0 5px; border-radius: 3px; background: var(--line); }
 .proactive-shell .source-dot.ready { background: var(--accent); }
 .proactive-shell .source-dot.error { background: var(--warning); }
 .proactive-shell .source-dot.loading { background: var(--accent-line); }
 .proactive-shell .today-benefits { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); border: 1px solid var(--line); background: var(--surface); border-radius: var(--radius-lg); overflow: hidden; }
-.proactive-shell .today-priorities .today-benefits { margin-block: 16px; }
-.proactive-shell .benefit-tile { display: flex; flex-direction: column; gap: 9px; padding: 18px 16px; min-width: 0; border: 0; border-right: 1px solid var(--line); text-align: left; background: transparent; }
+.proactive-shell .today-money { display: grid; gap: 8px; margin-top: 22px; }
+.proactive-shell .today-money h3 { font-size: 14px; letter-spacing: -.015em; }
+.proactive-shell .benefit-tile { display: flex; flex-direction: column; gap: 7px; padding: 14px 16px; min-width: 0; border: 0; border-right: 1px solid var(--line); text-align: left; background: transparent; }
 .proactive-shell .benefit-tile:last-child { border-right: 0; }
 .proactive-shell .benefit-tile:hover { background: var(--soft); }
 .proactive-shell .benefit-tile > svg { color: var(--accent-hover); flex-shrink: 0; }
@@ -29,14 +31,22 @@
 .proactive-shell .benefit-tile strong { display: block; margin-top: auto; font-size: clamp(16px,2.3vw,25px); font-weight: 720; line-height: 1.15; letter-spacing: -.035em; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
 .proactive-shell .benefit-tile.recovery-tile strong { color: var(--accent-hover); }
 .proactive-shell .benefit-tile small { color: var(--muted); font-size: 11px; line-height: 1.35; }
-.proactive-shell .today-section-heading { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 14px; }
+.proactive-shell .today-section-heading { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 9px; }
 .proactive-shell .today-section-heading h2 { font-size: 17px; letter-spacing: -.02em; }
 .proactive-shell .today-section-heading p { margin: 4px 0 0; color: var(--muted); font-size: 12px; }
 .proactive-shell .today-section-heading h2 { display: flex; flex-wrap: wrap; align-items: center; gap: 9px; }
-.proactive-shell .today-action-count { display: inline-grid; place-items: center; min-width: 27px; min-height: 27px; padding: 3px 7px; border-radius: 8px; color: var(--accent-hover); background: var(--accent-soft); font-size: 13px; font-variant-numeric: tabular-nums; }
+.proactive-shell .today-action-count { display: inline-grid; place-items: center; min-width: 27px; min-height: 27px; padding: 3px 7px; border-radius: 8px; color: var(--muted); background: var(--soft); font-size: 13px; font-variant-numeric: tabular-nums; }
 .proactive-shell .opportunity-list { display: grid; grid-template-columns: minmax(0,1fr); gap: 12px; }
 .proactive-shell .opportunity-card { display: grid; grid-template-columns: minmax(0,1fr) minmax(160px,.65fr); align-items: start; column-gap: 24px; row-gap: 12px; min-width: 0; padding: 18px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-lg); }
-.proactive-shell .opportunity-first { border-color: var(--accent-line); border-inline-start: 4px solid var(--accent); }
+.proactive-shell .opportunity-first { border-color: var(--accent-line); border-inline-start: 4px solid var(--accent); background: var(--accent-soft); padding: clamp(17px, 3vw, 24px); }
+.proactive-shell .opportunity-first .opportunity-icon { background: var(--surface); }
+.proactive-shell .opportunity-first h3 { font-size: clamp(19px, 3.6vw, 26px); letter-spacing: -.035em; text-wrap: pretty; }
+.proactive-shell .today-action-list { gap: 0; margin-top: 8px; }
+.proactive-shell .today-action-list .opportunity-card { border: 0; border-bottom: 1px solid var(--line); border-radius: 0; background: transparent; }
+.proactive-shell .today-action-list .opportunity-card h3 { font-size: 17px; text-wrap: pretty; }
+.proactive-shell .today-action-list .opportunity-card .button { background: var(--surface); color: var(--accent); border-color: var(--line); }
+.proactive-shell .today-action-list .opportunity-card .button:hover { background: var(--accent-soft); border-color: var(--accent-line); }
+.proactive-shell .today-view .skeleton-card i { animation: none; }
 .proactive-shell .opportunity-top { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px; grid-column: 1/-1; }
 .proactive-shell .opportunity-icon { display: inline-grid; place-items: center; width: 34px; height: 34px; border-radius: 10px; background: var(--accent-soft); }
 .proactive-shell .opportunity-card[data-domain="claims"] .opportunity-icon { background: #e7f3f0; color: #256353; }
@@ -73,7 +83,7 @@
 .proactive-shell .today-ask-label { display: flex; align-items: center; gap: 12px; min-width: 0; }
 .proactive-shell .today-ask-label > svg { color: var(--accent-hover); flex-shrink: 0; }
 .proactive-shell .today-ask-label strong, .proactive-shell .today-ask-label small { display: block; }
-.proactive-shell .today-ask-label small { margin-top: 4px; line-height: 1.4; }
+.proactive-shell .today-ask-label small { margin-top: 2px; line-height: 1.4; }
 .proactive-shell .today-ask-body { display: grid; gap: 12px; padding: 0 16px 16px; }
 .proactive-shell .today-ask-body form { display: grid; gap: 10px; }
 .proactive-shell .today-ask-body label { font-size: 13px; font-weight: 650; }
@@ -129,16 +139,25 @@
   .proactive-shell .opportunity-actions { grid-template-columns: minmax(0,1fr) auto; gap: 12px; }
 }
 @media (max-width: 859px) {
-  .app-shell.proactive-shell .bottom-nav { grid-template-columns: repeat(5,minmax(0,1fr)); padding: 6px 5px calc(8px + env(safe-area-inset-bottom)); }
-  .app-shell.proactive-shell .bottom-nav button { min-width: 48px; min-height: 52px; padding: 4px 1px; gap: 5px; font-size: 10px; overflow-wrap: normal; white-space: nowrap; letter-spacing: -.02em; }
+  .app-shell.proactive-shell .bottom-nav { --nav-inset: 8px; isolation: isolate; grid-template-columns: repeat(5,minmax(0,1fr)); padding: 6px var(--nav-inset) calc(8px + env(safe-area-inset-bottom)); }
+  .app-shell.proactive-shell .bottom-nav::before {
+    content: ""; position: absolute; z-index: -1; pointer-events: none; inset: 6px auto auto var(--nav-inset);
+    inline-size: calc((100% - 2 * var(--nav-inset)) / 5); block-size: 52px; border-radius: 13px;
+    background: var(--accent-soft); transform: translateX(calc(var(--nav-slot) * 100%));
+  }
+  .app-shell.proactive-shell .bottom-nav button { min-width: 48px; min-height: 52px; padding: 4px 1px; gap: 4px; font-size: 10px; overflow-wrap: normal; white-space: nowrap; letter-spacing: -.015em; }
+  .app-shell.proactive-shell .bottom-nav button.active { background: transparent; color: var(--accent); }
+  .app-shell.proactive-shell .bottom-nav button.active::before { content: none; }
   .proactive-shell .app-main { padding-bottom: calc(100px + env(safe-area-inset-bottom)); }
-  .proactive-shell .today-view { gap: 18px; }
-  .proactive-shell .today-view .page-heading { padding-right: 44px; }
-  .proactive-shell .today-view .page-subtitle { font-size: 13px; max-width: 28ch; }
+  .proactive-shell .today-view { gap: 15px; }
+  .proactive-shell .today-intro { display: grid; grid-template-columns: minmax(0, 1fr); align-items: start; padding-inline-end: 50px; }
+  .proactive-shell .today-view .page-subtitle { font-size: 13px; }
+  .proactive-shell .today-money { margin-top: 18px; }
   .proactive-shell .today-benefits { border-radius: 14px; }
-  .proactive-shell .benefit-tile { padding: 13px 9px; gap: 9px; }
-  .proactive-shell .benefit-tile > span { font-size: 11px; min-height: 30px; }
-  .proactive-shell .benefit-tile strong { font-size: clamp(16px, 4.7vw, 22px); min-height: 40px; display: flex; align-items: center; }
+  .proactive-shell .benefit-tile { padding: 11px 9px; gap: 6px; }
+  .proactive-shell .benefit-tile > span { font-size: 11px; min-height: 28px; }
+  .proactive-shell .benefit-tile strong { font-size: clamp(13px, 4vw, 20px); min-height: 30px; display: flex; align-items: center; }
+  .proactive-shell .benefit-tile > svg { width: 17px; height: 17px; }
   .proactive-shell .benefit-tile small { font-size: 10px; }
   .proactive-shell .opportunity-list { grid-template-columns: minmax(0,1fr); gap: 13px; }
   .proactive-shell .opportunity-card { padding: 17px; grid-template-columns: minmax(0,1fr); }
@@ -152,6 +171,13 @@
   .proactive-shell .today-sheet .sheet-footer { padding: 12px 16px calc(14px + env(safe-area-inset-bottom)); }
   .proactive-shell .today-sheet .sheet-footer .button { font-size: 13px; padding-inline: 10px; }
 }
+@media (prefers-reduced-motion: no-preference) {
+  .app-shell.proactive-shell .bottom-nav[data-animate="pointer"]::before { transition: transform var(--motion-settle) var(--motion-ease); }
+  .proactive-shell .today-view .opportunity-first .button, .contributions-view .contribution-open svg { transition: transform var(--motion-press) var(--motion-ease); }
+  .proactive-shell .today-view .opportunity-first .button:active:not(:focus-visible) { transform: scale(.985); }
+  .contributions-view .contribution-open:active:not(:focus-visible) svg { transform: translateX(3px); }
+  .proactive-shell .today-disclosure:not(:focus-visible) > svg { transition: transform var(--motion-press) var(--motion-ease); }
+}
 @media (prefers-reduced-motion: reduce) {
   .proactive-shell .today-sheet[open] { animation: none; }
 }
@@ -162,6 +188,8 @@
 @media (max-width: 859px) {
   .proactive-shell .opportunity-card { padding: 15px; }
   .proactive-shell .opportunity-card h3 { font-size: 18px; }
+  .proactive-shell .opportunity-first h3 { font-size: clamp(20px, 5.1vw, 24px); }
+  .proactive-shell .today-action-list .opportunity-card { padding-inline: 2px; }
 }
 
 .proactive-shell .section-load-error { margin-top: 48px; }
@@ -209,3 +237,6 @@
 .reimbursement-dossier-view .page-heading-copy { flex: 1 1 160px; }
 .reimbursement-dossier-view .page-heading-actions { margin-left: auto; }
 @media(max-width: 430px) { .claim-dossier { padding: 16px; } .claim-dossier-facts { grid-template-columns: repeat(2,minmax(0,1fr)); } .claim-dossier-facts > div:last-child { grid-column: 1/-1; } .proactive-shell .today-follow-up { flex-wrap: wrap; } }
+
+:root[data-theme="dark"] .proactive-shell .opportunity-card[data-domain="claims"] .opportunity-icon { background: var(--success-soft); color: var(--success); }
+:root[data-theme="dark"] .proactive-shell .opportunity-card[data-domain="insurance"] .opportunity-icon { background: var(--accent-soft); color: var(--accent); }

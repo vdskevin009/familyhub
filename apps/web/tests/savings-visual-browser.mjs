@@ -1,4 +1,5 @@
 /** Existing recurring UI, synthetic evidence only. No real worker or provider requests. */
+import { contrastRatio } from "./theme-test-colour.mjs";
 import { chromium } from "playwright";
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
@@ -47,11 +48,12 @@ const includedContracts = [
   { ...newContract("subscription", "netflix"), name: "Netflix autonome fictif", provider: "Netflix", price: 20, taxesIncluded: true, updatedAt: "2026-10-10T12:00:00Z" },
 ];
 const includedBefore = JSON.stringify([includedFinance, includedContracts]);
+const colorScheme = process.env.FAMILYHUB_TEST_COLOR_SCHEME === "dark" ? "dark" : "light";
 let browser;
 try {
   browser = await chromium.launch({ ...(process.env.FAMILYHUB_TEST_BROWSER_CHANNEL ? { channel: process.env.FAMILYHUB_TEST_BROWSER_CHANNEL } : {}), headless: true });
   for (const width of [320, 390, 768, 1440]) {
-    const context = await browser.newContext({ viewport: { width, height: 900 }, serviceWorkers: "block", reducedMotion: "reduce" });
+    const context = await browser.newContext({ viewport: { width, height: 900 }, colorScheme, serviceWorkers: "block", reducedMotion: "reduce" });
     const page = await context.newPage(), errors = [], writes = [];
     page.setDefaultTimeout(10000); page.on("pageerror", error => errors.push(error.message));
     await page.clock.setFixedTime(new Date("2026-10-11T12:00:00Z"));
@@ -78,6 +80,11 @@ try {
     catch (error) { console.log(await page.locator(".savings-view").innerText()); await page.screenshot({path:join(output,`failure-${width}.png`),fullPage:true}); throw error; }
     assert.match(await cad.locator(".recurring-paid-amount").innerText(), /210\.00/);
     assert.match(await summary.locator('[data-paid-currency="USD"] .recurring-paid-amount').innerText(), /15\.00/);
+    if (colorScheme === "dark") {
+      const chart = await cad.locator('.recurring-category-track').first().evaluate(el => ({ track: getComputedStyle(el).backgroundColor, fill: getComputedStyle(el.firstElementChild).backgroundColor }));
+      assert.ok(contrastRatio(chart.track, chart.fill) >= 3, 'Recurring chart fill must contrast with the track in dark mode');
+      assert.equal(await page.locator('html').getAttribute('data-theme'), 'dark');
+    }
     assert.deepEqual(await cad.locator("[data-paid-category]").evaluateAll(rows => rows.map(row => row.dataset.paidCategory)), ["home-insurance", "telecom", "subscription"]);
     assert.equal(await cad.locator('[data-paid-category="other"]').count(), 0, "Unknown and reference-only contracts never enter chart");
     const network = page.locator('[data-recurring-contract="network"]');
@@ -85,7 +92,7 @@ try {
     assert.match(await network.innerText(), /2 transactions · period/);
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false, "No overflow at " + width);
     assert.equal(await summary.evaluate(el => el.scrollWidth > el.clientWidth + 1), false, "Summary stays inside its surface");
-    await page.screenshot({ path: join(output, `recurrents-${width}.png`), fullPage: true });
+    await page.screenshot({ path: join(output, `recurrents-${colorScheme}-${width}.png`), fullPage: true });
     await network.click();
     const details = page.getByRole("dialog", { name: "Contract · Forfait Internet + TV", exact: true });
     assert.equal(await details.locator("[data-service-id]").count(), 2);

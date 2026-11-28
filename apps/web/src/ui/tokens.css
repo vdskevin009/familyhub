@@ -30,6 +30,13 @@
   --info-soft: #edf3f7;
   --shadow: 0 1px 2px #20212406;
   --shadow-overlay: 0 16px 48px #20212426;
+  --on-accent: #ffffff;
+  --accent-veil: #ffffff25;
+  --accent-veil-subtle: #ffffff18;
+  --scrim: #20212466;
+  --chart-accent: var(--accent);
+  --chart-positive: var(--success);
+  --chart-info: var(--info);
   --radius-sm: 8px;
   --radius: 12px;
   --radius-lg: 16px;
@@ -40,6 +47,42 @@
   --space-5: 20px;
   --space-6: 24px;
   --control: 48px;
+  --motion-ease: cubic-bezier(.22, 1, .36, 1);
+  --motion-press: 120ms;
+  --motion-settle: 220ms;
+  --motion-sheet: 235ms;
+  --motion-data: 260ms;
   --rail-width: 208px;
   --header-height: 60px;
+}
+
+/* Deep blue slate and cool ink; interactive and semantic foregrounds remain distinct. */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --ink: #edf1f8;
+  --muted: #b2bdce;
+  --line: #354258;
+  --control-line: #75859d;
+  --surface: #192232;
+  --surface-strong: #1d283b;
+  --canvas: #10141c;
+  --soft: #222e42;
+  --accent: #89b7ff;
+  --accent-hover: #a9caff;
+  --accent-soft: #243751;
+  --accent-line: #4f6b91;
+  --on-accent: #0c1627;
+  --accent-veil: #0c162728;
+  --accent-veil-subtle: #0c162718;
+  --success: #90d8b3;
+  --success-soft: #203d36;
+  --warning: #f1cd8c;
+  --warning-soft: #493925;
+  --danger: #ffb0b2;
+  --danger-soft: #472b35;
+  --info: #a8d0e9;
+  --info-soft: #22394b;
+  --shadow: 0 1px 2px #00000025;
+  --shadow-overlay: 0 16px 48px #00000080;
+  --scrim: rgba(0, 0, 0, .68);
 }

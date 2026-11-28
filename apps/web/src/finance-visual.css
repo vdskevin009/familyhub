@@ -49,32 +49,6 @@
 .finance-view .trend-overview > details > summary { font-size: 13px; }
 .finance-view .trend-reference-status { color: var(--muted); }
 .finance-view .trend-plot { font-variant-numeric: tabular-nums; }
-
-.contributions-view { width: 100%; }
-.contributions-view .contribution-cards { gap: 16px; }
-.contributions-view .contribution-card { border-radius: 12px; border-color: var(--line); padding: 22px; }
-.contributions-view .contribution-goal { margin-top: 16px; padding-bottom: 14px; border-bottom: 1px solid var(--line); }
-.contributions-view .contribution-goal strong { font-size: 18px; }
-.contributions-view .contribution-progress-label { align-items: center; margin-top: 18px; }
-.contributions-view .contribution-progress-label > span { display: grid; gap: 4px; }
-.contributions-view .contribution-progress-label > span > strong { font-size: clamp(24px, 4vw, 30px); line-height: 1.15; letter-spacing: -.025em; }
-.contributions-view .contribution-progress-label > span > span { color: var(--muted); font-size: 12px; }
-.contributions-view .contribution-progress-label > strong { font-size: 20px; }
-.contributions-view .contribution-card progress { height: 12px; margin: 14px 0 20px; }
-.contributions-view .contribution-card progress::-webkit-progress-value { background: var(--finance-chart); }
-.contributions-view .contribution-card progress::-moz-progress-bar { background: var(--finance-chart); }
-.contributions-view .contribution-card.reached progress::-webkit-progress-value { background: var(--success); }
-.contributions-view .contribution-card.reached progress::-moz-progress-bar { background: var(--success); }
-.contributions-view .contribution-bottom { padding-top: 16px; border-top: 1px solid var(--line); gap: 12px; }
-.contributions-view .contribution-bottom span { font-size: 12px; }
-.contributions-view .contribution-bottom strong { font-size: 18px; }
-.contributions-view .contribution-inferred-summary { font-size: 13px; padding-left: 10px; border-left: 2px dashed var(--control-line); margin: 0 0 16px; }
-.contribution-forecast-summary { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 2px 12px; margin-bottom: 16px; font-size: 13px; }
-.contribution-forecast-summary > span, .contribution-forecast-summary > small { color: var(--muted); }
-.contribution-forecast-summary > small { font-size: 12px; }
-.contributions-view .contribution-open { color: var(--finance-chart); }
-.contributions-view :is(button, summary):focus-visible { outline: 3px solid var(--finance-chart); outline-offset: 3px; }
-
 @media (min-width: 900px) {
   .finance-view .accounts-month-row:nth-last-child(2):nth-child(odd) { border-bottom: 0; }
   .finance-view .accounts-month-row:nth-child(odd) { border-right: 1px solid var(--line); }
@@ -84,14 +58,12 @@
   .finance-view .trend-period-heading input { max-width: 160px; }
 }
 @media (max-width: 420px) {
-  .finance-view .accounts-summary, .contributions-view .contribution-card { padding: 16px; }
+  .finance-view .accounts-summary { padding: 16px; }
   .finance-view .accounts-month-row { padding: 13px 10px; }
   .accounts-balance-comparison { gap: 14px; }
   .accounts-balance-comparison dd { font-size: 15px; }
   .finance-view .finance-bars button { padding: 11px 0; }
   .finance-view .finance-tabs button { font-size: 12px; }
-  .contributions-view .contribution-goal { flex-direction: row; }
-  .contributions-view .contribution-bottom strong { font-size: 16px; }
 }
 @media (hover: hover) {
   .finance-view .finance-bars button:not(:disabled):hover, .finance-view .accounts-month-row:hover { background: var(--soft); }

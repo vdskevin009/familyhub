@@ -653,7 +653,7 @@ export default function FinancesView({
             <PageHeader
                 title="Finances"
             >
-                <button
+                {tab !== "contributions" && <button
                     className="button secondary"
                     disabled={!paired || busy || loading}
                     onClick={() => void refresh()}
@@ -661,7 +661,7 @@ export default function FinancesView({
                 >
                     <RefreshCw size={16} />
                     <span className="finance-refresh-label">{loading ? "Loading…" : "Refresh"}</span>
-                </button>
+                </button>}
             </PageHeader>
             <nav className="segment-tabs finance-tabs" aria-label="Finances">
                 {([["investments", "Accounts"], ["expenses", "Spending"], ["trends", "Trends"], ["contributions", "Contributions"]] as const).map(([id,label]) => <button type="button" key={id} aria-current={tab===id ? "page" : undefined} className={tab===id ? "active" : ""} onClick={()=>{if(id==="trends" && tab==="expenses" && from)setTrendMonth(from.slice(0,7));setTab(id);setOperationsOpen(false);setCategoryPayments(null);}}>{label}</button>)}

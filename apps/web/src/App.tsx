@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { Bell, CalendarDays, CircleDollarSign, Download, FileText, HeartHandshake, Home, Mail, MoreHorizontal, ChevronRight, Settings2, TrendingDown, ShoppingBasket } from "lucide-react";
 import { viewFromQuery } from "./domain";
 import { primaryDestination } from "./navigation";
@@ -19,7 +19,7 @@ const MortgageView = lazy(() => import("./views/MortgageView"));
 const FinancesView = lazy(() => import("./views/FinancesView"));
 const CoursesView = lazy(() => import("./views/CoursesView"));
 const NotificationsView = lazy(() => import("./views/NotificationsView"));
-import { PageHeader } from "./ui/primitives";
+import { noteSheetActivation, PageHeader } from "./ui/primitives";
 import SectionBoundary from "./ui/SectionBoundary";
 import "./notifications.css";
 import "./proactive.css";
@@ -57,6 +57,7 @@ export default function App() {
   const projectContextKey = useMemo(() => crypto.randomUUID(), [state.worker.Endpoint, state.worker.ApiKey]);
   const [view, setView] = useState<AppView>(viewFromQuery());
   const [routeKey, setRouteKey] = useState(location.search);
+  const [animateMobileNav, setAnimateMobileNav] = useState(false);
   const [commandOpen, setCommandOpen] = useState(false);
   const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [installed, setInstalled] = useState(() => runningStandalone());
@@ -66,6 +67,7 @@ export default function App() {
   const documentViews = [{ id: "invoices", label: "Invoices" }, { id: "desjardins", label: "Desjardins" }, { id: "blue-cross", label: "Blue Cross" }] as const;
   const documentKind = view === "documents" || view === "invoices" ? "invoices" : view === "desjardins" ? "desjardins" : view === "blue-cross" ? "blue-cross" : null;
   const navigationActive = (id: AppView) => primaryDestination(view) === id;
+  const mobileNavIndex = nav.findIndex(item => navigationActive(item.id));
   const pageName = view === "vehicle" ? "Vehicles" : view === "property" ? "Property search" : view === "contributions" ? "Finances — Contributions" : nav.find(item => item.id === view)?.label || documentViews.find(item => item.id === view)?.label || otherViews.find(item => item.id === view)?.label || "FamilyHub";
   useEffect(() => {
     document.title = `${pageName} · FamilyHub`;
@@ -78,6 +80,7 @@ export default function App() {
       const purchase = document.querySelector<HTMLElement>(".grocery-purchases[data-purchase-dialog-url]");
       if (purchase?.dataset.purchaseDialogUrl === location.href && purchase.querySelector("dialog[open]")) return;
       scrollPositions.current[viewRef.current] = window.scrollY;
+      setAnimateMobileNav(false);
       setView(viewFromQuery());
       setRouteKey(location.search);
     };
@@ -105,25 +108,27 @@ export default function App() {
     if (choice.outcome === "accepted") { setInstalled(true); setInstallPrompt(null); }
   }
 
-  const openTarget = (href: string) => {
+  const openTarget = (href: string, animateNav = false) => {
     const url = new URL(href, location.href);
     if (url.origin !== location.origin || url.pathname !== location.pathname) return;
     scrollPositions.current[view] = window.scrollY;
+    setAnimateMobileNav(animateNav);
     history.pushState({}, "", url);
     setView(viewFromQuery());
     setRouteKey(url.search);
     requestAnimationFrame(() => mainRef.current?.focus({ preventScroll: true }));
   };
-  const navigate = (next: AppView) => {
+  const navigate = (next: AppView, animateNav = false) => {
     const url = new URL(location.href);
     for (const key of ["record", "notice", "queue", "sources", "tab", "from", "to", "account", "currency", "job", "offer"]) url.searchParams.delete(key);
     if (next === "today") url.searchParams.delete("view");
     else url.searchParams.set("view", next);
     if (url.search === location.search) { window.scrollTo({ top: 0, behavior: "instant" }); return; }
-    openTarget(url.href);
+    openTarget(url.href, animateNav);
   };
 
-  return <div className="app-shell proactive-shell">
+  return <div className="app-shell proactive-shell" onClickCapture={event => noteSheetActivation(event.nativeEvent)}
+    onKeyDownCapture={() => noteSheetActivation()}>
     <a className="skip-link" href="#main-content">Skip to content</a>
     <aside className="app-rail">
       <button type="button" className="rail-brand" onClick={() => navigate("today")} aria-label="FamilyHub home"><span className="brand-mark"><img src={`${import.meta.env.BASE_URL}icon.svg`} alt="" /></span><span>FamilyHub<small>Your next useful action</small></span></button>
@@ -160,9 +165,10 @@ export default function App() {
         </SectionBoundary>
       </main>
     </div>
-    <nav className="bottom-nav" aria-label="Mobile navigation">{nav.map(item => {
+    <nav className="bottom-nav" aria-label="Mobile navigation" data-animate={animateMobileNav ? "pointer" : undefined}
+      style={{ "--nav-slot": mobileNavIndex } as CSSProperties}>{nav.map(item => {
       const Icon = item.icon;
-      return <button type="button" key={item.id} className={navigationActive(item.id) ? "active" : ""} onClick={() => navigate(item.id)} aria-label={item.label} aria-current={navigationActive(item.id) ? "page" : undefined}><Icon size={21} strokeWidth={2} aria-hidden="true" /><span>{item.shortLabel ?? item.label}</span></button>;
+      return <button type="button" key={item.id} className={navigationActive(item.id) ? "active" : ""} onClick={event => navigate(item.id, event.detail > 0)} aria-label={item.label} aria-current={navigationActive(item.id) ? "page" : undefined}><Icon size={21} strokeWidth={2} aria-hidden="true" /><span>{item.shortLabel ?? item.label}</span></button>;
     })}</nav>
   </div>;
 }

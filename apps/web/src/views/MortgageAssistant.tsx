@@ -5,7 +5,7 @@ import { cad, percent, productLabel, shortDate } from "../mortgage-display";
 import MortgageTabs from "./MortgageTabs";
 import "../mortgage-assistant.css";
 
-const colors: Record<ProductKey,string> = { "fixed-3":"#2463d3", "fixed-5":"#805312", "variable-3":"#7d4493", "variable-5":"#226044" };
+const colors: Record<ProductKey,string> = { "fixed-3":"var(--rate-fixed-3)", "fixed-5":"var(--rate-fixed-5)", "variable-3":"var(--rate-variable-3)", "variable-5":"var(--rate-variable-5)" };
 const dayNumber = (day:string) => Date.parse(day + "T12:00:00Z") / 86400000;
 const sameFilters = (a:Snapshot,b:Snapshot) => (["purpose","balance","amortizationMonths","location","occupancy","payment","cmhc","ltv"] as const).every(key=>a.filters[key]===b.filters[key]);
 const dateTime = (at:string) => new Intl.DateTimeFormat("en-CA",{day:"numeric",month:"short",hour:"2-digit",minute:"2-digit",timeZone:"America/Vancouver"}).format(new Date(at));
