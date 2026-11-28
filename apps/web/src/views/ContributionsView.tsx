@@ -48,12 +48,24 @@ const hasCurrentSourceEvidence = (plan: ContributionCard, evaluatedOn: string) =
   const day = sourceDay(plan.sourceAsOf);
   return day !== null && day <= evaluatedOn;
 };
+const hasConfirmedAllocation = (plan: ContributionCard) =>
+  plan.attribution === "confirmed" && (plan.kind !== "resp" || plan.beneficiaryConfirmed);
 const canShowGoalProgress = (plan: ContributionCard, evaluatedOn: string) =>
   Number.isSafeInteger(plan.goalCents) && plan.goalCents > 0
   && hasCurrentSourceEvidence(plan, evaluatedOn)
   && plan.warnings.length === 0
-  && plan.attribution === "confirmed"
-  && (plan.kind !== "resp" || plan.beneficiaryConfirmed);
+  && hasConfirmedAllocation(plan);
+
+// These warnings describe missing coverage or observations already excluded from the reported amount.
+// Do not infer an identified ratio from an unverified account, misdated source, or unknown warning.
+const identifiedOnlyWarnings = new Set([
+  "source-freshness-unverified", "coverage-unverified", "coverage-incomplete", "source-not-current",
+  "pending-excluded", "excluded-observations", "source-limitations",
+]);
+const canShowIdentifiedRatio = (plan: ContributionCard, evaluatedOn: string) =>
+  plan.identifiedCents > 0 && hasConfirmedAllocation(plan)
+  && (plan.sourceAsOf == null || hasCurrentSourceEvidence(plan, evaluatedOn))
+  && plan.warnings.every(warning => identifiedOnlyWarnings.has(warning));
 
 const percentNumber = new Intl.NumberFormat("en-CA", { maximumFractionDigits: 2 });
 const formattedPercent = (percent: number) => {
@@ -63,24 +75,28 @@ const formattedPercent = (percent: number) => {
   return percentNumber.format(percent) + "%";
 };
 type RingValue = Pick<ContributionCard, "goalCents" | "beneficiary" | "deadline"> & { percent: number };
-function GoalRing({ plan, percent, previous }: { plan: ContributionCard; percent: number; previous?: RingValue }) {
+function GoalRing({ plan, percent, previous, identifiedOnly = false }: { plan: ContributionCard; percent: number; previous?: RingValue; identifiedOnly?: boolean }) {
   const clamped = Math.min(100, percent);
-  const sameGoal = previous?.goalCents === plan.goalCents && previous.deadline === plan.deadline && previous.beneficiary === plan.beneficiary;
+  const sameGoal = !identifiedOnly && previous?.goalCents === plan.goalCents && previous.deadline === plan.deadline && previous.beneficiary === plan.beneficiary;
   const start = sameGoal ? Math.min(100, previous.percent) : clamped;
   const label = formattedPercent(percent);
   const compact = label.length > 9;
-  return <div className="contribution-ring" data-contribution-ring>
-    <div className="contribution-ring-art" aria-hidden="true">
-      <svg viewBox="0 0 120 120" focusable="false">
+  return <div className={`contribution-ring${identifiedOnly ? " contribution-ring-identified" : ""}`}
+    data-contribution-ring={identifiedOnly ? undefined : true} data-contribution-identified={identifiedOnly ? true : undefined}>
+    <div className="contribution-ring-art" aria-hidden={!identifiedOnly ? true : undefined}>
+      <svg viewBox="0 0 120 120" focusable="false" aria-hidden="true">
         <circle className="contribution-ring-outline" cx="60" cy="60" r="52" />
         <circle className="contribution-ring-track" cx="60" cy="60" r="52" />
-        <circle data-ring-fill className={start === clamped ? "contribution-ring-fill" : "contribution-ring-fill is-updating"} cx="60" cy="60" r="52" pathLength="100"
+        <circle data-ring-fill={identifiedOnly ? undefined : true} data-identified-fill={identifiedOnly ? true : undefined} className={start === clamped ? "contribution-ring-fill" : "contribution-ring-fill is-updating"} cx="60" cy="60" r="52" pathLength="100"
           style={{ "--ring-start": 100 - start, "--ring-end": 100 - clamped } as CSSProperties} />
       </svg>
-      <div className="contribution-ring-centre"><span className={compact ? "contribution-ring-number compact" : "contribution-ring-number"}>{label}</span><span>of goal</span></div>
+      <div className="contribution-ring-centre">
+        <span className={compact ? "contribution-ring-number compact" : "contribution-ring-number"}>{label}{identifiedOnly && <span className="sr-only"> of personal goal.</span>}</span>
+        {identifiedOnly ? <span className="contribution-ring-certainty">Not<br />confirmed</span> : <span>of goal</span>}
+      </div>
     </div>
-    <progress className="sr-only" max={100} value={clamped} aria-label={`${title(plan.kind)}: progress toward your personal goal`}
-      aria-valuetext={`${label} of goal. ${money(plan.identifiedCents, plan.currency)} identified out of ${money(plan.goalCents, plan.currency)}.`} />
+    {!identifiedOnly && <progress className="sr-only" max={100} value={clamped} aria-label={`${title(plan.kind)}: progress toward your personal goal`}
+      aria-valuetext={`${label} of goal. ${money(plan.identifiedCents, plan.currency)} identified out of ${money(plan.goalCents, plan.currency)}.`} />}
   </div>;
 }
 
@@ -156,6 +172,7 @@ export default function ContributionsView({ worker, embedded = false }: { worker
       if (!plan || !snapshot) return <article className="contribution-card unavailable" key={kind}><h2>{title(kind)}</h2><p>{loading ? "Loading…" : error ? "Data unavailable" : "Private goal not configured"}</p><span>No amount assumed</span></article>;
       const m = contributionMetrics(plan, snapshot);
       const reliable = canShowGoalProgress(plan, snapshot.evaluatedOn);
+      const identifiedOnly = !reliable && canShowIdentifiedRatio(plan, snapshot.evaluatedOn);
       const reached = reliable && m.reached;
       const gap = Math.max(0, plan.goalCents - plan.identifiedCents);
       const coverage = plan.warnings.length > 0 || !hasCurrentSourceEvidence(plan, snapshot.evaluatedOn);
@@ -171,9 +188,9 @@ export default function ContributionsView({ worker, embedded = false }: { worker
             <div><dt>Personal goal</dt><dd>{money(plan.goalCents, plan.currency)}</dd></div>
             {reliable && <div><dt>Amount remaining</dt><dd>{money(gap, plan.currency)}</dd></div>}
           </dl>
-          {reliable ? <GoalRing plan={plan} percent={m.percent} previous={previous[kind]} /> : <UnconfirmedGoalRing />}
+          {reliable || identifiedOnly ? <GoalRing plan={plan} percent={m.percent} previous={previous[kind]} identifiedOnly={identifiedOnly} /> : <UnconfirmedGoalRing />}
         </div>
-        {!reliable && <p className="contribution-state"><CircleAlert size={16} aria-hidden="true" /><span>{[coverage ? "Partial data" : null, attribution].filter(Boolean).join(" · ")}. Progress unconfirmed.</span></p>}
+        {!reliable && <p className="contribution-state"><CircleAlert size={16} aria-hidden="true" /><span>{identifiedOnly ? "Based on identified contributions." : `${[coverage ? "Partial data" : null, attribution].filter(Boolean).join(" · ")}. Progress unconfirmed.`}</span></p>}
         <button type="button" className="contribution-open" aria-label={`View ${title(kind)} contributions`} onClick={() => setSelected(plan)}>View contributions<ChevronRight size={18} aria-hidden="true" /></button>
       </article>;
     })}</div>

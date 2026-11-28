@@ -172,15 +172,38 @@ try {
     mode = "legacy-authority";
     const refresh = page.getByRole("button", { name: "Refresh contributions", exact: true });
     await refresh.click();
-    await rrsp.getByText("Partial data. Progress unconfirmed.", { exact: true }).waitFor();
+    await rrsp.getByText(baseline ? "Partial data. Progress unconfirmed." : "Based on identified contributions.", { exact: true }).waitFor();
     assert.equal(await progress.count(), 0);
     assert.doesNotMatch(await rrsp.innerText(), /Amount remaining|Goal reached|Goal exceeded/);
+    let identifiedContrast = null;
     let neutralContrast = null;
     if (!baseline) {
+      const observed = rrsp.locator("[data-contribution-identified]");
+      assert.equal(await observed.locator(".contribution-ring-number").evaluate(e => e.firstChild.textContent), "37.5%");
+      assert.match((await observed.innerText()).replace(/\s+/g, " "), /Not confirmed/);
+      assert.match(await rrsp.innerText(), /\$1,500\.00/);
+      assert.equal(await rrsp.locator("[data-ring-fill], progress, meter, [aria-valuenow], [aria-valuetext]").count(), 0);
+      const tone = await observed.evaluate(el => {
+        const fill = getComputedStyle(el.querySelector("[data-identified-fill]")).stroke;
+        const track = getComputedStyle(el.querySelector(".contribution-ring-track")).stroke;
+        const certainty = el.querySelector(".contribution-ring-certainty");
+        return { fill, track, ink: getComputedStyle(certainty).color, surface: getComputedStyle(el.closest(".contribution-card")).backgroundColor,
+          animations: el.getAnimations({ subtree: true }).length, labelWidth: certainty.getBoundingClientRect().width, circleWidth: el.querySelector("svg").getBoundingClientRect().width };
+      });
+      assert.equal(tone.animations, 0);
+      assert.ok(tone.labelWidth + 14 < tone.circleWidth);
+      identifiedContrast = { arc: contrastRatio(tone.fill, tone.track), label: contrastRatio(tone.ink, tone.surface) };
+      assert.ok(identifiedContrast.arc >= 3 && identifiedContrast.label >= 4.5);
+      await fit(page);
+      if (width === 390) { await refresh.blur(); await capture(page, "contributions-observed-" + key); }
+
+      mode = "legacy-zero";
+      await refresh.click();
+      await rrsp.getByText("Partial data. Progress unconfirmed.", { exact: true }).waitFor();
       const neutral = rrsp.locator("[data-contribution-unconfirmed]");
       await neutral.waitFor();
       assert.match((await neutral.innerText()).replace(/\s+/g, " "), /^Not confirmed$/);
-      assert.match(await rrsp.innerText(), /\$1,500\.00/);
+      assert.equal(await observed.count(), 0);
       assert.doesNotMatch(await rrsp.innerText(), /\b0\s*%|\$0\.00/);
       assert.equal(await rrsp.locator("[data-ring-fill], progress, meter, [aria-valuenow], [aria-valuetext]").count(), 0);
       const evidence = await neutral.evaluate(el => {
@@ -216,7 +239,7 @@ try {
     await page.goBack();
     await page.getByRole("heading", { name: "Finances", exact: true }).waitFor();
     if (!baseline && width < 760) assert.equal(await nav.getAttribute("data-animate"), null, "Back does not replay the last pointer animation");
-    measurements.push({ width, scheme, motion, firstActionBottom: Math.round(prioritize.button), summaryTop: Math.round(prioritize.summary), heroTextContrast: contrastRatio(contrast[0], contrast[1]), actionTextContrast: contrastRatio(contrast[2], contrast[3]), neutralContrast });
+    measurements.push({ width, scheme, motion, firstActionBottom: Math.round(prioritize.button), summaryTop: Math.round(prioritize.summary), heroTextContrast: contrastRatio(contrast[0], contrast[1]), actionTextContrast: contrastRatio(contrast[2], contrast[3]), neutralContrast, identifiedContrast });
     await context.close();
     console.log("PASS", key, baseline ? "baseline capture" : "action hierarchy, exact navigation, ring states, overlay/focus and motion");
   }

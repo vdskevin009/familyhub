@@ -33,6 +33,8 @@ const amount = (plan, identifiedCents) => ({
   ...plan, identifiedCents,
   payments: identifiedCents > 0 ? [receipt("synthetic-" + plan.kind, identifiedCents)] : [],
 });
+const legacy = plan => ({ ...plan, sourceFreshness: "unknown", sourceAsOf: null, status: "partial",
+  warnings: ["source-freshness-unverified", "coverage-incomplete", "source-limitations"] });
 export function contributionRingFixture(mode = "ready") {
   const { rrsp, resp } = structuredClone(bases);
   let plans = [rrsp, resp];
@@ -45,7 +47,15 @@ export function contributionRingFixture(mode = "ready") {
   else if (mode === "near-over") plans = [amount(rrsp, rrsp.personalGoalCents + 1), resp];
   else if (mode === "tiny-real") plans = [amount(rrsp, 1), resp];
   else if (mode === "partial") plans = [{ ...rrsp, status: "partial" }, { ...resp, warnings: ["coverage-incomplete"] }];
-  else if (mode === "legacy-authority") plans = [{ ...rrsp, sourceFreshness: "unknown", sourceAsOf: null, status: "partial", warnings: ["source-freshness-unverified"] }];
+  else if (mode === "legacy-authority") plans = [legacy(rrsp)];
+  else if (mode === "legacy-both") plans = [legacy(rrsp), legacy(resp)];
+  else if (mode === "legacy-unknown-beneficiary") plans = [legacy(rrsp), { ...legacy(resp), beneficiaryConfirmed: false }];
+  else if (mode === "legacy-zero") plans = [legacy(amount(rrsp, 0))];
+  else if (mode === "legacy-progress-change") plans = [legacy(amount(rrsp, 160000))];
+  else if (mode === "legacy-over-goal") plans = [legacy(amount(rrsp, 500000))];
+  else if (mode === "unverified-destination") plans = [{ ...legacy(rrsp), warnings: ["destination-unverified"] }];
+  else if (mode === "unverified-debit") plans = [{ ...legacy(rrsp), warnings: ["source-account-unverified"] }];
+  else if (mode === "unknown-warning") plans = [{ ...legacy(rrsp), warnings: ["future-coverage-signal"] }];
   else if (mode === "unconfirmed") plans = [{ ...rrsp, attribution: "unconfirmed" }, { ...resp, beneficiaryConfirmed: false }];
   else if (mode === "missing-evidence") plans = [{ ...rrsp, sourceFreshness: "unknown", sourceAsOf: null }, { ...resp, status: undefined, sourceAsOf: null }];
   else if (mode === "source-unavailable") plans = [{ ...rrsp, warnings: ["source-unavailable"] }, resp];

@@ -25,6 +25,7 @@
 .contribution-summary > .contribution-identified { display: grid; gap: 2px; padding-bottom: 5px; }
 .contribution-identified dd { font-size: clamp(1.14rem, 5.4vw, 1.65rem); line-height: 1.13; letter-spacing: -.032em; }
 .contribution-ring { position: relative; --ring-ink: var(--finance-chart, var(--green)); }
+.contribution-ring-identified { --ring-ink: var(--muted); }
 .contribution-ring-art { width: 100%; aspect-ratio: 1; display: grid; place-items: center; }
 .contribution-ring svg, .contribution-ring-centre { grid-area: 1 / 1; width: 100%; }
 .contribution-ring svg { display: block; transform: rotate(-90deg); overflow: visible; }
@@ -47,6 +48,7 @@
 .contribution-ring-number { color: var(--ink); font-size: clamp(.91rem, 4.15vw, 1.26rem); font-weight: 780; font-variant-numeric: tabular-nums; letter-spacing: -.04em; max-inline-size: 73%; }
 .contribution-ring-number.compact { font-size: .63rem; line-height: 1.05; overflow-wrap: anywhere; }
 .contribution-ring-unconfirmed .contribution-ring-centre { font-size: clamp(.68rem, 3vw, .79rem); font-weight: 700; line-height: 1.2; }
+.contribution-ring-certainty { font-weight: 700; line-height: 1.1; }
 .contribution-state, .contribution-achieved { display: flex; gap: 5px; align-items: flex-start; font-size: .78rem; }
 .contribution-state { margin: 12px 0 0; line-height: 1.35; color: var(--muted); }
 .contribution-state svg, .contribution-achieved svg { flex: none; }
@@ -86,5 +88,6 @@
   .contribution-ring-track { stroke: Canvas; }
   .contribution-ring .contribution-ring-dashed { stroke: CanvasText; }
   .contribution-ring-fill { stroke: Highlight; }
+  .contribution-ring-identified .contribution-ring-fill { stroke: CanvasText; }
   .contributions-view :is(button, summary):focus-visible { outline-color: Highlight; }
 }
