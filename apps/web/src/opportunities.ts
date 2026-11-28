@@ -43,6 +43,15 @@ export const dateOnly = (value: string | null | undefined): string | null => {
   const day = value.slice(0, 10), parsed = Date.parse(day + "T12:00:00Z");
   return Number.isFinite(parsed) && new Date(parsed).toISOString().slice(0, 10) === day ? day : null;
 };
+/** Deadlines are civil dates in the existing household calendar, not known expiry instants. */
+export function opportunitySnoozeTiming(dueDate: string | null, delayMs: number, now = new Date()): "unknown" | "past" | "today" | "same-day" | "after" | "before" {
+  if (!dueDate || dateOnly(dueDate) !== dueDate || !Number.isFinite(now.getTime()) || !Number.isFinite(delayMs) || delayMs <= 0) return "unknown";
+  const returning = new Date(now.getTime() + delayMs);
+  if (!Number.isFinite(returning.getTime())) return "unknown";
+  const calendar = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Vancouver", year: "numeric", month: "2-digit", day: "2-digit" });
+  const today = calendar.format(now), returnDate = calendar.format(returning);
+  return dueDate < today ? "past" : dueDate === today ? "today" : returnDate === dueDate ? "same-day" : returnDate > dueDate ? "after" : "before";
+}
 export function freshness(sourceDate: string | null, now: string, days: number): Opportunity["freshness"] {
   const source = dateOnly(sourceDate), today = dateOnly(now);
   if (!source || !today || source > today) return "unknown";

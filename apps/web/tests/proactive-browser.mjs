@@ -1,3 +1,4 @@
+import { verifyTodaySnooze } from "./today-snooze-browser.mjs";
 /** Built app, synthetic private API, disposable browser contexts. No real service or household data. */
 import { chromium } from "playwright";
 import assert from "node:assert/strict";
@@ -106,6 +107,7 @@ async function setup(width, paired = true, scenario = "") {
 }
 
 try {
+  await verifyTodaySnooze();
   await mkdir(output, { recursive: true });
   browser = await chromium.launch({ headless: true, channel: process.env.FAMILYHUB_TEST_BROWSER_CHANNEL || undefined });
   for (const width of [320, 360, 384, 390, 412, 1280]) {

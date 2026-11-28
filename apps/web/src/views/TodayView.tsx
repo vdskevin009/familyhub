@@ -1,10 +1,10 @@
-import { useEffect, useRef, useState, type FormEvent, type MouseEvent } from "react";
+import { useEffect, useId, useRef, useState, type FormEvent, type MouseEvent } from "react";
 import { ArrowRight, CheckCircle2, ChevronDown, ChevronRight, CircleDollarSign, Clock3, FileCheck2, HeartHandshake, Home, Info, MessageCircle, RefreshCw, Settings2, ShieldCheck, ShoppingBasket, TrendingDown, WifiOff } from "lucide-react";
 import { Notice, PageHeader, Sheet, SkeletonList } from "../ui/primitives";
 import type { HubState } from "../state";
 import type { AppView } from "../types";
 import { runWorkerTask } from "../worker";
-import { opportunityHref, type Opportunity } from "../opportunities";
+import { dateOnly, opportunityHref, opportunitySnoozeTiming, type Opportunity } from "../opportunities";
 import { useOpportunities } from "../useOpportunities";
 
 type Props = {
@@ -20,7 +20,7 @@ const domainLabels: Record<Opportunity["domain"], string> = { claims: "Reimburse
 const domainIcons = { claims: HeartHandshake, insurance: ShieldCheck, subscriptions: TrendingDown, finances: CircleDollarSign, groceries: ShoppingBasket, mortgage: Home, system: Settings2 };
 const periods = { once: "one-time", month: "/ month", year: "/ year", "first-year": "over 12 months" };
 function dateLabel(value: string | null | undefined, withTime = false) {
-  if (!value) return "Date unknown";
+  if (!value || (value.length === 10 && dateOnly(value) !== value)) return "Date unknown";
   const date = new Date(value.length === 10 ? value + "T12:00:00" : value);
   return Number.isFinite(date.getTime()) ? new Intl.DateTimeFormat("en-CA", { day: "numeric", month: "short", year: "numeric", ...(withTime ? { hour: "2-digit", minute: "2-digit" } as const : {}) }).format(date) : "Date unknown";
 }
@@ -28,7 +28,7 @@ function benefitLabel(opportunity: Opportunity) {
   return opportunity.benefit.amount === null ? opportunity.benefit.label : money.format(opportunity.benefit.amount);
 }
 function decisionLabel(opportunity: Opportunity) {
-  if (opportunity.decision === "snoozed") return "Snoozed until " + dateLabel(opportunity.snoozedUntil);
+  if (opportunity.decision === "snoozed") return "Snoozed";
   if (opportunity.decision === "dismissed") return "Hidden";
   if (opportunity.decision === "resolved") return "Handled";
   return opportunity.freshness === "stale" ? "Needs refreshing" : opportunity.status === "waiting" ? "Pending" : opportunity.status === "ready" ? "To prepare" : opportunity.status === "unavailable" ? "Unavailable" : "Needs review";
@@ -59,6 +59,16 @@ export default function TodayView({ hub, onNavigate, onOpenTarget, commandOpen, 
   const visible = showAll ? actions : actions.slice(0, 3);
   const managed = feed.allOpportunities.filter(item => item.decision && item.decision !== "seen");
   const selected = feed.allOpportunities.find(item => item.id === selectedId);
+  const snoozeWarningId = useId();
+  const now = new Date();
+  const due = selected?.dueDate ?? null;
+  const weekTiming = opportunitySnoozeTiming(due, 7 * 86_400_000, now);
+  const hourTiming = opportunitySnoozeTiming(due, 3_600_000, now);
+  const snoozeWarning = weekTiming === "past" ? "This deadline has passed. Snoozing won’t extend it."
+    : weekTiming === "today" ? "This deadline is today. The cutoff time is unknown, so even one hour could be too late."
+    : hourTiming === "same-day" ? `A one-hour snooze returns on the deadline, ${dateLabel(due)}. The cutoff time is unknown.`
+    : weekTiming === "after" ? `A 7-day snooze returns after the deadline of ${dateLabel(due)}.`
+    : weekTiming === "same-day" ? `A 7-day snooze returns on the deadline, ${dateLabel(due)}. The cutoff time is unknown.` : null;
   const sourceErrors = feed.sources.filter(source => source.status === "error");
   const partialSources = feed.sources.filter(source => source.coverage?.complete === false);
   const claimsPartial = partialSources.some(source => source.id === "claims");
@@ -70,13 +80,13 @@ export default function TodayView({ hub, onNavigate, onOpenTarget, commandOpen, 
     if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
     event.preventDefault(); onOpenTarget(opportunityHref(item.target));
   };
-  async function decide(item: Opportunity, action: "seen" | "snooze" | "dismiss" | "resolve" | "restore") {
+  async function decide(item: Opportunity, action: "seen" | "snooze" | "dismiss" | "resolve" | "restore", delayMs = 7 * 86_400_000) {
     setNotice("");
-    const options = action === "snooze" ? { snoozedUntil: new Date(Date.now() + 7 * 86_400_000).toISOString() } : undefined;
+    const options = action === "snooze" ? { snoozedUntil: new Date(Date.now() + delayMs).toISOString() } : undefined;
     const saved = await feed.setAction(item, action, options);
     if (!saved) return;
     setSelectedId(null);
-    setNotice(action === "snooze" ? "Snoozed for 7 days. You can restore it below." : action === "dismiss" ? "Hidden. You can restore it from Managed items." : action === "restore" ? "Restored to your actions." : action === "resolve" ? "Marked as handled. No savings or submission is confirmed." : "Marked as read.");
+    setNotice(action === "snooze" ? `Snoozed for ${delayMs === 3_600_000 ? "1 hour" : "7 days"}. Returns ${dateLabel(options?.snoozedUntil, true)}.` : action === "dismiss" ? "Hidden. You can restore it from Managed items." : action === "restore" ? "Restored to your actions." : action === "resolve" ? "Marked as handled. No savings or submission is confirmed." : "Marked as read.");
   }
   async function ask(event: FormEvent) {
     event.preventDefault();
@@ -106,7 +116,7 @@ export default function TodayView({ hub, onNavigate, onOpenTarget, commandOpen, 
       <div className="opportunity-heading"><h3>{item.title}</h3><p className="opportunity-description">{item.description}</p></div>
       <div className="opportunity-value"><div className={item.benefit.amount === null ? "opportunity-benefit unknown" : "opportunity-benefit"}><strong>{benefitLabel(item)}</strong>{item.benefit.amount !== null && <span>{item.benefit.period ? periods[item.benefit.period] : "period unconfirmed"}</span>}</div>
         {item.benefit.amount !== null && <p className="opportunity-qualification">{item.benefit.label} · unconfirmed</p>}</div>
-      {(item.dueDate || item.decision === "seen" || item.freshness !== "fresh") && <div className="opportunity-meta">{item.dueDate && <span><Clock3 size={14} aria-hidden="true" />Deadline: {dateLabel(item.dueDate)}</span>}{item.freshness !== "fresh" && <span className="opportunity-evidence-state">{item.freshness === "stale" ? "Older data" : "Freshness unknown"}</span>}{item.decision === "seen" && <span>Already viewed</span>}</div>}
+      {(item.dueDate || item.decision === "seen" || item.decision === "snoozed" || item.freshness !== "fresh") && <div className="opportunity-meta">{item.decision === "snoozed" && <span><Clock3 size={14} aria-hidden="true" />Returns: {dateLabel(item.snoozedUntil, true)}</span>}{item.dueDate && <span><Clock3 size={14} aria-hidden="true" />Deadline: {dateLabel(item.dueDate)}</span>}{item.freshness !== "fresh" && <span className="opportunity-evidence-state">{item.freshness === "stale" ? "Older data" : "Freshness unknown"}</span>}{item.decision === "seen" && <span>Already viewed</span>}</div>}
       <div className="opportunity-actions"><a className="button" href={opportunityHref(item.target)} onClick={event => followLink(event, item)}>{item.actionLabel}<ArrowRight size={17} aria-hidden="true" /></a><button type="button" className="opportunity-details" onClick={() => { setNotice(""); setSelectedId(item.id); }} aria-label={`Sources and options: ${item.title}`} aria-haspopup="dialog"><Info size={18} aria-hidden="true" /><span>Sources and options</span></button></div>
     </article>;
   }
@@ -165,7 +175,21 @@ export default function TodayView({ hub, onNavigate, onOpenTarget, commandOpen, 
         <div className="today-detail-benefit"><span>{domainLabels[selected.domain]}</span><strong>{benefitLabel(selected)}</strong><p>{selected.benefit.amount === null ? "No amount is assumed." : (selected.benefit.period ? periods[selected.benefit.period] : "Period unconfirmed") + " · potential, not confirmed"}</p></div>
         <dl className="today-facts"><div><dt>Deadline</dt><dd>{selected.dueDate ? dateLabel(selected.dueDate) : "Unknown"}</dd></div><div><dt>Source date</dt><dd>{dateLabel(selected.sourceDate)}</dd></div><div><dt>Freshness</dt><dd>{selected.freshness === "fresh" ? "Within the validity period" : selected.freshness === "stale" ? "Needs refreshing" : "Not established"}</dd></div><div><dt>Confidence</dt><dd>{selected.confidence === "verified" ? "Verified evidence" : selected.confidence === "conditional" ? "Conditional" : "Not established"}</dd></div></dl>
         <h3>Evidence and conditions</h3><ul className="today-evidence">{selected.evidence.map((evidence, index) => <li key={index}>{evidence}</li>)}</ul>
-        <section className="today-card-options"><h3>Manage this item</h3><p>Your decision is saved on your PC. New evidence can bring the item back.</p>{!feed.actionsAvailable ? <p role="status">Tracking unavailable. Check the connection or service version in Settings.</p> : selected.decision && selected.decision !== "seen" ? <button type="button" className="button secondary" disabled={feed.actionBusy || !online} onClick={() => void decide(selected, "restore")}>Restore to my actions</button> : <div className="today-option-buttons">{selected.decision !== "seen" && <button type="button" className="button secondary" disabled={feed.actionBusy || !online} onClick={() => void decide(selected, "seen")}>Mark as read</button>}<button type="button" className="button secondary" disabled={feed.actionBusy || !online} onClick={() => void decide(selected, "snooze")}><Clock3 size={17} aria-hidden="true" />Snooze for 7 days</button><button type="button" className="button secondary" disabled={feed.actionBusy || !online} onClick={() => void decide(selected, "dismiss")}>Hide this item</button><button type="button" className="button secondary" disabled={feed.actionBusy || !online} onClick={() => void decide(selected, "resolve")}>Mark as handled</button><p className="today-fine-print">Marking this as handled does not confirm savings or a submission.</p></div>}{feed.actionBusy && <p role="status">Saving to your PC…</p>}{feed.actionError && <Notice error>{feed.actionError}</Notice>}</section>
+        <section className="today-card-options">
+          <h3>Manage this item</h3>
+          <p>Your decision is saved on your PC. New evidence can bring the item back.</p>
+          {!feed.actionsAvailable ? <p role="status">Tracking unavailable. Check the connection or service version in Settings.</p> : selected.decision && selected.decision !== "seen" ? <button type="button" className="button secondary" disabled={feed.actionBusy || !online} onClick={() => void decide(selected, "restore")}>Restore to my actions</button> : <div className="today-option-buttons">
+            {snoozeWarning && <div id={snoozeWarningId}><Notice warning>{snoozeWarning}</Notice></div>}
+            {selected.decision !== "seen" && <button type="button" className="button secondary" disabled={feed.actionBusy || !online} onClick={() => void decide(selected, "seen")}>Mark as read</button>}
+            <button type="button" className="button secondary" aria-describedby={snoozeWarning ? snoozeWarningId : undefined} disabled={feed.actionBusy || !online} onClick={() => void decide(selected, "snooze", 3_600_000)}><Clock3 size={17} aria-hidden="true" />Snooze for 1 hour</button>
+            <button type="button" className="button secondary" aria-describedby={snoozeWarning ? snoozeWarningId : undefined} disabled={feed.actionBusy || !online} onClick={() => void decide(selected, "snooze")}><Clock3 size={17} aria-hidden="true" />Snooze for 7 days</button>
+            <button type="button" className="button secondary" disabled={feed.actionBusy || !online} onClick={() => void decide(selected, "dismiss")}>Hide this item</button>
+            <button type="button" className="button secondary" disabled={feed.actionBusy || !online} onClick={() => void decide(selected, "resolve")}>Mark as handled</button>
+            <p className="today-fine-print">Marking this as handled does not confirm savings or a submission.</p>
+          </div>}
+          {feed.actionBusy && <p role="status">Saving to your PC…</p>}
+          {feed.actionError && <Notice error>{feed.actionError}</Notice>}
+        </section>
       </>}
     </Sheet>
   </div>;
