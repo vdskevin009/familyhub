@@ -86,7 +86,7 @@ function boundedCli(t, scenario = {}) {
         if (scenario.noTool) { emit({ type: 'turn.completed' }); return close(0); }
         const base = { id: 'fixture', type: 'mcp_tool_call', server: 'codex_apps', tool: 'gmail.get_profile', arguments: { link_id: linkId } };
         emit({ type: 'item.started', item: { ...base, status: 'in_progress' } });
-        emit({ type: 'item.completed', item: { ...base, status: 'completed', error: null, result: { structured_content: { email: account } } } });
+        emit({ type: 'item.completed', item: { ...base, status: 'completed', error: null, result: { structured_content: { email: scenario.profileEmail ?? account } } } });
         emit({ type: 'turn.completed' });
         close(0);
       });
@@ -165,6 +165,27 @@ const threadStart = { type: 'thread.started', thread_id: 'synthetic-thread' };
 const turnStart = { type: 'turn.started' };
 const tierText = 'Configured service tier `priority` is not advertised as supported for model `gpt-fixture` and will be omitted from requests.';
 const tierNotice = { type: 'item.completed', item: { id: 'item-0', type: 'error', message: tierText } };
+const fallbackText = 'Model metadata for `gpt-fixture` not found. Defaulting to fallback metadata; this can degrade performance and cause issues.';
+const fallbackNotice = { type: 'item.completed', item: { id: 'item-1', type: 'error', message: fallbackText } };
+
+test('invoice profile survives both verified startup notifications before the genuine tool result', async t => {
+  const calls = boundedCli(t, { preamble: [threadStart, tierNotice, fallbackNotice, turnStart] });
+  const batch = await collectGmailPluginBatch(request, { allowHeldMessages: true });
+  assert.equal(batch.account, account);
+  assert.deepEqual(batch.queries, []);
+  assert.deepEqual(calls, { config: 2, inventories: 2, gmail: 1, open: 0 });
+});
+
+test('both verified notices still require the profile for the configured account', async t => {
+  boundedCli(t, { preamble: [threadStart, tierNotice, fallbackNotice, turnStart], profileEmail: 'other@example.test' });
+  await assert.rejects(collectGmailPluginBatch(request, { allowHeldMessages: true }), e => e.code === 'profile_mismatch');
+});
+
+test('following both notices, a failed turn remains distinct from source evidence', async t => {
+  boundedCli(t, { preamble: [threadStart, tierNotice, fallbackNotice, { type: 'turn.failed' }] });
+  await assert.rejects(collectGmailPluginBatch(request, { allowHeldMessages: true }), e => e.stage === 'tool_evidence'
+    && e.diagnostics.failedTurn && e.diagnostics.tierNoticeSeen && e.diagnostics.fallbackNoticeSeen && e.diagnostics.mcpItems === 0);
+});
 
 test('invoice profile survives the verified pre-turn tier notification and still requires a complete MCP result', async t => {
   const calls = boundedCli(t, { preamble: [threadStart, tierNotice, turnStart] });
@@ -186,6 +207,18 @@ for (const [name, preamble, noTool = false, invoice = true] of [
   ['unknown second item', [threadStart, tierNotice, { type: 'item.completed', item: { id: 'item-1', type: 'error', message: 'synthetic unknown' } }, turnStart]],
   ['no MCP evidence', [threadStart, tierNotice, turnStart], true],
   ['other consumers', [threadStart, tierNotice, turnStart], false, false],
+  ['fallback notice alone', [threadStart, fallbackNotice, turnStart]],
+  ['reordered startup notices', [threadStart, fallbackNotice, tierNotice, turnStart]],
+  ['reused notice ID', [threadStart, tierNotice, { ...fallbackNotice, item: { ...fallbackNotice.item, id: tierNotice.item.id } }, turnStart]],
+  ['duplicate fallback notice', [threadStart, tierNotice, fallbackNotice, fallbackNotice, turnStart]],
+  ['different fallback model', [threadStart, tierNotice, { ...fallbackNotice, item: { ...fallbackNotice.item, message: fallbackText.replace('gpt-fixture', 'gpt-other') } }, turnStart]],
+  ['fallback with appended details', [threadStart, tierNotice, { ...fallbackNotice, item: { ...fallbackNotice.item, message: fallbackText + ' More detail.' } }, turnStart]],
+  ['fallback with structured error', [threadStart, tierNotice, { ...fallbackNotice, item: { ...fallbackNotice.item, error: { code: 403 } } }, turnStart]],
+  ['fallback after turn start', [threadStart, tierNotice, turnStart, fallbackNotice]],
+  ['fallback followed by an unknown item', [threadStart, tierNotice, fallbackNotice, { type: 'item.completed', item: { id: 'item-2', type: 'error', message: 'unknown' } }, turnStart]],
+  ['both notices without a turn', [threadStart, tierNotice, fallbackNotice]],
+  ['both notices without MCP evidence', [threadStart, tierNotice, fallbackNotice, turnStart], true],
+  ['both notices outside Claims', [threadStart, tierNotice, fallbackNotice, turnStart], false, false],
 ]) test('the Claims tier notice never validates ' + name, async t => {
   const calls = boundedCli(t, { preamble, noTool });
   await assert.rejects(collectGmailPluginBatch(request, { allowHeldMessages: invoice }), e => e.code === 'invalid_evidence' && e.stage === 'tool_evidence');

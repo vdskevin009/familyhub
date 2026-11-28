@@ -83,8 +83,8 @@ test('bounded source failure exposes sanitized status and does not invoke legacy
 
 test('allowlisted plugin diagnosis survives restart without messages, identities or automatic retry',async t=>{
  let runs=0;const failure=new GmailPluginCollectionError('invalid_evidence');failure.message='PRIVATE account@example.test https://private.test token';failure.stage='tool_evidence';
- failure.diagnostics={eventCount:7,mcpItems:0,agentItems:1,invalid:false,started:false,completed:false,turnComplete:true,reportedAuthorization:true,authError:true,failedTurn:true,unrecognizedItem:false,tierNoticeSeen:true,exitCode:1,account:'PRIVATE',url:'https://private.test',arguments:{token:'PRIVATE'},extraFlag:true};
- const expected={code:'invalid_evidence',stage:'tool_evidence',diagnostics:{invalid:false,started:false,completed:false,turnComplete:true,reportedAuthorization:true,authError:true,failedTurn:true,unrecognizedItem:false,tierNoticeSeen:true,eventCount:7,mcpItems:0,agentItems:1,exitCode:1}};
+ failure.diagnostics={eventCount:7,mcpItems:0,agentItems:1,invalid:false,started:false,completed:false,turnComplete:true,reportedAuthorization:true,authError:true,failedTurn:true,unrecognizedItem:false,tierNoticeSeen:true,fallbackNoticeSeen:true,exitCode:1,account:'PRIVATE',url:'https://private.test',arguments:{token:'PRIVATE'},extraFlag:true};
+ const expected={code:'invalid_evidence',stage:'tool_evidence',diagnostics:{invalid:false,started:false,completed:false,turnComplete:true,reportedAuthorization:true,authError:true,failedTurn:true,unrecognizedItem:false,tierNoticeSeen:true,fallbackNoticeSeen:true,eventCount:7,mcpItems:0,agentItems:1,exitCode:1}};
  const f=await setup(t,{runner:async()=>{runs++;throw failure;}});
  await assert.rejects(f.runtime.collectInvoices(),/checkpoints were not advanced/);assert.equal(runs,1);assert.equal(f.calls.length,0);
  assert.deepEqual(f.runtime.status().failure,expected);

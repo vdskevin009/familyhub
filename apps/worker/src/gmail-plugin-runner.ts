@@ -160,12 +160,13 @@ export function validateGmailAttachmentEvidence(call: GmailPluginCall): void {
 
 /** Streaming JSONL validator. Model prose never becomes evidence. */
 export function gmailPluginEventReader(expected: GmailPluginCall, priorityModel?: string) {
-  // CLI 0.159.2 emits this nonfatal notice as an ErrorItem. Only its complete, config-bound text is eligible.
+  // CLI 0.159.2 emits these nonfatal notices as ErrorItems. Bind both to the same verified priority model.
   const tierNotice = priorityModel && "Configured service tier `priority` is not advertised as supported for model `" + priorityModel + "` and will be omitted from requests.";
+  const fallbackNotice = priorityModel && "Model metadata for `" + priorityModel + "` not found. Defaulting to fallback metadata; this can degrade performance and cause issues.";
   const call = structuredClone(expected); let pending = "", total = 0, started: string | undefined;
   let completed = false, turnComplete = false, result: unknown, invalid = false;
   let eventCount = 0, mcpItems = 0, agentItems = 0;
-  let cleanThreadStart = false, tierNoticeSeen = false;
+  let cleanThreadStart = false, tierNoticeId: string | undefined, fallbackNoticeSeen = false;
   let runnerErrorEvent = false, failedTurn = false, unrecognizedItem = false, disabledHostWarning = false;
   let reportedMissingTool = false, reportedUnknownAccount = false, reportedMissingParent = false, reportedAuthorization = false, reportedOtherFailure = false, claimedDone = false;
   const accept = (event: unknown) => {
@@ -175,13 +176,17 @@ export function gmailPluginEventReader(expected: GmailPluginCall, priorityModel?
     if (event.type === "turn.failed") { failedTurn = true; fail(); }
     if (eventCount === 1) cleanThreadStart = event.type === "thread.started" && typeof event.thread_id === "string"
       && event.thread_id.length > 0 && event.thread_id.length <= 128 && Object.keys(event).length === 2;
-    if (eventCount === 2 && cleanThreadStart && tierNotice && event.type === "item.completed" && Object.keys(event).length === 2
-      && object(event.item) && event.item.type === "error" && typeof event.item.id === "string" && event.item.id.length > 0
-      && event.item.id.length <= 128 && event.item.message === tierNotice && Object.keys(event.item).length === 3) {
-      tierNoticeSeen = true; return;
+    const item = event.item;
+    if (cleanThreadStart && tierNotice && (eventCount === 2 || eventCount === 3) && event.type === "item.completed"
+      && Object.keys(event).length === 2 && object(item) && item.type === "error" && typeof item.id === "string"
+      && item.id.length > 0 && item.id.length <= 128 && Object.keys(item).length === 3) {
+      if (eventCount === 2 && item.message === tierNotice) { tierNoticeId = item.id; return; }
+      if (eventCount === 3 && tierNoticeId && item.id !== tierNoticeId && item.message === fallbackNotice) {
+        fallbackNoticeSeen = true; return;
+      }
     }
-    // The sole admitted startup notification must precede an ordinary turn. It is never source evidence.
-    if (tierNoticeSeen && eventCount === 3) {
+    // The observed one- or two-notice prefix must end with a normal turn. Neither notice is source evidence.
+    if (tierNoticeId && eventCount === (fallbackNoticeSeen ? 4 : 3)) {
       if (event.type === "turn.started" && Object.keys(event).length === 1) return;
       if (object(event.item)) {
         unrecognizedItem = true;
@@ -190,7 +195,6 @@ export function gmailPluginEventReader(expected: GmailPluginCall, priorityModel?
       fail();
     }
     if (event.type === "turn.completed") { check(!turnComplete && completed); turnComplete = true; return; }
-    const item = event.item;
     if (item === undefined) return;
     check(object(item));
     if (item.type === "agent_message") {
@@ -236,7 +240,7 @@ export function gmailPluginEventReader(expected: GmailPluginCall, priorityModel?
     },
     diagnostics: () => ({ eventCount, mcpItems, agentItems, invalid, started: started !== undefined, completed, turnComplete,
       reportedMissingTool, reportedUnknownAccount, reportedMissingParent, reportedAuthorization, reportedOtherFailure, claimedDone }),
-    rejectedEventFlags: () => ({ runnerErrorEvent, failedTurn, unrecognizedItem, disabledHostWarning, tierNoticeSeen }),
+    rejectedEventFlags: () => ({ runnerErrorEvent, failedTurn, unrecognizedItem, disabledHostWarning, tierNoticeSeen: !!tierNoticeId, fallbackNoticeSeen }),
   };
 }
 
