@@ -56,6 +56,7 @@ try {
     });
     const rrsp = page.locator(".contribution-card").first(), resp = page.locator(".contribution-card").last();
     const rings = page.locator("[data-contribution-ring]");
+    const neutralRings = page.locator("[data-contribution-unconfirmed]");
     const refresh = page.getByRole("button", { name: "Refresh contributions", exact: true });
     const show = page.getByRole("button", { name: "View RRSP contributions", exact: true });
     const progress = rrsp.getByRole("progressbar");
@@ -79,6 +80,7 @@ try {
       await page.evaluate(() => { document.documentElement.dataset.theme = "dark"; });
     }
     assert.equal(await rings.count(), 2);
+    assert.equal(await neutralRings.count(), 0);
     assert.equal(await progress.getAttribute("value"), "37.5");
     assert.equal(await progress.getAttribute("aria-label"), "RRSP: progress toward your personal goal");
     assert.match(await progress.getAttribute("aria-valuetext"), /^37\.5% of goal\./);
@@ -159,19 +161,26 @@ try {
           assert.equal(await progress.getAttribute("value"), "100", "The ring saturates, while the text still reports 125%");
           assert.match(await words(rrsp), /Goal exceeded/);
         }
-        if (state === "verified-zero") assert.match(await words(rrsp), /\$0\.00/);
+        if (state === "verified-zero") {
+          assert.match(await words(rrsp), /\$0\.00/);
+          assert.equal(await progress.getAttribute("value"), "0");
+          assert.equal(await neutralRings.count(), 0, "Verified zero has the regular solid ring and numeric semantics");
+          assert.equal(await rrsp.locator(".contribution-ring-track").evaluate(el => getComputedStyle(el).strokeDasharray), "none");
+        }
       }
     }
-    for (const [state, count, title] of [
-      ["partial", 0, "Partial data"], ["legacy-authority", 0, "Partial data"],
-      ["unconfirmed", 0, "Allocation needs confirmation"], ["missing-evidence", 0, "Partial data"], ["future-evidence", 0, "Partial data"],
-      ["source-unavailable", 1, "Financial source unavailable"], ["no-goal", 0, "Private goal not configured"],
-      ["malformed", 0, "Data unavailable"], ["offline", 0, "Data unavailable"],
+    for (const [state, count, title, neutralCount] of [
+      ["partial", 0, "Partial data", 2], ["legacy-authority", 0, "Partial data", 1],
+      ["unconfirmed", 0, "Allocation needs confirmation", 2], ["missing-evidence", 0, "Partial data", 2], ["future-evidence", 0, "Partial data", 2],
+      ["source-unavailable", 1, "Financial source unavailable", 0], ["no-goal", 0, "Private goal not configured", 0],
+      ["malformed", 0, "Data unavailable", 0], ["offline", 0, "Data unavailable", 0],
     ]) {
       await reload(state);
       await rrsp.getByText(title, { exact: state !== "unconfirmed" && title !== "Partial data" }).first().waitFor();
       assert.equal(await rings.count(), count, state);
+      assert.equal(await neutralRings.count(), neutralCount, state + ": only a configured plan with usable but unconfirmed evidence gets a dashed state");
       assert.equal(await progress.count(), 0, state + " must not masquerade as zero");
+      assert.equal(await rrsp.locator("[data-ring-fill]").count(), 0, state + ": no coloured progress implied");
       assert.doesNotMatch(await words(rrsp), /Goal reached|Goal exceeded|Amount remaining/, state);
       if (state === "legacy-authority" && width === 390 && motion === "no-preference") {
         await page.screenshot({ path: resolve(output, "current-worker-partial-390.png") });

@@ -84,6 +84,18 @@ function GoalRing({ plan, percent, previous }: { plan: ContributionCard; percent
   </div>;
 }
 
+/** Decorative duplicate of the adjacent text state; it represents no measured value. */
+function UnconfirmedGoalRing() {
+  return <div className="contribution-ring contribution-ring-unconfirmed" data-contribution-unconfirmed aria-hidden="true">
+    <div className="contribution-ring-art">
+      <svg viewBox="0 0 120 120" focusable="false">
+        <circle className="contribution-ring-dashed" cx="60" cy="60" r="52" pathLength="100" />
+      </svg>
+      <div className="contribution-ring-centre"><span>Not<br />confirmed</span></div>
+    </div>
+  </div>;
+}
+
 function Payments({ heading, rows, currency }: { heading: string; rows: ContributionPayment[]; currency: string }) {
   return <section className="contribution-payments"><h3>{heading}</h3>{rows.length ? <ul>{rows.map(row => <li key={row.id}><time dateTime={row.date}>{date(row.date)}</time><strong>{money(row.amountCents, currency)}</strong></li>)}</ul> : <p>No contributions identified.</p>}</section>;
 }
@@ -153,13 +165,13 @@ export default function ContributionsView({ worker, embedded = false }: { worker
           <div><h2 id={`contribution-${kind}`}>{title(kind)}</h2>{kind === "resp" && plan.beneficiary && <p>{plan.beneficiary}</p>}</div>
           {reached && <span className="contribution-achieved"><Check size={16} aria-hidden="true" />{m.percent > 100 ? "Goal exceeded" : "Goal reached"}</span>}
         </header>
-        <div className={`contribution-figure${reliable ? " has-ring" : ""}`}>
+        <div className="contribution-figure has-ring">
           <dl className="contribution-summary">
             <div className="contribution-identified"><dt>Identified contributions</dt><dd>{plan.identifiedCents > 0 || reliable ? money(plan.identifiedCents, plan.currency) : "Unconfirmed"}</dd></div>
             <div><dt>Personal goal</dt><dd>{money(plan.goalCents, plan.currency)}</dd></div>
             {reliable && <div><dt>Amount remaining</dt><dd>{money(gap, plan.currency)}</dd></div>}
           </dl>
-          {reliable && <GoalRing plan={plan} percent={m.percent} previous={previous[kind]} />}
+          {reliable ? <GoalRing plan={plan} percent={m.percent} previous={previous[kind]} /> : <UnconfirmedGoalRing />}
         </div>
         {!reliable && <p className="contribution-state"><CircleAlert size={16} aria-hidden="true" /><span>{[coverage ? "Partial data" : null, attribution].filter(Boolean).join(" · ")}. Progress unconfirmed.</span></p>}
         <button type="button" className="contribution-open" aria-label={`View ${title(kind)} contributions`} onClick={() => setSelected(plan)}>View contributions<ChevronRight size={18} aria-hidden="true" /></button>

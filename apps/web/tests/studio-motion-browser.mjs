@@ -57,7 +57,7 @@ let browser;
 try {
   browser = await chromium.launch({ headless: true, channel: process.env.FAMILYHUB_TEST_BROWSER_CHANNEL || undefined });
   for (const [width, scheme, motion] of [
-    [320, "light", "no-preference"], [390, "light", "no-preference"], [390, "dark", "no-preference"],
+    [320, "light", "no-preference"], [320, "dark", "no-preference"], [390, "light", "no-preference"], [390, "dark", "no-preference"],
     [390, "dark", "reduce"], [1440, "light", "no-preference"], [1440, "dark", "reduce"],
   ]) {
     const key = [width, scheme, motion].join("-");
@@ -175,8 +175,39 @@ try {
     await rrsp.getByText("Partial data. Progress unconfirmed.", { exact: true }).waitFor();
     assert.equal(await progress.count(), 0);
     assert.doesNotMatch(await rrsp.innerText(), /Amount remaining|Goal reached|Goal exceeded/);
+    let neutralContrast = null;
+    if (!baseline) {
+      const neutral = rrsp.locator("[data-contribution-unconfirmed]");
+      await neutral.waitFor();
+      assert.match((await neutral.innerText()).replace(/\s+/g, " "), /^Not confirmed$/);
+      assert.match(await rrsp.innerText(), /\$1,500\.00/);
+      assert.doesNotMatch(await rrsp.innerText(), /\b0\s*%|\$0\.00/);
+      assert.equal(await rrsp.locator("[data-ring-fill], progress, meter, [aria-valuenow], [aria-valuetext]").count(), 0);
+      const evidence = await neutral.evaluate(el => {
+        const stroke = getComputedStyle(el.querySelector(".contribution-ring-dashed"));
+        const text = el.querySelector(".contribution-ring-centre");
+        return { stroke: stroke.stroke, dash: stroke.strokeDasharray, fill: stroke.fill, text: getComputedStyle(text).color,
+          surface: getComputedStyle(el.closest(".contribution-card")).backgroundColor,
+          animations: el.getAnimations({ subtree: true }).length, textWidth: text.firstElementChild.getBoundingClientRect().width, circleWidth: el.querySelector("svg").getBoundingClientRect().width };
+      });
+      assert.notEqual(evidence.dash, "none");
+      assert.equal(evidence.fill, "none");
+      assert.equal(evidence.animations, 0);
+      assert.ok(evidence.textWidth + 14 < evidence.circleWidth, "Unconfirmed label fits inside the dashed ring");
+      neutralContrast = { dash: contrastRatio(evidence.stroke, evidence.surface), label: contrastRatio(evidence.text, evidence.surface) };
+      assert.ok(neutralContrast.dash >= 3 && neutralContrast.label >= 4.5);
+    }
     await fit(page);
     if (width === 390) { await refresh.blur(); await capture(page, "contributions-partial-" + key); }
+    if (!baseline && width === 390 && motion === "no-preference") {
+      mode = "verified-zero";
+      await refresh.click();
+      await page.waitForFunction(() => document.querySelector(".contribution-card progress")?.value === 0);
+      assert.match(await progress.getAttribute("aria-valuetext"), /^0% of goal\./);
+      assert.equal(await rrsp.locator("[data-contribution-unconfirmed]").count(), 0);
+      assert.equal(await rrsp.locator(".contribution-ring-track").evaluate(el => getComputedStyle(el).strokeDasharray), "none");
+      await refresh.blur(); await capture(page, "contributions-zero-" + key);
+    }
 
     await nav.getByRole("button", { name: "Today", exact: true }).focus();
     await page.keyboard.press("Enter");
@@ -185,7 +216,7 @@ try {
     await page.goBack();
     await page.getByRole("heading", { name: "Finances", exact: true }).waitFor();
     if (!baseline && width < 760) assert.equal(await nav.getAttribute("data-animate"), null, "Back does not replay the last pointer animation");
-    measurements.push({ width, scheme, motion, firstActionBottom: Math.round(prioritize.button), summaryTop: Math.round(prioritize.summary), heroTextContrast: contrastRatio(contrast[0], contrast[1]), actionTextContrast: contrastRatio(contrast[2], contrast[3]) });
+    measurements.push({ width, scheme, motion, firstActionBottom: Math.round(prioritize.button), summaryTop: Math.round(prioritize.summary), heroTextContrast: contrastRatio(contrast[0], contrast[1]), actionTextContrast: contrastRatio(contrast[2], contrast[3]), neutralContrast });
     await context.close();
     console.log("PASS", key, baseline ? "baseline capture" : "action hierarchy, exact navigation, ring states, overlay/focus and motion");
   }

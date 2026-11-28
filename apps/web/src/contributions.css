@@ -32,6 +32,7 @@
 .contribution-ring-outline { stroke: var(--control-line, var(--line)); stroke-width: 12px; }
 .contribution-ring-track { stroke: var(--soft, var(--line)); }
 .contribution-ring-fill { stroke: var(--ring-ink); stroke-dasharray: 100; stroke-dashoffset: var(--ring-end); }
+.contribution-ring .contribution-ring-dashed { stroke: var(--muted); stroke-width: 4px; stroke-dasharray: 2.6 3.65; stroke-linecap: round; }
 .contribution-ring-centre {
   display: grid;
   gap: 2px;
@@ -45,6 +46,7 @@
 }
 .contribution-ring-number { color: var(--ink); font-size: clamp(.91rem, 4.15vw, 1.26rem); font-weight: 780; font-variant-numeric: tabular-nums; letter-spacing: -.04em; max-inline-size: 73%; }
 .contribution-ring-number.compact { font-size: .63rem; line-height: 1.05; overflow-wrap: anywhere; }
+.contribution-ring-unconfirmed .contribution-ring-centre { font-size: clamp(.68rem, 3vw, .79rem); font-weight: 700; line-height: 1.2; }
 .contribution-state, .contribution-achieved { display: flex; gap: 5px; align-items: flex-start; font-size: .78rem; }
 .contribution-state { margin: 12px 0 0; line-height: 1.35; color: var(--muted); }
 .contribution-state svg, .contribution-achieved svg { flex: none; }
@@ -82,6 +84,7 @@
   .contribution-ring circle { forced-color-adjust: none; }
   .contribution-ring-outline { stroke: GrayText; }
   .contribution-ring-track { stroke: Canvas; }
+  .contribution-ring .contribution-ring-dashed { stroke: CanvasText; }
   .contribution-ring-fill { stroke: Highlight; }
   .contributions-view :is(button, summary):focus-visible { outline-color: Highlight; }
 }
