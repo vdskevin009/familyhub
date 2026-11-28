@@ -953,6 +953,9 @@ Testing: the owner approved the two-card contribution screen and requested immed
 
 Real private import has been previewed and applied with source-identity reconciliation, preserved historical facts/manual decisions and an exact replay no-op. Deployment, final live route/UI checks and the actual daily automation remain separate gates. No fund movement or external financial action.
 
+**Goal ring refinement — Testing in branch.** Preserve the read-only contribution projection. Show an accessible ring only when coverage, source date, explicit goal and scheme attribution are verified. Show identified amount and actual remaining separately from forecasts. Missing, incomplete or unavailable is not zero. A verified zero is valid. Motion only represents confirmed changes for the same goal and respects reduced motion. The current worker reports partial coverage; do not promise a live ring until separately verified. [Committee checks](docs/reviews/contribution-goals/committee.md).
+
+
 ## FH-FIN-022 - Reviewed finance screens and genuine plugin evidence
 
 In development, not deployed. Owner approved the four-screen presentation review on 2026-11-14. Preserve three tabs (Dépenses, Investissements, Tendances), with Operations as a directly accessible detail screen. Keep all filters, classifications, suggestions, undo, sources, investment details and twelve-month/daily trend detail. Present gross spending less evidenced refunds, distinguish observations from available cash, source dates from collection timestamps, and missing values from zero. Provide date-first operations with optional amount ordering. Replace goal-like rings with signed historical bars; only the ring presentation clauses of FH-FIN-018/019 are superseded, not their common scale, signed amounts or annual/detail parity requirements.

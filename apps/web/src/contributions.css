@@ -1,37 +1,63 @@
-.contributions-view { max-width: 960px; margin-inline: auto; }
-/* The shared heading reserves 62px for the bell. Let its action wrap when
-   fallback font metrics leave insufficient room instead of widening the grid. */
-.contributions-view > .page-heading { flex-wrap: wrap; }
-.contribution-cards { display: grid; gap: 20px; }
-.contribution-card { background: var(--surface, #fff); border: 1px solid var(--border, #dbe1e9); border-radius: 18px; padding: 24px; color: var(--text, #172c46); }
-.contribution-card header { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; }
-.contribution-card h2 { margin: 0; font-size: 1.4rem; }
-.contribution-card header p { margin: 5px 0 0; font-size: .9rem; color: var(--muted, #53627a); }
-.contribution-goal { margin-top: 24px; display: flex; justify-content: space-between; gap: 10px; align-items: baseline; }
-.contribution-goal strong { font-size: 1.6rem; letter-spacing: -.025em; }
-.contribution-progress-label { display: flex; justify-content: space-between; gap: 10px; margin-top: 22px; font-size: .9rem; }
-.contribution-card progress { appearance: none; width: 100%; height: 10px; display: block; margin: 10px 0 22px; border: 0; border-radius: 20px; overflow: hidden; background: #e8edf4; color: #2963bb; }
-.contribution-card progress::-webkit-progress-bar { background: #e8edf4; }
-.contribution-card progress::-webkit-progress-value { background: #2963bb; border-radius: 20px; }
-.contribution-card progress::-moz-progress-bar { background: #2963bb; border-radius: 20px; }
-.contribution-card.effort progress::-webkit-progress-value { background: #a95311; }
-.contribution-card.effort progress::-moz-progress-bar { background: #a95311; }
-.contribution-card.reached progress::-webkit-progress-value { background: #227647; }
-.contribution-card.reached progress::-moz-progress-bar { background: #227647; }
-.contribution-bottom { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-.contribution-bottom > div { display: grid; gap: 5px; }
-.contribution-bottom > div:last-child { text-align: right; }
-.contribution-bottom span, .contribution-goal > span { color: var(--muted, #53627a); font-size: .9rem; }
-.contribution-bottom strong { font-size: 1.2rem; }
-.contribution-state { display: grid; gap: 5px; margin-top: 14px; color: var(--muted, #53627a); font-size: .8rem; }
-.contribution-state span, .contribution-achieved { display: flex; align-items: center; gap: 5px; }
-.contribution-state svg { flex-shrink: 0; }
-.contribution-achieved { color: #227647; font-size: .8rem; }
-.contribution-card.effort .contribution-bottom > div:first-child strong { color: #a95311; }
-.contribution-open { display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%; margin-top: 18px; padding: 15px 0 0; min-height: 44px; border: 0; border-top: 1px solid var(--border, #dbe1e9); background: transparent; color: var(--primary, #245cb5); font: inherit; cursor: pointer; text-align: left; }
-.contribution-open:focus-visible { outline: 2px solid #245cb5; outline-offset: 4px; }
-.contribution-card.unavailable p { margin-top: 22px; }
-.contribution-card.unavailable > span { color: var(--muted, #53627a); font-size: .85rem; }
+.contributions-view { width: 100%; max-width: 960px; margin-inline: auto; }
+.contributions-view > :is(.page-heading, .compact-heading) { flex-wrap: wrap; }
+.contributions-view > .compact-heading h2 { flex-shrink: 0; }
+.contributions-view button[aria-disabled="true"] { opacity: .65; cursor: default; }
+.contribution-cards { display: grid; gap: 16px; }
+.contribution-card {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  background: var(--surface);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: clamp(16px, 4vw, 22px);
+}
+.contribution-card header { display: flex; justify-content: space-between; align-items: start; flex-wrap: wrap; gap: 6px 12px; }
+.contribution-card h2 { margin: 0; font-size: 1.35rem; letter-spacing: -.025em; }
+.contribution-card header p { margin: 3px 0 0; font-size: .82rem; }
+.contribution-figure { display: grid; align-items: center; gap: 12px; margin-top: 14px; }
+.contribution-figure.has-ring { grid-template-columns: minmax(0, 1fr) clamp(90px, 30vw, 124px); }
+.contribution-summary { margin: 0; display: grid; gap: 7px; font-variant-numeric: tabular-nums; }
+.contribution-summary > div { display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 1px 8px; }
+.contribution-summary dt { font-size: .78rem; color: var(--muted); }
+.contribution-summary dd { margin: 0; font-size: .84rem; font-weight: 700; }
+.contribution-summary > .contribution-identified { display: grid; gap: 2px; padding-bottom: 5px; }
+.contribution-identified dd { font-size: clamp(1.12rem, 5.1vw, 1.55rem); line-height: 1.18; letter-spacing: -.035em; }
+.contribution-ring { position: relative; --ring-ink: var(--finance-chart, var(--green)); }
+.contribution-ring-art { width: 100%; aspect-ratio: 1; display: grid; place-items: center; }
+.contribution-ring svg, .contribution-ring-centre { grid-area: 1 / 1; width: 100%; }
+.contribution-ring svg { display: block; transform: rotate(-90deg); overflow: visible; }
+.contribution-ring circle { fill: none; stroke-width: 10; }
+.contribution-ring-outline { stroke: var(--control-line, var(--line)); stroke-width: 12px; }
+.contribution-ring-track { stroke: var(--soft, var(--line)); }
+.contribution-ring-fill { stroke: var(--ring-ink); stroke-dasharray: 100; stroke-dashoffset: var(--ring-end); }
+.contribution-ring-centre {
+  display: grid;
+  gap: 2px;
+  justify-items: center;
+  align-content: center;
+  align-self: center;
+  font-size: .63rem;
+  line-height: 1.13;
+  color: var(--muted);
+  text-align: center;
+}
+.contribution-ring-number { color: var(--ink); font-size: clamp(.91rem, 4.15vw, 1.26rem); font-weight: 780; font-variant-numeric: tabular-nums; letter-spacing: -.04em; max-inline-size: 73%; }
+.contribution-ring-number.compact { font-size: .63rem; line-height: 1.05; overflow-wrap: anywhere; }
+.contribution-state, .contribution-achieved { display: flex; gap: 5px; align-items: flex-start; font-size: .78rem; }
+.contribution-state { margin: 12px 0 0; line-height: 1.35; color: var(--muted); }
+.contribution-state svg, .contribution-achieved svg { flex: none; }
+.contribution-achieved { align-items: center; font-weight: 700; color: var(--success, var(--green)); }
+.contribution-open {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  width: 100%; margin-top: 14px; padding: 8px 0 0; min-height: 44px; border: 0;
+  border-top: 1px solid var(--line); background: transparent; color: var(--finance-chart, var(--green));
+  font: inherit; cursor: pointer; text-align: left;
+}
+.contribution-open svg { flex: none; }
+.contributions-view :is(button, summary):focus-visible { outline: 3px solid var(--finance-chart, var(--green)); outline-offset: 3px; }
+.contribution-card.unavailable p { margin: 12px 0 2px; }
+.contribution-card.unavailable > span { color: var(--muted); font-size: .84rem; }
 .contribution-details { display: grid; gap: 22px; overflow-wrap: anywhere; }
 .contribution-details p { margin: 6px 0; }
 .contribution-details h3 { font-size: 1rem; margin: 0 0 10px; }
@@ -39,33 +65,22 @@
 .contribution-detail-summary > div, .contribution-payments li { display: flex; justify-content: space-between; gap: 16px; }
 .contribution-detail-summary dd { margin: 0; text-align: right; }
 .contribution-payments ul { list-style: none; padding: 0; margin: 0; }
-.contribution-payments li { padding-block: 10px; border-bottom: 1px solid var(--border, #dbe1e9); font-variant-numeric: tabular-nums; }
-.contribution-forecast { background: var(--surface-alt, #f2f5f9); padding: 16px; border-radius: 12px; }
+.contribution-payments li { padding-block: 10px; border-bottom: 1px solid var(--line); font-variant-numeric: tabular-nums; }
+.contribution-forecast { background: var(--soft); padding: 16px; border-radius: 12px; }
 .contribution-sheet .sheet-content { overscroll-behavior: contain; }
-@media (min-width: 760px) { .contribution-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; } }
-@media (max-width: 380px) { .contribution-card { padding: 18px; } .contribution-goal { align-items: flex-start; flex-direction: column; gap: 4px; } .contribution-bottom strong { font-size: 1rem; } }
-@media (forced-colors: active) { .contribution-card progress { appearance: auto; } .contribution-open:focus-visible { outline-color: Highlight; } }
-
-.contribution-inferred-summary { font-size: .9rem; line-height: 1.5; margin: -8px 0 20px; overflow-wrap: anywhere; }
-.contribution-inferred-summary span { color: var(--muted, #53627a); font-size: .8rem; }
 .contribution-inferred ul { list-style: none; padding: 0; margin: 0; }
-.contribution-inferred li { padding-block: 12px; border-bottom: 1px solid var(--border, #dbe1e9); }
+.contribution-inferred li { padding-block: 12px; border-bottom: 1px solid var(--line); }
 .contribution-inferred li > div { display: flex; justify-content: space-between; gap: 16px; font-variant-numeric: tabular-nums; }
 
-.contributions-view > .compact-heading { flex-wrap: wrap; }
-.contributions-view > .compact-heading h2 { flex-shrink: 0; }
-
-:root[data-theme="dark"] .contribution-card, :root[data-theme="dark"] .contribution-details {
-  --border: var(--line); --text: var(--ink); --primary: var(--accent); --surface-alt: var(--soft);
+@media (min-width: 760px) { .contribution-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; } }
+@media (prefers-reduced-motion: no-preference) {
+  .contribution-ring-fill.is-updating { animation: contribution-ring-change 320ms ease-out; }
+  @keyframes contribution-ring-change { from { stroke-dashoffset: var(--ring-start); } to { stroke-dashoffset: var(--ring-end); } }
 }
-:root[data-theme="dark"] .contribution-card progress { background: var(--soft); color: var(--chart-accent); }
-:root[data-theme="dark"] .contribution-card progress::-webkit-progress-bar { background: var(--soft); }
-:root[data-theme="dark"] .contribution-card progress::-webkit-progress-value { background: var(--chart-accent); }
-:root[data-theme="dark"] .contribution-card progress::-moz-progress-bar { background: var(--chart-accent); }
-:root[data-theme="dark"] .contribution-card.effort progress::-webkit-progress-value { background: var(--warning); }
-:root[data-theme="dark"] .contribution-card.effort progress::-moz-progress-bar { background: var(--warning); }
-:root[data-theme="dark"] .contribution-card.reached progress::-webkit-progress-value { background: var(--chart-positive); }
-:root[data-theme="dark"] .contribution-card.reached progress::-moz-progress-bar { background: var(--chart-positive); }
-:root[data-theme="dark"] .contribution-achieved { color: var(--success); }
-:root[data-theme="dark"] .contribution-card.effort .contribution-bottom > div:first-child strong { color: var(--warning); }
-:root[data-theme="dark"] .contribution-open:focus-visible { outline-color: var(--accent); }
+@media (forced-colors: active) {
+  .contribution-ring circle { forced-color-adjust: none; }
+  .contribution-ring-outline { stroke: GrayText; }
+  .contribution-ring-track { stroke: Canvas; }
+  .contribution-ring-fill { stroke: Highlight; }
+  .contributions-view :is(button, summary):focus-visible { outline-color: Highlight; }
+}

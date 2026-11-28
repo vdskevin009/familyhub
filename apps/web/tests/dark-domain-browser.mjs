@@ -30,14 +30,14 @@ const entry = origin + "/familyhub/";
 const date = "2030-01-04T12:00:00Z";
 const plan = {
   id: "test-rrsp", kind: "rrsp", currency: "CAD", deadline: "2030-12-31",
-  personalGoalCents: 520000, identifiedCents: 260000, attribution: "confirmed",
+  personalGoalCents: 520000, identifiedCents: 260000, attribution: "confirmed", status: "complete",
   beneficiaryConfirmed: false, sourceFreshness: "dated", sourceAsOf: date, retrievedAt: date,
   payments: [{ id: "rrsp-demo-1", date: "2030-01-04", amountCents: 260000, kind: "one-off" }],
   weeklyProjection: null, unassigned: [], warnings: [],
 };
 const fund = {
   schema: 1, evaluatedOn: "2030-01-04", daysPerMonth: 30,
-  plans: [plan, { ...plan, id: "test-resp", kind: "resp", personalGoalCents: 150000, identifiedCents: 0, payments: [], warnings: ["source-unavailable"] }],
+  plans: [plan, { ...plan, id: "test-resp", kind: "resp", personalGoalCents: 150000, identifiedCents: 0, payments: [], status: "partial", sourceFreshness: "unknown", sourceAsOf: null, warnings: ["source-unavailable"] }],
 };
 const fact = value => ({ value, sourceUrl: value === null ? null : "https://example.com/fictional", checkedAt: value === null ? null : date, note: "Synthetic source" });
 const property = {
@@ -48,6 +48,13 @@ const property = {
   followed: false, changes: [],
 };
 const results = [], errors = [], writes = [], outbound = [];
+const readRingColors = card => card.evaluate(el => ({
+  ink: getComputedStyle(el.querySelector(".contribution-ring-number")).color,
+  card: getComputedStyle(el).backgroundColor,
+  track: getComputedStyle(el.querySelector(".contribution-ring-track")).stroke,
+  fill: getComputedStyle(el.querySelector("[data-ring-fill]")).stroke,
+  canvas: getComputedStyle(document.body).backgroundColor,
+}));
 let browser;
 try {
   browser = await chromium.launch({ headless: true, channel: process.env.FAMILYHUB_TEST_BROWSER_CHANNEL || undefined });
@@ -68,7 +75,7 @@ try {
         return route.fulfill({ headers, json: { items: [], records: [], jobs: [], state: "idle", status: "ok", capabilities: [] } });
       });
       await context.addInitScript(({ worker, scheme }) => {
-        localStorage.setItem("familyhub.appearance.v1", scheme);
+        if (localStorage.getItem("familyhub.appearance.v1") === null) localStorage.setItem("familyhub.appearance.v1", scheme);
         localStorage.setItem("familyhub.worker.v1", JSON.stringify({ Endpoint: worker, ApiKey: "fixture-only" }));
       }, { worker, scheme });
       const page = await context.newPage();
@@ -92,10 +99,7 @@ try {
       assert.equal(await chart.count(), 1);
       assert.equal(await chart.getAttribute("value"), "50");
       await page.getByText("Financial source unavailable", { exact: true }).waitFor();
-      const colors = await rrsp.evaluate(card => {
-        const p = card.querySelector("progress"), styles = getComputedStyle(p), cardStyle = getComputedStyle(card);
-        return { ink: cardStyle.color, card: cardStyle.backgroundColor, track: styles.backgroundColor, fill: styles.color, canvas: getComputedStyle(document.body).backgroundColor };
-      });
+      const colors = await readRingColors(rrsp);
       assert.equal(colors.canvas, expectedCanvas);
       assert.ok(ratio(colors.ink, colors.card) >= 4.5, scheme + "/" + width + ": contributions text");
       assert.ok(ratio(colors.fill, colors.track) >= 3, scheme + "/" + width + ": graph fill against track");
@@ -111,6 +115,39 @@ try {
       await page.keyboard.press("Escape");
       await dialog.waitFor({ state: "hidden" });
       assert.ok(await show.evaluate(el => el === document.activeElement));
+
+      if (width === 390 && scheme === "light") {
+        const nav = page.locator(".bottom-nav:visible, .app-rail nav:visible");
+        const theme = page.getByRole("combobox", { name: "Theme", exact: true });
+        const openAppearance = async () => {
+          await nav.getByRole("button", { name: "More", exact: true }).click();
+          await page.getByRole("button", { name: /^Settings and tools/ }).click();
+          await theme.waitFor();
+        };
+        await openAppearance();
+        await theme.selectOption("dark");
+        await page.goto(entry + "?view=contributions");
+        await show.waitFor();
+        assert.equal(await chart.getAttribute("value"), "50", "Persisting Dark preserves the verified ratio on reopening Contributions");
+        await page.getByText("Financial source unavailable", { exact: true }).waitFor();
+        const dark = await readRingColors(rrsp);
+        assert.equal(dark.canvas, "rgb(16, 20, 28)");
+        assert.notEqual(dark.fill, colors.fill, "The rendered SVG, not only its page background, follows the Appearance selection");
+        assert.ok(ratio(dark.fill, dark.track) >= 3);
+
+        await openAppearance();
+        assert.equal(await theme.inputValue(), "dark");
+        await theme.selectOption("system");
+        await page.goto(entry + "?view=contributions");
+        await show.waitFor();
+        assert.deepEqual(await readRingColors(rrsp), colors, "System on a light OS preserves the Light palette");
+        await page.emulateMedia({ colorScheme: "dark" });
+        await page.waitForFunction(() => document.documentElement.dataset.theme === "dark");
+        assert.deepEqual(await readRingColors(rrsp), dark);
+        await page.emulateMedia({ colorScheme: "light" });
+        await page.waitForFunction(() => document.documentElement.dataset.theme === "light");
+        assert.deepEqual(await readRingColors(rrsp), colors);
+      }
 
       await page.goto(entry + "?view=property");
       const card = page.locator(".property-card").first();
