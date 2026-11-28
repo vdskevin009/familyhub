@@ -18,7 +18,7 @@ export type PluginOriginalRunner = (request: PluginOriginalRequest, options: { s
 type Domain = "invoices" | "groceries" | "attachment" | "bluecross";
 const failureCodes: readonly GmailPluginFailureCode[] = ["invalid_evidence", "profile_mismatch", "unsupported_attachment", "unsupported_original_host", "budget_exceeded", "timeout_or_cancelled", "metadata_unavailable", "configuration_changed", "runner_unavailable", "download_failed"];
 const failureStages = ["isolation_before", "tool_evidence", "isolation_after"] as const;
-const diagnosticFlags = ["invalid", "started", "completed", "turnComplete", "reportedMissingTool", "reportedUnknownAccount", "reportedMissingParent", "reportedAuthorization", "reportedOtherFailure", "claimedDone", "configError", "unknownField", "duplicateKey", "permissionError", "authError", "runnerErrorEvent", "failedTurn", "unrecognizedItem", "disabledHostWarning"] as const;
+const diagnosticFlags = ["invalid", "started", "completed", "turnComplete", "reportedMissingTool", "reportedUnknownAccount", "reportedMissingParent", "reportedAuthorization", "reportedOtherFailure", "claimedDone", "configError", "unknownField", "duplicateKey", "permissionError", "authError", "runnerErrorEvent", "failedTurn", "unrecognizedItem", "disabledHostWarning", "tierNoticeSeen"] as const;
 export type MailRetrievalFailure = { code: GmailPluginFailureCode; stage?: typeof failureStages[number]; diagnostics?: Record<string, boolean | number> };
 /** Rebuild from a fixed vocabulary at capture, reload and read-back. No message,
  * stack, account, request, URL, tool output or arbitrary diagnostic key is copied. */

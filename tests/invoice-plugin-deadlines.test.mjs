@@ -10,7 +10,7 @@ import { disabledCodeModeWarning } from '../apps/worker/dist/private-codex-isola
 const account = 'fixture@example.test';
 const linkId = 'link_fixture';
 const request = { account, linkId, queries: [] };
-const config = { config: { apps: {}, plugins: {}, mcp_servers: {} }, layers: [{ name: { type: 'user' }, version: 'fixture' }] };
+const config = { config: { apps: {}, plugins: {}, mcp_servers: {}, model: 'gpt-fixture', service_tier: 'priority' }, layers: [{ name: { type: 'user' }, version: 'fixture' }] };
 
 // Virtual elapsed time is advanced only where the substitute CLI would deliver
 // a result. The collector itself creates all deadlines and chooses every command.
@@ -50,7 +50,11 @@ function boundedCli(t, scenario = {}) {
       child.stdin.write = line => {
         const event = JSON.parse(line);
         if (event.id === 1) setImmediate(() => emit({ id: 1, result: {} }));
-        if (event.id === 2) setImmediate(() => emit({ id: 2, result: config }));
+        if (event.id === 2) setImmediate(() => {
+          const result = structuredClone(config);
+          if (scenario.changedModelAfter && calls.config === 2) result.config.model = 'gpt-other';
+          emit({ id: 2, result });
+        });
       };
       child.stdin.end = () => close(0);
     } else if (args[0] === 'plugin') {
@@ -78,6 +82,8 @@ function boundedCli(t, scenario = {}) {
           emit(scenario.rejectedEvent);
           return close(1);
         }
+        for (const event of scenario.preamble || []) emit(event);
+        if (scenario.noTool) { emit({ type: 'turn.completed' }); return close(0); }
         const base = { id: 'fixture', type: 'mcp_tool_call', server: 'codex_apps', tool: 'gmail.get_profile', arguments: { link_id: linkId } };
         emit({ type: 'item.started', item: { ...base, status: 'in_progress' } });
         emit({ type: 'item.completed', item: { ...base, status: 'completed', error: null, result: { structured_content: { email: account } } } });
@@ -153,4 +159,50 @@ for (const [flag, rejectedEvent] of [
     return true;
   });
   assert.equal(calls.open, 0);
+});
+
+const threadStart = { type: 'thread.started', thread_id: 'synthetic-thread' };
+const turnStart = { type: 'turn.started' };
+const tierText = 'Configured service tier `priority` is not advertised as supported for model `gpt-fixture` and will be omitted from requests.';
+const tierNotice = { type: 'item.completed', item: { id: 'item-0', type: 'error', message: tierText } };
+
+test('invoice profile survives the verified pre-turn tier notification and still requires a complete MCP result', async t => {
+  const calls = boundedCli(t, { preamble: [threadStart, tierNotice, turnStart] });
+  const batch = await collectGmailPluginBatch(request, { allowHeldMessages: true });
+  assert.equal(batch.account, account);
+  assert.deepEqual(batch.messages, []);
+  assert.deepEqual(calls, { config: 2, inventories: 2, gmail: 1, open: 0 });
+});
+
+for (const [name, preamble, noTool = false, invoice = true] of [
+  ['missing thread', [tierNotice, turnStart]],
+  ['unexpected thread envelope', [{ ...threadStart, error: true }, tierNotice, turnStart]],
+  ['missing turn', [threadStart, tierNotice]],
+  ['late notice', [threadStart, turnStart, tierNotice]],
+  ['duplicate notice', [threadStart, tierNotice, tierNotice, turnStart]],
+  ['different model', [threadStart, { ...tierNotice, item: { ...tierNotice.item, message: tierText.replace('gpt-fixture', 'gpt-other') } }, turnStart]],
+  ['different tier', [threadStart, { ...tierNotice, item: { ...tierNotice.item, message: tierText.replace('priority', 'other') } }, turnStart]],
+  ['HTTP metadata', [threadStart, { ...tierNotice, item: { ...tierNotice.item, status_code: 403 } }, turnStart]],
+  ['unknown second item', [threadStart, tierNotice, { type: 'item.completed', item: { id: 'item-1', type: 'error', message: 'synthetic unknown' } }, turnStart]],
+  ['no MCP evidence', [threadStart, tierNotice, turnStart], true],
+  ['other consumers', [threadStart, tierNotice, turnStart], false, false],
+]) test('the Claims tier notice never validates ' + name, async t => {
+  const calls = boundedCli(t, { preamble, noTool });
+  await assert.rejects(collectGmailPluginBatch(request, { allowHeldMessages: invoice }), e => e.code === 'invalid_evidence' && e.stage === 'tool_evidence');
+  assert.equal(calls.open, 0);
+});
+
+for (const [flag, event] of [
+  ['failedTurn', { type: 'turn.failed' }],
+  ['runnerErrorEvent', { type: 'error' }],
+  ['disabledHostWarning', { type: 'item.completed', item: { id: 'item-1', type: 'error', message: disabledCodeModeWarning } }],
+]) test('a second startup failure retains the bounded ' + flag + ' diagnosis', async t => {
+  boundedCli(t, { preamble: [threadStart, tierNotice, event] });
+  await assert.rejects(collectGmailPluginBatch(request, { allowHeldMessages: true }), e => e.code === 'invalid_evidence'
+    && e.diagnostics.tierNoticeSeen && e.diagnostics[flag] && e.diagnostics.mcpItems === 0);
+});
+
+test('a changed tier notice binding after the profile rejects the result', async t => {
+  boundedCli(t, { preamble: [threadStart, tierNotice, turnStart], changedModelAfter: true });
+  await assert.rejects(collectGmailPluginBatch(request, { allowHeldMessages: true }), e => e.code === 'configuration_changed' && e.stage === 'isolation_after');
 });
