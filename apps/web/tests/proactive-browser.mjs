@@ -37,8 +37,8 @@ async function noOverflow(page, label) {
   assert.ok(size.scroll <= size.client + 1, label + " horizontal overflow: " + JSON.stringify(size));
 }
 async function waitReady(page) {
-  await page.getByRole("heading", { name: "Aujourd’hui", exact: true }).waitFor();
-  await page.locator(".today-source-status").filter({ hasText: "7 sources accessibles" }).waitFor();
+  await page.getByRole("heading", { name: "Today", exact: true }).waitFor();
+  await page.locator(".today-source-status").filter({ hasText: "7 sources reachable" }).waitFor();
   await page.waitForFunction(() => document.querySelectorAll(".today-priorities .opportunity-card").length >= 3);
 }
 async function setup(width, paired = true, scenario = "") {
@@ -115,7 +115,7 @@ try {
     await page.goto(base); await waitReady(page);
     assert.equal(await page.locator(".bottom-nav button").count(), 5);
     const nav = page.locator(".bottom-nav:visible, .app-rail nav:visible");
-    assert.equal(await nav.locator('button[aria-current="page"]' ).getAttribute("aria-label") ?? await nav.locator('button[aria-current="page"]' ).innerText(), "Aujourd’hui");
+    assert.equal(await nav.locator('button[aria-current="page"]' ).getAttribute("aria-label") ?? await nav.locator('button[aria-current="page"]' ).innerText(), "Today");
     assert.equal(await page.locator(".today-priorities .opportunity-card").count(), 3);
     assert.equal(await page.getByText("LOCAL_ONLY_STALE_CARD", { exact: false }).count(), 0);
     assert.equal(await page.locator(".benefit-tile").count(), 3);
@@ -124,27 +124,28 @@ try {
     const summaryOrder = await page.evaluate(() => ({ action: document.querySelector(".today-priorities .opportunity-card").getBoundingClientRect().bottom, summary: document.querySelector(".today-benefits").getBoundingClientRect().top }));
     assert.ok(summaryOrder.action <= summaryOrder.summary, "The first complete useful action remains ahead of the money summary");
     assert.equal(await leadingAction.locator(".opportunity-icon svg").count(), 1);
-    await page.locator(".benefit-tile").nth(2).getByText("Non mesuré", { exact: true }).waitFor();
+    await page.locator(".benefit-tile").nth(1).getByText("No estimate", { exact: true }).waitFor();
+    await page.locator(".benefit-tile").nth(2).getByText("Not measured", { exact: true }).waitFor();
     assert.equal((await actions.read()).history.length, 0, "Viewing the home does not mutate decisions");
     await noOverflow(page, "Today " + width);
     const controls = await page.locator(".today-view button:visible, .today-view a.button:visible").evaluateAll(elements => elements.map(element => ({ text: element.textContent, width: element.getBoundingClientRect().width, height: element.getBoundingClientRect().height })));
     assert.deepEqual(controls.filter(control => control.width < 47.9 || control.height < 47.9), [], "Today controls have 48px touch areas");
 
     await page.locator(".benefit-tile").nth(2).click();
-    const amounts = page.getByRole("dialog", { name: "Comprendre les montants", exact: true }); await amounts.waitFor();
-    await amounts.getByText(/Une carte lue, masquée ou résolue ne prouve aucune économie/).waitFor();
+    const amounts = page.getByRole("dialog", { name: "Understanding the amounts", exact: true }); await amounts.waitFor();
+    await amounts.getByText(/Reading, hiding or resolving a card does not prove savings/).waitFor();
     await noOverflow(page, "Amounts " + width); await page.keyboard.press("Escape");
 
-    await page.getByRole("button", { name: /^Voir les \d+ actions$/ }).click();
+    await page.getByRole("button", { name: /^View all \d+ actions$/ }).click();
     const claimCard = page.locator(".today-priorities .opportunity-card").filter({ has: page.locator('a[href*="view=reimbursements"]') }).first();
     const claimHref = await claimCard.getByRole("link").getAttribute("href");
     const claimId = new URL(claimHref, base).searchParams.get("record");
     assert.ok(state.snapshot.reconciliations.some(record => record.Id === claimId), "The exact target is an authoritative case");
     await claimCard.getByRole("link").click();
-    await page.getByRole("heading", { name: "Remboursement", exact: true }).waitFor();
+    await page.getByRole("heading", { name: "Reimbursement", exact: true }).waitFor();
     assert.equal(new URL(page.url()).searchParams.get("record"), claimId);
-    await page.getByText("Filtres conservés", { exact: true }).waitFor();
-    await page.getByRole("heading", { name: "Pièces et prochaine action", exact: true }).waitFor();
+    await page.getByText("Filters saved", { exact: true }).waitFor();
+    await page.getByRole("heading", { name: "Evidence and next action", exact: true }).waitFor();
     await page.locator(".claim-dossier-facts").waitFor();
     assert.equal(await page.locator(".claim-scope-summary:visible, .workspace-controls:visible").count(), 0, "Direct dossier does not show another person's totals or filters");
     assert.ok(state.previews.length > 0, "Dossier uses the existing read-only preview");
@@ -159,10 +160,10 @@ try {
     assert.equal(targetUrl.searchParams.get("view"), "savings");
     assert.equal(targetUrl.searchParams.get("record"), contract.id, "Lifecycle exercises the exact insurance renewal, not an unrelated card");
     const renewalContext = { kind: "insurance-renewal", recordId: contract.id, dueDate: contract.renewal };
-    await target.getByRole("button", { name: /^Sources et options/ }).click();
+    await target.getByRole("button", { name: /^Sources and options/ }).click();
     let dialog = page.locator("dialog[open]");
-    await dialog.getByRole("button", { name: "Reporter de 7 jours", exact: true }).click();
-    await page.getByText(/Piste reportée de 7 jours/).waitFor();
+    await dialog.getByRole("button", { name: "Snooze for 7 days", exact: true }).click();
+    await page.getByText(/Snoozed for 7 days/).waitFor();
     const snoozed = Object.values((await actions.read()).decisions);
     assert.equal(snoozed.length, 1); assert.equal(snoozed[0].state, "snoozed");
     assert.deepEqual(state.lifecycleRequests.at(-1).context, renewalContext, "Renewal context is sent with the single lifecycle mutation");
@@ -173,7 +174,7 @@ try {
       try {
         await page.reload();
         await page.locator(".today-source-status").click();
-        await page.waitForFunction(() => [...document.querySelectorAll(".today-source-list .opportunity-status")].filter(element => element.textContent === "Accessible").length === 7);
+        await page.waitForFunction(() => [...document.querySelectorAll(".today-source-list .opportunity-status")].filter(element => element.textContent === "Reachable").length === 7);
         assert.equal(await page.locator(".today-priorities").getAttribute("aria-busy"), "true");
         assert.equal(await page.locator(".today-priorities .opportunity-card").count(), 0, "A pending decision read must not flash a previously snoozed card");
         await page.keyboard.press("Escape");
@@ -183,11 +184,11 @@ try {
     assert.deepEqual(Object.values((await actions.read()).decisions)[0].context, renewalContext);
 
     assert.equal(await page.locator(".today-priorities").locator("a").evaluateAll((elements, href) => elements.filter(element => element.getAttribute("href") === href).length, targetHref), 0);
-    await page.getByRole("button", { name: /^Pistes gérées/ }).click();
-    await page.locator(".opportunity-managed").getByRole("button", { name: /^Sources et options/ }).click();
+    await page.getByRole("button", { name: /^Managed items/ }).click();
+    await page.locator(".opportunity-managed").getByRole("button", { name: /^Sources and options/ }).click();
     dialog = page.locator("dialog[open]");
-    await dialog.getByRole("button", { name: "Réafficher dans mes actions", exact: true }).click();
-    await page.getByText("Piste réaffichée dans vos actions.", { exact: true }).waitFor();
+    await dialog.getByRole("button", { name: "Restore to my actions", exact: true }).click();
+    await page.getByText("Restored to your actions.", { exact: true }).waitFor();
     assert.equal(state.lifecycleRequests.at(-1).action, "restore");
     assert.deepEqual(state.lifecycleRequests.at(-1).context, renewalContext);
     assert.equal(Object.keys((await actions.read()).decisions).length, 0);
@@ -196,18 +197,18 @@ try {
     assert.equal(Object.keys((await actions.read()).decisions).length, 0, "Restoration survives a fresh worker-state read");
 
     if (width === 384) {
-      await page.locator(".today-priorities .opportunity-card").first().getByRole("button", { name: /^Sources et options/ }).click();
+      await page.locator(".today-priorities .opportunity-card").first().getByRole("button", { name: /^Sources and options/ }).click();
       state.rejectNext = true;
-      await page.locator("dialog[open]").getByRole("button", { name: "Masquer cette piste", exact: true }).click();
-      await page.locator("dialog[open]").getByText(/La liste a changé sur un autre appareil/).waitFor();
+      await page.locator("dialog[open]").getByRole("button", { name: "Hide this item", exact: true }).click();
+      await page.locator("dialog[open]").getByText(/The list changed on another device/).waitFor();
       assert.equal(Object.keys((await actions.read()).decisions).length, 0);
       await page.keyboard.press("Escape");
-      await page.getByRole("button", { name: "Actualiser les priorités", exact: true }).click(); await waitReady(page);
+      await page.getByRole("button", { name: "Refresh priorities", exact: true }).click(); await waitReady(page);
 
-      await page.locator(".today-priorities .opportunity-card").first().getByRole("button", { name: /^Sources et options/ }).click();
-      await page.locator("dialog[open]").getByText("Marquer comme traitée ne valide aucun gain ni aucune soumission.", { exact: true }).waitFor();
-      await page.locator("dialog[open]").getByRole("button", { name: "Marquer comme traitée", exact: true }).click();
-      await page.getByText(/Piste marquée comme traitée/).waitFor();
+      await page.locator(".today-priorities .opportunity-card").first().getByRole("button", { name: /^Sources and options/ }).click();
+      await page.locator("dialog[open]").getByText("Marking this as handled does not confirm savings or a submission.", { exact: true }).waitFor();
+      await page.locator("dialog[open]").getByRole("button", { name: "Mark as handled", exact: true }).click();
+      await page.getByText(/Marked as handled/).waitFor();
       assert.equal(state.lifecycleRequests.at(-1).action, "resolve");
       assert.deepEqual(state.lifecycleRequests.at(-1).context, renewalContext);
       const resolved = Object.values((await actions.read()).decisions);
@@ -215,11 +216,11 @@ try {
       assert.deepEqual(resolved[0].context, renewalContext);
       await page.reload(); await waitReady(page);
       assert.equal(await page.locator(".today-priorities a").evaluateAll((elements, href) => elements.filter(element => element.getAttribute("href") === href).length, targetHref), 0, "Treated renewal stays managed after reload");
-      await page.locator(".benefit-tile").nth(2).getByText("Non mesuré", { exact: true }).waitFor();
-      await page.getByRole("button", { name: /^Pistes gérées/ }).click();
-      await page.locator(".opportunity-managed").getByRole("button", { name: /^Sources et options/ }).click();
-      await page.locator("dialog[open]").getByRole("button", { name: "Réafficher dans mes actions", exact: true }).click();
-      await page.getByText("Piste réaffichée dans vos actions.", { exact: true }).waitFor();
+      await page.locator(".benefit-tile").nth(2).getByText("Not measured", { exact: true }).waitFor();
+      await page.getByRole("button", { name: /^Managed items/ }).click();
+      await page.locator(".opportunity-managed").getByRole("button", { name: /^Sources and options/ }).click();
+      await page.locator("dialog[open]").getByRole("button", { name: "Restore to my actions", exact: true }).click();
+      await page.getByText("Restored to your actions.", { exact: true }).waitFor();
       assert.equal(state.lifecycleRequests.at(-1).action, "restore");
       assert.deepEqual(state.lifecycleRequests.at(-1).context, renewalContext);
       await page.reload(); await waitReady(page);
@@ -227,22 +228,22 @@ try {
       assert.equal(await page.locator(".today-priorities a").evaluateAll((elements, href) => elements.filter(element => element.getAttribute("href") === href).length, targetHref), 1);
 
       state.failed = true;
-      await page.getByRole("button", { name: "Actualiser les priorités", exact: true }).click();
-      await page.locator(".today-source-status").filter({ hasText: "1 source à revoir" }).waitFor();
-      await page.getByRole("button", { name: /^Voir les \d+ actions$/ }).click();
-      await page.getByRole("heading", { name: "Sources à actualiser", exact: true }).waitFor();
+      await page.getByRole("button", { name: "Refresh priorities", exact: true }).click();
+      await page.locator(".today-source-status").filter({ hasText: "1 source to review" }).waitFor();
+      await page.getByRole("button", { name: /^View all \d+ actions$/ }).click();
+      await page.getByRole("heading", { name: "Sources need refreshing", exact: true }).waitFor();
       await page.locator(".today-source-status").click();
-      await page.locator("dialog[open]").getByRole("heading", { name: "Hypothèque", exact: true }).waitFor();
+      await page.locator("dialog[open]").getByRole("heading", { name: "Mortgage", exact: true }).waitFor();
       await noOverflow(page, "Partial sources"); await page.keyboard.press("Escape");
       state.failed = false; state.snapshot.lastSuccess = "2000-01-01T12:00:00Z";
-      await page.getByRole("button", { name: "Actualiser les priorités", exact: true }).click(); await waitReady(page);
-      await page.locator(".recovery-tile").getByText("À vérifier", { exact: true }).waitFor();
-      const showStaleActions = page.getByRole("button", { name: /^Voir les \d+ actions$/ });
+      await page.getByRole("button", { name: "Refresh priorities", exact: true }).click(); await waitReady(page);
+      await page.locator(".recovery-tile").getByText("Needs review", { exact: true }).waitFor();
+      const showStaleActions = page.getByRole("button", { name: /^View all \d+ actions$/ });
       if (await showStaleActions.isVisible()) await showStaleActions.click();
-      await page.locator('.opportunity-card[data-domain="claims"] .opportunity-evidence-state').getByText("Données anciennes", { exact: true }).first().waitFor();
+      await page.locator('.opportunity-card[data-domain="claims"] .opportunity-evidence-state').getByText("Older data", { exact: true }).first().waitFor();
       await context.setOffline(true);
-      await page.getByText("Connexion interrompue", { exact: true }).waitFor();
-      assert.equal(await page.getByRole("button", { name: "Actualiser les priorités", exact: true }).isDisabled(), true);
+      await page.getByText("Connection interrupted", { exact: true }).waitFor();
+      assert.equal(await page.getByRole("button", { name: "Refresh priorities", exact: true }).isDisabled(), true);
       await noOverflow(page, "Offline"); await context.setOffline(false);
       state.snapshot.lastSuccess = new Date().toISOString();
     }
@@ -251,29 +252,29 @@ try {
     assert.equal(new URL(page.url()).searchParams.get("view"),"finances");
     assert.equal(await nav.getByRole("button", {name:"Finances",exact:true}).getAttribute("aria-current"),"page");
     await page.locator('.finance-tabs button[aria-current="page"]').waitFor();
-    assert.equal(await page.locator('.finance-tabs button[aria-current="page"]').innerText(),"Comptes");
+    assert.equal(await page.locator('.finance-tabs button[aria-current="page"]').innerText(),"Accounts");
     // Former primary and secondary sections remain reachable through Plus.
-    for (const [label, route] of [["Dépenses récurrentes", "savings"], ["Hypothèque", "mortgage"], ["Documents", "documents"], ["Notifications", "notifications"], ["Courrier important", "inbox"], ["Planifier", "plan"], ["Money · outils locaux", "money"], ["Réglages et outils", "more"]]) {
-      await nav.getByRole("button", { name: "Plus", exact: true }).click();
+    for (const [label, route] of [["Recurring expenses", "savings"], ["Mortgage", "mortgage"], ["Documents", "documents"], ["Notifications", "notifications"], ["Important mail", "inbox"], ["Planner", "plan"], ["Money · local tools", "money"], ["Settings and tools", "more"]]) {
+      await nav.getByRole("button", { name: "More", exact: true }).click();
       await page.locator(".other-link").filter({ hasText: label }).click();
       assert.equal(new URL(page.url()).searchParams.get("view"), route);
       await page.locator("main h1").first().waitFor();
-      assert.equal(await nav.getByRole("button", { name: route === "mortgage" ? "Projets" : "Plus", exact: true }).getAttribute("aria-current"), "page");
+      assert.equal(await nav.getByRole("button", { name: route === "mortgage" ? "Projects" : "More", exact: true }).getAttribute("aria-current"), "page");
       assert.equal(await nav.locator('button[aria-current="page"]').count(), 1, "Every deep section has exactly one primary destination");
-      if (route === "documents") for (const [name, source] of [["Factures", "invoices"], ["Desjardins", "desjardins"], ["Blue Cross", "blue-cross"]]) {
-        await page.getByRole("navigation", { name: "Sources documentaires", exact: true }).getByRole("button", { name, exact: true }).click();
+      if (route === "documents") for (const [name, source] of [["Invoices", "invoices"], ["Desjardins", "desjardins"], ["Blue Cross", "blue-cross"]]) {
+        await page.getByRole("navigation", { name: "Document sources", exact: true }).getByRole("button", { name, exact: true }).click();
         assert.equal(new URL(page.url()).searchParams.get("view"), source);
       }
     }
     await page.goto(base + "?view=groceries&tab=compare");
-    const purchaseTabs = page.getByRole("navigation", { name: "Outils Courses", exact: true });
-    const purchasesTab = purchaseTabs.getByRole("button", { name: "Achats", exact: true });
+    const purchaseTabs = page.getByRole("navigation", { name: "Grocery tools", exact: true });
+    const purchasesTab = purchaseTabs.getByRole("button", { name: "Purchases", exact: true });
     await purchasesTab.waitFor();
     assert.equal(await purchasesTab.getAttribute("aria-current"), "page");
     assert.equal(await purchaseTabs.getByRole("button").count(), 1);
     assert.equal(new URL(page.url()).searchParams.get("view"), "groceries");
     assert.equal(new URL(page.url()).searchParams.get("tab"), "tickets");
-    assert.equal(await page.getByRole("navigation", { name: "Gestion Courses", exact: true }).count(), 0);
+    assert.equal(await page.getByRole("navigation", { name: "Grocery management", exact: true }).count(), 0);
     await noOverflow(page, "Grocery deep link " + width);
     await page.goto(base); await waitReady(page);
     await page.screenshot({ path: join(output, "today-" + width + ".png"), fullPage: true });
@@ -290,34 +291,34 @@ try {
     await page.goto(base); await waitReady(page);
     const first = page.locator(".today-priorities .opportunity-card").first();
     assert.equal(new URL(await first.getByRole("link").getAttribute("href"), base).searchParams.get("view"), "reimbursements");
-    await page.getByRole("heading", { name: "En cours pour vous", exact: true }).waitFor();
+    await page.getByRole("heading", { name: "In progress", exact: true }).waitFor();
     assert.equal(await page.locator(".today-follow-up").count(), 1);
     const positions = await page.evaluate(() => ({ action: document.querySelector(".today-priorities").getBoundingClientRect().top, totals: document.querySelector(".today-benefits").getBoundingClientRect().top }));
     assert.ok(positions.action < positions.totals, "The first useful action appears before aggregate money");
     const nav = page.locator(".bottom-nav:visible, .app-rail nav:visible");
-    await nav.getByRole("button", { name: "Remboursements", exact: true }).click();
+    await nav.getByRole("button", { name: "Reimbursements", exact: true }).click();
     await page.getByRole("heading", { name: "Claims", exact: true }).waitFor();
     await page.getByRole("button", { name: /^Jasmine/ }).click();
     await page.locator(".workflow-tabs").getByRole("button", { name: /^Closed/ }).click();
-    await nav.getByRole("button", { name: "Aujourd’hui", exact: true }).click(); await waitReady(page);
+    await nav.getByRole("button", { name: "Today", exact: true }).click(); await waitReady(page);
     await page.locator(".today-priorities .opportunity-card").filter({ has: page.locator('a[href*="view=reimbursements"]') }).first().getByRole("link").click();
     await page.locator(".claim-dossier-facts").waitFor();
     assert.equal(await page.locator(".reimbursement-family-scopes:visible").count(), 0);
-    await page.getByRole("button", { name: "Revenir à la liste", exact: true }).click();
+    await page.getByRole("button", { name: "Back to list", exact: true }).click();
     assert.equal(new URL(page.url()).searchParams.get("record"), null);
     assert.equal(await page.getByRole("button", { name: /^Jasmine/ }).getAttribute("aria-pressed"), "true");
     assert.equal(await page.locator(".workflow-tabs").getByRole("button", { name: /^Closed/ }).getAttribute("aria-pressed"), "true");
     state.previewFailed = true;
     await page.goto(base + "?view=reimbursements&record=" + encodeURIComponent(state.snapshot.reconciliations[0].Id));
-    await page.getByText("Le PC n’a pas pu relire ce dossier.", { exact: false }).waitFor();
+    await page.getByText("The PC could not refresh this claim.", { exact: false }).waitFor();
     assert.equal(await page.locator(".claim-dossier-facts").count(), 0);
     assert.equal(await page.getByText("SYNTHETIC_PRIVATE_ERROR_MUST_NOT_LEAK", { exact: false }).count(), 0);
     state.previewFailed = false;
     state.legacyPreview = true;
-    await page.getByRole("button", { name: "Relire les preuves", exact: true }).click();
+    await page.getByRole("button", { name: "Refresh evidence", exact: true }).click();
     await page.locator(".claim-dossier-facts").waitFor();
     await page.locator(".claim-dossier-checks summary").click();
-    await page.getByText(/Base du brut non qualifiée dans cet aperçu/).waitFor();
+    await page.getByText(/Gross amount evidence is not confirmed in this preview/).waitFor();
     assert.equal(JSON.stringify(state.snapshot), ledgerBefore, "Readiness does not alter financial/manual source records");
     await noOverflow(page, "Dossier safe retry and saved scope");
     let releasePreview;
@@ -325,10 +326,10 @@ try {
     const callsBefore = state.previews.length;
     try {
       await page.goto(base + "?view=reimbursements&record=" + encodeURIComponent(state.snapshot.reconciliations[0].Id));
-      await page.getByRole("heading", { name: "Pièces et prochaine action", exact: true }).waitFor();
+      await page.getByRole("heading", { name: "Evidence and next action", exact: true }).waitFor();
       for (let i = 0; i < 100 && state.previews.length <= callsBefore; i++) await new Promise(done => setTimeout(done, 20));
       assert.ok(state.previews.length > callsBefore);
-      await page.locator(".bottom-nav:visible, .app-rail nav:visible").getByRole("button", { name: "Aujourd’hui", exact: true }).click();
+      await page.locator(".bottom-nav:visible, .app-rail nav:visible").getByRole("button", { name: "Today", exact: true }).click();
       await waitReady(page);
     } finally { releasePreview(); state.previewGate = null; }
     assert.equal(await page.locator(".claim-dossier").count(), 0, "A delayed preview cannot restore a dossier after leaving it");
@@ -341,25 +342,25 @@ try {
     const saved = await page.evaluate(() => ({ records: localStorage.getItem("familyhub.reimbursements.v1"), pairing: localStorage.getItem("familyhub.worker.v1") }));
     state.blockFinancesChunk = true;
     const nav = page.locator(".bottom-nav:visible, .app-rail nav:visible");
-    await nav.getByRole("button", { name: "Plus", exact: true }).click();
+    await nav.getByRole("button", { name: "More", exact: true }).click();
     await page.locator(".bottom-nav:visible, .app-rail nav:visible").getByRole("button", {name:"Finances",exact:true}).click();
-    await page.getByRole("heading", { name: "Section indisponible", exact: true }).waitFor();
+    await page.getByRole("heading", { name: "Section unavailable", exact: true }).waitFor();
     assert.ok(state.blockedChunks >= 1, "The synthetic request failure must reach the unloaded Finances chunk");
     assert.equal(await nav.getByRole("button").count(), 5);
     assert.equal(new URL(page.url()).searchParams.get("view"), "finances");
     await noOverflow(page, "Unloaded section failure");
-    const retryBox = await page.getByRole("button", { name: "Réessayer", exact: true }).boundingBox();
+    const retryBox = await page.getByRole("button", { name: "Try again", exact: true }).boundingBox();
     assert.ok(retryBox.width >= 48 && retryBox.height >= 48);
-    await nav.getByRole("button", { name: "Aujourd’hui", exact: true }).click(); await waitReady(page);
-    await nav.getByRole("button", { name: "Plus", exact: true }).click();
+    await nav.getByRole("button", { name: "Today", exact: true }).click(); await waitReady(page);
+    await nav.getByRole("button", { name: "More", exact: true }).click();
     await page.locator(".bottom-nav:visible, .app-rail nav:visible").getByRole("button", {name:"Finances",exact:true}).click();
-    await page.getByRole("heading", { name: "Section indisponible", exact: true }).waitFor();
-    await page.getByRole("button", { name: "Retour à l’accueil", exact: true }).click(); await waitReady(page);
-    await nav.getByRole("button", { name: "Plus", exact: true }).click();
+    await page.getByRole("heading", { name: "Section unavailable", exact: true }).waitFor();
+    await page.getByRole("button", { name: "Back to Today", exact: true }).click(); await waitReady(page);
+    await nav.getByRole("button", { name: "More", exact: true }).click();
     await page.locator(".bottom-nav:visible, .app-rail nav:visible").getByRole("button", {name:"Finances",exact:true}).click();
-    await page.getByRole("heading", { name: "Section indisponible", exact: true }).waitFor();
+    await page.getByRole("heading", { name: "Section unavailable", exact: true }).waitFor();
     state.blockFinancesChunk = false;
-    await page.getByRole("button", { name: "Réessayer", exact: true }).click();
+    await page.getByRole("button", { name: "Try again", exact: true }).click();
     await page.getByRole("heading", { name: "Finances", exact: true }).waitFor();
     assert.equal(new URL(page.url()).searchParams.get("view"), "finances", "Retry preserves the requested section");
     assert.deepEqual(await page.evaluate(() => ({ records: localStorage.getItem("familyhub.reimbursements.v1"), pairing: localStorage.getItem("familyhub.worker.v1") })), saved, "Section recovery does not clear private records or worker pairing");
@@ -368,9 +369,9 @@ try {
   }
   const { page, context } = await setup(360, false);
   await page.goto(base);
-  await page.getByRole("heading", { name: "Retrouver vos priorités", exact: true }).waitFor();
+  await page.getByRole("heading", { name: "Find your priorities", exact: true }).waitFor();
   assert.equal(await page.locator(".benefit-tile").count(), 0);
-  await page.getByRole("button", { name: "Ouvrir les réglages", exact: true }).click();
+  await page.getByRole("button", { name: "Open settings", exact: true }).click();
   assert.equal(new URL(page.url()).searchParams.get("view"), "more");
   await context.close();
   assert.deepEqual(external, []); assert.deepEqual(allErrors, []);

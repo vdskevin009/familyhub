@@ -86,7 +86,7 @@ export const codexReviewer: Reviewer = async target => {
     "Assess only explicit member, service date, provider/service, amounts and insurer evidence. Never invent missing facts or insurance coverage.",
     "A possible match is a suggestion for human confirmation only; never claim a reimbursement was linked or a claim submitted.",
     "If evidence is insufficient, identify the missing field. If a possible duplicate exists, explain the evidence without suppressing it.",
-    "Return the required JSON in French. Cite only IDs from the supplied documents. Candidate IDs must be from the candidate list.",
+    "Return the required JSON with explanations in Canadian English. Cite only IDs from the supplied documents. Candidate IDs must be from the candidate list.",
     JSON.stringify({ context: target.context, candidateIds: target.candidateIds, documents: target.documents.map(summary) })
   ].join("\n");
   return JSON.parse(await privateCodex(prompt, schema, work));

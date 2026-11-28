@@ -89,23 +89,23 @@ test('saved claims expose failed, stale, auth-required and unavailable coverage 
 test('compact insurer captions distinguish completed review from incomplete, stale and unavailable coverage', () => {
   const now = Date.parse('2026-07-09T12:00:00Z');
   const complete: BlueCrossSyncStatus = { state: 'idle', lastSuccess: '2026-07-09T11:00:00Z', latestResult: { status: 'success', complete: true, applied: false, ambiguous: 1, errors: 0 } };
-  assert.equal(insurerCoverageSummary(complete, now), 'rapprochements à vérifier');
-  assert.equal(insurerCoverageSummary({ ...complete, latestResult: { ...complete.latestResult!, ambiguous: 0, pendingNew: 2 } }, now), 'résultats à examiner');
-  assert.equal(insurerCoverageSummary({ ...complete, latestResult: { ...complete.latestResult!, complete: false } }, now), 'collecte incomplète');
-  assert.equal(insurerCoverageSummary({ ...complete, latestResult: { ...complete.latestResult!, errors: 1 } }, now), 'collecte incomplète');
-  assert.equal(insurerCoverageSummary({ state: 'error', lastSuccess: complete.lastSuccess }, now), 'collecte incomplète');
-  assert.equal(insurerCoverageSummary(complete, now + 48 * 60 * 60_000), 'données anciennes');
-  assert.equal(insurerCoverageSummary({ state: 'idle' }, now), 'lecture complète non confirmée');
-  assert.equal(insurerCoverageSummary(null, now), 'état indisponible');
-  assert.equal(insurerCoverageSummary({ state: 'syncing' }, now), 'lecture en cours');
+  assert.equal(insurerCoverageSummary(complete, now), 'matches to review');
+  assert.equal(insurerCoverageSummary({ ...complete, latestResult: { ...complete.latestResult!, ambiguous: 0, pendingNew: 2 } }, now), 'results to review');
+  assert.equal(insurerCoverageSummary({ ...complete, latestResult: { ...complete.latestResult!, complete: false } }, now), 'incomplete collection');
+  assert.equal(insurerCoverageSummary({ ...complete, latestResult: { ...complete.latestResult!, errors: 1 } }, now), 'incomplete collection');
+  assert.equal(insurerCoverageSummary({ state: 'error', lastSuccess: complete.lastSuccess }, now), 'incomplete collection');
+  assert.equal(insurerCoverageSummary(complete, now + 48 * 60 * 60_000), 'data out of date');
+  assert.equal(insurerCoverageSummary({ state: 'idle' }, now), 'complete collection not confirmed');
+  assert.equal(insurerCoverageSummary(null, now), 'status unavailable');
+  assert.equal(insurerCoverageSummary({ state: 'syncing' }, now), 'collection in progress');
   assert.equal(insurerCoverageSummary({ ...complete, latestResult: { ...complete.latestResult!, ambiguous: 0, applied: true } }, now), null);
 });
 
 test('compact insurer diagnostics do not turn uncertain history or a busy profile into rejected credentials', () => {
   const cases = [
-    ['login-incomplete', 'connexion non confirmée'], ['layout-changed', 'historique indisponible'],
-    [undefined, 'historique indisponible'], ['profile-selection-required', 'profil à sélectionner sur le PC'],
-    ['profile-busy', 'profil occupé sur le PC'], ['cooldown', 'connexion en pause'],
+    ['login-incomplete', 'sign-in not confirmed'], ['layout-changed', 'history unavailable'],
+    [undefined, 'history unavailable'], ['profile-selection-required', 'select a profile on the PC'],
+    ['profile-busy', 'profile in use on the PC'], ['cooldown', 'sign-in paused'],
   ] as const;
   for (const [authReason, expected] of cases) {
     const status = { state: 'login-required' as const, authReason };
@@ -113,10 +113,10 @@ test('compact insurer diagnostics do not turn uncertain history or a busy profil
     assert.doesNotMatch(insurerCoverageNotice(status)!, /Sign-in required|rejected|expired|reconnect/i);
   }
   const futureReason = { state: 'login-required', authReason: 'future-unknown-reason' } as unknown as BlueCrossSyncStatus;
-  assert.equal(insurerCoverageSummary(futureReason), 'historique indisponible');
+  assert.equal(insurerCoverageSummary(futureReason), 'history unavailable');
   assert.doesNotMatch(insurerCoverageNotice(futureReason)!, /Sign-in required|rejected|expired|reconnect/i);
-  assert.equal(insurerCoverageSummary({ state: 'login-required', authReason: 'credentials-rejected' }), 'connexion refusée');
-  assert.equal(insurerCoverageSummary({ state: 'login-required', authReason: 'human-required' }), 'vérification requise sur le PC');
+  assert.equal(insurerCoverageSummary({ state: 'login-required', authReason: 'credentials-rejected' }), 'sign-in rejected');
+  assert.equal(insurerCoverageSummary({ state: 'login-required', authReason: 'human-required' }), 'verification required on the PC');
   const busy = insurerCoverageNotice({ state: 'login-required', authReason: 'profile-busy' })!;
   assert.match(busy, /profile is unavailable.*review Sources.*interrupted lock/);
   assert.doesNotMatch(busy, /Another collection is using|wait for it to finish/i);
@@ -127,25 +127,25 @@ test('compact insurer diagnostics do not turn uncertain history or a busy profil
 
 test('unsupported attachment failures explain interrupted mail collection without leaking retrieval diagnostics or requesting login', () => {
   const notice = invoiceCollectionNotice({ progress: {}, failure: { code: 'unsupported_attachment' }, error: 'PRIVATE_ATTACHMENT_NAME.pdf checkpoint raw-tool-diagnostics' })!;
-  assert.match(notice, /Collecte interrompue.*pièce jointe Gmail.*source connectée/);
-  assert.match(notice, /Vérifiez le document original dans Gmail.*dossiers enregistrés restent disponibles/);
+  assert.match(notice, /Collection interrupted.*connected source.*Gmail attachment/);
+  assert.match(notice, /Check the original document in Gmail.*Saved claims remain available/);
   assert.doesNotMatch(notice, /PRIVATE_|checkpoint|raw-tool|connexion|sign-in|reconnect|expired|partielle/i);
 });
 
 test('durable held mail remains visibly partial after later retrieval succeeds and clears only with a resolved count', () => {
   const coverage = { since: '2026-07-01', complete: false, heldMessages: 2 };
   const held = invoiceCollectionNotice({ progress: {}, coverage, error: '2 raw-source checkpoint records held' })!;
-  assert.match(held, /Collecte partielle : 2 messages Gmail restent à vérifier/);
+  assert.match(held, /Partial collection: 2 Gmail messages need review/);
   assert.doesNotMatch(held, /raw-source|checkpoint|connexion|sign-in|reconnect/i);
   assert.equal(invoiceCollectionNotice({ progress: {}, coverage }), held, 'A missing latest failure must not hide a persisted hold');
-  assert.match(invoiceCollectionNotice({ progress: {}, coverage: { ...coverage, heldMessages: 1 } })!, /1 message Gmail reste à vérifier/);
+  assert.match(invoiceCollectionNotice({ progress: {}, coverage: { ...coverage, heldMessages: 1 } })!, /1 Gmail message needs review/);
   assert.equal(invoiceCollectionNotice({ progress: {}, coverage: { ...coverage, complete: true, heldMessages: 0 } }), null);
   for (const count of [-1, 1.5, NaN, Infinity]) assert.equal(invoiceCollectionNotice({ progress: {}, coverage: { ...coverage, heldMessages: count } }), null);
   for (const code of ['timeout_or_cancelled', 'unsupported_attachment'])
-    assert.match(invoiceCollectionNotice({ progress: {}, coverage, failure: { code } })!, /2 messages.*dernière collecte a aussi été interrompue/);
+    assert.match(invoiceCollectionNotice({ progress: {}, coverage, failure: { code } })!, /2 Gmail messages.*The latest collection was also interrupted/);
   const authAndHold = invoiceCollectionNotice({ progress: { 'private@example.test': { error: 'invalid_grant' } }, coverage })!;
   assert.match(authAndHold, /Gmail sign-in required/);
-  assert.match(authAndHold, /2 messages Gmail restent à vérifier/);
+  assert.match(authAndHold, /2 Gmail messages need review/);
   assert.doesNotMatch(authAndHold, /private@example/);
 });
 
@@ -156,7 +156,7 @@ test('invoice snapshot normalization retains held coverage and the failure code 
   const snapshot = await fetchInvoices(config);
   assert.deepEqual(snapshot.coverage, { since: '2026-07-01', complete: false, heldMessages: 3 });
   assert.deepEqual(snapshot.failure, { code: 'unsupported_attachment' });
-  assert.match(invoiceCollectionNotice(snapshot)!, /3 messages Gmail restent à vérifier/);
+  assert.match(invoiceCollectionNotice(snapshot)!, /3 Gmail messages need review/);
   assert.doesNotMatch(JSON.stringify(snapshot), /PRIVATE_SENTINEL/);
   body = {};
   const legacy = await fetchInvoices(config);

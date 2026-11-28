@@ -40,7 +40,7 @@ export function inferredContributions(state:FinanceState,config:ContributionsCon
    // An existing canonical candidate is never merged by resemblance. Abstain instead,
    // including after a later canonical import, so no representation can be added twice.
    if(bindings.transactions[row.sourceKey]||tx.some(t=>t.accountId===r.canonicalAccountId&&t.date===row.date&&t.currency===row.currency&&t.outflowCents===row.outflowCents)){out.inferenceStatus='partial-canonical-overlap';continue;}
-   out.inferredPayments.push({id:row.sourceKey,sourceKey:row.sourceKey,date:row.date,amountCents:row.outflowCents,attribution:'inferred',rationale:'Même référence de destination que des virements antérieurs explicitement attribués. Réception bancaire non vérifiée.',evidenceTransactionIds:[...r.evidenceTransactionIds],collectedAt,bankReceiptConfirmed:false});
+   out.inferredPayments.push({id:row.sourceKey,sourceKey:row.sourceKey,date:row.date,amountCents:row.outflowCents,attribution:'inferred',rationale:'The destination reference matches earlier transfers with confirmed allocation. Bank receipt has not been verified.',evidenceTransactionIds:[...r.evidenceTransactionIds],collectedAt,bankReceiptConfirmed:false});
   }
  }
  for(const out of Object.values(result)){out.inferredPayments.sort((a,b)=>a.date.localeCompare(b.date)||a.id.localeCompare(b.id));if(out.inferredCents!==null){out.inferredCents=out.inferredPayments.reduce((n,r)=>n+r.amountCents,0);if(!Number.isSafeInteger(out.inferredCents))return empty('requires-review');}}

@@ -17,10 +17,10 @@ async function confirm(store, id, extra = {}) { const s = await store.read(); re
 test("unverified retailer leads persist independently, deduplicate and never create prices or purchase decisions", () => sandbox(async dir => {
   const record=makeRecord("source"),library={records:[record]},plan=emptyPlan(),original=JSON.stringify({library,plan}),store=new GroceryPurchaseResolutionStore(dir,async()=>library,async()=>plan);
   const lead={id:"unverified",store:"Costco",family:"protein-tortilla",product:"Fictional wraps",sourceUrl:"https://example.com/lead",date:"2026-10-29",note:"Fictional index; package mass unknown",reason:"Unresolved source, outside totals",indicativePrice:12,currency:"CAD"};
-  let state=await store.read();await assert.rejects(store.mutate({action:"add-reference-leads",leads:[lead],expectedRevision:state.revision},now),/revues/);
+  let state=await store.read();await assert.rejects(store.mutate({action:"add-reference-leads",leads:[lead],expectedRevision:state.revision},now),/Reviewed/);
   state=await store.mutate({action:"add-reference-leads",leads:[lead],reviewedSources:true,expectedRevision:state.revision},now);
   state=await store.mutate({action:"add-reference-leads",leads:[lead],reviewedSources:true,expectedRevision:state.revision},now);assert.equal(state.referenceLeads.length,1);
-  await assert.rejects(store.mutate({action:"add-reference-leads",leads:[{...lead,indicativePrice:1}],reviewedSources:true,expectedRevision:state.revision},now),/remplac/);
+  await assert.rejects(store.mutate({action:"add-reference-leads",leads:[{...lead,indicativePrice:1}],reviewedSources:true,expectedRevision:state.revision},now),/replaced/);
   await assert.rejects(store.mutate({action:"add-reference-leads",leads:[{...lead,id:"future",date:"2030-01-01"}],reviewedSources:true,expectedRevision:state.revision},now),/future/);
   state=await store.reconcile(now);assert.deepEqual(state.decisions,{});assert.deepEqual(state.candidates,[]);assert.equal(state.scenarios?.length??0,0);assert.equal(JSON.stringify({library,plan}),original);
   assert.equal((await new GroceryPurchaseResolutionStore(dir,async()=>library,async()=>plan).read()).referenceLeads.length,1);
@@ -37,10 +37,10 @@ test("historical and future estimated enrichment is persistent, idempotent and n
   const future=structuredClone(source); future.id="future"; library.records.push(future);
   state=await store.reconcile(now); assert.equal(state.scenarios.length,2); assert.equal((await store.reconcile(now)).revision,state.revision);
   const hint={id:"pack",purpose:"reference-pack",product:plan.prices[0].product,productId:"",priceId:"p",priceKey:purchasePriceKey(plan.prices[0]),size:350,unit:"g",packagePrice:3.5,sourceUrl:"https://example.com/tofu",observedAt:"2026-10-28T00:00:00.000Z",note:"Fictional reviewed package source"};
-  await assert.rejects(store.mutate({action:"add-scenario-hints",hints:[hint],expectedRevision:state.revision},now),/revues/);
+  await assert.rejects(store.mutate({action:"add-scenario-hints",hints:[hint],expectedRevision:state.revision},now),/Reviewed/);
   state=await store.mutate({action:"add-scenario-hints",hints:[hint],reviewedSources:true,expectedRevision:state.revision},now);
   state=await store.mutate({action:"add-scenario-hints",hints:[hint],reviewedSources:true,expectedRevision:state.revision},now); assert.equal(state.scenarioHints.length,1);
-  await assert.rejects(store.mutate({action:"add-scenario-hints",hints:[{...hint,packagePrice:2}],reviewedSources:true,expectedRevision:state.revision},now),/remplac/);
+  await assert.rejects(store.mutate({action:"add-scenario-hints",hints:[{...hint,packagePrice:2}],reviewedSources:true,expectedRevision:state.revision},now),/replaced/);
   assert.equal(JSON.stringify({source,plan}),original);
   const reread=await new GroceryPurchaseResolutionStore(dir,async()=>library,async()=>plan).read(); assert.equal(reread.scenarios.length,2); assert.equal(reread.scenarioHints.length,1);
 }));
@@ -49,7 +49,7 @@ test("candidate inspection is silent; explicit confirmation and undo preserve ra
   const record = makeRecord("source"), library = { records: [record] }, plan = emptyPlan(), before = JSON.stringify({ library, plan });
   const store = new GroceryPurchaseResolutionStore(dir, async () => library, async () => plan), c = makeCandidate(record);
   let s = await add(store, c); assert.deepEqual(s.decisions, {});
-  await assert.rejects(store.mutate({ action: "confirm", id: c.id, expectedRevision: s.revision }, now), /explicitement/);
+  await assert.rejects(store.mutate({ action: "confirm", id: c.id, expectedRevision: s.revision }, now), /Confirm the product and pack size/);
   s = await confirm(store, c.id, { confirmationEvidence: { at: "2026-10-29T11:00:00.000Z", source: "Synthetic explicit user statement" } });
   assert.equal(s.decisions[c.id].state, "confirmed"); assert.equal(s.decisions[c.id].evidence.at, "2026-10-29T11:00:00.000Z");
   s = await store.mutate({ action: "unconfirm", id: c.id, expectedRevision: s.revision }, now);
@@ -60,13 +60,13 @@ test("candidate inspection is silent; explicit confirmation and undo preserve ra
 test("source changes, stale revisions, future evidence and candidate replacement fail closed", () => sandbox(async dir => {
   const record = makeRecord("source"), store = new GroceryPurchaseResolutionStore(dir, async () => ({ records: [record] }), async () => emptyPlan()), c = makeCandidate(record);
   const s = await add(store, c);
-  await assert.rejects(store.mutate({ action: "unconfirm", id: c.id, expectedRevision: "stale" }, now), /changé/);
-  await assert.rejects(add(store, { ...c, size: 500 }), /remplacée/);
+  await assert.rejects(store.mutate({ action: "unconfirm", id: c.id, expectedRevision: "stale" }, now), /changed/);
+  await assert.rejects(add(store, { ...c, size: 500 }), /replaced/);
   await assert.rejects(add(store, { ...c, id: "future", observedAt: "2030-01-01T00:00:00.000Z" }), /future/);
-  record.receipt.items[0].quantity = 3; await assert.rejects(confirm(store, c.id), /source a changé/);
+  record.receipt.items[0].quantity = 3; await assert.rejects(confirm(store, c.id), /source line changed/);
   assert.deepEqual(await store.read(), s);
   const bytes = await readFile(join(dir, "purchase-resolution.json")); await writeFile(join(dir, "purchase-resolution.json"), "corrupt");
-  await assert.rejects(store.read(), /conservé/); assert.equal(await readFile(join(dir, "purchase-resolution.json"), "utf8"), "corrupt"); assert.ok(bytes.length);
+  await assert.rejects(store.read(), /retained/); assert.equal(await readFile(join(dir, "purchase-resolution.json"), "utf8"), "corrupt"); assert.ok(bytes.length);
 }));
 test("future exact-reference reuse is bounded, deduplicated and reversible; names or another SKU never suffice", () => sandbox(async dir => {
   const source = makeRecord("source"), next = makeRecord("next", "12345678_EA"), nameOnly = makeRecord("name-only"), other = makeRecord("other", "87654321_EA");

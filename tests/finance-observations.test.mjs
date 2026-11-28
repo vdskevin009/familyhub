@@ -32,9 +32,9 @@ test("older observations are retained without replacing the newest value; same-t
  const older = observationsFixture(state, "2026-10-31T12:34:56Z"); older.balanceObservations[0].balanceCents = -999;
  state = (await lib.import({ bundle: older, apply: true, expectedRevision: state.revision })).state; assert.equal(state.data.balanceObservations.length, 4); assert.equal(latestBalanceObservation(state.data, "bank").balanceCents, 123456);
  const provenanceConflict = observationsFixture(state); provenanceConflict.balanceObservations[0].source.sha256 = "c".repeat(64);
- await assert.rejects(() => lib.import({ bundle: provenanceConflict }), /contradictoires/); assert.deepEqual(await lib.read(), state);
+ await assert.rejects(() => lib.import({ bundle: provenanceConflict }), /Conflicting balances/); assert.deepEqual(await lib.read(), state);
  const conflict = observationsFixture(state); conflict.balanceObservations[0].balanceCents++;
- await assert.rejects(() => lib.import({ bundle: conflict, apply: true, expectedRevision: state.revision }), /contradictoires/); assert.deepEqual(await lib.read(), state);
+ await assert.rejects(() => lib.import({ bundle: conflict, apply: true, expectedRevision: state.revision }), /Conflicting balances/); assert.deepEqual(await lib.read(), state);
 }));
 test("source-only import rejects hidden changes, invalid timestamps, unknown identities, currencies and missing provenance", () => fixture(async lib => {
  const state = await lib.read();
@@ -62,7 +62,7 @@ test("client capability check blocks old workers before preview or apply", async
  const { importFinances } = await import("../apps/web/src/worker.ts");
  const original = globalThis.fetch, calls = [];
  globalThis.fetch = async (url, options) => { calls.push({ url, method: options?.method ?? "GET" }); return new Response(JSON.stringify({ capabilities: [] }), { status: 200 }); };
- try { for (const apply of [false, true]) await assert.rejects(() => importFinances({ Endpoint: "https://synthetic.invalid", ApiKey: "synthetic-key" }, { importMode: "balance-observations-only" }, "synthetic", apply), /worker PC/); assert.equal(calls.length, 2); assert(calls.every(c => c.url.endsWith("/health") && c.method === "GET")); }
+ try { for (const apply of [false, true]) await assert.rejects(() => importFinances({ Endpoint: "https://synthetic.invalid", ApiKey: "synthetic-key" }, { importMode: "balance-observations-only" }, "synthetic", apply), /PC service/); assert.equal(calls.length, 2); assert(calls.every(c => c.url.endsWith("/health") && c.method === "GET")); }
  finally { globalThis.fetch = original; }
 });
 
@@ -73,7 +73,7 @@ test("client refuses dropped preview or apply observations without retrying the 
  try {
   for (const apply of [false, true]) {
    let posts = 0; globalThis.fetch = async (url, init) => { if (init?.method === "POST") posts++; return new Response(JSON.stringify(url.endsWith("/health") ? { capabilities: ["finance-balance-observations-v1"] } : { added: 0, state: { data: {} } }), { status: 200 }); };
-   await assert.rejects(() => importFinances(config, bundle, "synthetic", apply), /confirmé/); assert.equal(posts, 1);
+   await assert.rejects(() => importFinances(config, bundle, "synthetic", apply), /confirm/i); assert.equal(posts, 1);
   }
  } finally { globalThis.fetch = original; }
 });

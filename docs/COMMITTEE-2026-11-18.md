@@ -1,5 +1,12 @@
 # Comité FamilyHub — reprise locale du 18 novembre 2026
 
+## Canadian English review on 27 November 2026
+
+PR #311 was reconciled with the published Canadian English interface at `0df94309b49033e440497d88129c1ce2f400fe8d`. The five 390 px images below were recaptured in English. The [before image](reviews/committee-20261118/before-390.png) uses a separate build of that exact main commit. The [320 px](reviews/committee-20261118/after-320.png) and [390 px](reviews/committee-20261118/after-390.png) after images show the same fictitious renewal in the candidate. The November 18 review below is historical.
+
+Through **Today → Sources and options**, Playwright exercised 320, 360, 384, 390, 412, 768, 1280 and 1440 px. Both snooze controls referenced the deadline warning and had targets of at least 48 × 48 CSS pixels. The scenarios covered the return date and time, keyboard focus, persistence and restore, a rejected save, a lost acknowledgement, unknown deadlines and an unpaired device. The suite also checked both durations and a seven-day return on the deadline. All test sources and action records were synthetic. Physical-phone acceptance is still open.
+
+
 Proposition implémentée sur branche isolée, destinée à une **PR en brouillon**. Suivi : #305; FH-PROACTIVE-003/004 et FH-UX-002. La décision de fusion/déploiement appartient à Kevin. Le comité automatique du même jour est repris ici, sans nouveau cycle programmé.
 
 ## Accès et périmètre réels

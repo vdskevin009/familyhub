@@ -41,13 +41,13 @@ test("Common basket: actual current-basket override and provisional quantity sta
   const p = fixture(); p.items[0].basketQuantity = 1; p.items[0].provisional = true; const c = commonQuantityComparison(p, day); assert.equal(c.stores.find(s => s.group.name === "Walmart")!.amount, 3); assert.equal(p.items[0].quantity, 2); assert.equal(c.stores.find(s => s.group.name === "Walmart")!.lines[0].item.provisional, true);
 });
 test("Common basket: zero and singleton do not fabricate percentage, tiny nonzero gaps remain positive", () => {
-  const p = fixture(); p.prices[0].price = 0; const c = commonQuantityComparison(p, day); assert.equal(c.stores.find(s => s.group.name === "Superstore")!.percent, null); assert.equal(c.stores.find(s => s.group.name === "Walmart")!.gap, "Montant nul");
-  p.prices.pop(); assert.equal(commonQuantityComparison(p, day).stores.find(s => s.group.name === "Walmart")!.gap, "Seul montant");
-  p.prices.push({ ...p.prices[0], id: "near", retailerId: "r1", price: 3.000001 }); p.prices[0].price = 3; assert.equal(commonQuantityComparison(p, day).stores.find(s => s.group.name === "Superstore")!.gap, "+<0,1 %");
+  const p = fixture(); p.prices[0].price = 0; const c = commonQuantityComparison(p, day); assert.equal(c.stores.find(s => s.group.name === "Superstore")!.percent, null); assert.equal(c.stores.find(s => s.group.name === "Walmart")!.gap, "Zero amount");
+  p.prices.pop(); assert.equal(commonQuantityComparison(p, day).stores.find(s => s.group.name === "Walmart")!.gap, "Only amount");
+  p.prices.push({ ...p.prices[0], id: "near", retailerId: "r1", price: 3.000001 }); p.prices[0].price = 3; assert.equal(commonQuantityComparison(p, day).stores.find(s => s.group.name === "Superstore")!.gap, "+<0.1%");
 });
 test("Common basket: small positive quantity or proportional money never displays as actual zero", () => {
-  assert.equal(adjustedNumber(.000001), "<0,0001"); assert.equal(adjustedMoney(.001, "CAD"), "<0,01 CAD");
-  assert.equal(adjustedNumber(0), "0"); assert.equal(adjustedMoney(0, "CAD"), "0,00 CAD");
+  assert.equal(adjustedNumber(.000001), "<0.0001"); assert.equal(adjustedMoney(.001, "CAD"), "<0.01 CAD");
+  assert.equal(adjustedNumber(0), "0"); assert.equal(adjustedMoney(0, "CAD"), "0.00 CAD");
 });
 test("Common basket: normalized ascending amounts, unknowns last and equal amounts alphabetical", () => {
   const p = fixture(); p.prices[0].price = 8;
@@ -57,7 +57,7 @@ test("Common basket: normalized ascending amounts, unknowns last and equal amoun
   p.prices[0].price = 3; Object.assign(p.prices[1], { price: 3, size: 12 });
   c = commonQuantityComparison(p, day);
   assert.deepEqual(c.stores.slice(0, 2).map(s => [s.group.name, s.percent]), [["Superstore", 0], ["Walmart", 0]]);
-  assert.ok(c.stores.slice(0, 2).every(s => s.gap === "0 % ex æquo"));
+  assert.ok(c.stores.slice(0, 2).every(s => s.gap === "0% (tie)"));
   p.retailers.reverse(); p.prices.reverse();
   assert.deepEqual(commonQuantityComparison(p, day), c);
 });
@@ -73,7 +73,7 @@ test("Common basket: disabled store is unranked, shared IDs and quantities stay 
 test("Common basket: nonfinite relative gap is unknown, never a percentage", () => {
   const p = fixture(); p.prices[0].price = 1e-310;
   const higher = commonQuantityComparison(p, day).stores.find(s => s.group.name === "Superstore")!;
-  assert.equal(higher.percent, null); assert.equal(higher.gap, "Écart inconnu");
+  assert.equal(higher.percent, null); assert.equal(higher.gap, "Difference unknown");
 });
 
 test("Coverage: unknown quantities keep competing unit prices and one store's variants do not inflate coverage", () => {
@@ -107,7 +107,7 @@ test("Common basket: explicitly chosen unpriced store, empty and singleton selec
   assert.match(unpriced.exclusionDetails[0].reason, /Unpriced store/);
   assert.equal(commonQuantityComparison(p, day, []).count, 0);
   const single = commonQuantityComparison(p, day, ["Walmart"]);
-  assert.equal(single.stores[0].gap, "Seul montant"); assert.equal(single.stores[0].percent, null);
+  assert.equal(single.stores[0].gap, "Only amount"); assert.equal(single.stores[0].percent, null);
 });
 test("Common basket: unknown pack and dose use a separate common physical reference", () => {
   const p = fixture(); p.items[0].size = null;
@@ -153,10 +153,10 @@ test("Dense basket details: nine long-named articles retain exact normalized amo
   assert.deepEqual(walmart.lines.map(l => l.item.name), p.items.map(i => i.name));
   assert.deepEqual(walmart.lines.map(l => l.offer.p.product), p.prices.filter(o => o.retailerId === "r0").map(o => o.product));
   assert.equal(walmart.amount, walmart.lines.reduce((sum, l) => sum + l.normalized, 0));
-  assert.equal(adjustedMoney(walmart.lines[0].normalized, "CAD"), "4,38 CAD");
-  assert.equal(adjustedMoney(walmart.lines[0].purchase, "CAD"), "5,00 CAD");
-  assert.equal(adjustedMoney(walmart.lines[8].normalized, "CAD"), "1,75 CAD");
-  assert.equal(adjustedMoney(walmart.lines[8].purchase, "CAD"), "10,50 CAD");
+  assert.equal(adjustedMoney(walmart.lines[0].normalized, "CAD"), "4.38 CAD");
+  assert.equal(adjustedMoney(walmart.lines[0].purchase, "CAD"), "5.00 CAD");
+  assert.equal(adjustedMoney(walmart.lines[8].normalized, "CAD"), "1.75 CAD");
+  assert.equal(adjustedMoney(walmart.lines[8].purchase, "CAD"), "10.50 CAD");
   assert.notEqual(walmart.amount, walmart.lines.reduce((sum, l) => sum + l.purchase, 0));
   for (const store of c.stores.filter(s => s.amount !== null)) assert.deepEqual(store.lines.map(l => [l.item.id, l.quantity, l.reference]), walmart.lines.map(l => [l.item.id, l.quantity, l.reference]));
   assert.deepEqual(p, before);

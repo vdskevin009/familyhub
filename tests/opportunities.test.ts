@@ -9,8 +9,45 @@ import { emptyReceipt } from "../apps/worker/src/grocery-model.ts";
 import { emptyMortgage } from "../apps/worker/src/mortgage-model.ts";
 import type { InvoiceSnapshot } from "../apps/web/src/worker.ts";
 import type { ReconciliationCase } from "../apps/web/src/types.ts";
+import { claimCoverage } from "../apps/web/src/opportunities.ts";
 
 const now = "2027-03-01T12:00:00.000Z";
+test("incomplete coverage retains known cases but never an exhaustive recovery amount", async () => {
+  for (const coverage of [{since:"2027-02-01",complete:false,heldMessages:1}, {since:"2027-02-01",complete:false}, {since:"2027-02-01",complete:true,heldMessages:1}]) {
+    const input = withClaims([claim()]); input.claims.data!.coverage = coverage;
+    const before = JSON.stringify(input.claims.data);
+    const result = await buildOpportunityFeed(input, now);
+    assert.equal(result.recoverable.amount, null);
+    assert.equal(result.opportunities.find(c => c.domain === "claims")?.benefit.amount, 120);
+    input.claims.data!.reconciliations = [];
+    assert.equal((await buildOpportunityFeed(input, now)).recoverable.amount, null);
+    input.claims.data!.reconciliations = [claim()]; assert.equal(JSON.stringify(input.claims.data), before);
+  }
+  const complete = withClaims([]); complete.claims.data!.coverage = {since:"2027-02-01",complete:true,heldMessages:0};
+  assert.equal((await buildOpportunityFeed(complete, now)).recoverable.amount, 0);
+});
+
+test("coverage projection preserves unknown legacy metadata and rejects malformed retained counts", async () => {
+  assert.deepEqual(claimCoverage({}), {complete:null,heldMessages:null});
+  for (const heldMessages of [-1, 1.5, Number.NaN, Number.POSITIVE_INFINITY, "1"]) {
+    assert.deepEqual(claimCoverage({coverage:{complete:false,heldMessages} as any}), {complete:false,heldMessages:null});
+  }
+  assert.deepEqual(claimCoverage({coverage:{since:"2027-02-01",complete:true}}), {complete:true,heldMessages:null});
+  // Existing snapshots without coverage retain their legacy arithmetic; absence is never promoted to complete:true.
+  assert.equal((await buildOpportunityFeed(withClaims([]), now)).recoverable.amount, 0);
+});
+
+test("source projection keeps bounded partial coverage and original source date without raw errors", async () => {
+  for (const complete of [false, true]) {
+    const raw = {...invoices([]),lastSuccess:"2027-02-28T12:00:00Z",coverage:{since:"2027-02-01",complete,heldMessages:complete?0:1},error:"PRIVATE_RAW_DIAGNOSTIC"};
+    const loaders = Object.fromEntries(Object.keys(blank()).map(id => [id,async()=>{if(id==='claims')return raw;throw Error('Unused synthetic source');}])) as OpportunityLoaders;
+    let projected: any;
+    await collectOpportunitySources(loaders, source => {if(source.id==='claims'){const {data,...health}=source;projected=health;}},()=>now);
+    assert.deepEqual(projected.coverage,{complete,heldMessages:complete?0:1});
+    assert.equal(projected.sourceDate,'2027-02-28'); assert.equal(projected.status,'ready');
+    assert.ok(!JSON.stringify(projected).includes('PRIVATE_RAW_DIAGNOSTIC'));
+  }
+});
 const blank = () => emptyOpportunityInputs("ready");
 function claim(overrides: Partial<ReconciliationCase> = {}): ReconciliationCase {
   return { Id: "synthetic-case", Member: "unknown", Provider: "Synthetic clinic", ServiceDate: "2027-02-20", OriginalAmount: 200, ReimbursedAmount: 80, PotentialRemaining: 120, Currency: "CAD", NextInsurer: "Desjardins", Action: "submit-secondary", Summary: "Synthetic", Confidence: .95, DocumentIds: [], WorkflowStatus: "open", ...overrides };
@@ -61,13 +98,13 @@ test("structured policy expiry overrides the empty legacy renewal; awaiting quot
   input.contracts.data = { records: [{ contract: c, revision: "synthetic-revision" }] };
   const feed = await buildOpportunityFeed(input, now), card = feed.opportunities[0];
   assert.equal(card.dueDate, "2027-04-26"); assert.equal(card.target.recordId, c.id); assert.equal(card.priority, 86);
-  assert.equal(card.benefit.amount, null); assert.match(card.description, /1 devis en attente/);
+  assert.equal(card.benefit.amount, null); assert.match(card.description, /1 quote pending/);
   assert.deepEqual(card.context, { kind: "insurance-renewal", recordId: c.id, dueDate: "2027-04-26" });
   const policy = c.insuranceReference.records[0];
   policy.facts = [{ code: "coverage.subLimit", label: "Synthetic coverage conflict", value: null, unit: "CAD", certainty: "conflict", sourceIds: ["source"], notes: "Synthetic disagreement" }];
   const coverage = (await buildOpportunityFeed(input, now)).opportunities[0];
   assert.equal(coverage.dueDate, "2027-04-26"); assert.equal(coverage.freshness, "fresh"); assert.equal(coverage.priority, 86); assert.equal(coverage.benefit.amount, null);
-  assert.ok(coverage.evidence.some(e => e.includes("Garanties contradictoires")));
+  assert.ok(coverage.evidence.some(e => e.includes("Coverage details conflict")));
   policy.facts[0].code = "policy.effectiveTo";
   const dateConflict = (await buildOpportunityFeed(input, now)).opportunities[0];
   assert.equal(dateConflict.dueDate, null); assert.equal(dateConflict.freshness, "unknown");

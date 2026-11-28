@@ -151,7 +151,7 @@ async def run(args):
         # UI choices survive leaving the view. No data or credential migration.
         await page.get_by_role('button', name='Plus', exact=True).click()
         await page.locator('.other-link').filter(has_text='Documents').click()
-        await page.get_by_role('button', name='Remboursements', exact=True).last.click()
+        await page.get_by_role('button', name='Reimbursements', exact=True).last.click()
         await expect(page.get_by_role('searchbox', name='Search claims')).to_have_value('Cedar')
         await page.get_by_role('button', name='Remove filter: Through 2026-09-24').click()
         await page.get_by_role('button', name='Clear search claims').click()
@@ -212,7 +212,7 @@ async def run(args):
         assert await page.evaluate("__pwaTest.requests.filter(request=>request.method==='POST').length") == post_count
         await page.keyboard.press('Escape')
         # Reconciliation candidate search remains keyboard-accessible and explicit.
-        await page.get_by_role('button', name=re.compile('^À réconcilier')).click()
+        await page.get_by_role('button', name=re.compile('^To reconcile')).click()
         await page.get_by_role('button', name='Search another invoice', exact=True).click()
         search_dialog = page.get_by_role('dialog', name='Search another invoice')
         await expect(search_dialog).to_be_visible()

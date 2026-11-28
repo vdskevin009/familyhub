@@ -25,14 +25,13 @@ export default function ContractServicesForm({
     const services = draft.services ?? [];
     return (
         <details className="finance-contract-fields">
-            <summary>Facture d’origine et services inclus</summary>
+            <summary>Original invoice and included services</summary>
             <div className="view-stack">
                 <p>
-                    Conservez le montant et la période du document. Le total du
-                    contrat reste indépendant de ses services.
+                    Keep the amount and period shown on the document. The contract total remains separate from its services.
                 </p>
                 <label>
-                    Taxes de cette facture
+                    Invoice taxes
                     <select
                         value={String(billing.taxesIncluded ?? null)}
                         onChange={(e) =>
@@ -44,14 +43,14 @@ export default function ContractServicesForm({
                             )
                         }
                     >
-                        <option value="null">À confirmer</option>
-                        <option value="true">Incluses</option>
-                        <option value="false">Avant taxes</option>
+                        <option value="null">Unconfirmed</option>
+                        <option value="true">Included</option>
+                        <option value="false">Before tax</option>
                     </select>
                 </label>
                 <div className="form-grid">
                     <label>
-                        Montant facturé
+                        Billed amount
                         <input
                             type="number"
                             min="0"
@@ -68,7 +67,7 @@ export default function ContractServicesForm({
                         />
                     </label>
                     <label>
-                        Devise
+                        Currency
                         <input
                             maxLength={3}
                             pattern="[A-Z]{3}"
@@ -82,7 +81,7 @@ export default function ContractServicesForm({
                         />
                     </label>
                     <label>
-                        Nombre d’unités
+                        Number of units
                         <input
                             type="number"
                             min="1"
@@ -94,21 +93,21 @@ export default function ContractServicesForm({
                         />
                     </label>
                     <label>
-                        Période
+                        Period
                         <select
                             value={billing.unit}
                             onChange={(e) =>
                                 updateBilling("unit", e.target.value)
                             }
                         >
-                            <option value="months">Mois</option>
-                            <option value="weeks">Semaines</option>
-                            <option value="days">Jours</option>
-                            <option value="years">Années</option>
+                            <option value="months">Months</option>
+                            <option value="weeks">Weeks</option>
+                            <option value="days">Days</option>
+                            <option value="years">Years</option>
                         </select>
                     </label>
                     <label>
-                        Date du montant
+                        Amount as of
                         <input
                             type="date"
                             value={billing.asOf}
@@ -118,14 +117,14 @@ export default function ContractServicesForm({
                         />
                     </label>
                     <label>
-                        Source / période originale
+                        Original source and period
                         <input
                             maxLength={3000}
                             value={billing.source}
                             onChange={(e) =>
                                 updateBilling("source", e.target.value)
                             }
-                            placeholder="Facture, dates de début et fin, page"
+                            placeholder="Invoice, start and end dates, page"
                         />
                     </label>
                 </div>
@@ -151,7 +150,7 @@ export default function ContractServicesForm({
                             <legend>Service {i + 1}</legend>
                             <div className="form-grid">
                                 <label>
-                                    Nom du service
+                                    Service name
                                     <input
                                         required
                                         value={s.name}
@@ -162,7 +161,7 @@ export default function ContractServicesForm({
                                     />
                                 </label>
                                 <label>
-                                    Coût
+                                    Cost
                                     <select
                                         value={s.pricing}
                                         onChange={(e) =>
@@ -170,20 +169,20 @@ export default function ContractServicesForm({
                                         }
                                     >
                                         <option value="shared">
-                                            Partagé dans le forfait
+                                            Shared within the package
                                         </option>
                                         <option value="included">
-                                            Inclus dans le forfait
+                                            Included in package
                                         </option>
                                         <option value="documented">
-                                            Prix individuel documenté
+                                            Documented individual price
                                         </option>
                                     </select>
                                 </label>
                                 {s.pricing === "documented" && (
                                     <>
                                         <label>
-                                            Prix mensuel documenté
+                                            Documented monthly price
                                             <input
                                                 type="number"
                                                 min="0"
@@ -218,20 +217,20 @@ export default function ContractServicesForm({
                                                 }
                                             >
                                                 <option value="null">
-                                                    À confirmer
+                                                    Unconfirmed
                                                 </option>
                                                 <option value="true">
-                                                    Incluses
+                                                    Included
                                                 </option>
                                                 <option value="false">
-                                                    Avant taxes
+                                                    Before tax
                                                 </option>
                                             </select>
                                         </label>
                                     </>
                                 )}
                                 <label>
-                                    Source du service
+                                    Service source
                                     <input
                                         required={s.pricing === "documented"}
                                         maxLength={2000}
@@ -254,7 +253,7 @@ export default function ContractServicesForm({
                                     })
                                 }
                             >
-                                Retirer ce service
+                                Remove service
                             </button>
                         </fieldset>
                     );
@@ -280,7 +279,7 @@ export default function ContractServicesForm({
                         })
                     }
                 >
-                    Ajouter un service
+                    Add service
                 </button>
             </div>
         </details>

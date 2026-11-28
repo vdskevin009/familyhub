@@ -44,60 +44,60 @@ try {
    const body = path === "/finances" ? state : path === "/health" ? { status: "ok", version: "2.25.0" } : path === "/invoices" ? { items: [], reconciliations: [], unmatchedReimbursements: [], setupRequired: true, accounts: [] } : path === "/savings/contracts" ? { records: [] } : { records: [], jobs: [], items: [], state: "idle" };
    return route.fulfill({ json: body });
   });
-  await page.goto(base); const note = page.locator(".finance-collection-note"); await note.waitFor(); assert.match(await note.innerText(), /1 compte sur 9/); assert.equal(await note.locator("time").getAttribute("datetime"), "2026-10-25T12:34:56Z"); assert.match(await note.innerText(), /UTC|HNP|HAP/);
-  await page.getByRole("button", { name: "Comptes", exact: true }).click();
+  await page.goto(base); const note = page.locator(".finance-collection-note"); await note.waitFor(); assert.match(await note.innerText(), /1 account out of 9/); assert.equal(await note.locator("time").getAttribute("datetime"), "2026-10-25T12:34:56Z"); assert.match(await note.innerText(), /UTC|PST|PDT/);
+  await page.getByRole("button", { name: "Accounts", exact: true }).click();
   const bank = page.locator('[data-investment-account="bank"]'), rrsp = page.locator('[data-investment-account="rrsp"]');
-  assert.match(await bank.innerText(), /1\s?234,56/); assert.match(await rrsp.innerText(), /3\s?234,56/); assert.match(await bank.innerText(), /Date bancaire inconnue/); assert.match(await bank.innerText(), /Reçu le/);
+  assert.match(await bank.innerText(), /1,234\.56/); assert.match(await rrsp.innerText(), /3,234\.56/); assert.match(await bank.innerText(), /Bank date unknown/); assert.match(await bank.innerText(), /Received on/);
   assert.equal(await page.locator('.finance-historical-accounts').getAttribute('open'), null); await page.locator('.finance-historical-accounts > summary').click();
-  assert.match(await page.locator('[data-investment-account="gic"]').innerText(), /Observation historique/);
-  for (let i = 0; i < 5; i++) assert.match(await page.locator('[data-investment-account="extra' + i + '"]').innerText(), /Observation historique/);
+  assert.match(await page.locator('[data-investment-account="gic"]').innerText(), /Historical observation/);
+  for (let i = 0; i < 5; i++) assert.match(await page.locator('[data-investment-account="extra' + i + '"]').innerText(), /Historical observation/);
   await page.locator('.finance-historical-accounts > summary').click();
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1), false);
   await page.screenshot({ path: join(output, "accounts-" + width + ".png"), fullPage: true });
   for (let i = 0; i < 2; i++) {
    await bank.click(); await page.getByRole("heading", { name: "Compte courant", exact: true }).waitFor();
-   await page.getByText("Historique des soldes reçus", { exact: true }).click(); await page.getByText(/Valeur historique conservée/).waitFor();
-   assert.match(await page.getByText(/Valeur historique conservée/).innerText(), /2026-10-09/);
-   const history = page.locator(".finance-received-evolution"); await history.getByRole("heading", { name: "Évolution des soldes reçus" }).waitFor();
-   assert.equal(await history.getByRole("img", { name: "Évolution des soldes reçus", exact: true }).count(), 1);
+   await page.locator("summary").filter({hasText: /^Received balance history$/}).click(); await page.getByText(/Retained historical value/).waitFor();
+   assert.match(await page.getByText(/Retained historical value/).innerText(), /2026-10-09/);
+   const history = page.locator(".finance-received-evolution"); await history.getByRole("heading", { name: "Received balance history" }).waitFor();
+   assert.equal(await history.getByRole("img", { name: "Received balance history", exact: true }).count(), 1);
    assert.equal(await history.locator("[data-received-point]").count(), 3); assert.equal(await history.locator("li").count(), 3);
-   assert.match(await history.locator(".finance-received-change").innerText(), /\+234,56/); assert.match(await history.innerText(), /pas un rendement/); assert.match(await history.innerText(), /Date bancaire inconnue/);
+   assert.match(await history.locator(".finance-received-change").innerText(), /\+\$234\.56/); assert.match(await history.innerText(), /not a return/); assert.match(await history.innerText(), /Bank date unknown/);
    assert.equal(await history.locator("[data-received-point='2026-10-09']").count(), 0); assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1), false);
    if (i === 0) await history.screenshot({ path: join(output, "evolution-" + width + ".png") });
-   await page.getByRole("button", { name: "Retour aux comptes", exact: true }).click();
+   await page.getByRole("button", { name: "Back to accounts", exact: true }).click();
   }
-  await rrsp.click(); await page.getByText("Historique des soldes reçus", { exact: true }).click();
-  await page.getByText("Une seule réception datée : l’évolution sera disponible après une autre réception réelle.", { exact: true }).waitFor();
+  await rrsp.click(); await page.locator("summary").filter({hasText: /^Received balance history$/}).click();
+  await page.getByText("Only one dated balance was received. A comparison will be available once a second balance is received.", { exact: true }).waitFor();
   assert.equal(await page.locator(".finance-received-evolution [data-received-point]").count(), 0); assert.equal(await page.locator(".finance-received-evolution li").count(), 1);
-  await page.getByRole("button", { name: "Retour aux comptes", exact: true }).click();
-  await page.getByRole("button", { name: "Actualiser", exact: true }).click(); await page.getByText("Données enregistrées sur le PC rechargées. Aucune nouvelle connexion bancaire.", { exact: true }).waitFor(); assert.equal(JSON.stringify(state), saved);
-  for (const tab of ["Dépenses", "Tendances", "Comptes"]) {
+  await page.getByRole("button", { name: "Back to accounts", exact: true }).click();
+  await page.getByRole("button", { name: "Refresh", exact: true }).click(); await page.getByText("Saved data was reloaded from the PC. No new bank connection was made.", { exact: true }).waitFor(); assert.equal(JSON.stringify(state), saved);
+  for (const tab of ["Spending", "Trends", "Accounts"]) {
    await page.getByRole("button", { name: tab, exact: true }).click();
-   if (tab === "Comptes") assert.equal(await note.count(), 0);
-   else if(tab === "Tendances") {
-    assert.match(await page.locator('.trend-collection').innerText(),/Collecté le/);
-    await page.getByRole('button',{name:'Informations : Lecture des tendances',exact:true}).click();
-    const method=page.getByRole('dialog',{name:'Lecture des tendances',exact:true});
-    assert.match(await method.innerText(),/1 compte sur 9/);assert.match(await method.innerText(),/fraîcheur bancaire/);
+   if (tab === "Accounts") assert.equal(await note.count(), 0);
+   else if(tab === "Trends") {
+    assert.match(await page.locator('.trend-collection').innerText(),/Collected on/);
+    await page.getByRole('button',{name:'Information: How to read trends',exact:true}).click();
+    const method=page.getByRole('dialog',{name:'How to read trends',exact:true});
+    assert.match(await method.innerText(),/1 account out of 9/);assert.match(await method.innerText(),/bank data is current/);
     await page.keyboard.press('Escape');
-   } else assert.match(await note.innerText(), /1 compte sur 9/);
+   } else assert.match(await note.innerText(), /1 account out of 9/);
   }
   // A newer bank-dated value can supersede the observation without hiding its history.
   state = structuredClone(state); state.data.accounts.find(a => a.id === "bank").asOf = "2031-01-01";
-  await page.getByRole("button", { name: "Actualiser", exact: true }).click(); await page.waitForFunction(() => document.querySelector('[data-investment-account="bank"]')?.textContent?.includes('2031-01-01')); if (await page.locator('.finance-historical-accounts').getAttribute('open') === null) await page.locator('.finance-historical-accounts > summary').click(); await bank.waitFor(); await bank.click(); await page.getByText("Historique des soldes reçus", { exact: true }).click(); assert.match(await page.getByText(/Valeur historique conservée/).innerText(), /2031-01-01/); assert.equal(await page.locator(".finance-received-evolution li").count(), 3);
+  await page.getByRole("button", { name: "Refresh", exact: true }).click(); await page.waitForFunction(() => document.querySelector('[data-investment-account="bank"]')?.textContent?.includes('2031-01-01')); if (await page.locator('.finance-historical-accounts').getAttribute('open') === null) await page.locator('.finance-historical-accounts > summary').click(); await bank.waitFor(); await bank.click(); await page.locator("summary").filter({hasText: /^Received balance history$/}).click(); assert.match(await page.getByText(/Retained historical value/).innerText(), /2031-01-01/); assert.equal(await page.locator(".finance-received-evolution li").count(), 3);
   if (width === 320) {
    // A long real receipt series is bounded visually, but every exact record remains keyboard-accessible.
    const template = state.data.balanceObservations.find(o => o.accountId === "bank");
    state = structuredClone(state); state.data.balanceObservations = Array.from({ length: 125 }, (_, i) => ({ ...template, capturedAt: new Date(Date.parse("2026-11-02T12:00:00Z") + i * 60000).toISOString(), balanceCents: 100000 + i }));
-   await page.reload(); await page.getByRole("button", { name: "Comptes", exact: true }).click(); await page.waitForFunction(() => document.querySelector('[data-investment-account="bank"]')?.textContent?.includes('2031-01-01')); if (await page.locator('.finance-historical-accounts').getAttribute('open') === null) await page.locator('.finance-historical-accounts > summary').click(); await page.locator('[data-investment-account="bank"]').click(); await page.getByText("Historique des soldes reçus", { exact: true }).click();
+   await page.reload(); await page.getByRole("button", { name: "Accounts", exact: true }).click(); await page.waitForFunction(() => document.querySelector('[data-investment-account="bank"]')?.textContent?.includes('2031-01-01')); if (await page.locator('.finance-historical-accounts').getAttribute('open') === null) await page.locator('.finance-historical-accounts > summary').click(); await page.locator('[data-investment-account="bank"]').click(); await page.locator("summary").filter({hasText: /^Received balance history$/}).click();
    const longHistory = page.locator(".finance-received-evolution"); assert.equal(await longHistory.locator("[data-received-point]").count(), 100); assert.equal(await longHistory.locator("li").count(), 20);
-   const more = longHistory.getByRole("button", { name: /^Voir les réceptions précédentes/ });
+   const more = longHistory.getByRole("button", { name: /^View earlier balances/ });
    await more.focus(); await page.keyboard.press("Enter"); assert.equal(await longHistory.locator("li").count(), 40);
    for (let i = 0; i < 5; i++) await more.click(); assert.equal(await longHistory.locator("li").count(), 125); assert.equal(await more.count(), 0);
    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1), false);
   }
   // Old workers omit capture metadata; import time and collectedOn never become fallback timestamps.
-  state = structuredClone(before); await page.reload(); await note.waitFor(); assert.match(await note.innerText(), /Date et heure de la dernière collecte non disponibles/); assert.equal(await note.locator("time").count(), 0);
+  state = structuredClone(before); await page.reload(); await note.waitFor(); assert.match(await note.innerText(), /The date and time of the last collection are unavailable/); assert.equal(await note.locator("time").count(), 0);
   assert.deepEqual(writes, []); assert.deepEqual(errors, []); await context.close(); console.log("PASS received-date evolution, single-capture unknown, dedup, historical separation, timestamps and reload at " + width + "px");
  }
 } finally { if (browser) await browser.close(); await new Promise(r => server.close(r)); await rm(temp, { recursive: true, force: true }); }

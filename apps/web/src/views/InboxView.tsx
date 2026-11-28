@@ -1,3 +1,4 @@
+import { invoiceClassificationCopy } from "../invoice-classification-copy";
 import { PageHeader, Sheet } from "../ui/primitives";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -28,7 +29,7 @@ function statusLabel(status: ReimbursementStatus): string {
 }
 
 function categoryLabel(item: ReimbursementItem): string {
-  if (item.DocumentType === "marketing") return "Pub";
+  if (item.DocumentType === "marketing") return "Ad";
   if (item.DocumentType === "ignore") return "Ignored";
   if (item.DocumentType === "bill") return "Bill";
   if (item.DocumentType === "invoice") return "Invoice";
@@ -103,7 +104,7 @@ export default function InboxView({ hub }: Props) {
       const result = await correctInvoice(hub.worker, item.Id, kind);
       updateItem(item.Id, result);
       setLastDecision(result.LastDecisionId || "");
-      setMessage("Correction enregistrée. FamilyHub attend trois décisions cohérentes avant de filtrer automatiquement.");
+      setMessage("Correction saved. FamilyHub waits for three consistent decisions before applying a filter automatically.");
     } catch (err) { setError(err instanceof Error ? err.message : "Correction could not be saved."); }
     finally { setBusy(""); }
   }
@@ -112,7 +113,7 @@ export default function InboxView({ hub }: Props) {
     if (!item.WorkerManaged) { updateItem(item.Id, { Status: status, NeedsReview: status === ReimbursementStatus.ToReview,
       ManualOverride: { Version: 1, Reasons: [...new Set([...(item.ManualOverride?.Reasons ?? []), "browser-status"])] } }); return; }
     setBusy(item.Id); setError("");
-    try { const result = await saveInvoiceStatus(hub.worker, item.Id, status); updateItem(item.Id, result); setLastDecision(result.LastDecisionId || ""); setMessage("Statut enregistré dans l'historique."); }
+    try { const result = await saveInvoiceStatus(hub.worker, item.Id, status); updateItem(item.Id, result); setLastDecision(result.LastDecisionId || ""); setMessage("Status saved in history."); }
     catch (err) { setError(err instanceof Error ? err.message : "Status could not be saved on the PC."); }
     finally { setBusy(""); }
   }
@@ -120,8 +121,8 @@ export default function InboxView({ hub }: Props) {
   async function undoLastDecision() {
     if (!lastDecision) return;
     setBusy("undo"); setError("");
-    try { const item = await undoInvoiceDecision(hub.worker, lastDecision); updateItem(item.Id, item); setLastDecision(""); setMessage("Dernière décision annulée."); }
-    catch (err) { setError(err instanceof Error ? err.message : "La décision n'a pas pu être annulée."); }
+    try { const item = await undoInvoiceDecision(hub.worker, lastDecision); updateItem(item.Id, item); setLastDecision(""); setMessage("Last decision undone."); }
+    catch (err) { setError(err instanceof Error ? err.message : "The decision could not be undone."); }
     finally { setBusy(""); }
   }
 
@@ -223,7 +224,7 @@ export default function InboxView({ hub }: Props) {
   async function archive(item: ReimbursementItem) {
     if (originalRequest.current) return;
     if (!hub.admin.ArchiveEnabled) {
-      setError("Drive archiving is disabled in Plus → Réglages et outils → Document archive.");
+      setError("Drive archiving is disabled in More → Settings and tools → Document archive.");
       return;
     }
     if (!connections[item.AccountLabel]?.canArchive) {
@@ -263,30 +264,30 @@ export default function InboxView({ hub }: Props) {
       {collection?.sourcePolicyWarning && <div className="banner error" role="status">{collection.sourcePolicyWarning}</div>}
       {(workerError || collection?.error) && <div className="banner error" role="alert">{workerError || collection?.error}</div>}
       {error && <div className="banner error">{error}</div>}
-      {message && <div className="banner success"><Check size={17} />{message}{lastDecision && <button className="banner-action" disabled={!!busy} onClick={undoLastDecision}><RotateCcw size={14} /> Annuler</button>}</div>}
+      {message && <div className="banner success"><Check size={17} />{message}{lastDecision && <button className="banner-action" disabled={!!busy} onClick={undoLastDecision}><RotateCcw size={14} /> Undo</button>}</div>}
 
       <section className="surface important-mail" aria-labelledby="important-mail-title">
         <div className="section-heading inline"><div><span className="eyebrow">Mailbox</span><h2 id="important-mail-title">Important messages</h2></div><span className="learning-count">{hub.reimbursements.ImportantMail?.length || 0}</span></div>
         {!hub.reimbursements.ImportantMail?.length && <div className="empty-state"><Mail size={30} /><strong>No important mail waiting</strong><span>The PC agent will place time-sensitive messages here.</span></div>}
         {(hub.reimbursements.ImportantMail ?? []).slice(0, 6).map(item => <article className="important-mail-row" key={item.Id}>
           <span className={`attention-badge ${item.AttentionLevel}`}>{item.AttentionLevel === "critical" ? "Urgent" : item.AttentionLevel === "action" ? "Action" : "Important"}</span>
-          <div><strong>{item.Subject || item.Provider}</strong><small>{item.Sender} · {dateLabel(item.ReceivedAt)}</small><p>{item.AttentionReason || item.Reasons?.[0]}</p></div>
+          <div><strong>{item.Subject || item.Provider}</strong><small>{item.Sender} · {dateLabel(item.ReceivedAt)}</small><p>{invoiceClassificationCopy(item.AttentionReason || item.Reasons?.[0] || "")}</p></div>
           <button className="mini-button" onClick={() => googleBridge.openMessage(item.AccountEmail, item.InternetMessageId, item.SourceMessageId)}><ExternalLink size={15} /> Email</button>
         </article>)}
       </section>
 
       {!!hub.reimbursements.CleanupSuggestions?.length && <section className="surface">
-        <div className="section-heading inline"><div><span className="eyebrow">Boîte propre</span><h2>Suggestions apprises</h2></div></div>
+        <div className="section-heading inline"><div><span className="eyebrow">Inbox cleanup</span><h2>Learned suggestions</h2></div></div>
         {hub.reimbursements.CleanupSuggestions.slice(0, 4).map(item => <div className="cleanup-row" key={item.Fingerprint}>
-          <div><strong>{item.Sender}</strong><small>{item.Seen} décisions similaires · confiance {item.Confidence}%</small></div>
-          <p>{item.Action === "unsubscribe-with-confirmation" ? "Désabonnement suggéré — confirmation requise; aucun courriel n'a été modifié." : item.Reason}</p>
+          <div><strong>{item.Sender}</strong><small>{item.Seen} similar decisions · confidence {item.Confidence}%</small></div>
+          <p>{item.Action === "unsubscribe-with-confirmation" ? "Unsubscribe suggested. Confirmation required; no email has been changed." : item.Reason}</p>
         </div>)}
       </section>}
 
       <Sheet open={connectionsOpen} onClose={() => setConnectionsOpen(false)} title="Mail sources" description="Connection, collection status and optional Drive access.">
       <section className="surface" aria-label="Daily PC collection">
         <div className="section-heading inline"><div><span className="eyebrow">PC agent</span><h2>Daily mailbox analysis</h2></div></div>
-        {!paired ? <p>Pair your PC in Plus → Réglages et outils → Local AI to retrieve its daily collection here.</p> : <>
+        {!paired ? <p>Pair your PC in More → Settings and tools → Local AI to retrieve its daily collection here.</p> : <>
           <p>{collection?.busy ? "Collection in progress…" : collection?.lastSuccess ? `Last complete scan: ${new Date(collection.lastSuccess).toLocaleString()}` : "No completed daily scan yet."}</p>
           {collection?.setupRequired && <p>{collection.sourceMode === "plugin" ? "No invoice-enabled Gmail plugin source is available. Check the paired PC source status; no browser Gmail fallback will run." : "One-time setup required: connect Gmail on the PC using Connect-Gmail.ps1, then install the daily task. Browser Google connections below do not enable background collection."}</p>}
           {collection?.accounts.map(account => <p key={account.email}>{account.label}: {account.email} · {account.collections && !account.collections.includes("invoices") ? "Groceries only; excluded from invoice collection" : collection.progress[account.email]?.error || (collection.progress[account.email]?.window ? "Backlog: will resume next run" : account.sourceMode === "plugin" || collection.sourceMode === "plugin" ? "Gmail plugin source" : "Connected on PC")}</p>)}
@@ -365,7 +366,7 @@ export default function InboxView({ hub }: Props) {
         <div className="filter-tabs">
           {([
             ["important", `Important (${hub.reimbursements.ImportantMail?.length || 0})`],
-            ["review", `À vérifier (${hub.reimbursements.Items.filter(x => x.NeedsReview && x.Status !== ReimbursementStatus.Ignored).length})`],
+            ["review", `Needs review (${hub.reimbursements.Items.filter(x => x.NeedsReview && x.Status !== ReimbursementStatus.Ignored).length})`],
             ["all", "All"],
             ["archived", "Archived"],
             ["ignored", "Ignored"]
@@ -398,13 +399,13 @@ export default function InboxView({ hub }: Props) {
                     <small>{item.DetectedAmount != null ? "detected" : "no amount"}</small>
                   </div>
                 </div>
-                {!!item.Reasons?.length && <div className="reason-row">{item.Reasons.slice(0, 3).map(reason => <span key={reason}>{reason}</span>)}</div>}
+                {!!item.Reasons?.length && <div className="reason-row">{item.Reasons.slice(0, 3).map(reason => <span key={reason}>{invoiceClassificationCopy(reason)}</span>)}</div>}
                 {!!item.Attachments?.length && <p className="attachment-analysis">{item.Attachments.filter(file => file.AnalysisStatus === "text-extracted").length
                   ? `${item.Attachments.filter(file => file.AnalysisStatus === "text-extracted").length} attachment(s) read by the PC agent`
                   : "Attachment content unavailable; review may still be required"}</p>}
                 {item.ReimbursementEligibility && <p>Reimbursement: {item.ReimbursementEligibility === "possible" ? "possibly eligible — verify your coverage" : item.ReimbursementEligibility === "no" ? "no eligibility identified" : "eligibility unknown"}</p>}
                 {item.WorkerManaged && <div className="inbox-actions" aria-label="Correct document classification">
-                  {[["marketing", "Pub"], ["receipt", "Reçu"], ["invoice", "Facture"], ["bill", "Facture à payer"], ["claim", "Demande"], ["administrative", "Admin"], ["ignore", "Ignorer"]].map(([kind, label]) =>
+                  {[["marketing", "Ad"], ["receipt", "Receipt"], ["invoice", "Invoice"], ["bill", "Bill"], ["claim", "Claim"], ["administrative", "Admin"], ["ignore", "Ignore"]].map(([kind, label]) =>
                     <button key={kind} className="mini-button" disabled={!!busy || !paired} onClick={() => correct(item, kind)}>{label}</button>)}
                 </div>}
                 {item.ArchivedAt && <div className="archive-path"><Archive size={14} />{item.DrivePath}</div>}

@@ -4,7 +4,7 @@ import {sourceExpenseKey} from "./finance-source-expenses-store.js";
 import type {FeedBatch} from "./finances-full-feed.js";
 type Raw=Record<string,any>;
 export type SourceExpensesEvidence={collectedAt:string;accounts:{item_id:string;account_id:string;name:string}[];transactions:FeedBatch};
-const fail=():never=>{throw new SourceExpensesError("Preuve de dépenses source incomplète ou incohérente. Aucun import effectué.");};
+const fail=():never=>{throw new SourceExpensesError("Source spending evidence is incomplete or inconsistent. Nothing was imported.");};
 const text=(v:unknown):string=>typeof v==="string"&&!!v.trim()?v:fail();
 const cents=(v:unknown):number=>{if(typeof v!=="number"||!Number.isFinite(v))return fail();const n=Math.round(v*100);return Number.isSafeInteger(n)&&Math.abs(v*100-n)<0.000001?n:fail();};
 /** Pure preparation only. Raw provider IDs are hashed here and never returned or persisted. */

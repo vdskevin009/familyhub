@@ -24,14 +24,15 @@ const rows=['Scaling, Two units','Root Planing, Two units'].flatMap((label,i)=>[
  {...common,Id:`dj-${i}`,Fingerprint:`dj-${i}`,Provider:'Desjardins',ClaimedService:i?'APLAN. DE RACINES':'DÉTARTRAGE DEUX UNITÉS',Insurer:'desjardins',StructuredSource:'desjardins-portal',ReimbursedAmount:112,DetectedAmount:112},
  {...common,Id:`bc-${i}`,Fingerprint:`bc-${i}`,Provider:'Blue Cross',ClaimedService:label,Insurer:'blue-cross',StructuredSource:'blue-cross-portal',ReimbursedAmount:28,DetectedAmount:28}
 ]);
-async function openCoverageDetails(page, expectedSummary = /Blue Cross : rapprochements à vérifier/) {
+async function openCoverageDetails(page, expectedSummary = /Blue Cross: matches to review/) {
  const coverage=page.getByRole('region',{name:'Insurer collection coverage'});
  const details=coverage.locator(':scope > details'),summary=details.locator(':scope > summary');
- await summary.getByText(/\d+ source\(s\) à vérifier/).waitFor();
+ await summary.getByText(/\d+ sources? to review/).waitFor();
+ await summary.getByText(expectedSummary).waitFor();
  assert.equal(await details.getAttribute('open'),null,'Coverage starts compact without hiding the warning');
  assert.match(await summary.innerText(),/Blue Cross/,'The compact warning identifies the affected provider');
  assert.match(await summary.innerText(),expectedSummary,'The compact caption identifies the actual source state before opening detail');
- assert.doesNotMatch(await summary.innerText(),/données possiblement incomplètes/,'A completed review must not inherit a blanket incomplete caption');
+ assert.doesNotMatch(await summary.innerText(),/data may be incomplete/,'A completed review must not inherit a blanket incomplete caption');
  assert.equal(await coverage.getByRole('button',{name:'Review Sources',exact:true}).isVisible(),true,'The source action remains immediately available');
  await summary.click();
  assert.notEqual(await details.getAttribute('open'),null,'Native disclosure opens the full coverage evidence');
@@ -63,7 +64,11 @@ try {
   });
   await page.goto(base);
   await page.getByText(/Gmail sign-in required on the PC/).waitFor();
-  await page.getByRole('region',{name:'Insurer collection coverage'}).getByText(/Blue Cross : rapprochements à vérifier/).waitFor();
+  await page.getByRole('button',{name:/^To reconcile/}).waitFor();
+  await page.getByText(/estimate, not guaranteed/).waitFor();
+  assert.ok((await page.locator('html').getAttribute('lang')).startsWith('en'));
+
+  await page.getByRole('region',{name:'Insurer collection coverage'}).getByText(/Blue Cross: matches to review/).waitFor();
   await page.screenshot({path:join(output,`claims-coverage-compact-${width}.png`),fullPage:true});
   const coverage=await openCoverageDetails(page);
   await coverage.getByText(/Collection complete; 1 insurer record needs review before matching/).waitFor();
@@ -102,10 +107,10 @@ try {
   await scaling.getByText('Linked to this claim',{exact:true}).waitFor();
   await page.screenshot({path:join(output,`insurer-pair-${width}.png`),fullPage:true});
   for (const scenario of [
-    {name:'unsupported-attachment',status:{failure:{code:'unsupported_attachment'},error:'PRIVATE_ATTACHMENT_NAME.pdf raw checkpoint',progress:{}},expected:/Collecte interrompue : une pièce jointe Gmail/},
-    {name:'held-mail',status:{coverage:{since:'2026-08-01',complete:false,heldMessages:2},error:'PRIVATE_MAIL_SOURCE checkpoint',progress:{}},expected:/Collecte partielle : 2 messages Gmail restent à vérifier/},
-    {name:'held-mail-interrupted',status:{coverage:{since:'2026-08-01',complete:false,heldMessages:2},failure:{code:'unsupported_attachment'},error:'PRIVATE_ATTACHMENT_NAME.pdf raw checkpoint',progress:{}},expected:/2 messages Gmail restent à vérifier.*dernière collecte a aussi été interrompue/},
-    {name:'persisted-held-mail',status:{coverage:{since:'2026-08-01',complete:false,heldMessages:2},progress:{}},expected:/Collecte partielle : 2 messages Gmail restent à vérifier/},
+    {name:'unsupported-attachment',status:{failure:{code:'unsupported_attachment'},error:'PRIVATE_ATTACHMENT_NAME.pdf raw checkpoint',progress:{}},expected:/Collection interrupted: the connected source cannot read a Gmail attachment/},
+    {name:'held-mail',status:{coverage:{since:'2026-08-01',complete:false,heldMessages:2},error:'PRIVATE_MAIL_SOURCE checkpoint',progress:{}},expected:/Partial collection: 2 Gmail messages need review/},
+    {name:'held-mail-interrupted',status:{coverage:{since:'2026-08-01',complete:false,heldMessages:2},failure:{code:'unsupported_attachment'},error:'PRIVATE_ATTACHMENT_NAME.pdf raw checkpoint',progress:{}},expected:/2 Gmail messages need review.*The latest collection was also interrupted/},
+    {name:'persisted-held-mail',status:{coverage:{since:'2026-08-01',complete:false,heldMessages:2},progress:{}},expected:/Partial collection: 2 Gmail messages need review/},
   ]) {
     invoiceStatus={...scenario.status,lastSuccess:'2026-08-01T12:00:00Z'};
     await page.reload();
@@ -119,9 +124,9 @@ try {
   invoiceStatus={coverage:{since:'2026-08-01',complete:true,heldMessages:0},progress:{}};
   blueCrossSyncStatus={state:'idle',lastSuccess:new Date().toISOString(),latestResult:{status:'success',complete:true,applied:false,pendingNew:1,pendingChanged:0,ambiguous:0,errors:0}};
   await page.reload();
-  const pendingCoverage=await openCoverageDetails(page,/Blue Cross : résultats à examiner/);
+  const pendingCoverage=await openCoverageDetails(page,/Blue Cross: results to review/);
   await pendingCoverage.getByText(/Collected insurer records still need review and Apply/).waitFor();
-  assert.equal(await page.getByText(/Collecte partielle/).count(),0,'Resolved held source count clears the mail warning');
+  assert.equal(await page.getByText(/Partial collection/).count(),0,'Resolved held source count clears the mail warning');
   assert.equal(posts.length,3);
   for (const state of ['legacy-layout','history-error','interrupted-signin']) {
     const lastSuccess='2026-08-01T12:00:00Z';
@@ -129,14 +134,14 @@ try {
       ? {state:'login-required',authReason:state==='legacy-layout'?'layout-changed':'login-incomplete',lastSuccess}
       : {state:'error',error:'Blue Cross claims history could not be opened from the member page. No complete collection was made. Saved claims remain unchanged. Review the history on the PC before trying again.',lastSuccess};
     await page.reload();
-    const coverage=await openCoverageDetails(page,state==='legacy-layout'?/Blue Cross : historique indisponible/:state==='history-error'?/Blue Cross : collecte incomplète/:/Blue Cross : connexion non confirmée/);
+    const coverage=await openCoverageDetails(page,state==='legacy-layout'?/Blue Cross: history unavailable/:state==='history-error'?/Blue Cross: incomplete collection/:/Blue Cross: sign-in not confirmed/);
     await coverage.getByText(state!=='history-error'?/Insurer history unavailable/:/Collection incomplete/).waitFor();
     assert.doesNotMatch(await coverage.innerText(),/sign.in required|session expired|reconnect/i);
     await coverage.getByRole('button',{name:'Review Sources'}).first().click();
     const sync=page.getByRole('region',{name:'Blue Cross portal sync'});
     await sync.getByText(state==='legacy-layout'?/insurer page was not recognized/:state==='interrupted-signin'?/outcome is uncertain/:/claims history could not be opened/).waitFor();
     assert.doesNotMatch(await sync.getByRole('status').innerText(),/session expired|reconnect|credentials.*refused/i);
-    assert.equal(await sync.getByRole('button',{name:'Appliquer Blue Cross'}).count(),0);
+    assert.equal(await sync.getByRole('button',{name:'Apply Blue Cross'}).count(),0);
     await sync.getByText(/Last complete read:/).waitFor();
     assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
     await page.screenshot({path:join(output,`bluecross-${state}-${width}.png`),fullPage:true,animations:'disabled'});

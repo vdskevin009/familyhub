@@ -1,0 +1,13 @@
+Γ£ö four shards cover every existing browser command exactly once (2.9228ms)
+Γ£ö future suite commands are included, while invalid or duplicate commands fail closed (0.6721ms)
+Γ£ö invalid shard parameters never silently select an empty test run (0.5143ms)
+Γ£ö workflow keeps an always-evaluated aggregate gate and same-compile artifact references (1.2676ms)
+Γ£ö a failing browser process fails the shard and never advances to later commands (260.4044ms)
+Γä╣ tests 5
+Γä╣ suites 0
+Γä╣ pass 5
+Γä╣ fail 0
+Γä╣ cancelled 0
+Γä╣ skipped 0
+Γä╣ todo 0
+Γä╣ duration_ms 414.5375

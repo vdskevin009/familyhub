@@ -38,7 +38,7 @@ test("source classification survives save/restart; original confirmations do not
   assert.equal((await restarted.list()).records[0].receipt.sourceType, "confirmation");
   const final = await saved(original, restarted, { ...receipt, sourceType: "final-receipt" });
   assert.equal(final.receipt.sourceType, "final-receipt"); assert.equal(monthlySummary([final], "2026-10").currencies[0].total, 7);
-  await assert.rejects(saved(original, restarted, { ...receipt, sourceType: "confirmation" }), /changé/);
+  await assert.rejects(saved(original, restarted, { ...receipt, sourceType: "confirmation" }), /changed/);
   assert.equal((await restarted.list()).records[0].receipt.sourceType, "final-receipt");
 });
 test("dated fulfillment survives save/restart without converting an estimate into paid spending", async t => {
@@ -49,7 +49,7 @@ test("dated fulfillment survives save/restart without converting an estimate int
   const restarted = new GroceryStore(join(directory, "groceries"), async () => receipt);
   assert.deepEqual((await restarted.list()).records[0].receipt.fulfillment, fulfillment);
   assert.equal(monthlySummary([original], "2026-10").currencies.length, 0);
-  await assert.rejects(saved(original, restarted, { ...receipt, fulfillment: { ...fulfillment, date: "2026-02-30" } }), /livraison/);
+  await assert.rejects(saved(original, restarted, { ...receipt, fulfillment: { ...fulfillment, date: "2026-02-30" } }), /delivery/);
   assert.deepEqual((await restarted.list()).records[0].receipt.fulfillment, fulfillment);
 });
 
@@ -59,18 +59,18 @@ test("multi-photo source batch deduplication, reordered replay and overlapping i
   const first = await store.import({ sources: [a, a, b] }); assert.equal(first.record.sources.length, 2);
   assert.equal((await store.import({ sources: [b, a] })).record.id, first.record.id);
   assert.equal((await store.list()).records.length, 1);
-  await assert.rejects(store.import({ sources: [a, source("another source")] }), /déjà/);
+  await assert.rejects(store.import({ sources: [a, source("another source")] }), /already belongs/);
 });
 test("extraction saves a reviewable draft; confirmation, revision protection and month fees", async t => {
   const { store, directory } = await fixture(t);
   const imported = (await store.import({ sources: [source("synthetic")] })).record;
   const extracted = await store.extract(imported.id, { expectedRevision: imported.revision });
   assert.equal(extracted.status, "draft"); assert.equal(monthlySummary([extracted], "2026-10").currencies.length, 0);
-  await assert.rejects(store.review(extracted.id, { receipt, expectedRevision: extracted.revision, save: true }), /confirmez/);
+  await assert.rejects(store.review(extracted.id, { receipt, expectedRevision: extracted.revision, save: true }), /confirm/);
   const record = await saved(extracted, store);
   const group = monthlySummary([record], "2026-10").currencies[0]; assert.equal(group.total, 7); assert.equal(group.fees, 3); assert.equal(group.products[0].observations[0].price, 4);
-  await assert.rejects(saved(extracted, store), /changé/);
-  await assert.rejects(store.extract(record.id, { expectedRevision: record.revision }), /corr/);
+  await assert.rejects(saved(extracted, store), /changed/);
+  await assert.rejects(store.extract(record.id, { expectedRevision: record.revision }), /does not replace edits/);
   const restarted = new GroceryStore(join(directory, "groceries"), async () => { throw new Error("must not auto-extract"); });
   assert.deepEqual((await restarted.list()).records, [record]);
   const original = await restarted.source(record.id, record.sources[0].hash); assert.equal(Buffer.from(original.data, "base64").toString(), "synthetic");
@@ -79,7 +79,7 @@ test("similar purchases block save until distinct confirmation or explicit sourc
   const { store } = await fixture(t);
   let first = (await store.import({ sources: [source("first")] })).record; first = await saved(first, store);
   let second = (await store.import({ sources: [source("rescan")] })).record;
-  await assert.rejects(saved(second, store), /Même magasin/);
+  await assert.rejects(saved(second, store), /store, date, currency and total match/);
   second = await store.review(second.id, { expectedRevision: second.revision, receipt, save: false });
   const linked = await store.linkDuplicate(second.id, { expectedRevision: second.revision, targetId: first.id }); assert.equal(linked.sources.length, 2);
   assert.equal(monthlySummary((await store.list()).records, "2026-10").currencies[0].count, 1);
@@ -105,8 +105,8 @@ test("an active extraction serializes starts and refuses concurrent editing", as
   const a = (await store.import({ sources: [source("a")] })).record, b = (await store.import({ sources: [source("b")] })).record;
   const extracting = store.extract(a.id, { expectedRevision: a.revision });
   while ((await store.list()).records.find(r => r.id === a.id).extraction !== "running") await new Promise(resolve => setTimeout(resolve, 10));
-  await assert.rejects(store.extract(b.id, { expectedRevision: b.revision }), /en cours/);
-  await assert.rejects(saved(a, store), /en cours/); release(); await extracting;
+  await assert.rejects(store.extract(b.id, { expectedRevision: b.revision }), /running|in progress/);
+  await assert.rejects(saved(a, store), /running|in progress/); release(); await extracting;
 });
 test("source validation rejects malformed, spoofed, oversized and unsupported uploads", () => {
   for (const bad of [null, { ...source("x"), type: "text/html" }, { ...source("x"), data: "**notbase64**" }, { ...source("x"), type: "image/png" }, { ...source("x"), data: "" }, source("x".repeat(5 * 1024 * 1024 + 1))]) assert.throws(() => validateSource(bad));
@@ -115,7 +115,7 @@ test("unknowns, dates, negatives, comparison units and cross-month observed pric
   assert.equal(unitPrice({ ...item, quantity: null }), null); assert.equal(unitPrice({ ...item, size: null }), null);
   assert.equal(unitPrice({ ...item, quantity: 1, size: 1000 }).price, unitPrice({ ...item, quantity: 1, size: 1, unit: "kg" }).price);
   for (const bad of [{ ...receipt, date: "2026-02-30" }, { ...receipt, total: -1 }, { ...receipt, total: 7.001 }, { ...receipt, items: [{ ...item, quantity: 0 }] }, { ...receipt, currency: "$" }]) assert.throws(() => validateReceipt(bad));
-  assert.ok(receiptWarnings({ ...receipt, total: 99 }).some(w => w.includes("correspondent")));
+  assert.ok(receiptWarnings({ ...receipt, total: 99 }).some(w => w.includes("do not add up")));
   const record = (id, r) => ({ id, status: "saved", receipt: r });
   const earlier = record("earlier", { ...receipt, date: "2026-09-01", items: [{ ...item, amount: 3 }] });
   const summary = monthlySummary([record("now", receipt), earlier, record("eur", { ...receipt, currency: "EUR" }), record("unknown", { ...receipt, date: null })], "2026-10");
@@ -128,10 +128,10 @@ test("damaged storage fails closed and unrelated ledgers/contracts remain byte-i
   const r = (await store.import({ sources: [source("separate store")] })).record; await saved(r, store);
   assert.equal(await readFile(join(directory, "invoices.json"), "utf8"), sentinel); assert.equal(await readFile(join(directory, "savings", "household-contracts.json"), "utf8"), sentinel);
   const path = join(directory, "groceries", "purchases.json"), valid = await readFile(path, "utf8");
-  for (const edit of [s => s.records[0].createdAt = 42, s => s.records[0].reviewedAt = null, s => s.records[0].duplicateOf = "missing"]) { const state = JSON.parse(valid); edit(state); const bytes = JSON.stringify(state); await writeFile(path, bytes); await assert.rejects(store.list(), /préservée/); await assert.rejects(store.import({ sources: [source("new")] }), /préservée/); assert.equal(await readFile(path, "utf8"), bytes); }
+  for (const edit of [s => s.records[0].createdAt = 42, s => s.records[0].reviewedAt = null, s => s.records[0].duplicateOf = "missing"]) { const state = JSON.parse(valid); edit(state); const bytes = JSON.stringify(state); await writeFile(path, bytes); await assert.rejects(store.list(), /retained/); await assert.rejects(store.import({ sources: [source("new")] }), /retained/); assert.equal(await readFile(path, "utf8"), bytes); }
   assert.equal(unitPrice({ ...item, quantity: 1e-300, size: 1e-300 }), null);
   await writeFile(path, "damaged");
-  await assert.rejects(store.list(), /préservée/); await assert.rejects(store.import({ sources: [source("new")] }), /préservée/); assert.equal(await readFile(path, "utf8"), "damaged");
+  await assert.rejects(store.list(), /retained/); await assert.rejects(store.import({ sources: [source("new")] }), /retained/); assert.equal(await readFile(path, "utf8"), "damaged");
 });
 test("authenticated real-worker API: origin, pairing, no-store, upload/review/source/restart", async t => {
   const directory = await mkdtemp(join(tmpdir(), "fh-grocery-api-"));
@@ -196,7 +196,7 @@ test("authenticated real-worker API: origin, pairing, no-store, upload/review/so
   assert.deepEqual((await (await request("/groceries")).json()).records, []);
   assert.ok(health.capabilities.includes("grocery-weekly-v1")); assert.ok(health.capabilities.includes("grocery-fulfillment-v1"));
   assert.ok(health.capabilities.includes("grocery-comparison-evidence-v1")); assert.ok(health.capabilities.includes("grocery-source-estimates-v1"));
-  assert.ok(health.capabilities.includes("grocery-items-300-v1")); assert.equal(health.version, "2.30.2");
+  assert.ok(health.capabilities.includes("grocery-items-300-v1")); assert.equal(health.version, "2.30.3");
   assert.ok(health.capabilities.includes("grocery-purchase-resolution-v1"));
   assert.equal((await request("/groceries/purchase-resolution", undefined, { "x-familyhub-key": "wrong" })).status, 401);
   assert.equal((await request("/groceries/purchase-resolution", { action: "confirm" }, { "x-familyhub-key": "wrong" })).status, 401);

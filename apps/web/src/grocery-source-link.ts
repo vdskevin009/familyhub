@@ -10,5 +10,5 @@ export function grocerySourceLink(value: string) {
     || (host === "www.realcanadiansuperstore.ca" || host === "realcanadiansuperstore.ca") && /\/p\/\d+(?:_|\/|$)/i.test(path)
     || host === "sameday.costco.ca" && /^\/store\/costco-canada\/products\/\d+/i.test(path);
   const search = /\/(?:search|results)\/?$/i.test(path) || path === "/s" && url.searchParams.has("k");
-  return { href, label: product ? "Ouvrir le produit" : search ? "Ouvrir la recherche" : "Voir la source" };
+  return { href, label: product ? "View product" : search ? "View search results" : "View source" };
 }

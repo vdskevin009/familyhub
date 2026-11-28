@@ -106,7 +106,7 @@ export default function ClaimCard({ item, invoiceById, unmatched, paired, manual
     </div>
     {sameDayUnmatched.length > 0 && <button type="button" className="candidate-shortcut" onClick={() => setDetailsOpen(true)}><Link2 size={15} /><span>{sameDayUnmatched.length} same-day reimbursement{sameDayUnmatched.length > 1 ? "s" : ""} to review</span><ChevronRight size={16} /></button>}
     <footer className="claim-footer">
-      {!item.InferredFromInsurer && workflow === "open" && reviewDossier && <button type="button" className="text-action" disabled={!paired || busy || !!pending} onClick={() => reviewDossier(item.ExpenseDocumentId || item.ExpenseDocumentIds?.[0] || item.DocumentIds[0])}>Pièces et préparation</button>}
+      {!item.InferredFromInsurer && workflow === "open" && reviewDossier && <button type="button" className="text-action" disabled={!paired || busy || !!pending} onClick={() => reviewDossier(item.ExpenseDocumentId || item.ExpenseDocumentIds?.[0] || item.DocumentIds[0])}>Evidence and preparation</button>}
       {!item.InferredFromInsurer && workflow === "open" && prepareClaim && <button type="button" className="text-action" disabled={!paired || busy || !!pending} onClick={() => prepareClaim(item.ExpenseDocumentId || item.ExpenseDocumentIds?.[0] || item.DocumentIds[0])}>{item.NextInsurer === "Blue Cross" ? "Prepare Blue Cross claim" : "Prepare claim"}</button>}
       {invoice && invoicePdfOptions.length === 1 ? invoice.Source === "drive" && invoice.Url
         ? <a className="text-action" href={invoice.Url} target="_blank" rel="noreferrer"><ExternalLink size={15} />Invoice</a>
@@ -118,7 +118,7 @@ export default function ClaimCard({ item, invoiceById, unmatched, paired, manual
       <div className="claim-detail-stack">
         {operationError && <Notice error>{operationError}</Notice>}
         {operationMessage && <Notice>{operationMessage}</Notice>}
-        <div className="detail-workflow"><span className={`workflow-status ${workflow}`}>{workflow}</span><span>{item.WorkflowOrigin === "manual" ? "Manual choice" : "Automatic workflow"}{item.WorkflowChangedAt ? ` · ${new Date(item.WorkflowChangedAt).toLocaleString()}` : ""}</span></div>
+        <div className="detail-workflow"><span className={`workflow-status ${workflow}`}>{workflow}</span><span>{item.WorkflowOrigin === "manual" ? "Manual choice" : "Automatic workflow"}{item.WorkflowChangedAt ? ` · ${new Date(item.WorkflowChangedAt).toLocaleString("en-CA")}` : ""}</span></div>
         <div className="expense-amounts"><div><small>Expense</small><strong>{money(item.OriginalAmount, item.Currency)}</strong></div><div><small>Desjardins</small><strong>{money(namedInsurerReimbursementAmount(item, "Desjardins", invoiceById), item.Currency)}</strong></div><div><small>Blue Cross</small><strong>{money(namedInsurerReimbursementAmount(item, "Blue Cross", invoiceById), item.Currency)}</strong></div><div className="remaining"><small>Remaining</small><strong>{money(item.PotentialRemaining, item.Currency)}</strong></div></div>
         {item.OriginalInvoiceMissing && <p className="privacy-note">The original invoice has not been found. These amounts come from insurer evidence, not an inferred receipt.</p>}
         {!!item.ReconciliationReasons?.length && <p className="privacy-note">Review: {[...new Set(item.ReconciliationReasons)].map(reason => reason.replace(/-/g, " ")).join("; ")}.</p>}
@@ -130,7 +130,7 @@ export default function ClaimCard({ item, invoiceById, unmatched, paired, manual
               <summary>Status history</summary>
               <div>{[...item.WorkflowHistory].slice(-6).reverse().map((entry, index) =>
                 <p key={`${entry.At}:${index}`}><strong>{entry.Status === "open" ? "Open" : entry.Status === "closed" ? "Closed" : "Ignore"}</strong>
-                  <span>{entry.Origin === "manual" ? "Manual" : "Automatic"} · {new Date(entry.At).toLocaleString()}</span></p>)}</div>
+                  <span>{entry.Origin === "manual" ? "Manual" : "Automatic"} · {new Date(entry.At).toLocaleString("en-CA")}</span></p>)}</div>
             </details>}
             {sameDayUnmatched.length > 0 && <div className="manual-match-candidates">
               <div className="manual-match-candidates-heading">

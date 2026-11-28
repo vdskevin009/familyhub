@@ -47,17 +47,17 @@ try {
     const context=await browser.newContext({viewport,serviceWorkers:'block',acceptDownloads:true});
     await context.addInitScript(({Endpoint,ApiKey})=>localStorage.setItem('familyhub.worker.v1',JSON.stringify({Endpoint,ApiKey})),{Endpoint:endpoint,ApiKey:key});
     const page=await context.newPage(),errors=[];page.on('pageerror',e=>errors.push(e.message));
-    await page.goto(base);await page.getByRole('button',{name:/Ouvrir le contrat Synthetic insurance reference/}).click();
+    await page.goto(base);await page.getByRole('button',{name:/Open contract: Synthetic insurance reference/}).click();
     await page.locator('.recurring-source-details > summary').click();
-    const panel=page.getByRole('region',{name:'Référentiel assurances'});await panel.waitFor();
-    const policySummary=panel.locator('summary').filter({hasText:'Synthetic policy'}).first();await policySummary.focus();await page.keyboard.press('Enter');await panel.getByText('Inconnu',{exact:true}).first().waitFor();
-    await panel.locator('summary').filter({hasText:'Synthetic pending request'}).first().click();await panel.getByText(/Aucun devis reçu ni tarif confirmé/).waitFor();
-    assert.match(await panel.innerText(),/En attente de devis/);assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
+    const panel=page.getByRole('region',{name:'Insurance records'});await panel.waitFor();
+    const policySummary=panel.locator('summary').filter({hasText:'Synthetic policy'}).first();await policySummary.focus();await page.keyboard.press('Enter');await panel.getByText('Unknown',{exact:true}).first().waitFor();
+    await panel.locator('summary').filter({hasText:'Synthetic pending request'}).first().click();await panel.getByText(/No quote received or price confirmed/).waitFor();
+    assert.match(await panel.innerText(),/Awaiting quote/);assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
     await mkdir('output/playwright/insurance-reference',{recursive:true});await page.screenshot({path:'output/playwright/insurance-reference/synthetic-'+viewport.width+'.png',fullPage:true});
-    const downloaded=page.waitForEvent('download');await panel.getByRole('button',{name:/Exporter le référentiel privé/}).click();
+    const downloaded=page.waitForEvent('download');await panel.getByRole('button',{name:/Export private records/}).click();
     const exported=JSON.parse(await readFile(await(await downloaded).path(),'utf8'));assert.deepEqual(exported.reference,contract.insuranceReference);assert.ok(!JSON.stringify(exported).includes(key));
-    await page.getByRole('button',{name:'Retour aux services',exact:true}).click();await page.getByRole('button',{name:/Ouvrir le contrat Synthetic insurance reference/}).click();
-    await page.route(endpoint+'/**',route=>route.abort());await page.reload();await page.getByRole('button',{name:/Ouvrir le contrat Synthetic insurance reference/}).click();await page.locator('.recurring-source-details > summary').click();await page.getByRole('region',{name:'Référentiel assurances'}).waitFor();assert.deepEqual(errors,[]);
+    await page.getByRole('button',{name:'Back to services',exact:true}).click();await page.getByRole('button',{name:/Open contract: Synthetic insurance reference/}).click();
+    await page.route(endpoint+'/**',route=>route.abort());await page.reload();await page.getByRole('button',{name:/Open contract: Synthetic insurance reference/}).click();await page.locator('.recurring-source-details > summary').click();await page.getByRole('region',{name:'Insurance records'}).waitFor();assert.deepEqual(errors,[]);
     await context.close();
   }
   assert.ok(!logs.includes(key));console.log('PASS: private insurance reference, mobile/desktop, unknowns, request/quote separation, export, repeated navigation and offline cache');

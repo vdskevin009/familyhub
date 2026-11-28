@@ -29,7 +29,7 @@ import { ACCOUNT_HISTORY_CAPABILITY } from "./finance-account-history-model.js";
 import { importFinanceAccountCapture } from "./finance-account-captures-api.js";
 import { importFinanceSourceInventory } from "./finance-source-inventory-api.js";
 import { readContributionsView } from "./contributions-view.js";
-import { NotificationLibrary, NotificationConflict } from "./notification-library.js";
+import { NotificationLibrary, NotificationConflict, notificationClientSnapshot } from "./notification-library.js";
 import { OpportunityActions, OpportunityActionsConflict } from "./opportunity-actions.js";
 import { PushConfiguration, sendPush } from "./notification-push.js";
 import type { NotificationEvidence } from "./notification-model.js";
@@ -79,7 +79,7 @@ type ResearchWatch = {
 };
 type PersistedState = { watches: ResearchWatch[] };
 
-const version = "2.30.2";
+const version = "2.30.3";
 let claimOperationBusy = false;
 const host = process.env.FAMILYHUB_WORKER_HOST?.trim() || "127.0.0.1";
 const port = Number(process.env.FAMILYHUB_WORKER_PORT || "4713");
@@ -117,23 +117,28 @@ function scanNotifications() {
     const evidence: NotificationEvidence = {}, errors: string[] = [];
     const [invoices, finance, contracts, mortgage] = await Promise.allSettled([invoiceSnapshot(), financeLibrary.read(), savingsLibrary.list(), mortgageDaily.due() ? mortgageDaily.run() : Promise.resolve(null)]);
     if (mortgage.status === "fulfilled") {
-      try { const state=await mortgageStore.read(); evidence.mortgage=state.reports??[]; } catch { errors.push("hypothèque"); }
-    } else errors.push("hypothèque");
+      try { const state=await mortgageStore.read(); evidence.mortgage=state.reports??[]; } catch { errors.push("mortgage"); }
+    } else errors.push("mortgage");
     if (invoices.status === "fulfilled" && !invoices.value.busy) evidence.invoices = invoices.value;
-    else errors.push("factures et remboursements");
+    else errors.push("invoices and reimbursements");
     if (finance.status === "fulfilled") evidence.finance = finance.value; else errors.push("finances");
-    if (contracts.status === "fulfilled") evidence.contracts = contracts.value.records.map(r => r.contract); else errors.push("contrats");
+    if (contracts.status === "fulfilled") evidence.contracts = contracts.value.records.map(r => r.contract); else errors.push("contracts");
     const [policy, groceries, deadlines, mortgageContext] = await Promise.allSettled([
       policyRate.read(), Promise.all([groceryStore.list(), groceryPlanning.read()]),
       readClaimDeadlines(join(stateDir, "notifications", "claim-deadlines.json")), mortgageStore.read()
     ]);
-    if (policy.status === "fulfilled") evidence.policy = policy.value; else errors.push("taux directeur officiel");
-    if (groceries.status === "fulfilled") evidence.groceries = { library: groceries.value[0], plan: groceries.value[1] }; else errors.push("preuves de courses");
-    if (deadlines.status === "fulfilled") evidence.claimDeadlines = deadlines.value; else errors.push("délais de réclamation");
+    if (policy.status === "fulfilled") evidence.policy = policy.value; else errors.push("official policy rate");
+    if (groceries.status === "fulfilled") evidence.groceries = { library: groceries.value[0], plan: groceries.value[1] }; else errors.push("grocery evidence");
+    if (deadlines.status === "fulfilled") evidence.claimDeadlines = deadlines.value; else errors.push("claim deadlines");
     if (mortgageContext.status === "fulfilled") evidence.mortgageState = mortgageContext.value;
     evidence.collections = [{ ...getBlueCrossStatus(), id: "bluecross", label: "Blue Cross" }, { ...getDesjardinsStatus(), id: "desjardins", label: "Desjardins" }];
-    if (invoices.status === "fulfilled" && !invoices.value.setupRequired) evidence.collections.push({ id: "gmail", label: "Factures", state: invoices.value.busy ? "syncing" : invoices.value.error ? "error" : "idle", lastSuccess: invoices.value.lastSuccess, lastAttempt: invoices.value.lastAttempt });
+    if (invoices.status === "fulfilled" && !invoices.value.setupRequired) evidence.collections.push({ id: "gmail", label: "Invoices", state: invoices.value.busy ? "syncing" : invoices.value.error ? "error" : "idle", lastSuccess: invoices.value.lastSuccess, lastAttempt: invoices.value.lastAttempt });
     try { await groceryPurchaseResolution.reconcile(); } catch { console.error("Purchase resolution enrichment unavailable; existing evidence preserved."); }
+    // Read validated project projections only; no collection, intake or following writes.
+    const [vehicleEvidence, propertyEvidence] = await Promise.allSettled([vehicleStore.read(), propertyStore.read()]);
+    evidence.projects = {};
+    if (vehicleEvidence.status === "fulfilled") evidence.projects.vehicle = vehicleEvidence.value; else errors.push("projet auto");
+    if (propertyEvidence.status === "fulfilled") evidence.projects.property = propertyEvidence.value; else errors.push("projet immobilier");
     return notifications.scan(evidence, errors);
   })().catch(() => { console.error("Notification scan unavailable; existing records and deduplication preserved."); }).finally(() => { notificationScan = null; });
   return notificationScan;
@@ -379,8 +384,8 @@ const server = createServer(async (request, response) => {
       if (request.method === "POST") { json(response, 200, await opportunityActions.mutate(await readJson(request, 4_000)), origin); return; }
     }
     if (parts[0] === "notifications" && parts.length === 1) {
-      if (request.method === "GET") { json(response, 200, await notifications.read(), origin); return; }
-      if (request.method === "POST") { json(response, 200, await notifications.mutate(await readJson(request, 12_000)), origin); return; }
+      if (request.method === "GET") { json(response, 200, notificationClientSnapshot(await notifications.read(), new URL(request.url || "/", "http://familyhub.local").searchParams.get("actionAlerts") === "1"), origin); return; }
+      if (request.method === "POST") { json(response, 200, notificationClientSnapshot(await notifications.mutate(await readJson(request, 12_000)), new URL(request.url || "/", "http://familyhub.local").searchParams.get("actionAlerts") === "1"), origin); return; }
     }
     if (parts[0] === "groceries") {
       if (parts.length === 2 && parts[1] === "purchase-resolution") {
@@ -411,7 +416,7 @@ const server = createServer(async (request, response) => {
         if (parts[2] === "extract") { json(response, 200, await groceryStore.extract(parts[1], body), origin); return; }
         if (parts[2] === "duplicate") { json(response, 200, await groceryStore.linkDuplicate(parts[1], body), origin); return; }
       }
-      if (parts.length === 4 && parts[2] === "sources" && request.method === "GET") { const source = await groceryStore.source(parts[1], parts[3]); if (!source) { json(response, 404, { error: "Source introuvable." }, origin); return; } json(response, 200, source, origin); return; }
+      if (parts.length === 4 && parts[2] === "sources" && request.method === "GET") { const source = await groceryStore.source(parts[1], parts[3]); if (!source) { json(response, 404, { error: "Source not found." }, origin); return; } json(response, 200, source, origin); return; }
     }
     if (parts.length === 2 && parts[0] === "contributions" && parts[1] === "progress" && request.method === "GET") {
       json(response, 200, await readContributionsView(stateDir, await financeLibrary.read()), origin); return;
@@ -434,7 +439,7 @@ const server = createServer(async (request, response) => {
     if (parts[0] === "finances") {
       if (parts.length === 2 && parts[1] === "register-bindings" && request.method === "GET") {
         try { json(response, 200, await readFinanceRegisterBindings(join(stateDir, "finances"), await financeLibrary.read()), origin); }
-        catch { json(response, 503, { error: "Rapprochement indisponible. Les données enregistrées restent conservées." }, origin); }
+        catch { json(response, 503, { error: "Reconciliation unavailable. Saved data is preserved." }, origin); }
         return;
       }
       if (parts.length === 2 && parts[1] === "changes" && request.method === "POST") { json(response, 200, await financeLibrary.change(await readJson(request)), origin); return; }
@@ -554,7 +559,7 @@ const server = createServer(async (request, response) => {
       if (parts[1] === "forget-service-choices") { json(response, 200, await forgetClaimServiceChoices(body.sessionId), origin); return; }
       if (parts[1] === "suggest-service") { json(response, 200, await suggestClaimServiceChoices(body.sessionId, body.revision), origin); return; }
       if (parts[1] === "fill") {
-        if (body.answersReviewed !== true) throw new Error("Review every proposed answer in the updated FamilyHub panel before choosing Valider et préremplir.");
+        if (body.answersReviewed !== true) throw new Error("Review every proposed answer in the updated FamilyHub panel before choosing Validate prepared step.");
         const previous = claimSessionExpense(body.sessionId);
         const fresh = claimPreparation(previous.expenseId, previous.insurer);
         if (fresh.blocked || JSON.stringify(fresh.fields) !== JSON.stringify(previous.fields) || JSON.stringify(fresh.conflicts) !== JSON.stringify(previous.conflicts)) throw new Error("The invoice or duplicate evidence changed. Prepare the claim again.");
@@ -713,7 +718,7 @@ const server = createServer(async (request, response) => {
       }
     }
     if (request.method === "GET" && parts.length === 1 && parts[0] === "health") {
-      json(response, 200, { status: "ok", codex: "sdk-ready", version, capabilities: [FINANCE_REGISTER_CAPABILITY, ACCOUNT_HISTORY_CAPABILITY, ACCOUNT_CAPTURES_CAPABILITY, SOURCE_EXPENSES_CAPABILITY, SOURCE_INVENTORY_CAPABILITY, "finance-balance-observations-v1", "contribution-progress-v1", "bluecross-import-jobs-v1", "attachment-preparation-v1", "grocery-purchase-four-retailers-v1", "grocery-purchase-estimates-v1", "grocery-purchase-resolution-v1", "household-events-v1", "opportunity-actions-v1", "notification-lifecycle-v1", "insurance-reference-v1", "vehicle-project-v1", "property-project-v1", "mortgage-evidence-v1", "mortgage-contacts-v1", "mortgage-assistant-v1", "grocery-collection-v1", "grocery-source-type-v1", "grocery-fulfillment-v1", "grocery-comparison-evidence-v1", "grocery-source-estimates-v1", "grocery-receipts-v1", "grocery-planning-v1", "grocery-weekly-v1", groceryExpandedListCapability] }, origin);
+      json(response, 200, { status: "ok", codex: "sdk-ready", version, capabilities: [FINANCE_REGISTER_CAPABILITY, ACCOUNT_HISTORY_CAPABILITY, ACCOUNT_CAPTURES_CAPABILITY, SOURCE_EXPENSES_CAPABILITY, SOURCE_INVENTORY_CAPABILITY, "finance-balance-observations-v1", "contribution-progress-v1", "bluecross-import-jobs-v1", "attachment-preparation-v1", "grocery-purchase-four-retailers-v1", "grocery-purchase-estimates-v1", "grocery-purchase-resolution-v1", "household-events-v1", "opportunity-actions-v1", "notification-lifecycle-v1", "actionable-push-v1", "insurance-reference-v1", "vehicle-project-v1", "property-project-v1", "mortgage-evidence-v1", "mortgage-contacts-v1", "mortgage-assistant-v1", "grocery-collection-v1", "grocery-source-type-v1", "grocery-fulfillment-v1", "grocery-comparison-evidence-v1", "grocery-source-estimates-v1", "grocery-receipts-v1", "grocery-planning-v1", "grocery-weekly-v1", groceryExpandedListCapability] }, origin);
       return;
     }
 
@@ -782,7 +787,7 @@ const server = createServer(async (request, response) => {
   } catch (error) {
     const grocery = parts[0] === "groceries";
     const sourceInventory = parts[0] === "finance" && parts[1] === "source-inventory";
-    json(response, error instanceof VehicleConflict || error instanceof PropertyConflict || error instanceof MortgageConflict || error instanceof SavingsConflict || error instanceof FinanceConflict || error instanceof SourceExpensesConflict || error instanceof SourceInventoryConflict || error instanceof AccountCapturesConflict || error instanceof NotificationConflict || error instanceof OpportunityActionsConflict || error instanceof GroceryConflict ? 409 : 400, { error: parts[0] === "finance" && ["account-captures", "account-history"].includes(parts[1]) && !(error instanceof AccountCapturesError) ? "Captures de comptes indisponibles. Les données restent conservées." : parts[0] === "finance" && parts[1] === "source-expenses" && !(error instanceof SourceExpensesError) ? "Dépenses source indisponibles. Les données restent conservées." : sourceInventory && !(error instanceof SourceInventoryError) ? "Inventaire source indisponible. Les données restent conservées." : grocery && !(error instanceof GroceryError) ? "Action Courses indisponible. Les données restent conservées ; actualisez avant de réessayer." : error instanceof Error ? error.message : "Request failed." }, origin);
+    json(response, error instanceof VehicleConflict || error instanceof PropertyConflict || error instanceof MortgageConflict || error instanceof SavingsConflict || error instanceof FinanceConflict || error instanceof SourceExpensesConflict || error instanceof SourceInventoryConflict || error instanceof AccountCapturesConflict || error instanceof NotificationConflict || error instanceof OpportunityActionsConflict || error instanceof GroceryConflict ? 409 : 400, { error: parts[0] === "finance" && ["account-captures", "account-history"].includes(parts[1]) && !(error instanceof AccountCapturesError) ? "Account snapshots unavailable. Saved data is preserved." : parts[0] === "finance" && parts[1] === "source-expenses" && !(error instanceof SourceExpensesError) ? "Source expenses unavailable. Saved data is preserved." : sourceInventory && !(error instanceof SourceInventoryError) ? "Source inventory unavailable. Saved data is preserved." : grocery && !(error instanceof GroceryError) ? "Grocery action unavailable. Saved data is preserved. Refresh before trying again." : error instanceof Error ? error.message : "Request failed." }, origin);
   }
 });
 

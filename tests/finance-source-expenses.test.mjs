@@ -41,9 +41,9 @@ test('append-only snapshots: preview no files, exact replay, stale revision, ear
  const dir=await mkdtemp(join(tmpdir(),'familyhub-source-expenses-synthetic-'));try{
  const store=new FinanceSourceExpensesStore(dir),first=expenseSnapshot();assert.deepEqual(await store.read(now),{revision:'empty',snapshots:[]});const preview=await store.preview(first,'empty',now);assert.deepEqual(await readdir(dir),[]);
  const saved=await store.save(first,'empty',now);assert.equal(saved.revision,preview.proposedRevision);assert.equal(saved.snapshots.length,1);assert.equal((await store.preview(first,saved.revision,now)).alreadyImported,true);assert.deepEqual(await store.save(first,saved.revision,now),saved);
- await assert.rejects(store.save(first,'empty',now),/changé/);await assert.rejects(store.save({...first,evidenceSha256:'b'.repeat(64)},saved.revision,now),/contradictoire/);
+ await assert.rejects(store.save(first,'empty',now),/has changed/);await assert.rejects(store.save({...first,evidenceSha256:'b'.repeat(64)},saved.revision,now),/conflicting/);
  const second={...first,collectedAt:'2026-11-15T02:00:00.000Z'};const outcomes=await Promise.allSettled([store.save(second,saved.revision,now),store.save({...second,collectedAt:'2026-11-15T03:00:00.000Z'},saved.revision,now)]);assert.equal(outcomes.filter(r=>r.status==='fulfilled').length,1);
  const after=await new FinanceSourceExpensesStore(dir).read(now);assert.equal(after.snapshots.length,2);assert.deepEqual(after.snapshots[0],saved.snapshots[0]);assert.equal(summarizeSourceExpenses(after.snapshots.at(-1),filter).netCents,11500);
- assert.equal((await store.preview(first,after.revision,now)).alreadyImported,true);const path=join(dir,'finance','source-expenses.json');await writeFile(path,'corrupt-synthetic');await assert.rejects(store.save(first,after.revision,now),/illisible/);assert.equal(await readFile(path,'utf8'),'corrupt-synthetic');
+ assert.equal((await store.preview(first,after.revision,now)).alreadyImported,true);const path=join(dir,'finance','source-expenses.json');await writeFile(path,'corrupt-synthetic');await assert.rejects(store.save(first,after.revision,now),/could not be read/);assert.equal(await readFile(path,'utf8'),'corrupt-synthetic');
  }finally{await rm(dir,{recursive:true,force:true});}
 });

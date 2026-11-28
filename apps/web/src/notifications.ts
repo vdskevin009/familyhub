@@ -1,5 +1,5 @@
 import type { NotificationTarget } from "../../worker/src/notification-model";
-export const notificationLabels = { collection: "Collectes bloquées ou anciennes", reimbursement: "Remboursements enregistrés", unmatched: "Paiements à rapprocher", price: "Variations de prélèvements", deadline: "Renouvellements et échéances GIC", weekly: "Résumé hebdomadaire", mortgage: "Opportunités hypothécaires", policy: "Décisions de la Banque du Canada", grocery: "Baisses de produits achetés régulièrement", "claim-deadline": "Dates limites de réclamation" };
+export const notificationLabels = { "open-claim": "Claims open for at least 14 days", "new-property": "New properties matching all four criteria", "new-vehicle": "New AWD SUVs priced below comparable listings", collection: "Blocked or stale collections", reimbursement: "Recorded reimbursements", unmatched: "Payments to match", price: "Changes in recurring charges", deadline: "Renewals and GIC maturities", weekly: "Weekly summary", mortgage: "Mortgage opportunities", policy: "Bank of Canada decisions", grocery: "Price drops on regular purchases", "claim-deadline": "Claim deadlines" };
 export function notificationTargetHref(target: NotificationTarget): string {
   const query = new URLSearchParams({ view: target.view });
   if (target.recordId) query.set("record", target.recordId);

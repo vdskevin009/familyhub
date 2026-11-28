@@ -35,9 +35,9 @@ export function summarizeMonthlyAccounts(version: MonthlyAccountVersion, account
 }
 
 /** Month buckets and received labels both use UTC; source-only calendar dates never shift. */
-export const displayMonthlyCapture = (stamp: string) => new Intl.DateTimeFormat("fr-CA", { timeZone: "UTC", year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", timeZoneName: "short" }).format(new Date(stamp));
+export const displayMonthlyCapture = (stamp: string) => new Intl.DateTimeFormat("en-CA", { timeZone: "UTC", year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", timeZoneName: "short" }).format(new Date(stamp));
 
 /** Archive values are already signed. Never transpose provider conventions or fabricate a receipt. */
 export function historicalAccountVersions(versions: FinanceHistoricalAccountVersion[]): MonthlyAccountVersion[] {
-  return versions.map(v => ({ id: v.id, date: v.sourceAsOf.length === 10 ? v.sourceAsOf : new Date(v.sourceAsOf).toISOString(), dateKind: "source", origin: "historical-archive", coverage: v.coverage === "complete-recorded-scope" ? "complete" : "partial", rows: v.accounts.map(a => ({ id: a.sourceKey, canonicalAccountId: a.canonicalAccountId, name: a.name, kind: a.kind, currency: a.currency, netCents: a.balanceCents, rawCents: a.balanceCents, sourceAsOf: v.sourceAsOf })), notes: ["Somme exacte des soldes signés tels qu’enregistrés dans cette archive. La convention historique n’est pas documentée; ce n’est pas un solde net certifié. Aucun calcul de performance avec les captures récentes."] }));
+  return versions.map(v => ({ id: v.id, date: v.sourceAsOf.length === 10 ? v.sourceAsOf : new Date(v.sourceAsOf).toISOString(), dateKind: "source", origin: "historical-archive", coverage: v.coverage === "complete-recorded-scope" ? "complete" : "partial", rows: v.accounts.map(a => ({ id: a.sourceKey, canonicalAccountId: a.canonicalAccountId, name: a.name, kind: a.kind, currency: a.currency, netCents: a.balanceCents, rawCents: a.balanceCents, sourceAsOf: v.sourceAsOf })), notes: ["Exact sum of signed balances as recorded in this archive. The historical sign convention is not documented, so this is not a verified net balance. No performance is calculated against recent captures."] }));
 }

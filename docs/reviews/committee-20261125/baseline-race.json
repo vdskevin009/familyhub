@@ -1,0 +1,38 @@
+{
+  "synthetic": true,
+  "source": "3710eb1a29caecd06fa0d007277564a9f0915473",
+  "results": [
+    {
+      "width": 320,
+      "savedBefore": "https://connection-b.invalid",
+      "savedAfter": "https://connection-a.invalid",
+      "fieldAfter": "https://connection-a.invalid",
+      "panelText": "LOCAL AI\nFamilyHub worker\n\nRun the worker on your own computer. FamilyHub sends only the prompt/context needed for the task. The worker uses your locally configured Codex authentication.\n\nWorker endpoint\nPairing key\nSave\nTest connection\nConnected · Worker Fixture-A · Codex Synthetic-Only\nKeep the worker private.It binds to localhost by default. For phone access, use a private HTTPS route you control; the pairing key is an extra guard, not a replacement for network security.",
+      "calls": [
+        {
+          "origin": "https://connection-a.invalid",
+          "path": "/health"
+        }
+      ],
+      "errors": [],
+      "external": [],
+      "diagnostic": "A late health result overwrites the more recent explicit Save of B."
+    },
+    {
+      "width": 390,
+      "savedBefore": "https://connection-b.invalid",
+      "savedAfter": "https://connection-a.invalid",
+      "fieldAfter": "https://connection-a.invalid",
+      "panelText": "LOCAL AI\nFamilyHub worker\n\nRun the worker on your own computer. FamilyHub sends only the prompt/context needed for the task. The worker uses your locally configured Codex authentication.\n\nWorker endpoint\nPairing key\nSave\nTest connection\nConnected · Worker Fixture-A · Codex Synthetic-Only\nKeep the worker private.It binds to localhost by default. For phone access, use a private HTTPS route you control; the pairing key is an extra guard, not a replacement for network security.",
+      "calls": [
+        {
+          "origin": "https://connection-a.invalid",
+          "path": "/health"
+        }
+      ],
+      "errors": [],
+      "external": [],
+      "diagnostic": "A late health result overwrites the more recent explicit Save of B."
+    }
+  ]
+}

@@ -12,7 +12,7 @@ function obj(v: unknown): Obj {
 }
 function list(v: unknown, limit = 30000): any[] {
     if (!Array.isArray(v) || v.length > limit)
-        throw new Error("Liste financière invalide.");
+        throw new Error("Invalid financial list.");
     return v;
 }
 function text(v: unknown, max = 2000): string {
@@ -31,7 +31,7 @@ function date(v: unknown): string {
         !/^\d{4}-\d{2}-\d{2}$/.test(s) ||
         new Date(s + "T12:00:00Z").toISOString().slice(0, 10) !== s
     )
-        throw new Error("Date financière invalide.");
+        throw new Error("Invalid financial date.");
     return s;
 }
 function occurrence(v: unknown): number {
@@ -47,7 +47,7 @@ function currency(v: unknown): string {
 function id(v: unknown): string {
     const s = text(v, 160);
     if (!/^[a-zA-Z0-9:_-]+$/.test(s))
-        throw new Error("Identité financière invalide.");
+        throw new Error("Invalid financial identity.");
     return s;
 }
 function decimalCents(v: unknown): number {
@@ -78,10 +78,10 @@ export function sourceEvidence(v: unknown): Evidence {
 export function parseFinancePreparation(value: unknown): FinanceData {
     const p = obj(value);
     if (p.schema !== "familyhub.td.preparation.v1")
-        throw new Error("Format attendu : préparation financière TD v1.");
+        throw new Error("Expected format: TD financial preparation v1.");
     const collectedOn = date(p.collectedOn),
         scope = { from: date(obj(p.scope).from), to: date(p.scope.to) };
-    if (scope.from > scope.to) throw new Error("Période inversée.");
+    if (scope.from > scope.to) throw new Error("The start date is after the end date.");
     const accounts = list(p.accounts, 100).map((a) => ({
         id: id(a.accountId),
         identity: text(a.identityFingerprint ?? a.accountId, 200),
@@ -99,7 +99,7 @@ export function parseFinancePreparation(value: unknown): FinanceData {
     }));
     const accountIds = new Set(accounts.map((a) => a.id));
     if (accounts.length !== accountIds.size)
-        throw new Error("Comptes dupliqués.");
+        throw new Error("Duplicate accounts.");
     const account = (v: unknown) => {
         const key = id(v);
         if (!accountIds.has(key))
@@ -108,18 +108,18 @@ export function parseFinancePreparation(value: unknown): FinanceData {
     };
     if (p.importMode !== undefined && p.importMode !== "balance-observations-only") throw new Error("Mode financier inconnu.");
     const collection = p.collection === undefined ? null : financeCollection(p.collection, [...accountIds]);
-    if (collection && Date.parse(collection.retrievedAt) > Date.now() + 5 * 60_000) throw new Error("Collecte future refusée; vérifiez l’heure de la source.");
+    if (collection && Date.parse(collection.retrievedAt) > Date.now() + 5 * 60_000) throw new Error("A future collection was rejected. Check the source time.");
     const balanceObservations = p.balanceObservations === undefined ? undefined : list(p.balanceObservations, 1000).map(raw => {
         const r = obj(raw), accountId = account(r.accountId), capturedAt = financeTimestamp(r.capturedAt);
         const sourceAsOf = r.sourceAsOf === null ? null : /^\d{4}-\d{2}-\d{2}$/.test(r.sourceAsOf) ? date(r.sourceAsOf) : financeTimestamp(r.sourceAsOf);
-        if (sourceAsOf && Date.parse(sourceAsOf) > Date.parse(capturedAt)) throw new Error("Date bancaire postérieure à la collecte.");
+        if (sourceAsOf && Date.parse(sourceAsOf) > Date.parse(capturedAt)) throw new Error("The bank date is after the collection.");
         if (!collection || Date.parse(collection.retrievedAt) !== Date.parse(capturedAt) || !collection.accountIds.includes(accountId)) throw new Error("Observation sans collecte correspondante.");
         const source = sourceEvidence(r.source);
         if (!source.sha256) throw new Error("Provenance de solde requise.");
         return { accountId, currency: currency(r.currency), balanceCents: cents(r.balanceCents), capturedAt, sourceAsOf, source };
     });
-    if (balanceObservations && new Set(balanceObservations.map(o => o.accountId + ":" + Date.parse(o.capturedAt))).size !== balanceObservations.length) throw new Error("Observations de solde dupliquées.");
-    if (p.importMode === "balance-observations-only" && (!balanceObservations?.length || collection?.accountIds.length !== accountIds.size || new Set(balanceObservations.map(o => o.accountId)).size !== accountIds.size || [p.bankActivities, p.brokerageActivities, p.holdingsSnapshots, p.coverage, p.pendingActivities ?? [], p.limits ?? [], p.performanceSnapshots ?? [], p.financialDocumentFacts?.feesReports ?? []].some(rows => list(rows).length) || p.gicDetails)) throw new Error("Un import de soldes ne peut modifier les autres données.");
+    if (balanceObservations && new Set(balanceObservations.map(o => o.accountId + ":" + Date.parse(o.capturedAt))).size !== balanceObservations.length) throw new Error("Duplicate balance observations.");
+    if (p.importMode === "balance-observations-only" && (!balanceObservations?.length || collection?.accountIds.length !== accountIds.size || new Set(balanceObservations.map(o => o.accountId)).size !== accountIds.size || [p.bankActivities, p.brokerageActivities, p.holdingsSnapshots, p.coverage, p.pendingActivities ?? [], p.limits ?? [], p.performanceSnapshots ?? [], p.financialDocumentFacts?.feesReports ?? []].some(rows => list(rows).length) || p.gicDetails)) throw new Error("A balance import cannot change other data.");
     const transactions: FinanceTransaction[] = list(p.bankActivities).map(
         (r) => {
             const outflowCents = cents(r.signedOutflowCents);
@@ -129,10 +129,10 @@ export function parseFinancePreparation(value: unknown): FinanceData {
                 (r.debitCents ?? 0) < 0 ||
                 (r.creditCents ?? 0) < 0
             )
-                throw new Error("Débit/crédit incohérent.");
+                throw new Error("Inconsistent debit or credit.");
             if (r.status !== "posted")
                 throw new Error(
-                    "Seules les opérations comptabilisées entrent dans le registre.",
+                    "Only posted transactions enter the register.",
                 );
             return {
                 id: id(r.id),
@@ -247,12 +247,12 @@ export function parseFinancePreparation(value: unknown): FinanceData {
             accounts.find((a) => a.id === row.accountId)?.currency
         )
             throw new Error(
-                "Devise du compte et de l’opération incohérente; conversion non autorisée.",
+                "The transaction currency does not match the account. Currency conversion is not allowed.",
             );
     for (const rows of [transactions, activities]) {
         if (new Set(rows.map((r) => r.id)).size !== rows.length)
             throw new Error(
-                "Identités de transactions dupliquées dans le fichier.",
+                "The file contains duplicate transaction identities.",
             );
     }
     return {

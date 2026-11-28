@@ -16,7 +16,7 @@ test("complete source facts are never portal, history, upload or submission proo
   assert.equal(check(r, "primary-statement").state, "unverified");
   assert.equal(check(r, "patient").value, "Synthetic person");
   assert.equal(check(r, "originalAmount").value, 150);
-  assert.match(check(r, "primary-statement").detail, /PDF officiel.*vérifier/);
+  assert.match(check(r, "primary-statement").detail, /Verify the official PDF/);
   assert.deepEqual(p, before);
 });
 
@@ -35,9 +35,9 @@ test("owner confirmation cannot become an insurer statement or attached explanat
   const p = dossier(); p.coordination.ownerConfirmation = { amount: 90 }; p.coordination.importedStatementAvailable = false;
   const r = claimDossierReadiness(p);
   assert.equal(check(r, "primary-payment").state, "available");
-  assert.match(check(r, "primary-payment").detail, /confirmé par vous/);
+  assert.match(check(r, "primary-payment").detail, /You confirmed the amount/);
   assert.equal(check(r, "primary-statement").state, "unverified");
-  assert.match(check(r, "primary-statement").detail, /Aucun décompte importé/);
+  assert.match(check(r, "primary-statement").detail, /No imported statement/);
 });
 
 test("local possible, pending and recorded evidence blocks readiness", () => {
@@ -59,16 +59,16 @@ test("missing original, identity, valid date, amount, currency or order stays vi
 test("receipt copies are candidates, never proof of a unique original or successful upload", () => {
   const p = dossier(); p.attachments.push({ ...p.attachments[0], documentId: "synthetic-copy" });
   const r = claimDossierReadiness(p);
-  assert.equal(r.status, "source-ready"); assert.match(check(r, "receipt").detail, /^2 fichier.*identifier et vérifier/);
+  assert.equal(r.status, "source-ready"); assert.match(check(r, "receipt").detail, /^2 source files.*identify and verify/);
   assert.equal(r.uploadVerified, false);
 });
 
 test("reconstructed gross and old previews with unknown provenance do not become confirmed amounts", () => {
   const p = dossier(); p.originalAmountEvidence = { source: "synthetic-primary-statement", confidence: "reconstructed" };
   assert.equal(check(claimDossierReadiness(p), "amount-basis").state, "unverified");
-  assert.match(check(claimDossierReadiness(p), "amount-basis").detail, /Brut reconstruit/);
+  assert.match(check(claimDossierReadiness(p), "amount-basis").detail, /Gross amount reconstructed/);
   delete p.originalAmountEvidence;
-  assert.match(check(claimDossierReadiness(p), "amount-basis").detail, /non qualifiée/);
+  assert.match(check(claimDossierReadiness(p), "amount-basis").detail, /not confirmed in this preview/);
 });
 
 test("known unsupported service and reviewable source warning are distinct", () => {

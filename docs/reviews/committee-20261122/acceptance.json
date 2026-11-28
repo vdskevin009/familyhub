@@ -1,0 +1,42 @@
+{
+  "baseline": false,
+  "results": [
+    {
+      "width": 320,
+      "partialTotal": null,
+      "knownCase": 120,
+      "completeEmptyTotal": 0,
+      "sourceDatePreserved": true,
+      "simulatedAssistantOnly": true
+    },
+    {
+      "width": 390,
+      "partialTotal": null,
+      "knownCase": 120,
+      "completeEmptyTotal": 0,
+      "sourceDatePreserved": true,
+      "simulatedAssistantOnly": true
+    },
+    {
+      "width": 768,
+      "partialTotal": null,
+      "knownCase": 120,
+      "completeEmptyTotal": 0,
+      "sourceDatePreserved": true,
+      "simulatedAssistantOnly": true
+    },
+    {
+      "width": 1440,
+      "partialTotal": null,
+      "knownCase": 120,
+      "completeEmptyTotal": 0,
+      "sourceDatePreserved": true,
+      "simulatedAssistantOnly": true
+    }
+  ],
+  "errors": [],
+  "external": [],
+  "simulatedTaskRequests": 12,
+  "realModelCalls": 0,
+  "sourceWrites": 0
+}

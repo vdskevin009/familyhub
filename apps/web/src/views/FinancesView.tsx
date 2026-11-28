@@ -1,3 +1,4 @@
+import { displayFinanceError } from "../finance-error-copy";
 import { useFinanceAccountHistory } from "../use-finance-account-history";
 import FinanceMonthlyAccounts from "./FinanceMonthlyAccounts";
 import { useFinanceAccountCaptures } from "../use-finance-account-captures";
@@ -50,17 +51,17 @@ import "../compact-finances.css";
 import "../finance-journeys.css";
 import "../finance-visual.css";
 const money = (cents: number, currency = "CAD") =>
-    new Intl.NumberFormat("fr-CA", { style: "currency", currency }).format(
+    new Intl.NumberFormat("en-CA", { style: "currency", currency }).format(
         cents / 100,
     );
 const displayDate = (s: string) =>
     /^\d{4}-\d{2}-\d{2}$/.test(s)
-        ? new Date(s + "T12:00:00Z").toLocaleDateString("fr-CA")
+        ? new Date(s + "T12:00:00Z").toLocaleDateString("en-CA")
         : s;
 function Sources({ sources }: { sources: Evidence[] }) {
     return (
         <details className="finance-evidence">
-            <summary>Sources et traçabilité</summary>
+            <summary>Sources and evidence</summary>
             {sources.map((s, i) => (
                 <p key={i}>
                     <strong>{s.name}</strong>
@@ -89,7 +90,7 @@ function Bars({
     const max = scale ?? Math.max(1, ...values.map((v) => Math.abs(v.cents)));
     return (
         <>
-        {signed && <p className="finance-signed-legend" aria-hidden="true"><span>Remboursements</span><span>0</span><span>Dépenses</span></p>}
+        {signed && <p className="finance-signed-legend" aria-hidden="true"><span>Refunds</span><span>0</span><span>Spending</span></p>}
         <ul className={`finance-bars${signed ? " finance-bars-signed" : ""}`}>
             {values.map((v) => (
                 <li key={v.id}>
@@ -148,9 +149,9 @@ function Benchmarks({
         summary.reviewCount === 0;
     return (
         <section className="surface view-stack">
-            <h2>Repères de dépenses</h2>
+            <h2>Spending benchmarks</h2>
             <label>
-                Population de référence
+                Reference population
                 <select
                     value={profileId}
                     onChange={(e) => setProfile(e.target.value)}
@@ -163,20 +164,16 @@ function Benchmarks({
                 </select>
             </label>
             <p>
-                Moyennes annuelles {benchmarkMeta.year} divisées par 12, en
-                dollars de 2023. Révision du {benchmarkMeta.released}. Ce sont
-                des repères descriptifs, pas des objectifs de budget.
+                {benchmarkMeta.year} annual averages divided by 12, in 2023 dollars. Revised on {benchmarkMeta.released}. These are descriptive benchmarks, not budget targets.
             </p>
             <p className="muted">
-                Aucun groupe exact « deux adultes et un enfant de 15 mois à
-                North/West Vancouver ». {profile.geography} ·{" "}
-                {profile.population}. Aucune correction d’inflation ni
-                multiplication par taille de famille.
+                The survey does not give figures specifically for two adults and a 15-month-old in North or West Vancouver. {profile.geography} ·{" "}
+                {profile.population}. Figures are not adjusted for inflation or household size.
             </p>
             <div className="finance-benchmark-head">
-                <span>Catégorie</span>
-                <span>Référence / mois</span>
-                <span>Votre période / mois</span>
+                <span>Category</span>
+                <span>Monthly benchmark</span>
+                <span>Your monthly average</span>
             </div>
             {profile.values.map((v) => {
                 const own = summary.categories.find((c) => c.key === v.key);
@@ -191,58 +188,40 @@ function Benchmarks({
                         <span>{v.label}</span>
                         <strong>
                             {v.annual === null
-                                ? "Indisponible (F)"
+                                ? "Unavailable (F)"
                                 : money((v.annual * 100) / 12)}
                         </strong>
                         <span>
                             {comparable
                                 ? money(own.cents / summary.months.length)
-                                : "Comparaison indisponible"}
+                                : "Comparison unavailable"}
                         </span>
                     </div>
                 );
             })}
             {!complete && (
                 <p className="muted">
-                    La comparaison personnelle nécessite des mois entiers dans
-                    la fenêtre observée, tous les comptes et la revue des
-                    opérations. Les catégories doivent correspondre aux
-                    définitions de l’enquête.
+                    A personal comparison needs full months, all accounts and reviewed transactions. Categories must match the survey definitions.
                 </p>
             )}
             <details>
-                <summary>Définitions, limites et sources</summary>
+                <summary>Definitions, limitations and sources</summary>
                 <div className="view-stack">
                     <p>
-                        La moyenne comprend les ménages sans dépense dans la
-                        catégorie. Elle n’est ni une médiane ni un coût par
-                        enfant. Les groupes ne sont jamais combinés.
+                        The average includes households with no spending in the category. It is not a median or a cost per child. Groups are not combined.
                     </p>
                     <p>
-                        Le logement inclut énergie, résidence principale et
-                        autres hébergements. Le transport inclut achats nets de
-                        véhicules et voyages. Garde d’enfants et communications
-                        font déjà partie des opérations du ménage; énergie et
-                        eau font déjà partie du logement. Ne pas additionner ces
-                        lignes.
+                        Housing includes energy, the principal residence and other accommodation. Transportation includes net vehicle purchases and travel. Child care and communications are already included in household operations. Energy and water are already included in housing. Do not add these rows together.
                     </p>
                     <p>
-                        L’épicerie exclut les articles non alimentaires; les
-                        restaurants excluent l’alcool. Un libellé de supermarché
-                        ne prouve pas le contenu du panier. Santé et loisirs
-                        nécessitent des rapprochements supplémentaires
-                        (remboursements, services inclus). Les lignes F sont
-                        trop peu fiables pour être publiées.
+                        Groceries exclude non-food items; restaurant spending excludes alcohol. A supermarket description does not establish what was purchased. Health and recreation need further reconciliation for refunds and included services. Values marked F are too unreliable to publish.
                     </p>
                     <p>
-                        Vos versements hypothécaires restent entiers (capital et
-                        intérêts non séparés). Impôts, placements, transferts et
-                        cotisations ne constituent pas la consommation courante
-                        de l’enquête. Aucun ratio global n’est calculé.
+                        Mortgage payments retain both principal and interest. Taxes, investments, transfers and contributions are not current consumption in the survey. No overall ratio is calculated.
                     </p>
                     <p>
                         <a href={profile.url} target="_blank" rel="noreferrer">
-                            Statistique Canada · Tableau {profile.table}
+                            Statistics Canada · Table {profile.table}
                         </a>{" "}
                         ·{" "}
                         <a
@@ -250,7 +229,7 @@ function Benchmarks({
                             target="_blank"
                             rel="noreferrer"
                         >
-                            Méthodologie
+                            Methodology
                         </a>{" "}
                         ·{" "}
                         <a
@@ -258,7 +237,7 @@ function Benchmarks({
                             target="_blank"
                             rel="noreferrer"
                         >
-                            Révision
+                            Revision
                         </a>
                     </p>
                     <ul>
@@ -371,7 +350,7 @@ export default function FinancesView({
             if (record) {
                 const row = s.data.transactions.find(r => r.id === record);
                 if (row) { const period = calendarPeriod(Number(row.date.slice(0, 4)), Number(row.date.slice(5, 7))); setFrom(period.from); setTo(period.to); setCurrency(row.currency); openDecision(record, s); }
-                else setMessage("L’opération liée n’est pas présente dans les sources chargées.");
+                else setMessage("The linked transaction is not in the loaded sources.");
             }
             if (query.get("tab") === "trends") setTab("trends");
             if (query.get("tab") === "contributions") setTab("contributions");
@@ -394,7 +373,7 @@ export default function FinancesView({
                 if (!cancelled) initialize(s);
             })
             .catch((e) => {
-                if (!cancelled) setError(e.message);
+                if (!cancelled) setError(displayFinanceError(e.message));
             })
             .finally(() => {
                 if (!cancelled) setLoading(false);
@@ -417,9 +396,9 @@ export default function FinancesView({
         bindingRead.reload();
         try {
             initialize(await fetchFinances(hub.worker));
-            setMessage("Données enregistrées sur le PC rechargées. Aucune nouvelle connexion bancaire.");
+            setMessage("Saved data was reloaded from the PC. No new bank connection was made.");
         } catch (e) {
-            setError((e as Error).message);
+            setError(displayFinanceError((e as Error).message));
         } finally {
             setLoading(false);
         }
@@ -430,7 +409,7 @@ export default function FinancesView({
         setPreview(null);
         setBundle(null);
         if (file.size > 20_000_000) {
-            setError("Fichier trop volumineux (20 Mo maximum).");
+            setError("The file is too large. The limit is 20 MB.");
             return;
         }
         setBusy(true);
@@ -444,7 +423,7 @@ export default function FinancesView({
             setBundle(input);
             setPreview(result);
         } catch (e) {
-            setError((e as Error).message);
+            setError(displayFinanceError((e as Error).message));
         } finally {
             setBusy(false);
         }
@@ -463,13 +442,13 @@ export default function FinancesView({
             if (result.state) initialize(result.state);
             setMessage(
                 result.alreadyImported
-                    ? "Ce fichier est déjà importé."
-                    : preview.balanceObservations ? `${preview.balanceObservations} soldes reçus enregistrés. Historique conservé.` : `${result.added} opérations ajoutées au PC. Sources originales conservées.`,
+                    ? "This file has already been imported."
+                    : preview.balanceObservations ? `${preview.balanceObservations} received balances saved. History was kept.` : `${result.added} transactions added to your PC. Original sources were kept.`,
             );
             setBundle(null);
             setPreview(null);
         } catch (e) {
-            setError((e as Error).message);
+            setError(displayFinanceError((e as Error).message));
         } finally {
             setBusy(false);
         }
@@ -499,7 +478,7 @@ export default function FinancesView({
             if (attempt.current?.intent !== intent) attempt.current = { intent, requestId: crypto.randomUUID() };
             const requestId = attempt.current.requestId;
             const result = await saveFinanceChange(hub.worker, { ...input, requestId, expectedRevision: state.revision });
-            if (result.operation?.id !== requestId || !result.revision || !Array.isArray(result.history)) throw new Error("Enregistrement non confirmé par le PC.");
+            if (result.operation?.id !== requestId || !result.revision || !Array.isArray(result.history)) throw new Error("Your PC did not confirm the save.");
             confirmed = true;
             const saved = result.refreshRequired ? await fetchFinances(hub.worker) : applyFinanceDelta(state, result, requestId);
             setState(saved);
@@ -507,18 +486,18 @@ export default function FinancesView({
             const present = new Set(saved.data?.transactions.map(row => row.id) ?? []);
             const following = next ? candidates.find(id => present.has(id) && !affectedIds.has(id) && (queue !== null || !saved.decisions[id])) : undefined;
             if (following) openDecision(following, saved, queue ?? undefined); else setEditing(null);
-            setMessage(result.operation.count === 1 ? "Décision enregistrée sur le PC." : `${result.operation.count} décisions enregistrées sur le PC.`);
+            setMessage(result.operation.count === 1 ? "Decision saved on your PC." : `${result.operation.count} decisions saved on your PC.`);
         } catch (e) {
-            setError((e as Error).message);
+            setError(displayFinanceError((e as Error).message));
             if (confirmed || (e as Error & { status?: number }).status === 409) setStaleDraft(true);
-            if (confirmed) setMessage("Décision enregistrée; l’actualisation du PC reste nécessaire.");
+            if (confirmed) setMessage("Decision saved. Reload from your PC before continuing.");
         } finally {
             savingDecision.current = false;
             setBusy(false);
         }
     }
     async function saveInline(entries: InlineEntry[], sameName: boolean, progress: (done: string[]) => void): Promise<InlineResult> {
-        if (!state || savingDecision.current) return { done: [], error: "Un enregistrement est déjà en cours." };
+        if (!state || savingDecision.current) return { done: [], error: "A save is already in progress." };
         savingDecision.current = true; setBusy(true); setError(""); setMessage("");
         let current = state, confirmed = false;
         const done = new Set<string>();
@@ -528,7 +507,7 @@ export default function FinancesView({
                 for (const entry of entries) {
                     const group = categoryScope(current, entry.id, { ...entry, note: current.decisions[entry.id]?.note ?? "", updatedAt: "" });
                     for (const row of group.affected) {
-                        if (categories.has(row.id) && categories.get(row.id) !== entry.category) throw new Error("Deux sélections du même nom demandent des catégories différentes. Choisissez une catégorie commune ou désactivez l'application du même nom.");
+                        if (categories.has(row.id) && categories.get(row.id) !== entry.category) throw new Error("Two selections with the same name have different categories. Pick one category or turn off matching by name.");
                         categories.set(row.id, entry.category);
                     }
                 }
@@ -546,22 +525,22 @@ export default function FinancesView({
                 // same-name step fulfilled peers and changed this step's derived scope.
                 const requestId = inlineAttempt.current.requestId;
                 const result = await saveFinanceChange(hub.worker, { ...inlineAttempt.current.input, expectedRevision: current.revision, requestId });
-                if (result.operation?.id !== requestId || !result.revision || !Array.isArray(result.history)) throw new Error("Enregistrement non confirmé par le PC. Réessayez la même sélection.");
+                if (result.operation?.id !== requestId || !result.revision || !Array.isArray(result.history)) throw new Error("Your PC did not confirm the save. Try the same selection again.");
                 confirmed = true;
                 current = result.refreshRequired ? await fetchFinances(hub.worker) : applyFinanceDelta(current, result, requestId);
                 const affected = current.decisionHistory.filter(e => e.operationId === requestId).map(e => e.id);
-                if (!affected.length) throw new Error("Décision confirmée, historique à actualiser avant de continuer.");
+                if (!affected.length) throw new Error("Decision confirmed. Refresh the history before continuing.");
                 affected.forEach(id => {
                     grouped.add(id);
                     const requested = entries.find(e => e.id === id), saved = current.decisions[id];
                     if (!requested || (saved?.nature === requested.nature && saved.category === requested.category)) done.add(id);
                 });
                 setState(current); inlineAttempt.current = null; progress([...done]);
-                if (result.refreshRequired) throw new Error("Des décisions plus récentes ont été conservées. Revoyez le reste du lot après actualisation; aucune ancienne décision n'a été réappliquée.");
+                if (result.refreshRequired) throw new Error("Newer decisions were kept. Refresh and review the rest of the batch. No older decisions were reapplied.");
             }
             return { done: [...done] };
         } catch (e) {
-            return { done: [...done], error: (confirmed ? "Enregistrement confirmé; actualisez les décisions avant de continuer. " : "") + (e as Error).message, stale: confirmed || (e as Error & { status?: number }).status === 409 };
+            return { done: [...done], error: (confirmed ? "Save confirmed. Refresh decisions before continuing. " : "") + displayFinanceError((e as Error).message), stale: confirmed || (e as Error & { status?: number }).status === 409 };
         } finally { savingDecision.current = false; setBusy(false); }
     }
     async function reloadInline() {
@@ -574,7 +553,7 @@ export default function FinancesView({
     const unified = useMemo(()=>reconcileFinanceRegister(state ?? emptyState, sourceExpenses.snapshots, bindingRead.value?.bindings),[state,emptyState,sourceExpenses.snapshots,bindingRead.value]);
     const unifiedResult = useMemo(()=>filterFinanceRegister(unified,{from,to,currency,accountId:account,search,category:category as ExpenseCategory || undefined,reviewOnly}),[unified,from,to,currency,account,search,category,reviewOnly]);
     const sourceThrough = sourceExpenses.snapshots.at(-1)?.query.through;
-    const sourceAccountOptions = useMemo(()=>[...new Map(sourceExpenses.snapshots.flatMap(s=>s.accounts.map(a=>[a.sourceKey,a] as const))).values()].filter(a=>!unified.accountBindings[a.sourceKey]).map(a=>({id:`source:${a.sourceKey}`,name:`${a.name} · à rapprocher`})),[sourceExpenses.snapshots,unified.accountBindings]);
+    const sourceAccountOptions = useMemo(()=>[...new Map(sourceExpenses.snapshots.flatMap(s=>s.accounts.map(a=>[a.sourceKey,a] as const))).values()].filter(a=>!unified.accountBindings[a.sourceKey]).map(a=>({id:`source:${a.sourceKey}`,name:`${a.name} · Needs reconciliation`})),[sourceExpenses.snapshots,unified.accountBindings]);
     const filterData = useMemo(() => {
         const starts=[...(data ? [data.scope.from]:[]),...sourceExpenses.snapshots.map(s=>s.query.from)].sort();
         const ends=[...(data ? [data.scope.to]:[]),...sourceExpenses.snapshots.map(s=>s.query.through)].sort();
@@ -617,8 +596,8 @@ export default function FinancesView({
         if (savingDecision.current || busy) return;
         setBusy(true);
         setError("");
-        try { const saved = await fetchFinances(hub.worker); setState(saved); attempt.current = null; if (editing) openDecision(editing, saved, categoryQueue.current ?? undefined); else setStaleDraft(false); setMessage("Données enregistrées sur le PC rechargées. Aucune nouvelle connexion bancaire."); }
-        catch (e) { setError((e as Error).message); }
+        try { const saved = await fetchFinances(hub.worker); setState(saved); attempt.current = null; if (editing) openDecision(editing, saved, categoryQueue.current ?? undefined); else setStaleDraft(false); setMessage("Saved data was reloaded from the PC. No new bank connection was made."); }
+        catch (e) { setError(displayFinanceError((e as Error).message)); }
         finally { setBusy(false); }
     }
     async function undoChange(id: string, bubble = false) {
@@ -631,14 +610,14 @@ export default function FinancesView({
             if (attempt.current?.intent !== intent) attempt.current = { intent, requestId: crypto.randomUUID() };
             const requestId = attempt.current.requestId;
             const result = await saveFinanceChange(hub.worker, { kind: "undo", undoOf: id, expectedRevision: state.revision, requestId });
-            if (result.operation?.id !== requestId || !result.revision || !Array.isArray(result.history)) throw new Error("Annulation non confirmée par le PC.");
+            if (result.operation?.id !== requestId || !result.revision || !Array.isArray(result.history)) throw new Error("Your PC did not confirm the undo.");
             confirmed = true;
             setState(result.refreshRequired ? await fetchFinances(hub.worker) : applyFinanceDelta(state, result, requestId));
-            attempt.current = null; setMessage(`${result.operation.count} décisions précédentes restaurées.`);
+            attempt.current = null; setMessage(`${result.operation.count} previous decisions restored.`);
         } catch (e) {
-            setError((e as Error).message);
+            setError(displayFinanceError((e as Error).message));
             if (confirmed || (e as Error & { status?: number }).status === 409) setStaleDraft(true);
-            if (confirmed) setMessage("Annulation enregistrée; actualisation encore nécessaire.");
+            if (confirmed) setMessage("Undo saved. Refresh before continuing.");
             if (bubble) throw e;
         } finally { savingDecision.current = false; setBusy(false); }
     }
@@ -678,14 +657,14 @@ export default function FinancesView({
                     className="button secondary"
                     disabled={!paired || busy || loading}
                     onClick={() => void refresh()}
-                    aria-label={loading ? "Chargement" : "Actualiser"}
+                    aria-label={loading ? "Loading" : "Refresh"}
                 >
                     <RefreshCw size={16} />
-                    <span className="finance-refresh-label">{loading ? "Chargement…" : "Actualiser"}</span>
+                    <span className="finance-refresh-label">{loading ? "Loading…" : "Refresh"}</span>
                 </button>
             </PageHeader>
             <nav className="segment-tabs finance-tabs" aria-label="Finances">
-                {([["investments", "Comptes"], ["expenses", "Dépenses"], ["trends", "Tendances"], ["contributions", "Contributions"]] as const).map(([id,label]) => <button type="button" key={id} aria-current={tab===id ? "page" : undefined} className={tab===id ? "active" : ""} onClick={()=>{if(id==="trends" && tab==="expenses" && from)setTrendMonth(from.slice(0,7));setTab(id);setOperationsOpen(false);setCategoryPayments(null);}}>{label}</button>)}
+                {([["investments", "Accounts"], ["expenses", "Spending"], ["trends", "Trends"], ["contributions", "Contributions"]] as const).map(([id,label]) => <button type="button" key={id} aria-current={tab===id ? "page" : undefined} className={tab===id ? "active" : ""} onClick={()=>{if(id==="trends" && tab==="expenses" && from)setTrendMonth(from.slice(0,7));setTab(id);setOperationsOpen(false);setCategoryPayments(null);}}>{label}</button>)}
             </nav>
             {tab === "contributions" && <ContributionsView worker={hub.worker} embedded />}
 
@@ -693,50 +672,46 @@ export default function FinancesView({
             {message && (
                 <Notice onDismiss={() => setMessage("")}>{message}</Notice>
             )}
-            {staleDraft && !editing && <button className="button secondary" disabled={busy} onClick={() => void reloadDecision()}>Actualiser les décisions du PC</button>}
+            {staleDraft && !editing && <button className="button secondary" disabled={busy} onClick={() => void reloadDecision()}>Reload decisions from the PC</button>}
             {!paired && (
                 <div className="surface view-stack">
-                    <h2>Retrouver vos finances sur le PC</h2>
+                    <h2>Access your finances on your PC</h2>
                     <p>
-                        Connectez le PC pour lire l’historique privé. Les
-                        données financières ne sont pas stockées sur le site
-                        public.
+                        Pair your PC to read your private history. Financial data is not stored on the public site.
                     </p>
                     <button
                         className="button"
                         onClick={() => onNavigate("more")}
                     >
-                        Ouvrir la connexion au PC
+                        Open PC connection settings
                     </button>
                 </div>
             )}
             {paired && tab !== "contributions" && tab !== "investments" && !loading && !data && !error && (
                 <div className="surface">
-                    <h2>Aucun historique importé</h2>
+                    <h2>No imported history</h2>
                     <p>
-                        Ouvrez Sources et import privé pour prévisualiser votre
-                        préparation. Aucun chiffre de démonstration ne remplace
-                        vos données.
+                        Open Sources and private import to preview your import. Sample figures never replace your data.
                     </p>
                 </div>
             )}
 
             {paired && tab === "expenses" && <div className="finance-register-status" role="status">
-                {sourceExpenses.status === "error" ? "Collectes indisponibles : le registre affiché est partiel." : sourceExpenses.status === "loading" ? "Chargement des collectes enregistrées." : ""}
-                {unifiedResult.hasUnreconciledSources && <p>{unifiedResult.unresolved.length} opération(s) à rapprocher dans cette période, hors sous-total. Les collectes et le registre historique sont présentés ensemble, sans cumul de doublons.</p>}
-                {bindingRead.status === "unsupported" && sourceExpenses.snapshots.length>0 && <p>Le worker doit être mis à jour pour reconnaître les correspondances archivées. Les opérations source restent à rapprocher.</p>}
-                {bindingRead.status === "error" && <p>Correspondances indisponibles ; aucune identité n’est supposée.</p>}
-                {!!bindingRead.value?.unavailableArchiveCount && <p>Certaines preuves archivées sont indisponibles ; le rapprochement est partiel.</p>}
+                {sourceExpenses.status === "error" ? "Some collections are unavailable. The register shown is partial." : sourceExpenses.status === "loading" ? "Loading saved collections." : ""}
+                {unifiedResult.hasUnreconciledSources && <p>{unifiedResult.unresolved.length} transaction(s) in this period need reconciliation and are excluded from the subtotal. Collections are shown alongside the historical register without adding duplicates.</p>}
+                {bindingRead.status === "unsupported" && sourceExpenses.snapshots.length>0 && <p>Update the worker to recognize archived matches. Source transactions still need reconciliation.</p>}
+                {bindingRead.status === "error" && <p>Matches are unavailable. No identities are assumed.</p>}
+                {!!bindingRead.value?.unavailableArchiveCount && <p>Some archived evidence is unavailable. Reconciliation is partial.</p>}
             </div>}
-            {paired && tab === "expenses" && !data && sourceExpenses.snapshots.length>0 && <section className="surface view-stack"><h2>Registre des opérations</h2><p>Sous-total non établi : aucune opération rapprochée dans le registre historique.</p><FinanceScope data={filterData} additionalAccounts={sourceAccountOptions} currencies={sourceExpenses.snapshots.flatMap(s=>s.rows.map(r=>r.currency))} range={{from,to}} onPeriod={range=>{setFrom(range.from);setTo(range.to);}} account={account} currency={currency} onAccount={setAccount} onCurrency={setCurrency}/><label>Rechercher une opération<input type="search" value={search} onChange={e=>setSearch(e.target.value)}/></label><FinanceRegisterSources result={unifiedResult}/></section>}
+            {paired && tab === "expenses" && !data && sourceExpenses.snapshots.length>0 && <section className="surface view-stack"><h2>Transaction register</h2><p>No subtotal is available: the historical register has no reconciled transactions.</p><FinanceScope data={filterData} additionalAccounts={sourceAccountOptions} currencies={sourceExpenses.snapshots.flatMap(s=>s.rows.map(r=>r.currency))} range={{from,to}} onPeriod={range=>{setFrom(range.from);setTo(range.to);}} account={account} currency={currency} onAccount={setAccount} onCurrency={setCurrency}/><label>Search for a transaction<input type="search" value={search} onChange={e=>setSearch(e.target.value)}/></label><FinanceRegisterSources result={unifiedResult}/></section>}
             {paired && tab === "investments" && !investmentDetail && <FinanceMonthlyAccounts read={accountCaptures} history={accountHistory} historicalAccountIds={data?.accounts.filter(a => a.type !== "credit-card").map(a => a.id) ?? []} selection={accountSelection} onSelection={setAccountSelection} onOpenHistorical={openInvestment} legacy={<FinanceReceivedAccounts data={data ?? null} inventory={sourceInventory} onOpen={openInvestment} historicalOpen={historicalAccountsOpen} onHistoricalOpen={setHistoricalAccountsOpen} />} />}
             {tab !== "contributions" && data && state && summary && (
                 <>
-                    {tab === "investments" ? investmentDetail && <details className="finance-journey-controls"><summary>Période des activités : {from} au {to}</summary><PeriodNavigator range={{ from, to }} scope={data.scope} onChange={range => { setFrom(range.from); setTo(range.to); }} /></details> :
+                    {tab === "investments" ? investmentDetail && <details className="finance-journey-controls"><summary>Activity period: {from} au {to}</summary><PeriodNavigator range={{ from, to }} scope={data.scope} onChange={range => { setFrom(range.from); setTo(range.to); }} /></details> :
                         <FinanceScope data={filterData} additionalAccounts={sourceAccountOptions} currencies={sourceExpenses.snapshots.flatMap(s=>s.rows.map(r=>r.currency))} range={tab === "expenses" ? { from, to } : undefined} onPeriod={range => { setFrom(range.from); setTo(range.to); }} account={account} currency={currency} onAccount={setAccount} onCurrency={setCurrency} />}
                     {tab !== "trends" && from > to && (
                         <Notice error>
-                            La date de début doit précéder la date de fin.
+                            The start date must be before the end date.
                         </Notice>
                     )}
                     {tab === "trends" && trend ? <FinanceTrends state={state} trend={trend} account={account} currency={currency} onMonth={setTrendMonth} onCategory={openCategory} unresolvedCount={filterFinanceRegister(unified,{from:trend.from,to:trend.to,currency,accountId:account}).unresolved.length} /> : tab === "expenses" ? (
@@ -744,39 +719,33 @@ export default function FinancesView({
                             <div className="finance-chart-grid finance-expense-charts">
                                 <section className="surface view-stack">
                                     <div className="finance-totals compact-finance-totals finance-category-total"><div>
-                                        <span>Dépenses nettes · {currency}</span><strong>{summary.included.length ? money(summary.totalCents, currency) : "Non établi"}</strong><InfoPopover title="Calcul des dépenses">
+                                        <span>Net spending · {currency}</span><strong>{summary.included.length ? money(summary.totalCents, currency) : "Not established"}</strong><InfoPopover title="How spending is calculated">
                                         <p className="muted">
-                                Transferts, paiements de cartes, revenus et
-                                placements sont exclus selon leur nature
-                                proposée ou confirmée. Aucun partage
-                                capital/intérêts n’est estimé. Une seule devise
-                                à la fois, sans conversion. Les catégories
-                                automatiques restent provisoires.
+                                Transfers, card payments, income and investments are excluded based on their proposed or confirmed classification. Principal and interest are not split. Each view shows one currency without conversion. Automatic categories remain provisional.
                             </p>
-                                        <p>Remboursements déduits. Totaux par date d’opération. La vue annuelle conserve les mois partiels et les lacunes; elle n’extrapole pas une année complète.</p>
-                                        <p>{summary.reviewCount} opérations à revoir · {summary.unreviewedCount} suggestions non confirmées.</p>
-                                        <p>Mouvements de la période, pas un solde bancaire disponible.</p>
+                                        <p>Refunds are deducted. Totals use transaction dates. The annual view shows partial months and gaps without estimating a full year.</p>
+                                        <p>{summary.reviewCount} transactions to review · {summary.unreviewedCount} unconfirmed suggestions.</p>
+                                        <p>These are transactions in the selected period, not an available bank balance.</p>
                                     </InfoPopover></div></div>
-                                    {summary.included.length>0 && <p className="finance-total-formula">{money(summary.included.filter(r => r.outflowCents > 0).reduce((sum, r) => sum + r.outflowCents, 0), currency)} de dépenses − {money(-summary.included.filter(r => r.outflowCents < 0).reduce((sum, r) => sum + r.outflowCents, 0), currency)} remboursés</p>}
-                                    <button id="finance-open-operations" className="button secondary finance-operations-link" onClick={showOperations}>Voir les opérations</button>
-                                    <h2>Où va l’argent ?</h2>
+                                    {summary.included.length>0 && <p className="finance-total-formula">{money(summary.included.filter(r => r.outflowCents > 0).reduce((sum, r) => sum + r.outflowCents, 0), currency)} spent − {money(-summary.included.filter(r => r.outflowCents < 0).reduce((sum, r) => sum + r.outflowCents, 0), currency)} refunded</p>}
+                                    <button id="finance-open-operations" className="button secondary finance-operations-link" onClick={showOperations}>View transactions</button>
+                                    <h2>Where is the money going?</h2>
                                     {summary.included.length ? (
                                         <>
                                             <Bars currency={currency} values={expenseValues.slice(0, 5)} scale={expenseScale} signed={expenseValues.some(value => value.cents < 0)} onSelect={key => openCategory(key as ExpenseCategory)} />
-                                            {expenseValues.length > 5 && <details className="finance-more-categories"><summary>Autres catégories ({expenseValues.length - 5})</summary>
+                                            {expenseValues.length > 5 && <details className="finance-more-categories"><summary>Other categories ({expenseValues.length - 5})</summary>
                                                 <Bars currency={currency} values={expenseValues.slice(5)} scale={expenseScale} signed={expenseValues.some(value => value.cents < 0)} onSelect={key => openCategory(key as ExpenseCategory)} />
                                             </details>}
                                         </>
                                     ) : (
                                         <p>
-                                            Aucune dépense comptabilisée pour ce
-                                            filtre.
+                                            No posted spending matches this filter.
                                         </p>
                                     )}
                                 </section>
-                                <details className="finance-journey-disclosure"><summary>Évolution mensuelle</summary>
+                                <details className="finance-journey-disclosure"><summary>Monthly trends</summary>
                                 <section className="surface view-stack">
-                                    <div className="compact-heading"><h2>Évolution mensuelle</h2><InfoPopover title="Évolution mensuelle"><p>Un mois partiel n’est pas extrapolé. Une absence de lignes ne prouve pas une absence de dépenses.</p></InfoPopover></div>
+                                    <div className="compact-heading"><h2>Monthly trends</h2><InfoPopover title="Monthly trends"><p>Partial months are not extrapolated. No transactions shown does not establish that there was no spending.</p></InfoPopover></div>
                                     <Bars
                                         currency={currency}
                                         onSelect={(month) => { const period = calendarPeriod(Number(month.slice(0, 4)), Number(month.slice(5, 7))); setFrom(period.from); setTo(period.to); }}
@@ -785,58 +754,58 @@ export default function FinancesView({
                                             label: m.month,
                                             cents: m.cents,
                                             note: m.full
-                                                ? "Fenêtre observée entière"
-                                                : "Période partielle / couverture limitée",
+                                                ? "Full period observed"
+                                                : "Partial period or limited coverage",
                                         }))}
                                     />
 
                                 </section>
                                 </details>
                             </div>
-                            <details className="finance-journey-disclosure"><summary>Épargne / Investissements classés</summary>
-                            <section className="surface view-stack finance-savings-flow" aria-label="Épargne et investissements classés">
-                                <h2>Épargne / Investissements</h2>
+                            <details className="finance-journey-disclosure"><summary>Categorized savings and investments</summary>
+                            <section className="surface view-stack finance-savings-flow" aria-label="Categorized savings and investments">
+                                <h2>Savings and investments</h2>
                                 {summary.savings.count > 0 ? <>
                                     <div className="finance-totals">
-                                        <div><small>Sorties classées · {currency}</small><strong>{money(summary.savings.outgoingCents, currency)}</strong></div>
-                                        <div><small>Entrées classées · {currency}</small><strong>{money(summary.savings.incomingCents, currency)}</strong></div>
+                                        <div><small>Categorized outflows · {currency}</small><strong>{money(summary.savings.outgoingCents, currency)}</strong></div>
+                                        <div><small>Categorized inflows · {currency}</small><strong>{money(summary.savings.incomingCents, currency)}</strong></div>
                                     </div>
-                                    <p>Flux bancaires explicitement classés, hors dépenses. Les deux côtés d'un transfert ne sont pas additionnés; les activités du courtage restent séparées. Ce ne sont ni une épargne nette du foyer ni un rendement.</p>
-                                    {summary.savings.months.length > 1 && <details><summary>Flux mois par mois</summary><div className="finance-chart-grid">
-                                        <div><h3>Sorties classées</h3><Bars currency={currency} values={summary.savings.months.map(m => ({ id: m.month, label: m.month, cents: m.outgoingCents, note: m.full ? "Fenêtre observée entière" : "Couverture partielle" }))} onSelect={month => { const p = calendarPeriod(Number(month.slice(0, 4)), Number(month.slice(5, 7))); setFrom(p.from); setTo(p.to); }} /></div>
-                                        <div><h3>Entrées classées</h3><Bars currency={currency} values={summary.savings.months.map(m => ({ id: m.month, label: m.month, cents: m.incomingCents, note: m.full ? "Fenêtre observée entière" : "Couverture partielle" }))} onSelect={month => { const p = calendarPeriod(Number(month.slice(0, 4)), Number(month.slice(5, 7))); setFrom(p.from); setTo(p.to); }} /></div>
+                                    <p>Only explicitly categorized bank activity is shown here, separately from spending. The two sides of a transfer are not added together. Brokerage activity remains separate. These amounts are not household net savings or investment returns.</p>
+                                    {summary.savings.months.length > 1 && <details><summary>Monthly activity</summary><div className="finance-chart-grid">
+                                        <div><h3>Categorized outflows</h3><Bars currency={currency} values={summary.savings.months.map(m => ({ id: m.month, label: m.month, cents: m.outgoingCents, note: m.full ? "Full period observed" : "Partial coverage" }))} onSelect={month => { const p = calendarPeriod(Number(month.slice(0, 4)), Number(month.slice(5, 7))); setFrom(p.from); setTo(p.to); }} /></div>
+                                        <div><h3>Categorized inflows</h3><Bars currency={currency} values={summary.savings.months.map(m => ({ id: m.month, label: m.month, cents: m.incomingCents, note: m.full ? "Full period observed" : "Partial coverage" }))} onSelect={month => { const p = calendarPeriod(Number(month.slice(0, 4)), Number(month.slice(5, 7))); setFrom(p.from); setTo(p.to); }} /></div>
                                     </div></details>}
-                                    <button className="button secondary" onClick={() => openCategory("savings-investments")}>Voir les opérations classées</button>
-                                </> : <p>Aucun mouvement d'épargne ou de placement explicitement classé dans cette période. Choisissez « Épargne / Investissements » lors de la catégorisation d'une opération; aucune affectation automatique n'est faite.</p>}
+                                    <button className="button secondary" onClick={() => openCategory("savings-investments")}>View categorized transactions</button>
+                                </> : <p>No transactions were explicitly categorized as savings or investments in this period. Choose “Savings and investments” when categorizing a transaction. No category is assigned automatically.</p>}
                             </section>
                             </details>
-                            <details className="finance-journey-disclosure finance-operations-panel" open={operationsOpen} onToggle={event => { if (event.currentTarget.open !== operationsOpen) { if (event.currentTarget.open) showOperations(); else setOperationsOpen(false); } }}><summary>Voir les opérations et catégories ({rows.length})</summary>
+                            <details className="finance-journey-disclosure finance-operations-panel" open={operationsOpen} onToggle={event => { if (event.currentTarget.open !== operationsOpen) { if (event.currentTarget.open) showOperations(); else setOperationsOpen(false); } }}><summary>View transactions and categories ({rows.length})</summary>
                             <section className="surface view-stack">
-                                <button className="button secondary finance-operations-back" onClick={closeOperations}>Retour aux dépenses</button><h2 id="finance-operations-title" tabIndex={-1}>Opérations</h2><label>Trier les opérations<select value={operationSort} onChange={event => setOperationSort(event.target.value as "date" | "amount")}><option value="date">Date, plus récentes d’abord</option><option value="amount">Montant décroissant</option></select></label>
+                                <button className="button secondary finance-operations-back" onClick={closeOperations}>Back to spending</button><h2 id="finance-operations-title" tabIndex={-1}>Transactions</h2><label>Sort transactions<select value={operationSort} onChange={event => setOperationSort(event.target.value as "date" | "amount")}><option value="date">Date, newest first</option><option value="amount">Amount, highest first</option></select></label>
                                 {undoOptions.length > 0 && <details className="finance-edit-history">
-                                    <summary>Modifications récentes</summary>
-                                    <p className="muted">Les 10 dernières modifications. Une annulation restaure les décisions précédentes du groupe entier, seulement si aucune de ses opérations n’a été modifiée depuis.</p>
+                                    <summary>Recent changes</summary>
+                                    <p className="muted">The last 10 changes. Undo restores earlier decisions for the whole group only if none of its transactions has changed since.</p>
                                     <ul>{undoOptions.map(op => <li key={op.id}>
-                                        <span>{op.count} {op.count === 1 ? "opération" : "opérations"} · {new Date(op.at).toLocaleString("fr-CA")}{!op.canUndo && <small>Déjà annulée ou modifiée depuis</small>}</span>
-                                        <button className="button secondary" type="button" disabled={busy || staleDraft || !op.canUndo} onClick={() => void undoChange(op.id)} aria-label={`Annuler la modification de ${op.count} ${op.count === 1 ? "opération" : "opérations"} du ${new Date(op.at).toLocaleString("fr-CA")}`}>Annuler</button>
+                                        <span>{op.count} {op.count === 1 ? "transaction" : "transactions"} · {new Date(op.at).toLocaleString("en-CA")}{!op.canUndo && <small>Already undone or edited since</small>}</span>
+                                        <button className="button secondary" type="button" disabled={busy || staleDraft || !op.canUndo} onClick={() => void undoChange(op.id)} aria-label={`Undo change to ${op.count} ${op.count === 1 ? "transaction" : "transactions"} on ${new Date(op.at).toLocaleString("en-CA")}`}>Undo</button>
                                     </li>)}</ul>
-                                    {busy && <p role="status">Modification en cours…</p>}
+                                    {busy && <p role="status">Saving change…</p>}
                                 </details>}
-                                <label>Opérations affichées<select aria-label="Opérations affichées" value={operationScope} onChange={event => { const next = event.target.value as "expenses" | "excluded"; setOperationScope(next); if (next === "expenses" && category === "savings-investments") setCategory(""); }}>
-                                    <option value="expenses">Dépenses, remboursements déduits</option><option value="excluded">Hors dépenses</option>
+                                <label>Transactions shown<select aria-label="Transactions shown" value={operationScope} onChange={event => { const next = event.target.value as "expenses" | "excluded"; setOperationScope(next); if (next === "expenses" && category === "savings-investments") setCategory(""); }}>
+                                    <option value="expenses">Spending, net of refunds</option><option value="excluded">Excluded from spending</option>
                                 </select></label>
-                                {operationScope === "excluded" && <p className="muted">Paiements de carte, transferts, placements et autres opérations exclues des dépenses. Les montants restent séparés. Chaque opération conserve sa source et son classement reste modifiable.</p>}
-                                <button className="button secondary" disabled={!rows.some(r => !r.reviewed)} onClick={() => { const row = rows.find(r => !r.reviewed); if (row) openDecision(row.id); }}>Catégoriser les opérations</button>
+                                {operationScope === "excluded" && <p className="muted">Card payments, transfers, investments and other transactions are excluded from spending. Amounts stay separate. Each transaction retains its source and can still be recategorized.</p>}
+                                <button className="button secondary" disabled={!rows.some(r => !r.reviewed)} onClick={() => { const row = rows.find(r => !r.reviewed); if (row) openDecision(row.id); }}>Categorize transactions</button>
                                 <div className="finance-filters">
                                     <label>
-                                        Catégorie
+                                        Category
                                         <select
-                                            aria-label="Catégorie"
+                                            aria-label="Category"
                                             value={category}
                                             onChange={(e) => { setCategory(e.target.value); if (e.target.value === "savings-investments") setOperationScope("excluded"); }}
                                         >
                                             <option value="">
-                                                Toutes les catégories
+                                                All categories
                                             </option>
                                             {sortedExpenseCategories.map(([k, v]) => (
                                                 <option key={k} value={k}>
@@ -846,7 +815,7 @@ export default function FinancesView({
                                         </select>
                                     </label>
                                     <label>
-                                        Rechercher
+                                        Search
                                         <input
                                             type="search"
                                             value={search}
@@ -864,12 +833,10 @@ export default function FinancesView({
                                             setReviewOnly(e.target.checked)
                                         }
                                     />
-                                    Suggestions à confirmer seulement
+                                    Unconfirmed suggestions only
                                 </label>
                                 <p className="muted">
-                                    {rows.length} opération(s) {operationScope === "expenses" ? "dans les dépenses" : "hors dépenses"}, {operationSort === "date" ? "par date décroissante" : "par montant décroissant"}. Les règles de
-                                    libellé sont des suggestions; les paniers
-                                    mixtes demandent une revue.
+                                    {rows.length} transaction(s) {operationScope === "expenses" ? "included in spending" : "excluded from spending"}, {operationSort === "date" ? "by date, newest first" : "by amount, highest first"}. Description-based rules are suggestions. Review purchases that contain a mix of items.
                                 </p>
                                 <div className="finance-register">
                                     {rows
@@ -902,10 +869,10 @@ export default function FinancesView({
                                                         }{" "}
                                                         · {natures[r.nature]} ·{" "}
                                                         {r.reviewed
-                                                            ? "Confirmé"
+                                                            ? "Confirmed"
                                                             : "Suggestion"}
                                                     </small>
-                                                    <small className="finance-edit-label">{r.reviewed ? "Modifier la catégorie" : "Catégoriser"}</small>
+                                                    <small className="finance-edit-label">{r.reviewed ? "Edit category" : "Categorize"}</small>
                                                 </span>
                                                 <strong>
                                                     {money(
@@ -919,8 +886,7 @@ export default function FinancesView({
                                 <FinanceRegisterSources result={unifiedResult} />
                                 {!rows.length && (
                                     <p>
-                                        Aucune opération ne correspond aux
-                                        filtres.
+                                        No transactions match the filters.
                                     </p>
                                 )}
                                 <div className="row-actions">
@@ -929,7 +895,7 @@ export default function FinancesView({
                                         disabled={page === 0}
                                         onClick={() => setPage(page - 1)}
                                     >
-                                        Précédent
+                                        Previous
                                     </button>
                                     <span>
                                         {page + 1} /{" "}
@@ -945,12 +911,12 @@ export default function FinancesView({
                                         }
                                         onClick={() => setPage(page + 1)}
                                     >
-                                        Suivant
+                                        Next
                                     </button>
                                 </div>
                             </section>
                             </details>
-                            <details className="finance-journey-disclosure"><summary>Repères de dépenses</summary>
+                            <details className="finance-journey-disclosure"><summary>Spending benchmarks</summary>
                             <Benchmarks
                                 state={state}
                                 from={from}
@@ -959,15 +925,11 @@ export default function FinancesView({
                                 currency={currency}
                             />
                             </details>
-                            <details className="finance-journey-disclosure"><summary>Services et charges récurrentes</summary>
+                            <details className="finance-journey-disclosure"><summary>Recurring services and charges</summary>
                             <section className="surface view-stack">
-                                <h2>Pistes à examiner</h2>
+                                <h2>Items to review</h2>
                                 <p>
-                                    Charges répétées parmi les frais,
-                                    abonnements et communications. Vérifiez les
-                                    factures, le forfait et les services inclus
-                                    avant de conclure à une hausse ou à un
-                                    doublon.
+                                    Recurring fees, subscriptions and communications charges. Check the bill, plan and included services before concluding that a price increased or a charge is a duplicate.
                                 </p>
                                 {recurring.length ? (
                                     <div className="finance-register">
@@ -992,8 +954,7 @@ export default function FinancesView({
                                                         {r.latest.description}
                                                     </strong>
                                                     <small>
-                                                        {r.count} débits
-                                                        observés ·{" "}
+                                                        {r.count} debits observed ·{" "}
                                                         {
                                                             data.accounts.find(
                                                                 (a) =>
@@ -1021,17 +982,17 @@ export default function FinancesView({
                                                 <span>
                                                     <strong>
                                                         {r.changeCents > 0
-                                                            ? "Hausse à vérifier"
+                                                            ? "Possible increase"
                                                             : r.changeCents < 0
-                                                              ? "Baisse observée"
-                                                              : "Montant stable"}
+                                                              ? "Observed decrease"
+                                                              : "Stable amount"}
                                                     </strong>
                                                     <small>
                                                         {money(
                                                             r.totalCents,
                                                             r.latest.currency,
                                                         )}{" "}
-                                                        sur la période
+                                                        during the period
                                                     </small>
                                                 </span>
                                             </button>
@@ -1039,22 +1000,17 @@ export default function FinancesView({
                                     </div>
                                 ) : (
                                     <p>
-                                        Aucun libellé répété de ce type
-                                        identifié dans la période. Les
-                                        variations de libellé peuvent masquer
-                                        des répétitions.
+                                        No repeated descriptions of this type were found in this period. Description changes may hide recurring charges.
                                     </p>
                                 )}
                                 <button
                                     className="button secondary"
                                     onClick={() => onNavigate("savings")}
                                 >
-                                    Voir les services et contrats
+                                    View services and contracts
                                 </button>
                                 <p className="muted">
-                                    Une dépense historique n'est pas une
-                                    économie réalisable. Aucune résiliation ou
-                                    modification de contrat n'est effectuée.
+                                    Past spending is not potential savings. No contracts are cancelled or changed.
                                 </p>
                             </section>
                             </details>
@@ -1063,13 +1019,13 @@ export default function FinancesView({
                         <>
                             {selected && investmentDetail && (
                                 <section className="surface view-stack">
-                                    <div className="compact-heading"><button type="button" className="button secondary" onClick={closeInvestment}>Retour aux comptes</button><InfoPopover title="Valeur observée"><p>La valeur conserve sa date source et sa devise. Les flux de la période sont distincts de la valeur du compte; aucun rendement ni droit de cotisation n'est estimé.</p></InfoPopover></div>
+                                    <div className="compact-heading"><button type="button" className="button secondary" onClick={closeInvestment}>Back to accounts</button><InfoPopover title="Observed value"><p>The value retains its source date and currency. Activity during the period is separate from the account balance. No returns or contribution room are estimated.</p></InfoPopover></div>
                                     <h2 id="investment-detail-title" tabIndex={-1}>{selected.name}</h2>
-                                    <div className="finance-totals investment-summary"><div><small>{selectedObservation ? `Solde reçu le ${displayFinanceCapture(selectedObservation.capturedAt)}` : `Valeur historique · ${latest?.asOf ?? selected.asOf}`}</small><strong>{selectedObservation ? money(selectedObservation.balanceCents, selectedObservation.currency) : latest ? money(latest.totalCents, latest.currency) : selected.balanceCents === null ? "Valeur manquante" : money(selected.balanceCents, selected.currency)}</strong></div></div>
-                                    {selectedObservation && <p>{selectedObservation.sourceAsOf ? `Date bancaire : ${displayDate(selectedObservation.sourceAsOf)}` : "Date bancaire inconnue. L’heure de réception ne prouve pas la fraîcheur bancaire."}</p>}
-                                    {data.balanceObservations?.some(o => o.accountId === selected.id) && <details className="finance-journey-disclosure"><summary>Historique des soldes reçus</summary>
-                                        <p>Valeur historique conservée : {latest ? money(latest.totalCents, latest.currency) : selected.balanceCents === null ? "inconnue" : money(selected.balanceCents, selected.currency)} · {latest?.asOf ?? selected.asOf}.</p>
-                                        <p className="muted">Cette valeur bancaire historique reste distincte des réceptions ci-dessous.</p>
+                                    <div className="finance-totals investment-summary"><div><small>{selectedObservation ? `Balance received on ${displayFinanceCapture(selectedObservation.capturedAt)}` : `Historical value · ${latest?.asOf ?? selected.asOf}`}</small><strong>{selectedObservation ? money(selectedObservation.balanceCents, selectedObservation.currency) : latest ? money(latest.totalCents, latest.currency) : selected.balanceCents === null ? "Missing value" : money(selected.balanceCents, selected.currency)}</strong></div></div>
+                                    {selectedObservation && <p>{selectedObservation.sourceAsOf ? `Bank date: ${displayDate(selectedObservation.sourceAsOf)}` : "Bank date unknown. The receipt timestamp does not establish when the bank updated the balance."}</p>}
+                                    {data.balanceObservations?.some(o => o.accountId === selected.id) && <details className="finance-journey-disclosure"><summary>Received balance history</summary>
+                                        <p>Retained historical value: {latest ? money(latest.totalCents, latest.currency) : selected.balanceCents === null ? "unknown" : money(selected.balanceCents, selected.currency)} · {latest?.asOf ?? selected.asOf}.</p>
+                                        <p className="muted">This historical bank value is separate from the received balances below.</p>
                                         <ReceivedBalanceEvolution key={selected.id + ":" + selected.currency} observations={data.balanceObservations ?? []} accountId={selected.id} currency={selected.currency} />
                                     </details>}
                                     <Sources
@@ -1077,11 +1033,11 @@ export default function FinancesView({
                                             selectedObservation?.source ?? latest?.source ?? selected.source,
                                         ]}
                                     />
-                                    <details className="finance-journey-disclosure"><summary>Positions et montants</summary>
+                                    <details className="finance-journey-disclosure"><summary>Holdings and amounts</summary>
                                     {latest ? (
                                         <>
                                             <h3>
-                                                Répartition des positions au{" "}
+                                                Holdings breakdown as of{" "}
                                                 {latest.asOf}
                                             </h3>
                                             <Bars
@@ -1097,33 +1053,30 @@ export default function FinancesView({
                                                     ),
                                                     {
                                                         id: "cash",
-                                                        label: "Liquidités",
+                                                        label: "Cash",
                                                         cents: latest.cashCents,
                                                     },
                                                 ]}
                                             />
                                             <p className="muted">
-                                                Valeurs observées en{" "}
-                                                {latest.currency}, sans cours en
-                                                direct. Répartition par titre,
-                                                sans classification boursière
-                                                inventée.
+                                                Observed values in{" "}
+                                                {latest.currency}, without live prices. Holdings are shown by security without inferring market categories.
                                             </p>
                                             <details>
                                                 <summary>
-                                                    Quantités et prix source
+                                                    Reported quantities and prices
                                                 </summary>
                                                 {latest.positions.map(
                                                     (p, i) => (
                                                         <p key={i}>
                                                             {p.symbol} ·{" "}
-                                                            {p.quantity} unités
-                                                            · prix {p.price}{" "}
+                                                            {p.quantity} units
+                                                            · price {p.price}{" "}
                                                             {latest.currency} ·
-                                                            coût comptable{" "}
+                                                            book cost{" "}
                                                             {p.bookCents ===
                                                             null
-                                                                ? "inconnu"
+                                                                ? "unknown"
                                                                 : money(
                                                                       p.bookCents,
                                                                       latest.currency,
@@ -1135,15 +1088,14 @@ export default function FinancesView({
                                         </>
                                     ) : (
                                         <p>
-                                            Aucune position détaillée importée
-                                            pour ce compte.
+                                            No detailed holdings were imported for this account.
                                         </p>
                                     )}
                                     </details>
                                     {gic && (
                                         <div className="finance-maturity">
                                             <h3>
-                                                Échéance du CPG :{" "}
+                                                GIC maturity:{" "}
                                                 {gic.maturityDate}
                                             </h3>
                                             <p>
@@ -1152,23 +1104,20 @@ export default function FinancesView({
                                                     gic.principalCents,
                                                     gic.currency,
                                                 )}{" "}
-                                                · taux source {gic.annualRate}%
-                                                · émission {gic.issueDate}.
-                                                Vérifier les instructions de
-                                                renouvellement avant l’échéance;
-                                                aucune instruction n’est
-                                                modifiée.
+                                                · reported rate {gic.annualRate}%
+                                                · issued {gic.issueDate}.
+                                                Check renewal instructions before maturity. No instructions are changed here.
                                             </p>
                                             <Sources sources={[gic.source]} />
                                         </div>
                                     )}
-                                    <h3>Flux de placement dans la période</h3>
+                                    <h3>Investment activity in this period</h3>
                                     {activities.length ? (
                                         <>
                                             <div className="finance-totals">
                                                 <div>
                                                     <small>
-                                                        Cotisations identifiées
+                                                        Identified contributions
                                                         (CONT)
                                                     </small>
                                                     <strong>
@@ -1180,7 +1129,7 @@ export default function FinancesView({
                                                 </div>
                                                 <div>
                                                     <small>
-                                                        Transferts identifiés
+                                                        Identified transfers
                                                     </small>
                                                     <strong>
                                                         {money(
@@ -1191,7 +1140,7 @@ export default function FinancesView({
                                                 </div>
                                                 <div>
                                                     <small>
-                                                        Subventions identifiées
+                                                        Identified grants
                                                     </small>
                                                     <strong>
                                                         {money(
@@ -1202,8 +1151,7 @@ export default function FinancesView({
                                                 </div>
                                                 <div>
                                                     <small>
-                                                        Frais directement
-                                                        prélevés
+                                                        Direct fees charged
                                                     </small>
                                                     <strong>
                                                         {money(
@@ -1213,21 +1161,14 @@ export default function FinancesView({
                                                     </strong>
                                                 </div>
                                             </div>
-                                            <InfoPopover title="Calcul des flux de placement">
+                                            <InfoPopover title="How investment activity is calculated">
                                             <p className="muted">
-                                                Cotisations, transferts et
-                                                subventions ne sont pas des
-                                                rendements. Les achats/ventes et
-                                                réinvestissements ne sont pas
-                                                ajoutés aux cotisations. Frais
-                                                internes des fonds non attestés;
-                                                ce total n’est pas le coût
-                                                global.
+                                                Contributions, transfers and grants are not returns. Trades and reinvestments are not added to contributions. Internal fund fees are unverified, so this is not the full cost.
                                             </p>
                                             </InfoPopover>
                                             <details>
                                                 <summary>
-                                                    Historique des activités (
+                                                    Activity history (
                                                     {activities.length})
                                                 </summary>
                                                 <div className="finance-activity-list">
@@ -1254,9 +1195,9 @@ export default function FinancesView({
                                                                     }
                                                                 </p>
                                                                 <small>
-                                                                    Règlement :{" "}
+                                                                    Settlement:{" "}
                                                                     {a.settleDate ||
-                                                                        "inconnu"}
+                                                                        "unknown"}
                                                                 </small>
                                                                 <Sources
                                                                     sources={
@@ -1270,13 +1211,11 @@ export default function FinancesView({
                                         </>
                                     ) : (
                                         <p>
-                                            Aucun flux de placement disponible
-                                            dans la période; les cotisations et
-                                            frais ne sont pas présumés nuls.
+                                            No investment activity is available for the period. Contributions and fees are not assumed to be zero.
                                         </p>
                                     )}
-                                    <details className="finance-journey-disclosure"><summary>Historique des valeurs</summary>
-                                    <h3>Historique des valeurs</h3>
+                                    <details className="finance-journey-disclosure"><summary>Historical values</summary>
+                                    <h3>Historical values</h3>
                                     {performance?.trend.length ? (
                                         <>
                                             <Bars
@@ -1294,22 +1233,15 @@ export default function FinancesView({
                                                     }))}
                                             />
                                             <p className="muted">
-                                                Valeurs affichées par le
-                                                portail, contributions et
-                                                retraits compris. Période source{" "}
-                                                {performance.from} à{" "}
+                                                Values shown by the portal, including contributions and withdrawals. Source period{" "}
+                                                {performance.from} to{" "}
                                                 {performance.to}.{" "}
-                                                {performance.method}. Aucun taux
-                                                de rendement recalculé.
+                                                {performance.method === "Méthode non documentée" ? "Method not documented" : performance.method}. Returns are not recalculated.
                                             </p>
                                         </>
                                     ) : (
                                         <p>
-                                            Historique de valeurs insuffisant
-                                            pour mesurer la performance. Un
-                                            solde actuel et des cotisations ne
-                                            permettent pas de reconstituer un
-                                            rendement.
+                                            There is not enough historical data to measure performance. Current balances and contributions alone cannot establish returns.
                                         </p>
                                     )}
                                     </details>
@@ -1320,7 +1252,7 @@ export default function FinancesView({
                                         .map((r, i) => (
                                             <details key={i}>
                                                 <summary>
-                                                    Rapport de frais {r.from} à{" "}
+                                                    Fee report {r.from} to{" "}
                                                     {r.to} :{" "}
                                                     {money(
                                                         r.totalCents,
@@ -1328,25 +1260,18 @@ export default function FinancesView({
                                                     )}
                                                 </summary>
                                                 <p>
-                                                    {r.description}. Ce rapport
-                                                    n’est pas ajouté aux débits
-                                                    pour éviter un double
-                                                    comptage.
+                                                    {r.description}. This report is not added to the debits to avoid double-counting.
                                                 </p>
                                                 <Sources sources={[r.source]} />
                                             </details>
                                         ))}
-                                    <details className="finance-journey-disclosure"><summary>Points à vérifier</summary>
-                                    <h3>Points de revue</h3>
+                                    <details className="finance-journey-disclosure"><summary>Items to check</summary>
+                                    <h3>Review notes</h3>
                                     <p>
                                         {flows.feesCents > 0
-                                            ? `Les frais visibles atteignent ${money(flows.feesCents, selected.currency)} sur la période. Le relevé annuel et les frais internes des fonds permettent de vérifier le coût complet avant de comparer des solutions de risque équivalent.`
-                                            : "Complétez les frais et dates de valorisation avant de comparer des solutions."}{" "}
-                                        Les droits de cotisation et
-                                        l’admissibilité aux subventions restent
-                                        à confirmer auprès des sources
-                                        officielles; aucun plafond personnel
-                                        n’est déduit de cet historique.
+                                            ? `Visible fees total ${money(flows.feesCents, selected.currency)} during the period. Check the annual statement and internal fund fees for the full cost before comparing options with equivalent risk.`
+                                            : "Complete the fee and valuation dates before comparing options."}{" "}
+                                        Confirm contribution room and grant eligibility with official sources. No personal limit is inferred from this history.
                                     </p>
                                     </details>
                                 </section>
@@ -1358,26 +1283,23 @@ export default function FinancesView({
             <CategoryPayments category={categoryPayments} open={Boolean(categoryPayments) && !editing} summary={tab === "trends" ? trend?.summary ?? null : summary} state={state} onSave={saveInline} onReload={reloadInline} onUndo={id => undoChange(id, true)} accounts={data?.accounts ?? []} account={account} currency={currency} from={tab === "trends" ? trend?.from ?? "" : from} to={tab === "trends" ? trend?.to ?? "" : to} onClose={closeCategory} onEdit={(id, queueIds) => openDecision(id, state, queueIds)} />
             {paired && tab !== "contributions" && tab !== "trends" && state && data && !(tab === "investments" && !investmentDetail) && <FinanceCollectionNote state={state} />}
             {paired && tab !== "contributions" && tab !== "trends" && !(tab === "investments" && !investmentDetail) && <details className="surface finance-source-panel">
-                <summary>{sourceInventory.status === "ready" && sourceInventory.snapshot ? `${sourceInventory.snapshot.accounts.length} comptes non rapprochés et autres données` : "Comptes et autres données de la source"}</summary>
-                <div role="status">{sourceInventory.status === "loading" ? "Chargement de l'inventaire enregistré sur le PC…" : sourceInventory.status === "unsupported" ? "L'inventaire source nécessite une mise à jour du worker PC. Le registre existant reste disponible." : sourceInventory.status === "error" ? "Inventaire source indisponible. Actualisez pour relire le PC; le registre existant est conservé." : ""}</div>
+                <summary>{sourceInventory.status === "ready" && sourceInventory.snapshot ? `${sourceInventory.snapshot.accounts.length} unreconciled accounts and other data` : "Accounts and other source data"}</summary>
+                <div role="status">{sourceInventory.status === "loading" ? "Loading the inventory saved on your PC…" : sourceInventory.status === "unsupported" ? "Update the worker on your PC to view the source inventory. The register is still available." : sourceInventory.status === "error" ? "Source inventory unavailable. Refresh to reload from your PC. The existing register was kept." : ""}</div>
                 {sourceInventory.status === "ready" && <FinanceSourceInventory snapshot={sourceInventory.snapshot} />}
             </details>}
             {paired && tab !== "contributions" && (tab !== "trends" || !data) && (
                 <details id="finance-source-details" className="surface finance-import">
                     <summary>
-                        Sources et import privé{" "}
-                        {data ? "· historique conservé" : ""}
+                        Sources and private import{" "}
+                        {data ? "· history retained" : ""}
                     </summary>
                     <div className="view-stack">
                         <p>
-                            Importez une préparation TD vérifiée. L’aperçu
-                            précède l’enregistrement; vos décisions restent
-                            séparées des sources. Aucun accès bancaire ni
-                            transfert d’argent.
+                            Import a verified TD preparation file. Review the preview before saving. Decisions remain separate from source data. This does not access the bank or move money.
                         </p>
                         <label className="button secondary file-button">
                             <Upload size={16} />
-                            Choisir la préparation JSON
+                            Select JSON import file
                             <input
                                 type="file"
                                 accept=".json,application/json"
@@ -1392,8 +1314,8 @@ export default function FinancesView({
                             <div role="status">
                                 <p>
                                     {preview.alreadyImported
-                                        ? "Fichier déjà importé."
-                                        : preview.balanceObservations ? `${preview.balanceObservations} soldes reçus · historique inchangé` : `${preview.added} nouvelles opérations · ${preview.possibleDuplicates} doublons possibles · ${preview.from} à ${preview.to}`}
+                                        ? "File already imported."
+                                        : preview.balanceObservations ? `${preview.balanceObservations} balances received · history unchanged` : `${preview.added} new transactions · ${preview.possibleDuplicates} possible duplicates · ${preview.from} to ${preview.to}`}
                                 </p>
                                 {!preview.alreadyImported && (
                                     <button
@@ -1401,7 +1323,7 @@ export default function FinancesView({
                                         disabled={busy}
                                         onClick={() => void applyImport()}
                                     >
-                                        Confirmer l’import sur le PC
+                                        Confirm import on your PC
                                     </button>
                                 )}
                             </div>
@@ -1409,13 +1331,12 @@ export default function FinancesView({
                         {data && (
                             <>
                                 <p>
-                                    {data.accounts.length} comptes ·{" "}
-                                    {data.transactions.length} opérations
-                                    bancaires · {data.activities.length}{" "}
-                                    activités de placement · {data.pendingCount}{" "}
-                                    opérations en attente exclues. Import du{" "}
-                                    {state?.importedAt}. Fenêtre demandée :{" "}
-                                    {data.scope.from} à {data.scope.to}.
+                                    {data.accounts.length} accounts ·{" "}
+                                    {data.transactions.length} bank transactions · {data.activities.length}{" "}
+                                    investment transactions · {data.pendingCount}{" "}
+                                    pending transactions excluded. Imported on{" "}
+                                    {state?.importedAt}. Requested period:{" "}
+                                    {data.scope.from} to {data.scope.to}.
                                 </p>
                                 <div className="finance-register">
                                     {data.coverage.map((c) => (
@@ -1434,22 +1355,19 @@ export default function FinancesView({
                                             </strong>
                                             <span>
                                                 {c.earliest ??
-                                                    "Aucune activité"}{" "}
-                                                — {c.latest ?? "date inconnue"}
+                                                    "No activity"}{" "}
+                                                — {c.latest ?? "date unknown"}
                                             </span>
                                             {c.warning && <p>{c.warning}</p>}
                                         </div>
                                     ))}
                                 </div>
                                 <p className="muted">
-                                    Ces dates décrivent les lignes disponibles,
-                                    pas une preuve d’exhaustivité. Les fichiers
-                                    originaux et leurs empreintes restent
-                                    archivés sur le PC.
+                                    Dates describe the available records and do not establish complete coverage. Original files and their fingerprints are archived on the PC.
                                 </p>
                                 <details>
                                     <summary>
-                                        Limites consignées lors de la collecte
+                                        Limitations recorded during collection
                                     </summary>
                                     <ul>
                                         {data.limits.map((l, i) => (
@@ -1465,7 +1383,7 @@ export default function FinancesView({
             <Sheet
                 open={Boolean(editing)}
                 onClose={() => !busy && setEditing(null)}
-                title="Vérifier l’opération"
+                title="Review transaction"
             >
                 {editRow && (
                     <form
@@ -1482,13 +1400,12 @@ export default function FinancesView({
                             {money(editRow.outflowCents, editRow.currency)}
                         </p>
                         <p className="muted">
-                            {editRow.reason}. Le montant et la source restent
-                            inchangés.
+                            {editRow.reason}. The amount and source stay unchanged.
                         </p>
                         <label>
-                            Nature
+                            Transaction type
                             <select
-                                aria-label="Nature"
+                                aria-label="Transaction type"
                                 disabled={busy || staleDraft}
                                 value={decision.nature}
                                 onChange={(e) =>
@@ -1516,9 +1433,9 @@ export default function FinancesView({
                             </select>
                         </label>
                         <label>
-                            Catégorie
+                            Category
                             <select
-                                aria-label="Catégorie"
+                                aria-label="Category"
                                 disabled={busy || staleDraft}
                                 value={decision.category}
                                 onChange={(e) =>
@@ -1539,16 +1456,16 @@ export default function FinancesView({
                             </select>
                         </label>
                         {scope && scope.key && scope.matching > 1 && <div className="finance-bulk-choice">
-                            <label><input type="checkbox" checked={allSameName} disabled={busy || staleDraft} onChange={e => setAllSameName(e.target.checked)} />Appliquer la catégorie à toutes les opérations du même nom</label>
-                            <p id="finance-bulk-scope" aria-live="polite">{scope.affected.length} {scope.affected.length === 1 ? "opération" : "opérations"} {allSameName ? "à enregistrer" : "éligibles"} sur {scope.matching} du même nom, dans tout l’historique disponible, tous comptes et devises inclus. Les filtres affichés ne limitent pas cette action.</p>
-                            <details><summary>Portée et protections</summary><p className="muted">Seule la catégorie est copiée aux autres opérations. Leurs natures, notes et montants restent conservés; les transferts et paiements de carte restent exclus des dépenses. Espaces et majuscules sont ignorés; chiffres, accents et ponctuation doivent correspondre. Les décisions déjà confirmées dans cette catégorie sont conservées.</p></details>
-                            {scope.incompatible > 0 && <p>{scope.incompatible} {scope.incompatible === 1 ? "opération exclue" : "opérations exclues"} : cette catégorie est incompatible avec leur nature. Les autres décisions déjà confirmées dans cette catégorie sont conservées.</p>}
+                            <label><input type="checkbox" checked={allSameName} disabled={busy || staleDraft} onChange={e => setAllSameName(e.target.checked)} />Apply the category to all transactions with the same name</label>
+                            <p id="finance-bulk-scope" aria-live="polite">{scope.affected.length} {scope.affected.length === 1 ? "transaction" : "transactions"} {allSameName ? "to save" : "eligible"} out of {scope.matching} with the same name across all available history, accounts and currencies. The current filters do not limit this action.</p>
+                            <details><summary>Scope and safeguards</summary><p className="muted">Only the category is copied to other transactions. Their types, notes and amounts are kept. Transfers and card payments remain excluded from spending. Spaces and letter case are ignored; digits, accents and punctuation must match. Confirmed decisions in this category are kept.</p></details>
+                            {scope.incompatible > 0 && <p>{scope.incompatible} {scope.incompatible === 1 ? "transaction excluded" : "transactions excluded"} : this category is incompatible with their transaction type. Other confirmed decisions in this category are kept.</p>}
                         </div>}
-                        {decision.category === "savings-investments" && <p className="muted">Hors dépenses. Choisissez Transfert pour un mouvement entre comptes, Placement / cotisation pour un versement, ou À vérifier en cas de doute. Les entrées et sorties restent séparées; aucun rendement n'est calculé.</p>}
-                        {decision.category === "groceries" && <p className="muted">Vérifiez le ticket pour les achats mixtes (aliments et autres produits). La suggestion du commerçant ne confirme pas tout le contenu.</p>}
-                        {decision.category === "pets" && <p className="muted">Nourriture, soins vétérinaires, médicaments, toilettage et assurance pour animaux. Confirmez le type d’achat à partir du justificatif; le nom du commerçant seul ne suffit pas.</p>}
-                        <details className="finance-decision-note"><summary>Note et audit</summary>                        <label>
-                            Note de décision
+                        {decision.category === "savings-investments" && <p className="muted">Excluded from spending. Choose Transfer for a movement between accounts, Investment or contribution for a contribution, or Needs review if unsure. Inflows and outflows stay separate. Returns are not calculated.</p>}
+                        {decision.category === "groceries" && <p className="muted">Check the receipt for mixed purchases of food and other items. The merchant suggestion does not establish what was in the purchase.</p>}
+                        {decision.category === "pets" && <p className="muted">Pet food, vet care, medication, grooming and insurance. Confirm the purchase type against the receipt, not just the merchant name.</p>}
+                        <details className="finance-decision-note"><summary>Note and audit</summary>                        <label>
+                            Decision note
                             <textarea
                                 maxLength={1000}
                                 disabled={busy || staleDraft}
@@ -1566,14 +1483,14 @@ export default function FinancesView({
                         <div className="finance-decision-actions">
                             <button className="button" type="submit" disabled={busy || staleDraft} aria-describedby={allSameName ? "finance-bulk-scope" : undefined}>
                                 {busy
-                                    ? "Enregistrement…"
-                                    : allSameName ? `Enregistrer ${scope?.affected.length ?? 1} opérations` : "Enregistrer la décision"}
+                                    ? "Saving…"
+                                    : allSameName ? `Save ${scope?.affected.length ?? 1} transactions` : "Save decision"}
                             </button>
-                            <button className="button secondary" type="button" disabled={busy || staleDraft} aria-describedby={allSameName ? "finance-bulk-scope" : undefined} onClick={() => void saveDecision(true)}>{allSameName ? `Enregistrer et suivante (${scope?.affected.length ?? 1} opérations)` : "Enregistrer et suivante"}</button>
+                            <button className="button secondary" type="button" disabled={busy || staleDraft} aria-describedby={allSameName ? "finance-bulk-scope" : undefined} onClick={() => void saveDecision(true)}>{allSameName ? `Save and next (${scope?.affected.length ?? 1} transactions)` : "Save and next"}</button>
                         </div>
-                        {categoryPayments && <button className="button secondary" type="button" disabled={busy} onClick={() => setEditing(null)}>Retour aux paiements de la catégorie</button>}
-                        {staleDraft && <button className="button secondary" type="button" disabled={busy} onClick={() => void reloadDecision()}>Recharger la décision du PC et remplacer ce brouillon</button>}
-                        {busy && <p role="status">{staleDraft ? "Actualisation" : "Enregistrement"} en cours sur le PC…</p>}
+                        {categoryPayments && <button className="button secondary" type="button" disabled={busy} onClick={() => setEditing(null)}>Back to category payments</button>}
+                        {staleDraft && <button className="button secondary" type="button" disabled={busy} onClick={() => void reloadDecision()}>Reload the decision from your PC and replace this draft</button>}
+                        {busy && <p role="status">{staleDraft ? "Refreshing from your PC…" : "Saving on your PC…"}</p>}
                         {message && staleDraft && <Notice>{message}</Notice>}
                         {error && <Notice error>{error}</Notice>}
                     </form>

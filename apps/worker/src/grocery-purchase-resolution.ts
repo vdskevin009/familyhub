@@ -25,10 +25,10 @@ const identifier = (v: unknown): v is string => typeof v === "string" && /^[a-zA
 export function validatePurchaseCandidate(value: unknown): PurchaseCandidate {
   if (!value || typeof value !== "object") throw new GroceryError("Candidat de comparaison invalide.");
   const v = value as Record<string, unknown>;
-  const text = (key: string, limit: number, blank = false) => { const s = v[key]; if (typeof s !== "string" || s.length > limit || !blank && !s.trim()) throw new GroceryError("Source du candidat incomplète."); return s.trim(); };
+  const text = (key: string, limit: number, blank = false) => { const s = v[key]; if (typeof s !== "string" || s.length > limit || !blank && !s.trim()) throw new GroceryError("Candidate source is incomplete."); return s.trim(); };
   if (!identifier(v.id) || !identifier(v.recordId) || !identifier(v.productId) || v.itemId !== null && !identifier(v.itemId) || v.reusedFrom !== undefined && !identifier(v.reusedFrom)
-    || !Number.isInteger(v.lineIndex) || Number(v.lineIndex) < 0 || Number(v.lineIndex) > 199 || !stamp(v.observedAt)) throw new GroceryError("Identité du candidat invalide.");
-  if (!["public-source", "household-assumption"].includes(String(v.formatBasis)) || !(v.size === null && v.unit === null) && !(typeof v.size === "number" && Number.isFinite(v.size) && v.size > 0 && v.size <= 100000 && ["g", "kg", "ml", "l", "each"].includes(String(v.unit)))) throw new GroceryError("Format candidat invalide.");
+    || !Number.isInteger(v.lineIndex) || Number(v.lineIndex) < 0 || Number(v.lineIndex) > 199 || !stamp(v.observedAt)) throw new GroceryError("Invalid candidate identity.");
+  if (!["public-source", "household-assumption"].includes(String(v.formatBasis)) || !(v.size === null && v.unit === null) && !(typeof v.size === "number" && Number.isFinite(v.size) && v.size > 0 && v.size <= 100000 && ["g", "kg", "ml", "l", "each"].includes(String(v.unit)))) throw new GroceryError("Invalid candidate pack size.");
   const sourceUrl = publicSourceUrl(text("sourceUrl", 2000));
   if (!sourceUrl || !sourceUrl.startsWith("https://")) throw new GroceryError("Une source publique HTTPS est requise.");
   return { id: v.id, recordId: v.recordId, lineIndex: Number(v.lineIndex), lineKey: text("lineKey", 6000), product: text("product", 200), brand: text("brand", 100, true), productId: v.productId, itemId: v.itemId as string | null,
@@ -36,21 +36,21 @@ export function validatePurchaseCandidate(value: unknown): PurchaseCandidate {
 }
 export function validatePurchaseResolution(value: unknown): PurchaseResolution {
   const v = value as PurchaseResolution;
-  if (!v || v.schema !== 1 || typeof v.revision !== "string" || !v.revision || v.revision.length > 80 || !Array.isArray(v.candidates) || v.candidates.length > 500 || !v.decisions || typeof v.decisions !== "object" || Array.isArray(v.decisions) || Object.keys(v.decisions).length > 500) throw new GroceryError("Les confirmations de comparaison sont illisibles. Le fichier est conservé.");
+  if (!v || v.schema !== 1 || typeof v.revision !== "string" || !v.revision || v.revision.length > 80 || !Array.isArray(v.candidates) || v.candidates.length > 500 || !v.decisions || typeof v.decisions !== "object" || Array.isArray(v.decisions) || Object.keys(v.decisions).length > 500) throw new GroceryError("The comparison confirmations cannot be read. The file was retained.");
   const candidates = v.candidates.map(validatePurchaseCandidate);
-  if (new Set(candidates.map(c => c.id)).size !== candidates.length) throw new GroceryError("Candidat dupliqué.");
+  if (new Set(candidates.map(c => c.id)).size !== candidates.length) throw new GroceryError("Duplicate candidate.");
   for (const [id, d] of Object.entries(v.decisions)) if (!candidates.some(c => c.id === id) || !d || !["confirmed", "unconfirmed"].includes(d.state) || !stamp(d.at)
-    || d.evidence !== undefined && (!stamp(d.evidence.at) || typeof d.evidence.source !== "string" || !d.evidence.source.trim() || d.evidence.source.length > 1000)) throw new GroceryError("Décision de comparaison invalide.");
+    || d.evidence !== undefined && (!stamp(d.evidence.at) || typeof d.evidence.source !== "string" || !d.evidence.source.trim() || d.evidence.source.length > 1000)) throw new GroceryError("Invalid comparison decision.");
   return { schema: 1, revision: v.revision, candidates, decisions: { ...v.decisions }, ...(v.scenarioHints === undefined ? {} : { scenarioHints: validateScenarioHints(v.scenarioHints) }), ...(v.scenarios === undefined ? {} : { scenarios: validatePurchaseScenarios(v.scenarios) }), ...(v.referenceLeads === undefined ? {} : { referenceLeads: validateReferenceLeads(v.referenceLeads) }) };
 }
 export function purchaseCandidateReason(candidate: PurchaseCandidate, record: GroceryRecord, now = Date.now()) {
   const line = record.receipt.items[candidate.lineIndex];
-  if (record.id !== candidate.recordId || record.status !== "saved" || record.duplicateOf || !line || candidate.lineKey !== purchaseLineKey(line)) return "La ligne source a changé : candidat à revoir.";
-  if (line.productReference && (line.productReference.provider !== "pcexpress" || line.productReference.id !== candidate.productId)) return "La référence produit source diffère du candidat.";
-  if (Date.parse(candidate.observedAt) > now) return "La date de la source est future : candidat à revoir.";
+  if (record.id !== candidate.recordId || record.status !== "saved" || record.duplicateOf || !line || candidate.lineKey !== purchaseLineKey(line)) return "The source line changed. Review the candidate.";
+  if (line.productReference && (line.productReference.provider !== "pcexpress" || line.productReference.id !== candidate.productId)) return "The source product reference differs from the candidate.";
+  if (Date.parse(candidate.observedAt) > now) return "The source date is in the future. Review the candidate.";
   if (line.size !== null && line.unit && candidate.size !== null && candidate.unit) {
     const a = normalizedSize(line.size, line.unit), b = normalizedSize(candidate.size, candidate.unit);
-    if (a.unit !== b.unit || Math.abs(a.size - b.size) > 1e-9 * Math.max(1, a.size, b.size)) return "Le format candidat contredit le format source.";
+    if (a.unit !== b.unit || Math.abs(a.size - b.size) > 1e-9 * Math.max(1, a.size, b.size)) return "The candidate pack size contradicts the source pack size.";
   }
   return "";
 }

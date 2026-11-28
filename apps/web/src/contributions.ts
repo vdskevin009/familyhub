@@ -30,7 +30,7 @@ const dayTime = (value: string): number => {
 const cents = (value: unknown): value is number => Number.isSafeInteger(value) && Number(value) >= 0;
 export function validateContributions(value: unknown): ContributionsSnapshot {
   const s = value as ContributionsSnapshot;
-  const bad = () => { throw new Error("Données de contributions invalides. Aucun montant n’a été retenu."); };
+  const bad = () => { throw new Error("Contribution data was invalid. No amounts were used."); };
   if (!s || s.schema !== "familyhub.contributions-ui.v1" || !Number.isFinite(dayTime(s.evaluatedOn)) || !Number.isFinite(s.daysPerMonth) || s.daysPerMonth < 1 || s.daysPerMonth > 366 || !Array.isArray(s.plans) || s.plans.length > 2) return bad();
   const kinds = new Set<string>();
   for (const p of s.plans) {

@@ -119,7 +119,7 @@ test("included service charges, unknown credits, duplicates and ambiguous provid
   s.decisions.duplicate = { nature: "expense", category: "communications", note: "Distinct confirmed occurrence", updatedAt: "" };
   assert.equal(reconcilePayments([c], s, "2026-09-01", "2026-09-30").totals.CAD.cents, 21000);
   const ambiguous = reconcilePayments([c, { ...c, id: "second-policy" }], s, "2026-09-01", "2026-09-30");
-  assert.equal(ambiguous.totals.CAD.matched, 0); assert.ok(ambiguous.reviews.some(r => r.reason.includes("Plusieurs contrats")));
+  assert.equal(ambiguous.totals.CAD.matched, 0); assert.ok(ambiguous.reviews.some(r => r.reason.includes("Several contracts")));
 });
 test("payment reconciliation separates currencies and never turns missing or unknown-tax costs into zero TTC", () => {
   const cad = { ...newContract("subscription", "cad"), provider: "Spotify", price: 15 };
@@ -264,4 +264,53 @@ test("research completion is not exposed until the terminal result is durably sa
     await restarted.initialize();
     assert.equal(restarted.get(first.id)?.status, "complete");
   } finally { release(); await rm(dir, { recursive: true, force: true }); }
+});
+
+test("a matched standalone charge retains the included-service review without double counting", () => {
+  const bundle = { ...newContract("telecom", "bundle"), name: "Forfait fictif", provider: "ExampleNet",
+    services: [{ id: "stream", name: "Netflix", pricing: "included" as const, monthlyAmount: null, taxesIncluded: null, source: "Synthetic terms" }] };
+  const standalone = { ...newContract("subscription", "standalone"), name: "Streaming fictif", provider: "Netflix" };
+  const state = paymentState();
+  state.data!.transactions = [payment("stream", "NETFLIX SYNTHETIC", "2026-09-05", 2000)];
+  state.decisions.stream = { nature: "expense", category: "subscriptions", note: "Synthetic confirmed", updatedAt: "" };
+  const before = JSON.stringify([bundle, standalone, state]);
+  const result = reconcilePayments([bundle, standalone], state, "2026-09-01", "2026-09-30");
+  assert.equal(result.totals.CAD.cents, 2000);
+  assert.equal(result.summaries[1].rows.length, 1);
+  assert.equal(result.summaries[0].cents, null);
+  assert.equal(result.reviews.length, 1);
+  assert.equal(result.reviews[0].matchedContractId, standalone.id);
+  assert.deepEqual(result.reviews[0].contractIds, [standalone.id, bundle.id]);
+  assert.match(result.reviews[0].reason, /effective dates/);
+  assert.deepEqual(result.reviews[0].row.sources, state.data!.transactions[0].sources);
+  assert.equal(reconcilePayments([bundle, standalone], state, "2026-10-01", "2026-10-31").reviews.length, 0);
+  assert.equal(reconcilePayments([standalone], state, "2026-09-01", "2026-09-30").reviews.length, 0);
+  const unknown = { ...bundle, services: [{ ...bundle.services[0], pricing: "unknown" as const }] };
+  assert.equal(reconcilePayments([unknown, standalone], state, "2026-09-01", "2026-09-30").reviews.length, 0);
+  const secondBundle = { ...bundle, id: "second-bundle", provider: "OtherNet" };
+  const twoBundles = reconcilePayments([bundle, secondBundle, standalone], state, "2026-09-01", "2026-09-30");
+  assert.equal(twoBundles.reviews.length, 1);
+  assert.equal(twoBundles.reviews[0].contractIds.length, 3);
+  assert.equal(twoBundles.totals.CAD.cents, 2000);
+  assert.equal(JSON.stringify([bundle, standalone, state]), before);
+});
+
+test("included-service checks preserve pending, refund, manual exclusions and ambiguous allocation", () => {
+  const bundle = { ...newContract("telecom", "bundle"), provider: "ExampleNet",
+    services: [{ id: "stream", name: "Netflix", pricing: "included" as const, monthlyAmount: null, taxesIncluded: null, source: "Synthetic terms" }] };
+  const standalone = { ...newContract("subscription", "standalone"), provider: "Netflix" };
+  const state = paymentState();
+  for (const nature of ["refund", "transfer", "repayment", "investment", "income", "duplicate"] as Nature[]) {
+    state.data!.transactions = [payment("stream", "NETFLIX SYNTHETIC", "2026-09-05", nature === "refund" ? -2000 : 2000)];
+    state.decisions.stream = { nature, category: "subscriptions", note: "Synthetic", updatedAt: "" };
+    assert.equal(reconcilePayments([bundle, standalone], state, "2026-09-01", "2026-09-30").reviews.length, 0);
+  }
+  state.decisions = {};
+  state.data!.transactions = [payment("stream", "NETFLIX SYNTHETIC", "2026-09-05", 2000, { status: "pending" })];
+  assert.equal(reconcilePayments([bundle, standalone], state, "2026-09-01", "2026-09-30").reviews.length, 0);
+  state.data!.transactions[0].status = "posted";
+  const ambiguous = reconcilePayments([bundle, standalone, { ...standalone, id: "second" }], state, "2026-09-01", "2026-09-30");
+  assert.equal(ambiguous.reviews.length, 1);
+  assert.equal(ambiguous.reviews[0].matchedContractId, undefined);
+  assert.equal(ambiguous.totals.CAD.cents, 0);
 });

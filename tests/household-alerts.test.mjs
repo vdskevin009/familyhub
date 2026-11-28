@@ -37,10 +37,10 @@ test("personal impact keeps fixed contracts and historical variable offers uncha
   const mortgage = { ...emptyMortgage(), profiles: [{ id: "synthetic", recordedAt: "2026-10-20T00:00:00Z", rateType: "fixed", currentRate: 4.9, maturityDate: "2027-11-20" }], quotes: [{ id: "synthetic-variable", rate: 3.9 }] };
   const before = JSON.stringify(mortgage), input = { policy: policy(), mortgageState: mortgage };
   const event = householdCandidates(input, today, now).candidates[0];
-  assert.match(event.detail, /fixe à 4.9 % jusqu’au 2027-11-20/); assert.match(event.detail, /aucun changement immédiat/); assert.equal(JSON.stringify(mortgage), before);
+  assert.match(event.detail, /fixed at 4\.9% until 2027-11-20/); assert.match(event.detail, /no immediate change/); assert.equal(JSON.stringify(mortgage), before);
   assert.equal(event.key, householdCandidates({ ...input, policy: { ...policy(), checkedAt: new Date(now.getTime() + 1000).toISOString() } }, today, new Date(now.getTime() + 1000)).candidates[0].key);
-  mortgage.profiles[0].rateType = "variable"; assert.match(householdCandidates(input, today, now).candidates[0].detail, /aucun nouveau taux ni paiement/);
-  delete input.mortgageState; assert.match(householdCandidates(input, today, now).candidates[0].detail, /doivent être confirmés/);
+  mortgage.profiles[0].rateType = "variable"; assert.match(householdCandidates(input, today, now).candidates[0].detail, /No new rate or payment is inferred/);
+  delete input.mortgageState; assert.match(householdCandidates(input, today, now).candidates[0].detail, /Confirm the mortgage type and maturity/);
 });
 
 function groceries() {
@@ -51,7 +51,7 @@ function groceries() {
 }
 test("grocery price drops require repeat paid sources, exact product, current local approval and meaningful whole-pack outlay", () => {
   const good = groceries(), inspect = data => groceryDropAssessment(data.library, data.plan, today);
-  const result = inspect(good); assert.equal(result.candidates.length, 1); assert.match(result.candidates[0].detail, /sans gain net/); assert.equal(result.candidates[0].target.recordId, "paid-1");
+  const result = inspect(good); assert.equal(result.candidates.length, 1); assert.match(result.candidates[0].detail, /Net savings and need to repurchase are not assumed/); assert.equal(result.candidates[0].target.recordId, "paid-1");
   for (const change of [d => d.library.records[0].receipt.sourceType = "confirmation", d => d.library.records[0].duplicateOf = "paid-1", d => d.library.records[0].receipt.items[0].uncertain = true, d => d.library.records[0].sources = d.library.records[1].sources, d => d.plan.prices[0].approved = false, d => d.plan.prices[0].product = "Different oats", d => d.plan.prices[0].substitution = true, d => d.plan.prices[0].available = "unknown", d => d.plan.prices[0].evidence.until = null, d => d.plan.prices[0].evidence.date = "2026-10-01", d => d.plan.prices[0].mode = "delivery", d => d.plan.prices[0].unit = "l", d => d.plan.prices[0].currency = "USD", d => d.plan.prices[0].price = 9, d => { d.plan.prices[0].size = .6; d.plan.prices[0].price = 5; }]) { const copy = structuredClone(good); change(copy); assert.equal(inspect(copy).candidates.length, 0); }
   const noDrop = structuredClone(good); noDrop.plan.prices[0].price = 9; assert.equal(inspect(noDrop).comparable, 1);
 });

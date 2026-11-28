@@ -59,46 +59,46 @@ try {
       return route.fulfill({ json: body });
     });
     await page.goto(base); const panel = page.locator('.finance-received-source');
-    await page.getByRole('button', { name: 'Comptes', exact: true }).click();
-    const bank = page.locator('[data-investment-account="bank"]'); await bank.waitFor(); assert.match(await bank.innerText(), /1\s?234,56/);
-    await page.getByRole('heading', { name: 'Soldes reçus', exact: true }).waitFor();
-    await page.getByRole('heading', { name: 'Comptes source non rapprochés', exact: true }).waitFor();
+    await page.getByRole('button', { name: 'Accounts', exact: true }).click();
+    const bank = page.locator('[data-investment-account="bank"]'); await bank.waitFor(); assert.match(await bank.innerText(), /1,234\.56/);
+    await page.getByRole('heading', { name: 'Received balances', exact: true }).waitFor();
+    await page.getByRole('heading', { name: 'Unreconciled source accounts', exact: true }).waitFor();
     assert.equal(await page.locator('[data-received-account]:visible').count(), 2);
     assert.equal(await panel.locator('.finance-source-accounts > li:visible').count(), 7, 'Every source account is visible without opening a disclosure');
     assert.equal(await page.locator('.finance-historical-accounts').getAttribute('open'), null);
     assert.equal(await page.locator('.finance-source-panel').count(), 0, 'No duplicate source account list');
     assert.equal(await page.locator('.finance-collection-note').count(), 0, 'No global canonical timestamp can contradict source receipts');
-    const sourceLink = page.getByRole('link', { name: 'Voir les 7 comptes source non rapprochés', exact: true });
+    const sourceLink = page.getByRole('link', { name: 'View 7 unreconciled source accounts', exact: true });
     await sourceLink.focus(); await page.keyboard.press('Enter');
     assert.equal(await panel.evaluate(el => document.activeElement === el), true, 'Native source jump is keyboard-accessible');
     assert.equal(await panel.locator('.finance-source-accounts > li').count(), 7);
-    assert.equal(await panel.locator('.finance-source-status').filter({ hasText: 'Non rapproché' }).count(), 7);
-    assert.match(await panel.innerText(), /Collecte ancienne/); assert.match(await panel.innerText(), /Date bancaire non fournie/);
-    assert.match(await panel.innerText(), /USD/); assert.match(await panel.innerText(), /Montant non fourni/); assert.match(await panel.innerText(), /0,00/);
+    assert.equal(await panel.locator('.finance-source-status').filter({ hasText: 'Unreconciled' }).count(), 7);
+    assert.match(await panel.innerText(), /Collection older/); assert.match(await panel.innerText(), /Bank date not provided/);
+    assert.match(await panel.innerText(), /USD/); assert.match(await panel.innerText(), /Amount not provided/); assert.match(await panel.innerText(), /0\.00/);
     assert.equal(await panel.locator('.finance-source-money time').first().getAttribute('datetime'), old);
-    assert.doesNotMatch(await panel.innerText(), /Solde total|Patrimoine total|fsi_[a-f0-9]/);
-    const credit = panel.getByText('Relevé et échéance de crédit', { exact: true }); assert.equal(await credit.count(), 2); await credit.first().click();
+    assert.doesNotMatch(await panel.innerText(), /Total balance|Total net worth|fsi_[a-f0-9]/);
+    const credit = panel.getByText('Credit statement and payment due date', { exact: true }); assert.equal(await credit.count(), 2); await credit.first().click();
     assert.equal(await panel.locator('time[datetime="2020-01-01"]:visible').count(), 1);
     assert.equal(await panel.locator('time[datetime="2020-01-02"]:visible').count(), 1);
     assert.equal(await panel.locator('time[datetime="2031-02-03"]:visible').count(), 1);
-    await panel.getByText('Disponibilité des sections', { exact: true }).click(); assert.match(await panel.innerText(), /Positions de placement : indisponible, couverture non établie/); assert.match(await panel.innerText(), /Budgets et objectifs : non fournis/);
-    await panel.getByText('Prévisions récurrentes (29)', { exact: true }).click(); assert.equal(await panel.locator('.finance-source-forecasts li').count(), 29);
-    assert.match(await panel.innerText(), /Date prévue déjà passée/); assert.match(await panel.innerText(), /ni des dépenses comptabilisées ni des factures confirmées/);
+    await panel.getByText('Data availability', { exact: true }).click(); assert.match(await panel.innerText(), /Investment holdings: unavailable, coverage not established/); assert.match(await panel.innerText(), /Budgets and goals: not supplied/);
+    await panel.getByText('Recurring forecasts (29)', { exact: true }).click(); assert.equal(await panel.locator('.finance-source-forecasts li').count(), 29);
+    assert.match(await panel.innerText(), /The expected date had already passed/); assert.match(await panel.innerText(), /not posted spending or confirmed bills/);
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1), false);
-    await panel.getByText('Prévisions récurrentes (29)', { exact: true }).click(); await page.screenshot({ path: join(output, 'inventory-' + width + '.png'), fullPage: true });
+    await panel.getByText('Recurring forecasts (29)', { exact: true }).click(); await page.screenshot({ path: join(output, 'inventory-' + width + '.png'), fullPage: true });
     const historical = page.locator('.finance-historical-accounts'), summary = historical.locator(':scope > summary');
     for (let i = 0; i < 2; i++) { await summary.focus(); await page.keyboard.press('Enter'); assert.notEqual(await historical.getAttribute('open'), null); await page.keyboard.press('Enter'); assert.equal(await historical.getAttribute('open'), null); }
     await summary.focus(); await page.keyboard.press('Enter');
     const card = page.locator('[data-investment-account="card"]'); await card.focus(); await page.keyboard.press('Enter');
     await page.getByRole('heading', { name: 'Carte de test', exact: true }).waitFor();
-    await page.getByRole('button', { name: 'Retour aux comptes', exact: true }).click();
+    await page.getByRole('button', { name: 'Back to accounts', exact: true }).click();
     await page.waitForFunction(() => document.activeElement?.getAttribute('data-investment-account') === 'card');
     assert.notEqual(await historical.getAttribute('open'), null, 'Historical disclosure and return focus survive account details');
-    await bank.click(); await page.getByRole('heading', { name: 'Compte courant', exact: true }).waitFor(); await page.getByRole('button', { name: 'Retour aux comptes', exact: true }).click(); assert.match(await bank.innerText(), /1\s?234,56/);
-    for (const tab of ['Dépenses', 'Tendances', 'Comptes']) {
+    await bank.click(); await page.getByRole('heading', { name: 'Compte courant', exact: true }).waitFor(); await page.getByRole('button', { name: 'Back to accounts', exact: true }).click(); assert.match(await bank.innerText(), /1,234\.56/);
+    for (const tab of ['Spending', 'Trends', 'Accounts']) {
       await page.getByRole('button', { name: tab, exact: true }).click();
       const accounts = page.locator('.finance-source-accounts > li');
-      if (tab === 'Tendances') {
+      if (tab === 'Trends') {
         assert.equal(await accounts.count(), 0, 'Monthly Trends does not duplicate the account inventory below its chart');
       } else {
         await accounts.nth(6).waitFor({ state: 'attached' });
@@ -106,16 +106,16 @@ try {
       }
     }
     mode = 'delayed'; const delayedStarted = new Promise(resolve => { markDelayedStarted = resolve; });
-    await page.getByRole('button', { name: 'Actualiser', exact: true }).click(); await delayedStarted; await panel.getByText(/Chargement de l'inventaire/).waitFor();
-    await page.getByRole('button', { name: 'Actualiser', exact: true }).waitFor(); assert.match(await bank.innerText(), /1\s?234,56/, 'Canonical refresh is not delayed by the optional source request');
-    mode = 'error'; await page.getByRole('button', { name: 'Actualiser', exact: true }).click(); await panel.getByText(/Inventaire source indisponible/).waitFor();
+    await page.getByRole('button', { name: 'Refresh', exact: true }).click(); await delayedStarted; await panel.getByText(/Loading the inventory/).waitFor();
+    await page.getByRole('button', { name: 'Refresh', exact: true }).waitFor(); assert.match(await bank.innerText(), /1,234\.56/, 'Canonical refresh is not delayed by the optional source request');
+    mode = 'error'; await page.getByRole('button', { name: 'Refresh', exact: true }).click(); await panel.getByText(/Source inventory unavailable/).waitFor();
     assert.equal(typeof releaseDelayed, 'function'); releaseDelayed(); await delayedFinished;
     await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
-    assert.match(await panel.innerText(), /Inventaire source indisponible/, 'Superseded successful inventory response cannot replace newer error state');
-    assert.equal(await panel.locator('.finance-source-accounts').count(), 0); assert.match(await bank.innerText(), /1\s?234,56/);
-    mode = 'empty'; await page.getByRole('button', { name: 'Actualiser', exact: true }).click(); await panel.getByText(/Inventaire non disponible/).waitFor(); assert.match(await bank.innerText(), /1\s?234,56/);
-    mode = 'ready'; await page.getByRole('button', { name: 'Actualiser', exact: true }).click(); await panel.locator('.finance-source-accounts').waitFor();
-    supported = false; const reads = inventoryReads; await page.getByRole('button', { name: 'Actualiser', exact: true }).click(); await panel.getByText(/nécessite une mise à jour/).waitFor(); assert.equal(inventoryReads, reads); assert.match(await bank.innerText(), /1\s?234,56/);
+    assert.match(await panel.innerText(), /Source inventory unavailable/, 'Superseded successful inventory response cannot replace newer error state');
+    assert.equal(await panel.locator('.finance-source-accounts').count(), 0); assert.match(await bank.innerText(), /1,234\.56/);
+    mode = 'empty'; await page.getByRole('button', { name: 'Refresh', exact: true }).click(); await panel.getByText(/Inventory unavailable/).waitFor(); assert.match(await bank.innerText(), /1,234\.56/);
+    mode = 'ready'; await page.getByRole('button', { name: 'Refresh', exact: true }).click(); await panel.locator('.finance-source-accounts').waitFor();
+    supported = false; const reads = inventoryReads; await page.getByRole('button', { name: 'Refresh', exact: true }).click(); await panel.getByText(/Update the worker on your PC/).waitFor(); assert.equal(inventoryReads, reads); assert.match(await bank.innerText(), /1,234\.56/);
     assert.equal(JSON.stringify(state), canonical); assert.deepEqual(writes, []); assert.deepEqual(errors, []);
     const stored = await page.evaluate(() => Object.values(localStorage).join('\n')); assert.doesNotMatch(stored, /Compte source fictif|Prévision fictive|fsi_[a-f0-9]/);
     await context.close(); console.log(`PASS isolated 7-account inventory, credit dates, 29 forecasts, empty/error/old-worker, keyboard and preserved canonical observations at ${width}px (${day})`);

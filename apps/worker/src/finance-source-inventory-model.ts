@@ -60,7 +60,7 @@ export type SourceInventoryImportResult = {
 };
 
 export class SourceInventoryError extends Error {}
-const fail = (): never => { throw new SourceInventoryError("Inventaire source invalide. Les données existantes sont conservées."); };
+const fail = (): never => { throw new SourceInventoryError("Invalid source inventory. Existing data has been kept."); };
 function object(value: unknown, keys: readonly string[]): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value) || ![Object.prototype, null].includes(Object.getPrototypeOf(value))) return fail();
   const row = value as Record<string, unknown>;

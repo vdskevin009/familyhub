@@ -56,7 +56,7 @@ try {
     await page.goto(base + '?view=reimbursements');
     await page.locator('.expense-card').first().waitFor();
     assert.equal(await page.locator('.page-subtitle').textContent(), 'Saved results', 'missing success timestamp must never become the current time');
-    assert.match(await page.locator('.reimbursement-totals > summary').innerText(), /estimation non garantie/);
+    assert.match(await page.locator('.reimbursement-totals > summary').innerText(), /estimate, not guaranteed/);
     assert.equal(await page.locator('.reimbursement-totals').getAttribute('open'), null, 'method and history details start disclosed on demand');
     await page.locator('.reimbursement-totals > summary').click();
     assert.equal(await page.getByRole('link', { name: 'Desjardins history', exact: true }).isVisible(), true);
@@ -81,10 +81,10 @@ try {
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, `${width} width`);
     await page.screenshot({ path: join(output, `reimbursements-${width}.png`), fullPage: true });
     const nav = page.locator('.bottom-nav:visible, .app-rail nav:visible');
-    await nav.getByRole('button', { name: 'Projets', exact: true }).click();
-    await page.locator('.project-tiles').getByRole('button', { name: 'Hypothèque', exact: true }).click();
+    await nav.getByRole('button', { name: 'Projects', exact: true }).click();
+    await page.locator('.project-tiles').getByRole('button', { name: 'Mortgage', exact: true }).click();
     assert.equal(await nav.locator('[aria-current="page"]').count(), 1, 'mortgage must not select both Projects and Plus');
-    assert.equal(await nav.locator('[aria-current="page"]').getAttribute('aria-label') || await nav.locator('[aria-current="page"]').innerText(), 'Projets');
+    assert.equal(await nav.locator('[aria-current="page"]').getAttribute('aria-label') || await nav.locator('[aria-current="page"]').innerText(), 'Projects');
     results.push({ width, freshness: true, detailKeyboard: true, navigation: true, overflow: false });
     await context.close();
   }
@@ -92,8 +92,8 @@ try {
   const page = await context.newPage(); diagnostic = page; page.on('pageerror', error => errors.push(error.message));
   const started = page.waitForRequest(request => request.url() === api + '/invoices');
   await page.goto(base + '?view=reimbursements'); await started;
-  await page.locator('.bottom-nav').getByRole('button', { name: 'Projets', exact: true }).click();
-  await page.getByRole('heading', { name: 'Projets', exact: true }).waitFor();
+  await page.locator('.bottom-nav').getByRole('button', { name: 'Projects', exact: true }).click();
+  await page.getByRole('heading', { name: 'Projects', exact: true }).waitFor();
   const before = await page.evaluate(() => localStorage.getItem('familyhub.reimbursements.v1'));
   const responded = page.waitForResponse(response => response.url() === api + '/invoices');
   release(); await responded;
@@ -109,8 +109,8 @@ try {
   const syncStarted = syncPage.waitForRequest(request => request.url() === api + '/bluecross/sync');
   await syncPage.getByRole('button', { name: 'Retry / update Blue Cross', exact: true }).click(); await syncStarted;
   await syncPage.keyboard.press('Escape');
-  await syncPage.locator('.bottom-nav').getByRole('button', { name: 'Projets', exact: true }).click();
-  await syncPage.getByRole('heading', { name: 'Projets', exact: true }).waitFor();
+  await syncPage.locator('.bottom-nav').getByRole('button', { name: 'Projects', exact: true }).click();
+  await syncPage.getByRole('heading', { name: 'Projects', exact: true }).waitFor();
   const readsBefore = syncCase.state.invoiceReads;
   const syncResponded = syncPage.waitForResponse(response => response.url() === api + '/bluecross/sync');
   syncCase.release(); await syncResponded;

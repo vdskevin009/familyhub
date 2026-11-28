@@ -8,29 +8,29 @@ export type PushSubscriptionData = { endpoint: string; keys: { p256dh: string; a
 export type VapidConfig = { publicKey: string; privateKey: string; subject: string };
 const subject = "https://vdskevin009.github.io/familyhub/";
 function keyBytes(value: unknown, length: number): Buffer {
-  if (typeof value !== "string" || !/^[A-Za-z0-9_-]+$/.test(value)) throw new Error("Clé Web Push invalide.");
+  if (typeof value !== "string" || !/^[A-Za-z0-9_-]+$/.test(value)) throw new Error("Invalid Web Push key.");
   const bytes = Buffer.from(value, "base64url");
-  if (bytes.length !== length || bytes.toString("base64url") !== value) throw new Error("Clé Web Push invalide.");
+  if (bytes.length !== length || bytes.toString("base64url") !== value) throw new Error("Invalid Web Push key.");
   return bytes;
 }
 /** Narrow browser push-service destinations; never follow a redirect to an arbitrary host. */
 export function validateSubscription(value: unknown): PushSubscriptionData {
   const input = value as Partial<PushSubscriptionData> | null;
-  if (!input || typeof input.endpoint !== "string" || input.endpoint.length > 4096 || !input.keys) throw new Error("Abonnement Web Push invalide.");
+  if (!input || typeof input.endpoint !== "string" || input.endpoint.length > 4096 || !input.keys) throw new Error("Invalid Web Push subscription.");
   let url: URL;
-  try { url = new URL(input.endpoint); } catch { throw new Error("Destination Web Push invalide."); }
+  try { url = new URL(input.endpoint); } catch { throw new Error("Invalid Web Push destination."); }
   const allowed = ["fcm.googleapis.com", "updates.push.services.mozilla.com"].includes(url.hostname) || /^(?:[a-z0-9-]+\.)+push\.apple\.com$/.test(url.hostname) || /^[a-z0-9-]+\.notify\.windows\.com$/.test(url.hostname);
-  if (!allowed || url.protocol !== "https:" || url.port || url.username || url.password || url.hash) throw new Error("Destination Web Push non prise en charge.");
+  if (!allowed || url.protocol !== "https:" || url.port || url.username || url.password || url.hash) throw new Error("Unsupported Web Push destination.");
   const point = keyBytes(input.keys.p256dh, 65);
   keyBytes(input.keys.auth, 16);
-  try { ECDH.convertKey(point, "prime256v1"); } catch { throw new Error("Clé Web Push invalide."); }
+  try { ECDH.convertKey(point, "prime256v1"); } catch { throw new Error("Invalid Web Push key."); }
   return { endpoint: url.href, keys: { p256dh: input.keys.p256dh, auth: input.keys.auth } };
 }
 export function validateVapid(value: VapidConfig): VapidConfig {
   const privateBytes = keyBytes(value.privateKey, 32), publicBytes = keyBytes(value.publicKey, 65);
   const curve = createECDH("prime256v1");
   curve.setPrivateKey(privateBytes);
-  if (!curve.getPublicKey().equals(publicBytes) || value.subject !== subject) throw new Error("Configuration Web Push FamilyHub invalide.");
+  if (!curve.getPublicKey().equals(publicBytes) || value.subject !== subject) throw new Error("Invalid FamilyHub Web Push configuration.");
   return { ...value };
 }
 export class PushConfiguration {
@@ -39,7 +39,7 @@ export class PushConfiguration {
     const publicKey = process.env.FAMILYHUB_PUSH_PUBLIC_KEY, privateKey = process.env.FAMILYHUB_PUSH_PRIVATE_KEY;
     if (publicKey || privateKey) return validateVapid({ publicKey: publicKey ?? "", privateKey: privateKey ?? "", subject });
     try { return validateVapid(await loadPrivate<VapidConfig>(join(this.directory, "notifications-vapid.private.json"))); }
-    catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return null; throw new Error("Configuration Web Push indisponible sur ce PC. Aucune clé n’a été remplacée."); }
+    catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return null; throw new Error("Web Push configuration is unavailable on this PC. No key was replaced."); }
   }
   /** Explicit operator setup only. Never called by startup, polling or an HTTP request. */
   async createAfterApproval(): Promise<void> {
@@ -47,10 +47,10 @@ export class PushConfiguration {
     const lockPath = join(this.directory, "notifications-vapid.setup.lock");
     let lock;
     try { lock = await open(lockPath, "wx", 0o600); }
-    catch { throw new Error("Configuration Web Push déjà en cours ou verrouillée. Aucune clé remplacée."); }
+    catch { throw new Error("Web Push setup is already in progress or locked. No key was replaced."); }
     try {
       // The second check is under an exclusive process lock: concurrent setup cannot rotate identity.
-      if (await this.read()) throw new Error("Web Push est déjà configuré; aucune clé remplacée.");
+      if (await this.read()) throw new Error("Web Push is already configured. No key was replaced.");
       const keys = webpush.generateVAPIDKeys();
       await savePrivate(join(this.directory, "notifications-vapid.private.json"), { ...keys, subject });
     } finally { await lock.close(); await unlink(lockPath); }
@@ -59,7 +59,7 @@ export class PushConfiguration {
 export type PushOutcome = "accepted" | "expired" | "failed" | "unconfirmed";
 export async function sendPush(subscription: PushSubscriptionData, eventId: string, config: VapidConfig, transport: typeof fetch = fetch): Promise<PushOutcome> {
   const destination = validateSubscription(subscription);
-  if (!/^[a-f0-9]{64}$/.test(eventId)) throw new Error("Identifiant de notification invalide.");
+  if (!/^[a-f0-9]{64}$/.test(eventId)) throw new Error("Invalid notification ID.");
   const request = webpush.generateRequestDetails(destination, JSON.stringify({ eventId }), { TTL: 3600, urgency: "normal", vapidDetails: validateVapid(config), contentEncoding: "aes128gcm" });
   try {
     const result = await transport(request.endpoint, { method: "POST", headers: request.headers as Record<string, string>, body: request.body as unknown as BodyInit, redirect: "manual", signal: AbortSignal.timeout(8000) });

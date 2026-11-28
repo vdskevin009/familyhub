@@ -28,8 +28,8 @@ export function spendingTrend(state: FinanceState, month: string, accountId = ""
         ["bank", "credit-card"].includes(a.type) || allRows.some(r => r.accountId === a.id && r.status === "posted" && r.currency === currency && r.category !== "savings-investments" && ["expense", "refund"].includes(r.nature))));
     function coverage(start: string, finish: string): string[] {
         const reasons: string[] = [];
-        if (!data || data.scope.from > start || data.scope.to < finish || data.collectedOn < finish) reasons.push("Période hors des bornes de l'import");
-        if (!accounts.length) reasons.push("Aucun compte de dépenses documenté pour ce filtre");
+        if (!data || data.scope.from > start || data.scope.to < finish || data.collectedOn < finish) reasons.push("Period outside the import range");
+        if (!accounts.length) reasons.push("No documented spending account matches this filter");
         for (const account of accounts) {
             const bounds = data?.coverage.filter(c => c.accountId === account.id) ?? [];
             // Do not join disconnected source intervals and accidentally fill a gap.
@@ -39,14 +39,14 @@ export function spendingTrend(state: FinanceState, month: string, accountId = ""
                 if (last && last < finish) {
                     const next = new Date(last + "T12:00:00Z"); next.setUTCDate(next.getUTCDate() + 1);
                     const uncertainFrom = next.toISOString().slice(0, 10) > start ? next.toISOString().slice(0, 10) : start;
-                    reasons.push(`${account.name} : dernier mouvement importé le ${last}; couverture du ${uncertainFrom} au ${finish} non établie`);
-                } else if (first && first > start) reasons.push(`${account.name} : premier mouvement importé le ${first}; début de période non établi (${start})`);
-                else reasons.push(`${account.name} : aucun intervalle de mouvements importés ne couvre le ${start} au ${finish}`);
+                    reasons.push(`${account.name}: last imported transaction ${last}; coverage from ${uncertainFrom} to ${finish} is not established`);
+                } else if (first && first > start) reasons.push(`${account.name}: first imported transaction ${first}; coverage from the start of the period (${start}) is not established`);
+                else reasons.push(`${account.name}: no range of imported transactions covers ${start} to ${finish}`);
             }
         }
         return reasons;
     }
-    const reasons = available ? coverage(from, to) : [future ? "Mois à venir" : "Aucune période importée disponible"];
+    const reasons = available ? coverage(from, to) : [future ? "Future month" : "No imported period is available"];
     const summary = summarizeSpending(state, from, available ? to : from, accountId, currency, allRows);
     const comparable = available && reasons.length === 0;
     // Missing coverage with no actual expense rows is unknown, not an invented zero.
@@ -56,7 +56,7 @@ export function spendingTrend(state: FinanceState, month: string, accountId = ""
         const previous = shiftMonth(month, -baselineWindowMonths + index), last = monthEnd(previous);
         const problems = coverage(previous + "-01", last);
         if (last >= from || last > today) problems.push("Le mois cible et les mois futurs sont exclus");
-        if (partial && Number(last.slice(8)) < elapsedDays) problems.push("Mois trop court pour comparer le même nombre de jours");
+        if (partial && Number(last.slice(8)) < elapsedDays) problems.push("Month too short to compare the same number of days");
         const comparisonTo = partial ? `${previous}-${pad(Math.min(elapsedDays, Number(last.slice(8))))}` : last;
         const observation = summarizeSpending(state, previous + "-01", comparisonTo, accountId, currency, allRows);
         const posted = allRows.filter(r => r.status === "posted" && r.currency === currency && (!accountId || r.accountId === accountId) && r.date >= previous + "-01" && r.date <= comparisonTo);

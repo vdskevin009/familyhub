@@ -1,3 +1,4 @@
+import { actionCategories, isActionCategory, newProjectActions, openClaimActions } from "./actionable-projects.js";
 import { readFile } from "node:fs/promises";
 import { createHash, randomUUID } from "node:crypto";
 import { atomicJson } from "./private-store.js";
@@ -9,13 +10,23 @@ import type { Monitoring } from "./household-alerts.js";
 type Delivery = { at: string; outcome: PushOutcome; eventId: string; confirmedAt?: string };
 type Device = { id: string; label: string; subscription: PushSubscriptionData; createdAt: string; publicKey: string; enabled: boolean; lastDelivery?: Delivery };
 type StoredEvent = NotificationEvent & { pendingDeviceIds?: string[] };
+type ActionableKind = typeof actionCategories[number];
+type ActionableDiskExtension = { schema: 1; initialized: ActionableKind[]; preferences: Record<ActionableKind, boolean>; events: StoredEvent[] };
+const historyLimit = 500;
 type Stored = { monitoring?: Monitoring[]; insuranceDatesInitialized?: boolean; decisions?: Record<string, NotificationDecision>; lastAutomaticPushAt?: string; schema: 1; revision: string; initialized: Candidate["source"][]; seen: string[]; events: StoredEvent[]; preferences: NotificationPreferences; devices: Device[]; scannedAt?: string; sourceErrors: string[] };
 export type NotificationSnapshot = Omit<Stored, "schema" | "seen" | "initialized" | "devices" | "events"> & { events: NotificationEvent[]; devices: Omit<Device, "subscription" | "publicKey">[]; pushConfigured: boolean; publicKey: string | null; pushSetupError?: string; lifecycleSupported: true; deliveryPolicy: typeof notificationDeliveryPolicy };
+/** Old PWA versions cannot render the additive actionable kinds. */
+export function notificationClientSnapshot(snapshot: NotificationSnapshot, supported: boolean): NotificationSnapshot {
+  const events = supported
+    ? snapshot.events.slice().sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt)).slice(-historyLimit)
+    : snapshot.events.filter(e => !isActionCategory(e.kind));
+  return { ...snapshot, events };
+}
 export class NotificationConflict extends Error {}
 const hash = (s: string) => createHash("sha256").update(s).digest("hex");
 const empty = (): Stored => ({ schema: 1, revision: "empty", initialized: [], seen: [], events: [], preferences: defaultNotificationPreferences(), devices: [], sourceErrors: [] });
 const idPattern = /^[a-f0-9]{64}$/;
-const sources = ["invoices", "collections", "contracts", "finance", "mortgage", "policy", "groceries", "claim-deadlines"];
+const sources = ["invoices", "collections", "contracts", "finance", "mortgage", "policy", "groceries", "claim-deadlines", ...actionCategories];
 const text = (v: unknown, max: number) => typeof v === "string" && v.length <= max;
 const timestamp = (v: unknown) => typeof v === "string" && v.length <= 40 && Number.isFinite(Date.parse(v));
 export class NotificationLibrary {
@@ -28,10 +39,28 @@ export class NotificationLibrary {
   }
   private async load(): Promise<Stored> {
     try {
-      const data = JSON.parse(await readFile(this.path, "utf8")) as Stored;
+      const { actionableAlerts, ...legacy } = JSON.parse(await readFile(this.path, "utf8")) as Stored & { actionableAlerts?: unknown };
+      // 2.30.2 validates nested field names strictly but preserves unknown top-level metadata.
+      // Keep the original collections readable and writable by that worker during rollback.
+      if (!legacy || !Array.isArray(legacy.events) || legacy.events.length > historyLimit
+        || legacy.events.some(event => isActionCategory(event?.kind))
+        || !Array.isArray(legacy.initialized) || legacy.initialized.some(isActionCategory)
+        || !legacy.preferences || Object.keys(legacy.preferences).some(isActionCategory)) throw new Error();
+      const data = legacy;
+      if (actionableAlerts !== undefined) {
+        const a = actionableAlerts as Partial<ActionableDiskExtension> | null;
+        if (!a || a.schema !== 1 || !Array.isArray(a.initialized) || a.initialized.some(k => !isActionCategory(k))
+          || !a.preferences || Object.keys(a.preferences).some(k => !isActionCategory(k))
+          || actionCategories.some(k => typeof a.preferences?.[k] !== "boolean")
+          || !Array.isArray(a.events) || a.events.length > historyLimit || a.events.some(e => !isActionCategory(e?.kind))) throw new Error();
+        data.initialized = [...data.initialized, ...a.initialized];
+        data.preferences = { ...data.preferences, ...a.preferences };
+        data.events = [...data.events, ...a.events];
+      }
       if (data?.schema === 1 && data.preferences && data.preferences.mortgage === undefined) data.preferences.mortgage = true; // Additive category; existing choices preserved, first evidence remains silent.
       for (const kind of ["policy", "grocery", "claim-deadline"] as const) if (data?.schema === 1 && data.preferences && data.preferences[kind] === undefined) data.preferences[kind] = true;
-      if (!data || data.schema !== 1 || !text(data.revision, 100) || !Array.isArray(data.initialized) || data.initialized.some(s => !sources.includes(s)) || !Array.isArray(data.seen) || data.seen.some(id => typeof id !== "string" || !idPattern.test(id)) || !Array.isArray(data.events) || data.events.length > 500 || !data.preferences || notificationKinds.some(k => typeof data.preferences[k] !== "boolean") || Object.keys(data.preferences).some(k => !notificationKinds.includes(k as typeof notificationKinds[number])) || !Array.isArray(data.devices) || data.devices.length > 20 || !Array.isArray(data.sourceErrors) || data.sourceErrors.some(s => !text(s, 100)) || data.scannedAt !== undefined && !timestamp(data.scannedAt)) throw new Error();
+      for (const kind of actionCategories) if(data?.schema===1 && data.preferences && data.preferences[kind]===undefined)data.preferences[kind]=false;
+      if (!data || data.schema !== 1 || !text(data.revision, 100) || !Array.isArray(data.initialized) || data.initialized.some(s => !sources.includes(s)) || !Array.isArray(data.seen) || data.seen.some(id => typeof id !== "string" || !idPattern.test(id)) || !Array.isArray(data.events) || data.events.length > 2 * historyLimit || !data.preferences || notificationKinds.some(k => typeof data.preferences[k] !== "boolean") || Object.keys(data.preferences).some(k => !notificationKinds.includes(k as typeof notificationKinds[number])) || !Array.isArray(data.devices) || data.devices.length > 20 || !Array.isArray(data.sourceErrors) || data.sourceErrors.some(s => !text(s, 100)) || data.scannedAt !== undefined && !timestamp(data.scannedAt)) throw new Error();
       if (new Set(data.events.map(e => e.id)).size !== data.events.length || new Set(data.devices.map(d => d.id)).size !== data.devices.length) throw new Error();
       if (data.lastAutomaticPushAt !== undefined && !timestamp(data.lastAutomaticPushAt) || data.decisions !== undefined && (!data.decisions || typeof data.decisions !== "object" || Array.isArray(data.decisions) || Object.keys(data.decisions).length > 5000 || Object.entries(data.decisions).some(([id, d]) => !idPattern.test(id) || !this.validDecision(d)))) throw new Error();
       if (data.insuranceDatesInitialized !== undefined && typeof data.insuranceDatesInitialized !== "boolean") throw new Error();
@@ -39,7 +68,7 @@ export class NotificationLibrary {
       for (const event of data.events) {
         if (event.pendingDeviceIds !== undefined && (!Array.isArray(event.pendingDeviceIds) || event.pendingDeviceIds.length > 20 || event.pendingDeviceIds.some(id => !idPattern.test(id)))) throw new Error();
         if (event.groupId !== undefined && !idPattern.test(event.groupId) || event.evidenceVersion !== undefined && !idPattern.test(event.evidenceVersion) || event.actionable !== undefined && typeof event.actionable !== "boolean" || event.expiresAt !== undefined && !timestamp(event.expiresAt) || event.priority !== undefined && (!Number.isInteger(event.priority) || event.priority < 0 || event.priority > 3) || event.pushState !== undefined && !["pending", "handled", "expired"].includes(event.pushState)) throw new Error();
-        if (!idPattern.test(event.id) || !notificationKinds.includes(event.kind) || !text(event.title, 1000) || !text(event.detail, 5000) || !timestamp(event.createdAt) || event.readAt !== undefined && !timestamp(event.readAt) || event.sourceDate !== undefined && !timestamp(event.sourceDate) || typeof event.baseline !== "boolean" || typeof event.active !== "boolean" || !["savings", "finances", "reimbursements", "mortgage", "groceries"].includes(event.target?.view)) throw new Error();
+        if (!idPattern.test(event.id) || !notificationKinds.includes(event.kind) || !text(event.title, 1000) || !text(event.detail, 5000) || !timestamp(event.createdAt) || event.readAt !== undefined && !timestamp(event.readAt) || event.sourceDate !== undefined && !timestamp(event.sourceDate) || typeof event.baseline !== "boolean" || typeof event.active !== "boolean" || !["savings", "finances", "reimbursements", "mortgage", "groceries", "property", "vehicle"].includes(event.target?.view)) throw new Error();
         if (event.links !== undefined && (!Array.isArray(event.links) || event.links.length > 3 || event.links.some(l => { if (!text(l.label, 200) || !text(l.url, 2000)) return true; try { const u = new URL(l.url); return u.protocol !== "https:" || !!u.username || !!u.password; } catch { return true; } }))) throw new Error();
         const target = event.target;
         if (Object.keys(target).some(k => !["view", "recordId", "queue", "tab", "accountId", "from", "to", "currency", "sources"].includes(k)) || [target.recordId, target.accountId, target.from, target.to, target.currency].some(v => v !== undefined && !text(v, 500)) || target.queue !== undefined && target.queue !== "unmatched" || target.tab !== undefined && !["investments", "tickets"].includes(target.tab) || target.sources !== undefined && typeof target.sources !== "boolean") throw new Error();
@@ -51,7 +80,7 @@ export class NotificationLibrary {
         if (delivery && (!timestamp(delivery.at) || !idPattern.test(delivery.eventId) || !["accepted", "expired", "failed", "unconfirmed"].includes(delivery.outcome) || delivery.confirmedAt !== undefined && (!timestamp(delivery.confirmedAt) || delivery.outcome !== "accepted"))) throw new Error();
       }
       return data;
-    } catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return empty(); throw new Error("Historique de notifications illisible. Aucun fichier remplacé; vérifiez la sauvegarde privée."); }
+    } catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return empty(); throw new Error("Notification history is unreadable. No file was replaced. Check the private backup."); }
   }
   private validDecision(d: NotificationDecision): boolean {
     return !!d && idPattern.test(d.evidenceVersion) && ["snoozed", "resolved", "dismissed"].includes(d.state) && timestamp(d.at)
@@ -61,19 +90,43 @@ export class NotificationLibrary {
     const d = state.decisions?.[event.groupId ?? event.id];
     return d?.evidenceVersion === (event.evidenceVersion ?? event.id) ? d : undefined;
   }
-  private async save(state: Stored) { state.revision = randomUUID(); await atomicJson(this.path, state); }
+  private async save(state: Stored) {
+    state.revision = randomUUID();
+    const initialized = state.initialized.filter((k): k is ActionableKind => isActionCategory(k));
+    const preferences = Object.fromEntries(actionCategories.map(k => [k, state.preferences[k]])) as ActionableDiskExtension["preferences"];
+    const events = state.events.filter(e => isActionCategory(e.kind)).slice(-historyLimit);
+    await atomicJson(this.path, {
+      ...state,
+      initialized: state.initialized.filter(k => !isActionCategory(k)),
+      preferences: Object.fromEntries(Object.entries(state.preferences).filter(([k]) => !isActionCategory(k))),
+      events: state.events.filter(e => !isActionCategory(e.kind)).slice(-historyLimit),
+      actionableAlerts: { schema: 1, initialized, preferences, events } satisfies ActionableDiskExtension,
+    });
+  }
   private async expose(state: Stored): Promise<NotificationSnapshot> {
     const { config, error } = await this.pushConfiguration();
     return { lifecycleSupported: true, deliveryPolicy: notificationDeliveryPolicy, revision: state.revision, events: state.events.map(({ pendingDeviceIds: _recipients, ...e }) => ({ ...e, decision: this.decision(state, e) })), preferences: state.preferences, scannedAt: state.scannedAt, sourceErrors: state.sourceErrors, monitoring: state.monitoring, devices: state.devices.map(({ id, label, enabled, createdAt, lastDelivery }) => ({ id, label, enabled, createdAt, lastDelivery })), pushConfigured: Boolean(config), publicKey: config?.publicKey ?? null, ...(error ? { pushSetupError: error } : {}) };
   }
   private async pushConfiguration() {
     try { return { config: await this.configuration(), error: "" }; }
-    catch { return { config: null, error: "Web Push indisponible sur ce PC. L'historique reste accessible; aucune identité d'envoi remplacée." }; }
+    catch { return { config: null, error: "Web Push is unavailable on this PC. History is still available, and the sending identity was not replaced." }; }
   }
   read() { return this.serialize(async () => this.expose(await this.load())); }
   scan(evidence: NotificationEvidence, errors: string[] = [], now = new Date()) {
     return this.serialize(async () => {
       const state = await this.load(), { candidates, ready, monitoring } = notificationCandidates(evidence, now);
+      errors = [...errors];
+      for (const domain of ["vehicle", "property"] as const) {
+        try {
+          const evidenceSet=evidence.projects?.[domain];
+          if(evidenceSet) {
+            candidates.push(...newProjectActions(domain,evidenceSet,now));
+            ready.push(domain==="property"?"new-property":"new-vehicle");
+          }
+        } catch { errors.push(domain === "vehicle" ? "projet auto" : "projet immobilier"); }
+      }
+      const aged=openClaimActions(evidence.invoices,now);
+      if(aged){ready.push("open-claim");candidates.push(...aged);}
       state.monitoring = monitoring;
       state.decisions ??= {};
       const seen = new Set(state.seen), initial = new Set(state.initialized), current = new Map(candidates.map(c => [hash(c.key), c]));
@@ -100,7 +153,7 @@ export class NotificationLibrary {
         // Collection reads can succeed independently. A different collector's status,
         // or this collector still running, cannot establish recovery of its old alert.
         } else if ((event.kind !== "collection" || evidence.collections?.some(c => ["idle", "up-to-date", "error", "login-required"].includes(c.state) && event.groupId === hash(`collection:${c.id}`)))
-          && ready.includes(event.kind === "policy" ? "policy" : event.kind === "grocery" ? "groceries" : event.kind === "claim-deadline" ? "claim-deadlines" : event.kind === "collection" ? "collections" : ["reimbursement", "unmatched"].includes(event.kind) ? "invoices" : event.target.view === "mortgage" ? "mortgage" : event.target.view === "savings" ? "contracts" : "finance")) {
+          && ready.includes(actionCategories.find(k=>k===event.kind) ?? (event.kind === "policy" ? "policy" : event.kind === "grocery" ? "groceries" : event.kind === "claim-deadline" ? "claim-deadlines" : event.kind === "collection" ? "collections" : ["reimbursement", "unmatched"].includes(event.kind) ? "invoices" : event.target.view === "mortgage" ? "mortgage" : event.target.view === "savings" ? "contracts" : "finance"))) {
           event.active = false;
           if (event.pushState === "pending") event.pushState = "expired";
         }
@@ -109,20 +162,25 @@ export class NotificationLibrary {
         const id = hash(c.key);
         if (seen.has(id)) continue;
         seen.add(id);
+        // Remember disabled discoveries silently so a later opt-in cannot replay a backlog.
+        if (isActionCategory(c.kind) && !state.preferences[c.kind]) continue;
         const { key: _key, source, groupKey, evidenceKey, baselineGroup, pushEligible: _pushEligible, ...content } = c;
         const baseline = !initial.has(source) || baselineGroup === "insurance-policy" && !state.insuranceDatesInitialized, groupId = hash(groupKey ?? c.key), evidenceVersion = hash(evidenceKey ?? c.key);
         state.events.push({ ...content, id, groupId, evidenceVersion,
           createdAt: now.toISOString(), baseline, active: true, pushState: pendingState(c, baseline),
           ...(pendingState(c, baseline) === "pending" ? { pendingDeviceIds: [...pendingDeviceIds] } : {}) });
       }
-      state.seen = [...seen]; state.events = state.events.slice(-500);
+      state.seen = [...seen];
+      // New categories have their own retention and cannot evict legacy history.
+      state.events = [...state.events.filter(e => !isActionCategory(e.kind)).slice(-historyLimit),
+        ...state.events.filter(e => isActionCategory(e.kind)).slice(-historyLimit)];
       state.initialized = [...new Set([...state.initialized, ...ready])];
       if (ready.includes("contracts")) state.insuranceDatesInitialized = true;
       state.scannedAt = now.toISOString(); state.sourceErrors = [...errors];
       let actionSnapshot: OpportunityActionsSnapshot | undefined, actionReadFailed = false;
       if (this.opportunityActions) {
         try { actionSnapshot = await this.opportunityActions(); }
-        catch { actionReadFailed = true; state.sourceErrors.push("suivi des actions d’accueil"); }
+        catch { actionReadFailed = true; state.sourceErrors.push("home action tracking"); }
       }
       const insuranceRenewal = (candidate: Candidate) => candidate.source === "contracts" && candidate.kind === "deadline"
         && candidate.target.recordId && candidate.groupKey === `deadline:${candidate.target.recordId}:renewal`
@@ -182,24 +240,24 @@ export class NotificationLibrary {
     return this.serialize(async () => {
       const state = await this.load();
       const body = input as Record<string, unknown>;
-      if (!body || typeof body !== "object" || body.expectedRevision !== state.revision) throw new NotificationConflict("Les notifications ont changé. Actualisez avant de réessayer.");
+      if (!body || typeof body !== "object" || body.expectedRevision !== state.revision) throw new NotificationConflict("Notifications changed. Refresh before trying again.");
       if (body.action === "preferences") {
         const submitted = body.preferences as NotificationPreferences;
         const value = submitted && { ...submitted };
         // An already-open older PWA may omit only the new categories; preserve their saved choices.
-        for (const kind of ["policy", "grocery", "claim-deadline"] as const) if (value && value[kind] === undefined) value[kind] = state.preferences[kind];
-        if (!value || notificationKinds.some(k => typeof value[k] !== "boolean") || Object.keys(value).some(k => !notificationKinds.includes(k as typeof notificationKinds[number]))) throw new Error("Préférences invalides.");
+        for (const kind of ["policy", "grocery", "claim-deadline", ...actionCategories] as const) if (value && value[kind] === undefined) value[kind] = state.preferences[kind];
+        if (!value || notificationKinds.some(k => typeof value[k] !== "boolean") || Object.keys(value).some(k => !notificationKinds.includes(k as typeof notificationKinds[number]))) throw new Error("Invalid preferences.");
         state.preferences = { ...value };
         for (const event of state.events) if (event.pushState === "pending" && !value[event.kind]) event.pushState = "handled";
       } else if (["read", "snooze", "resolve", "dismiss", "restore"].includes(String(body.action))) {
-        if (Object.keys(body).some(k => !["expectedRevision", "action", "id", "snoozedUntil"].includes(k)) || body.action !== "snooze" && body.snoozedUntil !== undefined || typeof body.id !== "string" || !idPattern.test(body.id)) throw new Error("Notification invalide.");
+        if (Object.keys(body).some(k => !["expectedRevision", "action", "id", "snoozedUntil"].includes(k)) || body.action !== "snooze" && body.snoozedUntil !== undefined || typeof body.id !== "string" || !idPattern.test(body.id)) throw new Error("Invalid notification.");
         const event = state.events.find(e => e.id === body.id);
-        if (!event) throw new Error("Cette notification n’est plus dans l’historique.");
+        if (!event) throw new Error("This notification is no longer in the history.");
         if (body.action === "read") { event.readAt = now.toISOString(); event.pushState = "handled"; }
         else {
           state.decisions ??= {};
           const group = event.groupId ?? event.id, evidenceVersion = event.evidenceVersion ?? event.id;
-          if (!event.active && state.decisions[group] && state.decisions[group].evidenceVersion !== evidenceVersion || state.events.some(other => other.active && other.groupId === group && other.evidenceVersion !== evidenceVersion)) throw new NotificationConflict("Les preuves ont changé. Ouvrez le rappel actuel avant de décider.");
+          if (!event.active && state.decisions[group] && state.decisions[group].evidenceVersion !== evidenceVersion || state.events.some(other => other.active && other.groupId === group && other.evidenceVersion !== evidenceVersion)) throw new NotificationConflict("The evidence changed. Open the current reminder before deciding.");
           if (body.action === "restore") {
             delete state.decisions[group]; event.pushState = "handled";
             // Explicitly surface one current policy baseline in-app. Never replay it through Push,
@@ -208,23 +266,23 @@ export class NotificationLibrary {
               && event.expiresAt && Date.parse(event.expiresAt) > now.getTime()) event.baseline = false;
           }
           else {
-            if (!state.decisions[group] && Object.keys(state.decisions).length >= 5000) throw new Error("La limite de décisions est atteinte. Les décisions existantes sont conservées.");
-            if (body.action === "snooze" && (!timestamp(body.snoozedUntil) || Date.parse(body.snoozedUntil as string) <= now.getTime() || Date.parse(body.snoozedUntil as string) > now.getTime() + 90 * 86_400_000)) throw new Error("Choisissez un report futur, dans les 90 prochains jours.");
+            if (!state.decisions[group] && Object.keys(state.decisions).length >= 5000) throw new Error("The decision limit was reached. Existing decisions are preserved.");
+            if (body.action === "snooze" && (!timestamp(body.snoozedUntil) || Date.parse(body.snoozedUntil as string) <= now.getTime() || Date.parse(body.snoozedUntil as string) > now.getTime() + 90 * 86_400_000)) throw new Error("Choose a future date within the next 90 days.");
             state.decisions[group] = { evidenceVersion, at: now.toISOString(), state: body.action === "snooze" ? "snoozed" : body.action === "resolve" ? "resolved" : "dismissed", ...(body.action === "snooze" ? { snoozedUntil: new Date(body.snoozedUntil as string).toISOString() } : {}) };
             if (body.action !== "snooze") event.pushState = "handled";
           }
         }
       } else if (body.action === "enroll") {
         const config = await this.configuration();
-        if (!config || body.publicKey !== config.publicKey) throw new Error("Configuration Web Push absente ou modifiée. Actualisez avant l’inscription.");
-        if (body.permission !== "granted" || typeof body.label !== "string" || !body.label.trim() || body.label.length > 60) throw new Error("Confirmez l’autorisation et le nom de cet appareil.");
+        if (!config || body.publicKey !== config.publicKey) throw new Error("Web Push configuration is missing or changed. Refresh before registering.");
+        if (body.permission !== "granted" || typeof body.label !== "string" || !body.label.trim() || body.label.length > 60) throw new Error("Confirm this device’s permission and name.");
         const subscription = validateSubscription(body.subscription), id = hash(subscription.endpoint);
         const previous = state.devices.find(d => d.id === id);
-        if (!previous && state.devices.length >= 20) throw new Error("Retirez un ancien appareil avant d’en ajouter un autre.");
+        if (!previous && state.devices.length >= 20) throw new Error("Remove a device before adding another.");
         state.devices = [...state.devices.filter(d => d.id !== id), { id, label: body.label.trim(), subscription, enabled: true, publicKey: config.publicKey, createdAt: previous?.createdAt ?? now.toISOString(), lastDelivery: previous?.lastDelivery }];
       } else if (["disable", "remove", "test", "receipt"].includes(String(body.action))) {
         const device = state.devices.find(d => d.id === body.id);
-        if (!device) throw new Error("Appareil introuvable. Actualisez cette liste.");
+        if (!device) throw new Error("Device not found. Refresh the list.");
         if (body.action === "remove") state.devices = state.devices.filter(d => d.id !== device.id);
         if (body.action === "disable") device.enabled = false;
         if (body.action === "remove" || body.action === "disable") for (const event of state.events) {
@@ -232,19 +290,19 @@ export class NotificationLibrary {
           if (event.pushState === "pending" && !event.pendingDeviceIds?.length) event.pushState = "handled";
         }
         if (body.action === "receipt") {
-          if (!device.lastDelivery || device.lastDelivery.eventId !== body.eventId || device.lastDelivery.outcome !== "accepted") throw new Error("Aucun envoi accepté à confirmer.");
+          if (!device.lastDelivery || device.lastDelivery.eventId !== body.eventId || device.lastDelivery.outcome !== "accepted") throw new Error("There is no accepted delivery to confirm.");
           device.lastDelivery.confirmedAt = new Date().toISOString();
         }
         if (body.action === "test") {
           const config = await this.configuration();
-          if (!config || !device.enabled || device.publicKey !== config.publicKey) throw new Error("Réactivez cet appareil avant un test.");
-          if (device.lastDelivery && Date.now() - Date.parse(device.lastDelivery.at) < 60_000) throw new Error("Attendez une minute avant un autre test.");
+          if (!config || !device.enabled || device.publicKey !== config.publicKey) throw new Error("Enable this device before testing.");
+          if (device.lastDelivery && Date.now() - Date.parse(device.lastDelivery.at) < 60_000) throw new Error("Wait one minute before testing again.");
           const id = hash(randomUUID());
-          state.events.push({ id, kind: "collection", title: "Test de notification", detail: "Test demandé depuis un appareil associé. L’acceptation par le service Push ne prouve pas sa réception sur le téléphone.", target: { view: "reimbursements" }, createdAt: new Date().toISOString(), active: true, baseline: false });
+          state.events.push({ id, kind: "collection", title: "Notification test", detail: "A paired device requested this test. Push service acceptance does not prove it arrived on the phone.", target: { view: "reimbursements" }, createdAt: new Date().toISOString(), active: true, baseline: false });
           state.events = state.events.slice(-500);
           await this.deliver(state, [device], id, config, new Date());
         }
-      } else throw new Error("Action de notification invalide.");
+      } else throw new Error("Invalid notification action.");
       await this.save(state);
       return this.expose(state);
     });

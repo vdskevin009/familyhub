@@ -6,7 +6,7 @@ export function financeTimestamp(value: unknown): string {
 }
 export function financeCollection(value: unknown, accountIds: string[]): FinanceCollection {
     const v = value as FinanceCollection;
-    if (!v || !Array.isArray(v.accountIds) || !v.accountIds.length || v.accountIds.length > 100 || new Set(v.accountIds).size !== v.accountIds.length || v.accountIds.some(id => !accountIds.includes(id))) throw new Error("Portée de collecte invalide.");
+    if (!v || !Array.isArray(v.accountIds) || !v.accountIds.length || v.accountIds.length > 100 || new Set(v.accountIds).size !== v.accountIds.length || v.accountIds.some(id => !accountIds.includes(id))) throw new Error("Invalid collection scope.");
     return { retrievedAt: financeTimestamp(v.retrievedAt), accountIds: [...v.accountIds] };
 }
 export function archivedFinanceCollection(value: unknown, accountIds: string[]): FinanceCollection | null {

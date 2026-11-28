@@ -1,3 +1,4 @@
+import { invoiceClassificationCopy } from "../invoice-classification-copy";
 import { FilterButton, FilterChips, Notice, PageHeader, SearchField, Sheet, SkeletonList, useSessionValue, type ActiveFilter } from "../ui/primitives";
 import { requireSaved } from "../ui/mutation-queue";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -224,7 +225,7 @@ export default function DocumentLibraryView({ hub, kind }: Props) {
     </div>}
     {bulkMessage && <Notice onDismiss={() => setBulkMessage("")}>{bulkMessage}</Notice>}
     {reviewMessage && <Notice onDismiss={() => setReviewMessage("")}>{reviewMessage}</Notice>}
-    {!paired && <p className="library-notice">Showing documents saved on this device. Connect the FamilyHub worker in Plus → Réglages et outils for the latest index.</p>}
+    {!paired && <p className="library-notice">Showing documents saved on this device. Connect the FamilyHub worker in More → Settings and tools for the latest index.</p>}
     {error && <Notice error onDismiss={() => setError("")}>{error}</Notice>}
     {busy && !items.length && <SkeletonList label="Loading documents" />}
     <div className="library-list">
@@ -236,7 +237,7 @@ export default function DocumentLibraryView({ hub, kind }: Props) {
           return <article className="library-card excluded-candidate" key={item.Id}>
             <div className="library-card-top"><span className="library-kind"><FileText size={15} />Excluded · {classificationLabel(item.DocumentType)}</span><span>{documentDate(item) ? dateLabel(documentDate(item)) : "Date unavailable"}</span></div>
             <div className="excluded-candidate-main"><div><h2>{item.Subject || item.Provider || "Untitled message"}</h2><p>{item.Sender || "Unknown sender"}{item.AccountLabel ? ` · ${item.AccountLabel}` : ""}</p></div><span className="excluded-confidence">{Number.isFinite(item.Confidence) ? `${item.Confidence}% confidence` : "Confidence unavailable"}</span></div>
-            <div className="excluded-reason"><small>Why FamilyHub excluded it</small><p>{reason}</p></div>
+            <div className="excluded-reason"><small>Why FamilyHub excluded it</small><p>{invoiceClassificationCopy(reason)}</p></div>
             <div className="excluded-actions">
               {sourceAvailable && <button type="button" className="mini-button subtle" onClick={() => googleBridge.openMessage(item.AccountEmail, item.InternetMessageId, item.SourceMessageId)}><ExternalLink size={14} />Source email</button>}
               <span className="excluded-action-label">Wrong? Mark as</span>

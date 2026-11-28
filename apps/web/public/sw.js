@@ -6,7 +6,7 @@ self.addEventListener("push", event => {
   let eventId = "";
   try { const value = event.data?.json(); if (/^[a-f0-9]{64}$/.test(value?.eventId)) eventId = value.eventId; } catch { /* Generic center link remains available. */ }
   event.waitUntil(self.registration.showNotification("FamilyHub", {
-    body: "Une mise à jour est disponible", icon: "./icon-192.png", badge: "./icon-192.png",
+    body: "An update is available", icon: "./icon-192.png", badge: "./icon-192.png",
     tag: eventId || "familyhub-update", data: { eventId },
   }));
 });

@@ -15,7 +15,7 @@ test('capability precedes preview/apply and older workers do not receive a POST 
   const original = globalThis.fetch, calls = []; globalThis.fetch = async (url, init) => { calls.push([url, init?.method ?? 'GET']); return reply({ capabilities: [] }); };
   try {
     assert.equal(await fetchFinanceSourceInventory(config), null);
-    for (const apply of [false, true]) await assert.rejects(importFinanceSourceInventory(config, {}, 'empty', apply), /worker PC/);
+    for (const apply of [false, true]) await assert.rejects(importFinanceSourceInventory(config, {}, 'empty', apply), /PC service/);
     assert.equal(calls.length, 3); assert(calls.every(([url, method]) => url.endsWith('/health') && method === 'GET'));
   } finally { globalThis.fetch = original; }
 });

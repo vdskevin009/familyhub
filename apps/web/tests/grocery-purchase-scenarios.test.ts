@@ -32,7 +32,7 @@ test("a common count-to-mass hypothesis compares the same six minis across retai
 test("a source-bound inferred retailer format converts the price pack, never the original receipt; stale proof invalidates it",()=>{
  const r=record("Protein Tortillas",{size:342,unit:"g"}),p=planFor("Other Protein Tortillas 6 pack",6,"each",7),state=emptyPurchaseResolution();p.retailers[0].name="Fresh St. Market";p.prices[0].approved=false;p.prices[0].substitution=true;
  state.scenarioHints=[{id:"upc",purpose:"reference-format",product:p.prices[0].product,productId:"111111111111",priceId:"price",priceKey:purchasePriceKey(p.prices[0]),size:330,unit:"g",packagePrice:null,sourceUrl:"https://example.com/corroborated-upc",observedAt:"2026-10-28T00:00:00.000Z",note:"Inferred mass from a matching UPC on a second official source, not mass shown on this page"}];
- const s=purchaseScenarioStores(p,r,today,state).find(s=>s.name==="Fresh St. Market")!;assert.equal(s.estimated,1);assert.equal(s.normalized,7.25);assert.equal(s.outlay,14);assert.equal(r.receipt.items[0].size,342);assert.match(s.lines[0].scenario!.assumptions.join(" "),/inféré/);
+ const s=purchaseScenarioStores(p,r,today,state).find(s=>s.name==="Fresh St. Market")!;assert.equal(s.estimated,1);assert.equal(s.normalized,7.25);assert.equal(s.outlay,14);assert.equal(r.receipt.items[0].size,342);assert.match(s.lines[0].scenario!.assumptions.join(" "),/inferred/);
  p.prices[0].price=8;assert.equal(purchaseScenarioStores(p,r,today,state).find(s=>s.name==="Fresh St. Market")!.covered,0);
 });
 
@@ -44,7 +44,7 @@ test("whole-bean espresso references are coffee beans; ground espresso is not si
 test("stale selling-unit evidence cannot block an independent physical-pack hypothesis; known units remain binding",()=>{
  const r=record("Fictional Strawberries"),p=planFor("Other Strawberries",454,"g",5);
  p.purchaseComparisons=[{id:"old-unit",recordId:r.id,lineIndex:0,lineKey:purchaseLineKey(r.receipt.items[0]),priceId:"previous",priceKey:"previous",purpose:"comparison-only",relation:"equivalent-same-format",quantity:1,size:1,unit:"each",formatLabel:"Selling unit, physical size unknown",referenceFormatLabel:"Selling unit",sourceEstimate:null,sourceEstimateEvidence:"Unknown",provenance:"Fictional older selling-unit reference",reviewedAt:"2026-10-28T00:00:00.000Z"}];
- const before=JSON.stringify(r),s=purchaseScenarioStores(p,r,today)[0];assert.equal(s.estimated,1);assert.equal(s.normalized,5);assert.match(s.lines[0].scenario!.assumptions.join(" "),/Format d'achat inconnu.*hypothèse/);assert.equal(JSON.stringify(r),before);
+ const before=JSON.stringify(r),s=purchaseScenarioStores(p,r,today)[0];assert.equal(s.estimated,1);assert.equal(s.normalized,5);assert.match(s.lines[0].scenario!.assumptions.join(" "),/Purchased pack size unknown.*assumes/);assert.equal(JSON.stringify(r),before);
  r.receipt.items[0].size=1;r.receipt.items[0].unit="l";assert.equal(purchaseScenarioStores(p,r,today)[0].covered,0);
 });
 
@@ -58,7 +58,7 @@ test("verified comparison remains separate; prorata and whole packages are diffe
 });
 test("unknown quantity and format use an explicit one-pack hypothesis without rewriting the confirmation",()=>{
  const r=record("Fictional Tofu Extra Firm",{quantity:null}),p=planFor("Other Tofu Extra Firm",350,"g",3.5),before=JSON.stringify({r,p});p.prices[0].substitution=true;p.prices[0].approved=false;
- const s=purchaseScenarioStores(p,r,today)[0];assert.equal(s.verified,0);assert.equal(s.estimated,1);assert.equal(s.normalized,3.5);assert.match(s.lines[0].scenario!.assumptions.join(" "),/Quantité achetée inconnue/);assert.equal(s.lines[0].scenario!.relation,"estimated-substitution");
+ const s=purchaseScenarioStores(p,r,today)[0];assert.equal(s.verified,0);assert.equal(s.estimated,1);assert.equal(s.normalized,3.5);assert.match(s.lines[0].scenario!.assumptions.join(" "),/Purchased quantity unknown/);assert.equal(s.lines[0].scenario!.relation,"estimated-substitution");
  assert.equal(r.receipt.sourceType,"confirmation");assert.equal(r.receipt.items[0].quantity,null);assert.equal(purchaseStoreComparisons(p,r,today)[0].covered,0);assert.ok(before.length);
 });
 test("missing independent price stays unavailable and a receipt never compares against itself",()=>{
@@ -67,11 +67,11 @@ test("missing independent price stays unavailable and a receipt never compares a
 });
 test("old and nonlocal prices are estimates with age and conditions, never verified or alert inputs",()=>{
  const r=record("Fictional Tofu Extra Firm",{size:350,unit:"g"}),p=planFor(r.receipt.items[0].product,350,"g",3.5);p.prices[0].evidence.date="2026-10-12";p.prices[0].localityConfirmed=false;p.prices[0].available="unknown";
- const s=purchaseScenarioStores(p,r,today)[0];assert.equal(s.estimated,1);assert.equal(s.verified,0);assert.equal(s.lines[0].scenario!.ageDays,17);assert.match(s.lines[0].scenario!.limits.join(" "),/historique.*non locale.*Disponibilité/s);assert.equal(purchaseStoreComparisons(p,r,today)[0].covered,0);
+ const s=purchaseScenarioStores(p,r,today)[0];assert.equal(s.estimated,1);assert.equal(s.verified,0);assert.equal(s.lines[0].scenario!.ageDays,17);assert.match(s.lines[0].scenario!.limits.join(" "),/Historical price.*Non-local reference.*Availability/s);assert.equal(purchaseStoreComparisons(p,r,today)[0].covered,0);
 });
 test("dietary constraints and kg/L conflicts are unavailable rather than guessed conversions",()=>{
  const organic=record("Organic Tofu Extra Firm"),p=planFor("Conventional Tofu Extra Firm");assert.equal(purchaseScenarioStores(p,organic,today)[0].covered,0);
- const almond=record("Original Unsweetened Almond Milk",{size:1,unit:"kg"}),a=planFor(almond.receipt.items[0].product,1,"l",4);const s=purchaseScenarioStores(a,almond,today)[0];assert.equal(s.covered,0);assert.match(s.lines[0].reason,/unité comparable/);
+ const almond=record("Original Unsweetened Almond Milk",{size:1,unit:"kg"}),a=planFor(almond.receipt.items[0].product,1,"l",4);const s=purchaseScenarioStores(a,almond,today)[0];assert.equal(s.covered,0);assert.match(s.lines[0].reason,/unit evidence/);
 });
 test("count-to-weight mini-cucumber scenario needs an explicit common mass hypothesis",()=>{
  const r=record("Mini Cucumbers",{size:6,unit:"each"}),p=planFor("Other Mini Cucumbers",453.59237,"g",3);const s=purchaseScenarioStores(p,r,today)[0];assert.equal(s.estimated,0);assert.equal(s.normalized,null);assert.deepEqual(s.lines[0].diagnostic!.reasons,["format-missing"]);

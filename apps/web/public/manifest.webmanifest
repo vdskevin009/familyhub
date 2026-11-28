@@ -1,5 +1,6 @@
 {
   "name": "FamilyHub",
+  "lang": "en-CA",
   "short_name": "FamilyHub",
   "id": "/familyhub/",
   "start_url": "/familyhub/",
