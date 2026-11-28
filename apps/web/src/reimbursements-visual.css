@@ -32,3 +32,8 @@
   .reimbursement-app-view .family-scope-card { padding-inline: 9px; }
   .reimbursement-app-view .expense-amounts strong { font-size: 16px; }
 }
+
+/* Preserve the warning border contrast without a light-theme outline. */
+:root[data-theme="dark"] .reimbursement-app-view .coverage-overview {
+  border-color: color-mix(in srgb, var(--warning) 45%, var(--warning-soft));
+}

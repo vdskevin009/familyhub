@@ -168,3 +168,9 @@
 .trend-attribution-track > span { position:absolute; height:12px; top:4px; border-radius:3px; background:currentColor; }
 @media(max-width:400px) { .finance-trends .trend-overview { padding:16px; } .trend-month-navigation { grid-template-columns:36px repeat(4,minmax(0,1fr)) 36px; } .trend-month-navigation > .icon-button { min-width:36px; } }
 @media(min-width:1000px) { .finance-trends { grid-template-columns:minmax(0,1.5fr) minmax(260px,1fr); align-items:start; } .trend-month-navigation,.trend-period-heading,.trend-collection { grid-column:1 / -1; } }
+
+:root[data-theme="dark"] .finance-trends {
+  --green: var(--accent); --mint: var(--accent-soft);
+  --ink: #edf1f8; --muted: #b2bdce; --line: #354258; --soft: #222e42;
+}
+:root[data-theme="dark"] .trend-month-navigation > button.selected { color: var(--on-accent); }

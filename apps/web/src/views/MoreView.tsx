@@ -1,3 +1,4 @@
+import { setAppearance, useAppearance } from "../theme";
 import { PageHeader } from "../ui/primitives";
 import { ChangeEvent, FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -30,6 +31,7 @@ type Backup = {
 };
 
 export default function MoreView({ hub, installAvailable = false, installed = false, onInstall }: Props) {
+  const appearance = useAppearance();
   const [endpoint, setEndpoint] = useState(hub.worker.Endpoint);
   const [apiKey, setApiKey] = useState(hub.worker.ApiKey);
   const [workerStatus, setWorkerStatus] = useState<"idle" | "testing" | "online" | "offline">("idle");
@@ -213,6 +215,19 @@ export default function MoreView({ hub, installAvailable = false, installed = fa
       <PageHeader title="Settings and tools" subtitle="Connections, research and backup" />
       {error && <div className="banner error">{error}</div>}
       {message && <div className="banner success"><Check size={17} />{message}</div>}
+      <section className="surface settings-appearance" aria-labelledby="appearance-heading">
+        <div><h2 id="appearance-heading">Appearance</h2><p id="appearance-description">Only applies on this device.</p></div>
+        <label>Theme
+          <select aria-describedby="appearance-description" value={appearance} onChange={event => {
+            const option = event.currentTarget.value;
+            if (option === "system" || option === "light" || option === "dark") setAppearance(option);
+          }}>
+            <option value="system">System</option>
+            <option value="light">Light</option>
+            <option value="dark">Dark</option>
+          </select>
+        </label>
+      </section>
       <section className="surface pwa-install-surface" aria-label="Install FamilyHub">
         <div>
           <span className="eyebrow">Phone app</span>

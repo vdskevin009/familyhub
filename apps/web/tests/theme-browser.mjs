@@ -18,6 +18,8 @@ const ratio = (a, b) => {
   const lum = x => { const c = x.match(/[\d.]+/g).slice(0, 3).map(Number).map(n => n / 255).map(n => n <= .04045 ? n / 12.92 : ((n + .055) / 1.055) ** 2.4); return .2126 * c[0] + .7152 * c[1] + .0722 * c[2]; };
   const x = lum(a), y = lum(b); return (Math.max(x, y) + .05) / (Math.min(x, y) + .05);
 };
+const expectedCanvas = { light: 'rgb(245, 246, 248)', dark: 'rgb(16, 20, 28)' };
+const expectedSurface = { light: 'rgb(255, 255, 255)', dark: 'rgb(25, 34, 50)' };
 const views = ['reimbursements', 'invoices', 'desjardins', 'blue-cross', 'finances', 'savings', 'groceries', 'notifications', 'other', 'today', 'plan', 'more'];
 let browser, page; const errors = [], metrics = [];
 try {
@@ -45,11 +47,14 @@ try {
         const color = token => { const e = document.createElement('span'); e.style.color = `var(${token})`; document.body.append(e); const c = getComputedStyle(e).color; e.remove(); return c; };
         return { scheme: style.colorScheme, canvas: body.backgroundColor, ink: body.color, muted: color('--muted'), accent: color('--accent'), success: color('--success'), warning: color('--warning'), danger: color('--danger'), boundary: color('--control-line') };
       });
-      assert.equal(colors.scheme, 'light', 'Explicit supported light theme remains coherent under dark system preference');
-      assert.equal(colors.canvas, 'rgb(245, 246, 248)'); assert.equal(colors.ink, 'rgb(32, 33, 36)'); assert.equal(colors.accent, 'rgb(36, 99, 211)');
-      for (const value of [colors.ink, colors.muted, colors.accent]) for (const background of [colors.canvas, 'rgb(255, 255, 255)']) assert.ok(ratio(value, background) >= 4.5);
-      for (const value of [colors.success, colors.warning, colors.danger]) assert.ok(ratio(value, 'rgb(255, 255, 255)') >= 4.5);
-      assert.ok(ratio(colors.boundary, 'rgb(255, 255, 255)') >= 3);
+      assert.equal(colors.scheme, colorScheme, 'Unconfigured appearance follows the system');
+      assert.equal(colors.canvas, expectedCanvas[colorScheme]);
+      if (colorScheme === 'light') {
+        assert.equal(colors.ink, 'rgb(32, 33, 36)'); assert.equal(colors.accent, 'rgb(36, 99, 211)');
+      }
+      for (const value of [colors.ink, colors.muted, colors.accent]) for (const background of [colors.canvas, expectedSurface[colorScheme]]) assert.ok(ratio(value, background) >= 4.5);
+      for (const value of [colors.success, colors.warning, colors.danger]) assert.ok(ratio(value, expectedSurface[colorScheme]) >= 4.5);
+      assert.ok(ratio(colors.boundary, expectedSurface[colorScheme]) >= 3);
       const overflow = await page.evaluate(() => document.documentElement.scrollWidth > innerWidth);
       if (overflow) console.log('OVERFLOW', JSON.stringify(await page.evaluate(() => [...document.querySelectorAll('body *')].map(e => ({ tag: e.tagName, cls: e.className, right: e.getBoundingClientRect().right, width: e.getBoundingClientRect().width, position: getComputedStyle(e).position, overflow: getComputedStyle(e).overflowX })).filter(e => e.width && e.right > innerWidth + 1))));
       assert.equal(overflow, false, `${view} ${width} overflow`);
@@ -67,7 +72,7 @@ try {
         }
       }
       metrics.push({ view, width, colorScheme, overflow: false });
-      if (colorScheme === 'light') await page.screenshot({ path: join(output, `${view}-${width}.png`), fullPage: true });
+      if (colorScheme === 'light' || [320, 390, 1440].includes(width)) await page.screenshot({ path: join(output, `${view}-${colorScheme}-${width}.png`), fullPage: true });
       if (view === 'reimbursements') {
         const before = await page.evaluate(() => localStorage.getItem('familyhub.reimbursements.v1'));
         const trigger = page.getByRole('button', { name: 'Filters', exact: true });
@@ -75,7 +80,7 @@ try {
           await trigger.focus(); await trigger.press('Enter');
           const dialog = page.getByRole('dialog', { name: 'Filter claims', exact: true }); await dialog.waitFor();
           for (let i = 0; i < 20; i++) { await page.keyboard.press('Tab'); assert.equal(await dialog.evaluate(e => e.contains(document.activeElement)), true); }
-          if (colorScheme === 'light' && closeWith === 'escape') await page.screenshot({ path: join(output, `claims-dialog-${width}.png`) });
+          if (closeWith === 'escape') await page.screenshot({ path: join(output, `claims-dialog-${colorScheme}-${width}.png`) });
           if (closeWith === 'escape') await page.keyboard.press('Escape'); else await dialog.getByRole('button', { name: 'Close Filter claims', exact: true }).click();
           await dialog.waitFor({ state: 'hidden' }); assert.equal(await trigger.evaluate(e => e === document.activeElement), true);
         }
@@ -89,7 +94,7 @@ try {
     await nav.getByRole('button', { name: 'Projects', exact: true }).click();
     await page.locator('.project-tiles').getByRole('button', { name: 'Groceries', exact: true }).click();
     await page.getByRole('button', { name: 'Purchases', exact: true }).click();
-    assert.equal(await page.evaluate(() => getComputedStyle(document.body).backgroundColor), 'rgb(245, 246, 248)');
+    assert.equal(await page.evaluate(() => getComputedStyle(document.body).backgroundColor), expectedCanvas[colorScheme]);
     assert.equal(await page.locator('main h1').first().evaluate(e => getComputedStyle(e).fontSize), '20px');
     assert.equal(await page.getByRole('button', { name: 'Catalogue', exact: true }).count(), 0);
     assert.equal(await page.getByRole('button', { name: 'Cheaper elsewhere', exact: true }).count(), 0);
@@ -101,6 +106,49 @@ try {
     await page.goForward(); await page.getByRole('heading', { name: 'Finances', exact: true }).waitFor();
     await context.close();
   }
+  // Delay the app bundle so this asserts actual HTML bootstrap, before React or CSS can mask a flash.
+  const prefs = await browser.newContext({ viewport: { width: 390, height: 900 }, colorScheme: 'dark', serviceWorkers: 'block' });
+  const fixed = await prefs.newPage();
+  await fixed.addInitScript(() => localStorage.setItem('familyhub.appearance.v1', 'light'));
+  let release;
+  const waitForBundle = new Promise(resolve => { release = resolve; });
+  await fixed.route('**/assets/*.js', async route => { await waitForBundle; await route.continue(); });
+  await fixed.goto(base + '?view=more', { waitUntil: 'commit' });
+  await fixed.waitForFunction(() => document.documentElement.dataset.theme === 'light' && getComputedStyle(document.documentElement).backgroundColor === 'rgb(245, 246, 248)');
+  assert.equal(await fixed.locator('#root').innerText(), '', 'No React was loaded to set the early colour');
+  release();
+  const theme = fixed.getByRole('combobox', { name: 'Theme', exact: true });
+  await theme.waitFor();
+  assert.equal(await theme.inputValue(), 'light');
+  await fixed.emulateMedia({ colorScheme: 'light' });
+  await theme.selectOption('dark');
+  assert.equal(await fixed.evaluate(() => document.documentElement.dataset.theme), 'dark');
+  assert.equal(await fixed.locator('meta[name="theme-color"]').getAttribute('content'), '#10141c');
+
+  // Use a separate page without a forced preference to verify persistence and storage synchronization.
+  const shared = await prefs.newPage();
+  await shared.emulateMedia({ colorScheme: 'light' });
+  let releaseDark;
+  const waitForDarkBundle = new Promise(resolve => { releaseDark = resolve; });
+  await shared.route('**/assets/*.js', async route => { await waitForDarkBundle; await route.continue(); });
+  await shared.goto(base + '?view=more', { waitUntil: 'commit' });
+  await shared.waitForFunction(() => document.documentElement.dataset.theme === 'dark' && getComputedStyle(document.documentElement).backgroundColor === 'rgb(16, 20, 28)');
+  assert.equal(await shared.locator('#root').innerText(), '', 'Persisted Dark is present before hydration even on a light OS');
+  assert.equal(await shared.locator('meta[name="theme-color"]').getAttribute('content'), '#10141c');
+  releaseDark();
+  const sharedTheme = shared.getByRole('combobox', { name: 'Theme', exact: true });
+  await sharedTheme.waitFor();
+  assert.equal(await sharedTheme.inputValue(), 'dark');
+  await shared.reload();
+  await sharedTheme.waitFor(); assert.equal(await sharedTheme.inputValue(), 'dark');
+  await shared.emulateMedia({ colorScheme: 'light' });
+  assert.equal(await shared.evaluate(() => document.documentElement.dataset.theme), 'dark', 'Explicit Dark ignores OS preference');
+  await sharedTheme.selectOption('system');
+  await shared.waitForFunction(() => document.documentElement.dataset.theme === 'light');
+  await shared.emulateMedia({ colorScheme: 'dark' });
+  await shared.waitForFunction(() => document.documentElement.dataset.theme === 'dark');
+  await fixed.waitForFunction(() => document.querySelector('.settings-appearance select')?.value === 'system');
+  await prefs.close();
   assert.deepEqual(errors, []); await writeFile(join(output, 'report.json'), JSON.stringify({ metrics, errors }, null, 2));
   console.log('PASS: neutral theme, semantic contrast, 12 routes x4 widths x2 system preferences, native-dialog focus/return, navigation/history and preserved synthetic state.');
 } catch (error) {

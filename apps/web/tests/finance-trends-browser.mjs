@@ -1,5 +1,6 @@
 import { openFinanceFilters, selectFinanceFilter } from "./finance-filter-helpers.mjs";
 /** Synthetic browser acceptance. No installed worker, credentials or real source data. */
+import { contrastRatio } from "./theme-test-colour.mjs";
 import { chromium } from "playwright";
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
@@ -25,7 +26,8 @@ server.listen(0, "127.0.0.1");
 await once(server, "listening");
 const base = process.env.FAMILYHUB_TEST_BASE || `http://127.0.0.1:${server.address().port}/familyhub/`;
 const temp = await mkdtemp(join(tmpdir(), "familyhub-trends-"));
-const screenshots = resolve("output/playwright/trends");
+const colorScheme = process.env.FAMILYHUB_TEST_COLOR_SCHEME === "dark" ? "dark" : "light";
+const screenshots = resolve(colorScheme === "dark" ? "output/playwright/trends-dark" : "output/playwright/trends");
 await mkdir(screenshots, { recursive: true });
 let browser;
 try {
@@ -35,7 +37,7 @@ try {
         fixture.bundle.accounts.push({...fixture.bundle.accounts[0],accountId:"usd-synthetic",alias:"USD fictif sans mouvements",currency:"USD",observedBalanceCents:null});
         let initial = (await finance.import({ bundle: fixture.bundle, apply: true, expectedRevision: "empty" })).state;
         for (const [id, decision] of Object.entries(fixture.decisions)) initial = await finance.decide({ id, expectedRevision: initial.revision, decision });
-        const context = await browser.newContext({ viewport: { width, height: 900 }, serviceWorkers: "block", reducedMotion: "reduce" });
+        const context = await browser.newContext({ viewport: { width, height: 900 }, colorScheme, serviceWorkers: "block", reducedMotion: "reduce" });
         const page = await context.newPage(), errors = [];
         let posts = 0, mode = "normal";
         await page.clock.setFixedTime(new Date("2026-10-10T12:00:00Z"));
@@ -87,7 +89,18 @@ try {
         assert(Math.abs(legendZero-axes[0])<1,'The legend labels the actual shared zero');
 
         assert.match(await view.innerText(),/9 first days/);
-        assert(await view.getByRole('img',{name:/Observed daily totals/}).isVisible(),'Curve is visible without disclosure');
+        const chart = view.getByRole('img',{name:/Observed daily totals/});
+        assert(await chart.isVisible(),'Curve is visible without disclosure');
+        if (colorScheme === "dark") {
+            const colours = await chart.evaluate(el => {
+                let surface = el.parentElement;
+                while (surface && getComputedStyle(surface).backgroundColor === 'rgba(0, 0, 0, 0)') surface = surface.parentElement;
+                const track = getComputedStyle(surface || document.body).backgroundColor;
+                return { track, series: [...el.querySelectorAll("path")].map(path => getComputedStyle(path).stroke) };
+            });
+            assert.equal(colours.series.length,2);
+            for(const stroke of colours.series) assert.ok(contrastRatio(stroke,colours.track)>=3, 'Observed and reference lines must both be readable in dark mode');
+        }
         await view.getByText('Daily values',{exact:true}).click();
         assert.equal(await view.locator('.trend-table tbody tr').count(),9);
         assert.match(await view.locator('.trend-table tbody tr').last().innerText(),/780\.00.*715\.00/);

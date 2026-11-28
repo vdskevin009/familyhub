@@ -14,3 +14,5 @@
 .compact-heading h2 { margin: 0; }
 .info-trigger { flex-shrink: 0; color: var(--muted); background: transparent; border: 0; }
 .info-trigger:hover, .info-trigger[aria-expanded="true"] { background: var(--soft); color: var(--green); }
+
+:root[data-theme="dark"] .compact-dialog::backdrop { background: var(--scrim); }
