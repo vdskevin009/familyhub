@@ -56,3 +56,9 @@
 .notification-chip.caution { color: var(--warning); background: var(--warning-soft); }
 .notification-read-state { color: var(--muted); font-size: 11px; }
 .notification-actions .text-action { min-height: 44px; }
+
+/* Preserve the reimbursement colour cue without a light-theme block in dark mode. */
+:root[data-theme="dark"] .notification-card[data-kind="reimbursement"] .notification-category-icon {
+  color: var(--success);
+  background: var(--success-soft);
+}

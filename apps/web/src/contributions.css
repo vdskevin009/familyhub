@@ -54,3 +54,18 @@
 
 .contributions-view > .compact-heading { flex-wrap: wrap; }
 .contributions-view > .compact-heading h2 { flex-shrink: 0; }
+
+:root[data-theme="dark"] .contribution-card, :root[data-theme="dark"] .contribution-details {
+  --border: var(--line); --text: var(--ink); --primary: var(--accent); --surface-alt: var(--soft);
+}
+:root[data-theme="dark"] .contribution-card progress { background: var(--soft); color: var(--chart-accent); }
+:root[data-theme="dark"] .contribution-card progress::-webkit-progress-bar { background: var(--soft); }
+:root[data-theme="dark"] .contribution-card progress::-webkit-progress-value { background: var(--chart-accent); }
+:root[data-theme="dark"] .contribution-card progress::-moz-progress-bar { background: var(--chart-accent); }
+:root[data-theme="dark"] .contribution-card.effort progress::-webkit-progress-value { background: var(--warning); }
+:root[data-theme="dark"] .contribution-card.effort progress::-moz-progress-bar { background: var(--warning); }
+:root[data-theme="dark"] .contribution-card.reached progress::-webkit-progress-value { background: var(--chart-positive); }
+:root[data-theme="dark"] .contribution-card.reached progress::-moz-progress-bar { background: var(--chart-positive); }
+:root[data-theme="dark"] .contribution-achieved { color: var(--success); }
+:root[data-theme="dark"] .contribution-card.effort .contribution-bottom > div:first-child strong { color: var(--warning); }
+:root[data-theme="dark"] .contribution-open:focus-visible { outline-color: var(--accent); }

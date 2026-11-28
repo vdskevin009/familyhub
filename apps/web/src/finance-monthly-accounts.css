@@ -34,3 +34,8 @@
 @media(min-width: 900px) { .accounts-month-list { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media(max-width: 420px) { .accounts-period-row { gap: 8px; } .accounts-month-switcher { gap: 8px; } .accounts-month-switcher strong { font-size: 16px; } .accounts-filter-button { padding-inline: 10px; } .accounts-month-row { padding: 10px; gap: 8px; } .accounts-row-title { gap: 8px; } .accounts-row-title strong { font-size: 13px; } .accounts-row-money { font-size: 14px; } }
 @media(max-width: 350px) { .accounts-month-switcher { gap: 5px; } .accounts-month-switcher strong { font-size: 14px; } .accounts-filter-button { font-size: 12px; gap: 4px; padding-inline: 7px; } .accounts-month-switcher .icon-button { width: 38px; } .accounts-row-icon { width: 26px; height: 30px; } .accounts-row-money { max-width: 42%; overflow-wrap: anywhere; } .accounts-summary { padding: 14px; } }
+
+:root[data-theme="dark"] .finance-monthly-accounts { --accounts-accent: var(--accent); }
+:root[data-theme="dark"] .accounts-month-switcher .icon-button, :root[data-theme="dark"] .accounts-row-icon { background: var(--accent-soft); }
+:root[data-theme="dark"] .accounts-month-row:hover { border-color: var(--accent-line); background: var(--soft); }
+:root[data-theme="dark"] .accounts-month-row[data-liability=true] .accounts-row-money { color: var(--warning); }

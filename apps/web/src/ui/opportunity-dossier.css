@@ -17,3 +17,5 @@
 .opportunity-dossier .property-photo img { object-fit: contain; border-radius: inherit; }
 .opportunity-dossier .property-photo figcaption a { display: inline-flex; align-items: center; min-height: 24px; padding-inline: .25rem; font-size: .75rem; }
 .opportunity-dossier .property-photo-empty { margin: .5rem 0; }
+
+:root[data-theme="dark"] :is(.listing-photo-loading,.opportunity-dossier .property-photo) { background: var(--soft); color: var(--ink); }

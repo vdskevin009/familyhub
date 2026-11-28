@@ -27,6 +27,10 @@ Every feature should do at least one of three things:
 
 The default experience is **Aujourd’hui**. Primary navigation: Aujourd’hui, Remboursements, Finances, Projets and Plus. Source libraries and household tools remain accessible. See [existing-screen visual readiness](docs/VISUAL-READINESS.md) for the current refinement and verification boundaries.
 
+## Appearance
+
+In **Settings & tools → Appearance**, use **System** to follow this device’s light/dark setting, or choose **Light** or **Dark**. The choice stays in the current browser profile and does not change settings for other devices or the paired PC.
+
 ## Current experience
 
 - **Notifications** — a separate private history with source links and shared sending preferences. Opt-in PWA Web Push uses generic lock-screen content; details remain behind pairing. The PC must be running. Per-device permission, registration, revocation and an explicit receipt check are separate from service acceptance. See [setup, evidence rules and limitations](docs/NOTIFICATIONS.md).

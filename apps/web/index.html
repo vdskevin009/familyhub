@@ -4,6 +4,22 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#f5f6f8" />
+    <script>
+      // Resolve appearance before stylesheet or app loading. This also covers cached/offline starts.
+      (() => {
+        let setting;
+        try { setting = localStorage.getItem("familyhub.appearance.v1"); } catch {}
+        const dark = setting === "dark" || (setting !== "light" && matchMedia("(prefers-color-scheme: dark)").matches);
+        document.documentElement.dataset.theme = dark ? "dark" : "light";
+        if (dark) document.querySelector('meta[name="theme-color"]').content = "#10141c";
+      })();
+    </script>
+    <style>
+      /* These critical canvas values match ui/tokens.css; no white intermediate frame. */
+      html { color-scheme: light; background-color: #f5f6f8; }
+      @media (prefers-color-scheme: dark) { html:not([data-theme]) { color-scheme: dark; background-color: #10141c; } }
+      html[data-theme="dark"] { color-scheme: dark; background-color: #10141c; }
+    </style>
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
