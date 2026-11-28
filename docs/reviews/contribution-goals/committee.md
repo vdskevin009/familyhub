@@ -1,6 +1,6 @@
 # Contribution goal rings · committee validation
 
-Approved product change, separate from the device appearance option and from contribution-source repair. Base: main `87edaffc0ee4d9577f01124224de5fb1387adc9b` (#321). No production, account, import, worker, schema or release changes.
+Approved product change, separate from the device appearance option and from contribution-source repair. Reconciled with main `e64ffc939368884f304cd141c26a290f32f49842`, which already includes device appearance (#326). No production, account, import, worker, schema or release changes.
 
 ## What to review
 
@@ -11,4 +11,4 @@ Approved product change, separate from the device appearance option and from con
 
 ## How to verify
 
-On the unmodified built app, the current tab shows a determinate bar for incomplete fixture data. On this candidate, use `npm run build`, `npm run typecheck` and `node apps/web/tests/contributions-browser.mjs` with the project's Playwright browser. CI already includes the existing Contributions test. Its fictional worker only accepts reads and exercises confirmed, incomplete, unknown, verified zero, near/at/above goal, refresh, focus, navigation and reduced motion. Evidence stays local under `output/playwright/contribution-goals`.
+On this candidate, use `npm run build`, `npm run typecheck`, `node apps/web/tests/contributions-browser.mjs` and `node apps/web/tests/dark-domain-browser.mjs` with the project's Playwright browser. Both browser checks run in CI. The fictional worker only accepts reads. The Contributions check covers confirmed, incomplete, unknown, verified zero, near/at/above goal, refresh, focus, navigation and reduced motion. The appearance check measures visible SVG arc and text contrast in both themes, verifies a partial plan has no ring, and uses the real Appearance control and system preference to change the ring's palette without changing its data. Evidence stays local under `output/playwright`.

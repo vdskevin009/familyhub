@@ -72,7 +72,6 @@
 .contribution-inferred li { padding-block: 12px; border-bottom: 1px solid var(--line); }
 .contribution-inferred li > div { display: flex; justify-content: space-between; gap: 16px; font-variant-numeric: tabular-nums; }
 
-
 @media (min-width: 760px) { .contribution-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; } }
 @media (prefers-reduced-motion: no-preference) {
   .contribution-ring-fill.is-updating { animation: contribution-ring-change 320ms ease-out; }

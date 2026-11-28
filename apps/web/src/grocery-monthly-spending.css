@@ -27,3 +27,6 @@
 .grocery-spending-values li { display: grid; gap: 5px; padding: 12px 0; border-bottom: 1px solid var(--line); font-size: 13px; }
 .grocery-spending :focus-visible { outline: 2px solid var(--text); outline-offset: 3px; }
 @media (max-width: 480px) { .grocery-spending { padding: 14px; } .grocery-spending-summary strong { font-size: 19px; } }
+
+:root[data-theme="dark"] .grocery-spending .paid { background: var(--chart-positive); }
+:root[data-theme="dark"] .grocery-spending .estimated { background: repeating-linear-gradient(135deg,var(--warning) 0 3px,var(--warning-soft) 3px 6px); border-color: var(--warning); }

@@ -132,3 +132,21 @@
 .mortgage-contact-footer { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-top:12px; border-top:1px dashed var(--line); padding-top:10px; font-size:12px; color:var(--muted); }
 .mortgage-compact .mortgage-contact-footer button { flex:none; border:none; background:transparent; color:var(--accent); padding:8px 0; font-size:12px; font-weight:700; }
 @media(max-width:380px){ .mortgage-compact .mortgage-contact-panel-head{gap:7px;padding:12px;} .mortgage-contact-panel-content{padding:10px;} .mortgage-compact .mortgage-scenario-card{padding:10px;min-height:180px;} .mortgage-compact .mortgage-scenario-card.is-selected{padding:9px;} .mortgage-scenario-card strong{font-size:21px;} .mortgage-contact-footer{flex-wrap:wrap;} .mortgage-scenario-count{font-size:11px;} }
+
+:root[data-theme="dark"] :is(.mortgage,.mortgage-assistant,.mortgage-compact,.mortgage-detail) {
+  --surface-soft: var(--soft);
+  --warning-text: var(--warning);
+}
+.mortgage-assistant {
+  --rate-fixed-3: #2463d3;
+  --rate-fixed-5: #805312;
+  --rate-variable-3: #7d4493;
+  --rate-variable-5: #226044;
+}
+:root[data-theme="dark"] .mortgage-assistant {
+  --rate-fixed-3: var(--chart-accent);
+  --rate-fixed-5: var(--warning);
+  --rate-variable-3: #d6a9f3;
+  --rate-variable-5: var(--chart-positive);
+}
+:root[data-theme="dark"] .mortgage-contact-initials { color: var(--info); }
